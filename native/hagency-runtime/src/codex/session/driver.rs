@@ -123,6 +123,12 @@ impl<R, W, E> SessionDriver<R, W, E> {
     pub fn prepared_admissible(&self, id: &RequestId) -> bool {
         self.wire.prepared_admissible(id)
     }
+    /// `(accepted, total)` bytes of the frame in write custody, or `None`.
+    /// Read-only projection for the approval turn-end rule; carries no
+    /// authority and never influences the write itself.
+    pub fn write_progress(&self) -> Option<(usize, usize)> {
+        self.wire.write_progress()
+    }
     pub fn stderr_snapshot(&self) -> transport::StderrSnapshot {
         self.wire.stderr_snapshot()
     }

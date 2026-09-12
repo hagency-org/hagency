@@ -112,6 +112,14 @@ impl OwnedSession {
     pub fn prepared_admissible(&self, id: &crate::codex::RequestId) -> bool {
         self.session.prepared_admissible(id)
     }
+    /// `(accepted, total)` bytes of the frame in the transport's write
+    /// custody, or `None` when no frame is held. Read-only: the approval
+    /// turn-end rule uses it to distinguish a transmitted (uncertain) frame
+    /// from a never-transmitted one. No authority, no retry, no verdict
+    /// inside the runtime.
+    pub fn write_progress(&self) -> Option<(usize, usize)> {
+        self.session.write_progress()
+    }
     pub fn stderr_snapshot(&self) -> transport::StderrSnapshot {
         self.session.stderr_snapshot()
     }

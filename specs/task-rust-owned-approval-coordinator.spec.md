@@ -149,6 +149,28 @@ Scenario: A resolved-away frame is never sent
   When the host reaches the send
   Then the operation completes quietly with no failure no Closed cause no frame on the wire and no accepted row
 
+
+Scenario: A frame whose peer vanished before its first byte is never uncertain
+  Test: native_owned_approval_peer_gone_before_first_byte
+  Given an admitted armed frame and no accepted byte on the wire
+  When the send path attempts the first byte
+  Then the observation names the failing arm and reports accepted_bytes 0
+  And the verdict is the named non-uncertain refusal never Protocol
+  And no accepted row is manufactured
+
+Scenario: A turn end never completes over an untransmitted in-flight frame
+  Test: native_owned_approval_turn_end_untransmitted
+  Given an in-flight armed frame held at the recheck gate with zero accepted bytes
+  When the probe ends the turn and exits before the first byte
+  Then the operation reports PeerUnavailable never Completed and the untransmitted arm is stamped
+  And no frame is written and no accepted row exists
+
+Scenario: A turn end never completes over a transmitted receipt-less frame
+  Test: native_owned_approval_turn_end_midwrite_uncertain
+  Given an in-flight frame whose bytes the transport accepted but whose receipt never returned
+  When the probe ends the turn and exits with the frame unread
+  Then the operation reports SettlementUnknown never Completed and an uncertainty arm names the fate
+
 ## Out of Scope
 
 Application bootstrap selection and request delivery, private SDK collection,
