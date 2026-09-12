@@ -12,24 +12,25 @@ use hagency_store::{ApprovalResponseObservation, DomainStore};
 use std::time::Duration;
 use tokio::time::Instant;
 
-/// A frame that never accepted a byte was never transmitted: a transport
-/// refusal there is the peer being gone — **non-uncertain by construction**
-/// (nothing was sent, so there is no lost response to be uncertain about and
-/// no idempotency question). Any byte accepted means the frame **was**
-/// transmitted: its fate is unknown (the peer may hold the bytes), so a
-/// transport refusal mid-write is the uncertain `SettlementUnknown` — never
-/// a silent completion, never a protocol fault. `Protocol` stays for
-/// genuine malformed-frame refusals, and a *written* frame whose
-/// acceptance row was lost keeps the reconcile's rules (ADR-046).
-/// `zero_accepted` comes from the transport's termination snapshot
-/// (`unconfirmed_write.accepted_bytes == 0`, or no writer at all).
+/// A frame that never accepted a byte was never transmitted: a peer-side
+/// transport refusal there is the peer being gone — **non-uncertain by
+/// construction** (nothing was sent, so there is no lost response to be
+/// uncertain about and no idempotency question). Any byte accepted means the
+/// frame **was** transmitted: its fate is unknown (the peer may hold the
+/// bytes), so the uncertain `SettlementUnknown` — never a silent completion,
+/// never a protocol fault. `Protocol` stays for genuine malformed-frame
+/// refusals. `Error::Closed` (the host-side parse-removed-id sentinel) and
+/// `Error::HostClosed` (the host's own action) are never "peer gone" and
+/// stay on the non-`PeerUnavailable` arms regardless of offset. The
+/// `zero_accepted` input must be **observed** — a snapshot that reports
+/// `accepted_bytes == 0` — never defaulted from an absent snapshot
+/// (absence means no writer was installed or the transport was already torn
+/// down: "we do not know", not "we know nothing left").
 fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bool) -> Failure {
     match error {
         hagency_runtime::codex::session::Error::Transport(
             hagency_runtime::codex::transport::Error::Io(_)
-            | hagency_runtime::codex::transport::Error::PeerEof
-            | hagency_runtime::codex::transport::Error::HostClosed
-            | hagency_runtime::codex::transport::Error::Closed,
+            | hagency_runtime::codex::transport::Error::PeerEof,
         ) if zero_accepted => Failure::PeerUnavailable,
         hagency_runtime::codex::session::Error::Transport(
             hagency_runtime::codex::transport::Error::Io(_)
@@ -39,6 +40,23 @@ fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bo
         ) => Failure::SettlementUnknown,
         _ => Failure::Protocol,
     }
+}
+
+/// H3 totality: every observer of a dead transport routes through the same
+/// classifier, with the same evidence rule. The `zero_accepted` fact is
+/// read from the runner's termination snapshot here — an OBSERVED
+/// `accepted_bytes == 0` (the frame never left), never a default from an
+/// absent snapshot (absence means no writer was installed or the transport
+/// was already torn down: unknown, not zero).
+pub(super) fn send_failure_with_termination(
+    runner: &hagency_runtime::owned::OwnedSession,
+    error: hagency_runtime::codex::session::Error,
+) -> Failure {
+    let zero_accepted = runner
+        .transport_termination()
+        .and_then(|termination| termination.unconfirmed_write.as_ref())
+        .is_some_and(|write| write.accepted_bytes == 0);
+    send_failure(error, zero_accepted)
 }
 
 impl ApprovalRun {
@@ -354,17 +372,17 @@ impl ApprovalRun {
                 )
                 .await?
                 .map_err(|error| {
-                    // A frame that never accepted a byte was never
-                    // transmitted, so a refusal here is the peer being gone,
-                    // not a protocol fault — and never an uncertainty: there
-                    // is no lost response to be uncertain about. The
-                    // accepted-byte count lives in the transport's
-                    // termination snapshot (the error itself does not carry
-                    // it), and the transport's `Io` now names the stream arm.
+                    // The classifier (H2/H3): peer-gone `Io`/`PeerEof` with an
+                    // OBSERVED zero-byte snapshot is `PeerUnavailable`; any
+                    // accepted byte is the uncertain `SettlementUnknown`;
+                    // host-side `Closed`/`HostClosed` and genuine protocol
+                    // errors never carry the peer-gone verdict. The accepted
+                    // count lives in the transport's termination snapshot —
+                    // absence is not evidence of zero.
                     let zero_accepted = runner
                         .transport_termination()
                         .and_then(|termination| termination.unconfirmed_write.as_ref())
-                        .is_none_or(|write| write.accepted_bytes == 0);
+                        .is_some_and(|write| write.accepted_bytes == 0);
                     send_failure(error, zero_accepted)
                 })?;
                 match step {
@@ -559,27 +577,41 @@ impl ApprovalRun {
 
 #[cfg(test)]
 mod send_failure_tests {
-    //! The never-transmitted verdict (ADR-046 amendment): a frame whose peer
-    //! vanished before its first byte is a distinct, non-uncertain refusal —
-    //! never a protocol fault, never an uncertainty. Any byte accepted keeps
-    //! the existing verdicts; a written frame's lost acknowledgement stays
-    //! with the reconcile.
+    //! The never-transmitted classifier (ADR-046 amendment, review H2/H3):
+    //! one function decides the verdict for every transport-observing arm —
+    //! the send path, the pump and the turn-end rule. The table below pins
+    //! EVERY arm: peer-gone `Io`/`PeerEof` with an observed zero-byte
+    //! snapshot is `PeerUnavailable`; the same causes with bytes accepted
+    //! are the uncertain `SettlementUnknown`; host-side `Closed` (the
+    //! parse-removed-id sentinel) and `HostClosed` (the host's own action)
+    //! never carry the peer-gone verdict at ANY offset; genuine protocol
+    //! errors stay `Protocol` regardless of the snapshot.
     use super::send_failure;
     use crate::Failure;
     use hagency_runtime::codex::{session, transport};
 
     #[test]
     fn native_never_transmitted_frame_is_peer_unavailable() {
+        // Only the peer-gone causes, only with OBSERVED zero bytes.
         for cause in [
             transport::Error::Io("stdin write"),
+            transport::Error::Io("stdin flush"),
+            transport::Error::Io("stdout read"),
+            transport::Error::Io("stderr read"),
             transport::Error::PeerEof,
-            transport::Error::HostClosed,
-            transport::Error::Closed,
         ] {
             assert_eq!(
                 send_failure(session::Error::Transport(cause), true),
                 Failure::PeerUnavailable,
-                "zero accepted bytes must be the named refusal"
+                "peer-gone {cause:?} with an observed zero-byte snapshot must be the named refusal"
+            );
+        }
+        // Host-side causes are never "peer gone", even with zero bytes.
+        for host_side in [transport::Error::Closed, transport::Error::HostClosed] {
+            assert_eq!(
+                send_failure(session::Error::Transport(host_side), true),
+                Failure::SettlementUnknown,
+                "host-side {host_side:?} must not carry the peer-gone verdict"
             );
         }
     }
@@ -587,20 +619,29 @@ mod send_failure_tests {
     #[test]
     fn native_partial_write_keeps_protocol_and_uncertainty() {
         // The negative control: once any byte is accepted the frame was
-        // transmitted, so its fate is UNKNOWN — the mid-write send refusal
-        // is the uncertain verdict (never a silent completion, never a
-        // protocol fault), and a *recorded* frame's fate belongs to the
-        // reconcile's rules.
-        assert_eq!(
-            send_failure(
-                session::Error::Transport(transport::Error::Io("stdin write")),
-                false
-            ),
-            Failure::SettlementUnknown
-        );
+        // transmitted, so its fate is UNKNOWN — the uncertain verdict (never
+        // a silent completion, never a protocol fault), and a *recorded*
+        // frame's fate belongs to the reconcile's rules. This holds for the
+        // host-side causes too (bytes accepted dominates the cause).
+        for cause in [
+            transport::Error::Io("stdin write"),
+            transport::Error::PeerEof,
+            transport::Error::HostClosed,
+            transport::Error::Closed,
+        ] {
+            assert_eq!(
+                send_failure(session::Error::Transport(cause), false),
+                Failure::SettlementUnknown,
+                "{cause:?} with bytes accepted is uncertain, never silent"
+            );
+        }
         // A genuine protocol error is never re-labelled, at any offset.
         assert_eq!(
             send_failure(session::Error::Transport(transport::Error::Capacity), true),
+            Failure::Protocol
+        );
+        assert_eq!(
+            send_failure(session::Error::Transport(transport::Error::Capacity), false),
             Failure::Protocol
         );
     }

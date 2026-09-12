@@ -126,17 +126,21 @@ impl Drive<'_> {
                         // silently over that unresolved acceptance.
                         e.in_flight && e.write.is_none() && !e.resolved
                     }) {
-                        // Decide by the transport's write custody: bytes
-                        // accepted means transmitted (uncertain — the peer
-                        // may hold them); none accepted means never
-                        // transmitted (the peer was gone before the frame).
-                        let accepted = runner
+                        // Decide by the transport's write custody through the
+                        // same evidence rule as the classifier (H3): an
+                        // OBSERVED zero accepted bytes means never
+                        // transmitted (`PeerUnavailable` — the peer was gone
+                        // before the frame); any accepted byte — or no writer
+                        // at all, which is absent evidence, not zero — is the
+                        // uncertain `SettlementUnknown`. Never a silent
+                        // completion in either arm.
+                        let zero_observed = runner
                             .write_progress()
-                            .map_or(0, |(accepted, _total)| accepted);
-                        if accepted > 0 {
-                            Err(Failure::SettlementUnknown)
-                        } else {
+                            .is_some_and(|(accepted, _total)| accepted == 0);
+                        if zero_observed {
                             Err(Failure::PeerUnavailable)
+                        } else {
+                            Err(Failure::SettlementUnknown)
                         }
                     } else {
                         Ok(true)
@@ -205,7 +209,12 @@ impl Drive<'_> {
                 Ok(Ok(ControlUpdate::Update(update, observation))) => {
                     self.update(callbacks, runner, update, *observation).await
                 }
-                Ok(Err(_)) => Err(Failure::Protocol),
+                Ok(Err(error)) => {
+                    // H3 totality: the pump sees a dead peer through the same
+                    // classifier as the send path, so the verdict does not
+                    // depend on which observer touched the transport first.
+                    Err(super::control::send_failure_with_termination(runner, error))
+                }
                 Err(failure) => Err(failure),
             };
             if !matches!(terminal, Ok(false)) {
