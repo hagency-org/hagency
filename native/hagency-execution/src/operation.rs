@@ -50,6 +50,8 @@ pub enum Failure {
     CleanupUnknown,
     #[error("domain settlement outcome unknown")]
     SettlementUnknown,
+    #[error("native runner peer vanished before the approval frame's first byte")]
+    PeerUnavailable,
     #[error("host worker failed")]
     Worker,
 }
@@ -68,6 +70,7 @@ impl Failure {
             Self::Deadline => OwnedFailure::Deadline,
             Self::CleanupUnknown => OwnedFailure::CleanupUnknown,
             Self::SettlementUnknown => OwnedFailure::SettlementUnknown,
+            Self::PeerUnavailable => OwnedFailure::PeerUnavailable,
         }
     }
 }

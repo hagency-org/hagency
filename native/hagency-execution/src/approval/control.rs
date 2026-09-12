@@ -12,6 +12,26 @@ use hagency_store::{ApprovalResponseObservation, DomainStore};
 use std::time::Duration;
 use tokio::time::Instant;
 
+/// A frame that never accepted a byte was never transmitted: a transport
+/// refusal there is the peer being gone — **non-uncertain by construction**
+/// (nothing was sent, so there is no lost response to be uncertain about and
+/// no idempotency question). Any byte accepted keeps the existing verdicts:
+/// the send refusal itself stays `Protocol`, and a *written* frame whose
+/// acknowledgement was lost keeps the reconcile's uncertainty (ADR-046).
+/// `zero_accepted` comes from the transport's termination snapshot
+/// (`unconfirmed_write.accepted_bytes == 0`, or no writer at all).
+fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bool) -> Failure {
+    match error {
+        hagency_runtime::codex::session::Error::Transport(
+            hagency_runtime::codex::transport::Error::Io(_)
+            | hagency_runtime::codex::transport::Error::PeerEof
+            | hagency_runtime::codex::transport::Error::HostClosed
+            | hagency_runtime::codex::transport::Error::Closed,
+        ) if zero_accepted => Failure::PeerUnavailable,
+        _ => Failure::Protocol,
+    }
+}
+
 impl ApprovalRun {
     pub(crate) async fn bind(
         &mut self,
@@ -324,7 +344,20 @@ impl ApprovalRun {
                     until,
                 )
                 .await?
-                .map_err(|_| Failure::Protocol)?;
+                .map_err(|error| {
+                    // A frame that never accepted a byte was never
+                    // transmitted, so a refusal here is the peer being gone,
+                    // not a protocol fault — and never an uncertainty: there
+                    // is no lost response to be uncertain about. The
+                    // accepted-byte count lives in the transport's
+                    // termination snapshot (the error itself does not carry
+                    // it), and the transport's `Io` now names the stream arm.
+                    let zero_accepted = runner
+                        .transport_termination()
+                        .and_then(|termination| termination.unconfirmed_write.as_ref())
+                        .is_none_or(|write| write.accepted_bytes == 0);
+                    send_failure(error, zero_accepted)
+                })?;
                 match step {
                     PreparedUpdate::Update(update, observation) => {
                         if drive
@@ -512,5 +545,52 @@ impl ApprovalRun {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod send_failure_tests {
+    //! The never-transmitted verdict (ADR-046 amendment): a frame whose peer
+    //! vanished before its first byte is a distinct, non-uncertain refusal —
+    //! never a protocol fault, never an uncertainty. Any byte accepted keeps
+    //! the existing verdicts; a written frame's lost acknowledgement stays
+    //! with the reconcile.
+    use super::send_failure;
+    use crate::Failure;
+    use hagency_runtime::codex::{session, transport};
+
+    #[test]
+    fn native_never_transmitted_frame_is_peer_unavailable() {
+        for cause in [
+            transport::Error::Io("stdin write"),
+            transport::Error::PeerEof,
+            transport::Error::HostClosed,
+            transport::Error::Closed,
+        ] {
+            assert_eq!(
+                send_failure(session::Error::Transport(cause), true),
+                Failure::PeerUnavailable,
+                "zero accepted bytes must be the named refusal"
+            );
+        }
+    }
+
+    #[test]
+    fn native_partial_write_keeps_protocol_and_uncertainty() {
+        // The negative control: once any byte is accepted the frame was
+        // transmitted, so the send refusal is the fencing verdict and the
+        // written frame's fate belongs to the reconcile's uncertainty rules.
+        assert_eq!(
+            send_failure(
+                session::Error::Transport(transport::Error::Io("stdin write")),
+                false
+            ),
+            Failure::Protocol
+        );
+        // A genuine protocol error is never re-labelled, at any offset.
+        assert_eq!(
+            send_failure(session::Error::Transport(transport::Error::Capacity), true),
+            Failure::Protocol
+        );
     }
 }
