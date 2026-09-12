@@ -192,6 +192,10 @@ async fn native_console_resources_browser() {
     let f = Fixture::new(address, Some(&built()));
     let resource = native_resource("private_browser_pool");
     f.domain.put_resource(resource.clone()).await.unwrap();
+    // Brief 18: the fixture's usage pool (a bound usage source with real
+    // observations) is the MEASURED headroom arm; `resource` itself is the
+    // unmeasured arm (a declared ceiling, no engagement, no observation).
+    let measured = common::resource("private_usage_pool", "private_usage_seat", 1000);
     hagency_store::private::write_new(
         &f.root.path().join("state/operator.token"),
         TOKEN.as_bytes(),
@@ -216,7 +220,7 @@ async fn native_console_resources_browser() {
         .write_all(
             format!(
                 "{}\n",
-                json!({"base":format!("http://{address}"),"url":url,"resource":resource.id()})
+                json!({"base":format!("http://{address}"),"url":url,"resource":resource.id(),"measured":measured.id()})
             )
             .as_bytes(),
         )

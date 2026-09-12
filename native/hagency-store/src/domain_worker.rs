@@ -2546,6 +2546,17 @@ impl DomainStore {
         self.call(weight(&id)?, move |db| db.resource_budget(&id))
             .await
     }
+    /// One writer job returning the budget AND the draw report together
+    /// (brief 18): a page must never render figures from two different jobs.
+    /// The clock is the caller's, like the usage reads.
+    pub async fn resource_headroom(
+        &self,
+        id: String,
+        at: u64,
+    ) -> Result<(Budget, crate::CeilingReport), Error> {
+        self.call(weight(&id)?, move |db| db.resource_headroom(&id, at))
+            .await
+    }
     /// Ceiling overrun alarm sweep (ADR-124 slice a): takes the clock from the
     /// caller so tests drive it directly; no timer is attached in this slice.
     pub async fn sweep_ceiling_overruns(&self, now: u64) -> Result<SweepOutcome, Error> {

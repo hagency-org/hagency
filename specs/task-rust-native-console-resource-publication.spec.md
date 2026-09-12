@@ -112,18 +112,18 @@ Scenario: Browser publication needs its exact management scope
 Scenario: Resource observations preserve native meanings
   Test: native_console_resource_observations
   Level: integration
-  Test Double: canonical configurations seats roles and commitments in fresh native state
+  Test Double: canonical configurations seats roles and commitments in fresh native state with one unmeasured resource and one carrying a bound usage source and observations
   Given published withdrawn missing and partially bounded resources
   When bounded resource and budget reads complete or lose authority
-  Then safe DTOs preserve current native facts and absent values without private fields
+  Then safe DTOs preserve current native facts and absent values without private fields and the budget draw object carries drawn measured consumed the binding draw named as the over-commit refusal names it and remaining before the ceiling with every unknown figure null never zero
 
 Scenario: Retained resource controls work in both languages
   Test: native_console_resources_browser
   Level: integration
   Test Double: actual Chromium and native Salvo with new runtime resource creation
-  Given the retained static resource page and finite native management access
+  Given the retained static resource page and finite native management access with a measured and an unmeasured resource
   When users select publish withdraw refresh and observe conflict unknown or Busy logout
-  Then current state preferences and explicit action outcomes remain truthful in both languages
+  Then current state preferences and explicit action outcomes remain truthful in both languages and the headroom cells render figures for the measured resource and the explicit unknown word never zero for the unmeasured one
 
 Scenario: Resource management runs without deployed Node
   Test: native_console_resources_executable

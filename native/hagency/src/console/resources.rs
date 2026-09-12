@@ -208,13 +208,55 @@ async fn budget(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let Some(store) = domain(depot, res) else {
         return;
     };
-    let result = store.resource_budget(id).await;
+    // Brief 18: ONE writer job returns the commitments budget AND the draw
+    // report together, so the page can never mix figures from two reads.
+    // Statement time (the retained budget read has no clock parameter), and
+    // the no-query rule above stays.
+    let at = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_err(|_| hagency_store::Error::Busy)
+        .and_then(|d| u64::try_from(d.as_millis()).map_err(|_| hagency_store::Error::Busy));
+    let at = match at {
+        Ok(at) => at,
+        Err(error) => {
+            failure(res, error);
+            return;
+        }
+    };
+    let result = store.resource_headroom(id, at).await;
     if let Err(error) = recheck(depot) {
         failed(res, error);
         return;
     }
     match result {
-        Ok(value) => bounded(res, &value),
+        Ok((value, draw)) => {
+            // The `draw` object carries the headroom figures with unknown
+            // rendered as unknown (null, never zero) and the binding draw
+            // named the way ADR-122's refusal names it
+            // (`engagement-store.js:82-83`: measured > committed ? "measured
+            // spend" : "committed allocations"; unknown measurement leaves
+            // the commitment standing alone, so the binding is null).
+            let binding = match draw.spent {
+                Some(spent) if spent > draw.reserved => "measured spend",
+                Some(_) => "committed allocations",
+                None => "",
+            };
+            let remaining_before_ceiling = draw
+                .ceiling_tokens
+                .map(|ceiling| ceiling.saturating_sub(draw.drawn));
+            let mut wire = serde_json::to_value(&value).expect("fixed budget serializes");
+            wire["draw"] = serde_json::json!({
+                "committed": draw.reserved,
+                "measured": draw.spent,
+                "consumed": draw.consumed,
+                "drawn": draw.drawn,
+                "ceilingTokens": draw.ceiling_tokens,
+                "period": draw.period,
+                "binding": if binding.is_empty() { serde_json::Value::Null } else { serde_json::json!(binding) },
+                "remainingBeforeCeiling": remaining_before_ceiling,
+            });
+            bounded(res, &wire);
+        }
         Err(error) => failure(res, error),
     }
 }

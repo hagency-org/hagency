@@ -1,5 +1,36 @@
 # Repository audit — 2026-09-05
 
+## 2026-09-12 — Resources headroom section (brief 18, ADR-121 amendment)
+
+- The budget route now answers ONE combined read: new store method
+  `resource_headroom(id, at)` returns the commitments budget AND the
+  ceiling draw together in a single writer job (a page must never render
+  figures from two different reads); the console route serializes the budget
+  plus a `draw` object — committed, measured/consumed (null when unmeasured,
+  never zero), drawn (`max(reserved, spent)`, the same figures the alarm and
+  admission publish), period, ceilingTokens, remainingBeforeCeiling (null
+  when no ceiling), and `binding` named the way ADR-122's refusal names it
+  (`engagement-store.js:82-83`: measured > committed ? "measured spend" :
+  "committed allocations"; null when unknown because nothing competes).
+  Statement time is the clock; the no-query rule is unchanged.
+- `validateBudget` grew the object in the same commit (exact eight keys,
+  both directions, unknown arms null) — import-verified: both binding words
+  accepted, all-null arms accepted, missing/extra key and wrong binding
+  rejected.
+- The page: `HeadroomPart` inside the budget panel renders eight
+  `data-headroom` cells, unknowns as the explicit unknown word; twelve new
+  `nr.headroom.*` i18n keys in both dictionaries (parity 12/12).
+- Tests: `native_console_resource_observations` extended with both arms —
+  the unmeasured resource (every unknown null, never zero, binding null) and
+  the fixture's measured usage pool (drawn == max(committed, measured), the
+  refusal's binding wording, remaining = ceiling − drawn). The resources
+  browser passes the measured pool's id and the driver asserts the
+  measured-vs-unknown cells render (figures for the measured pool; the
+  unknown word, never zero, for the unmeasured one).
+- Spec scenarios updated (observations + browser); ADR-121 gains the
+  console-consumer amendment — the "publish headroom" follow-through its
+  closing paragraph deferred to exactly this slice.
+
 ## 2026-09-12 — Engagements review edits E3/E4 (review of 0077cb08)
 
 - E3 (pagination untested): the console fixture now seeds THREE engagements

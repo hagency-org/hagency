@@ -168,6 +168,58 @@ async fn native_console_resource_observations() {
     assert!(budget["pool"]["remaining"].is_null());
     assert_eq!(budget["seat"]["status"], "undeclared");
     assert!(budget["seat"]["quota"].is_null());
+    // Brief 18 — the `draw` object's UNKNOWN arm: no ceiling, no engagement,
+    // no measurement. Every unknown figure is null, never zero, and nothing
+    // competes for a ceiling that does not exist.
+    let draw = &budget["draw"];
+    assert_eq!(draw["committed"], 0, "no engagements, no commitment");
+    assert!(draw["measured"].is_null(), "unmeasured is null, not zero");
+    assert!(draw["consumed"].is_null());
+    assert_eq!(draw["drawn"], 0);
+    assert!(draw["binding"].is_null(), "nothing competes, nothing binds");
+    assert!(draw["ceilingTokens"].is_null());
+    assert!(draw["remainingBeforeCeiling"].is_null());
+    assert_eq!(draw["period"], "monthly", "monthly unless declared daily");
+    // The MEASURED arm: the fixture's usage pool carries a real bound usage
+    // source with observations, so measured/consumed are known figures. The
+    // assertions are self-consistent rather than brittle constants: drawn is
+    // exactly max(committed, measured), the binding draw is named the way
+    // ADR-122's refusal names it (engagement-store.js:82-83), and the
+    // remaining figure is the ceiling minus the draw.
+    let usage_pool = common::resource("private_usage_pool", "private_usage_seat", 1000);
+    let mut response = get(
+        &format!("/console/api/resources/{}/budget", usage_pool.id()),
+        &cookie,
+    )
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<Value>().await.unwrap();
+    let draw = &value["draw"];
+    let committed = draw["committed"].as_u64().unwrap();
+    let measured = draw["measured"]
+        .as_u64()
+        .expect("the seeded observation measures the current period");
+    let consumed = draw["consumed"].as_u64().unwrap();
+    assert!(consumed >= measured, "display total covers the fresh draw");
+    assert_eq!(draw["ceilingTokens"], 1000);
+    let drawn = draw["drawn"].as_u64().unwrap();
+    assert_eq!(
+        drawn,
+        committed.max(measured),
+        "the draw is the larger figure"
+    );
+    assert_eq!(
+        draw["binding"],
+        if measured > committed {
+            "measured spend"
+        } else {
+            "committed allocations"
+        },
+        "the binding draw is named like the over-commit refusal"
+    );
+    assert_eq!(draw["remainingBeforeCeiling"], 1000 - drawn);
+    assert_eq!(draw["period"], "monthly");
     for query in ["limit=17", "limit=0", "limit=1&limit=2", "unknown=1"] {
         assert_eq!(
             get(&format!("/console/api/resources?{query}"), &cookie)

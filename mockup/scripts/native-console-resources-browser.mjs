@@ -35,6 +35,25 @@ try {
   assert.match(await page.locator('main').innerText(), /Delivery to Palpo has not been verified/);
   assert.equal(await row().getByRole('button').isEnabled(), true);
   await toggle(config.resource, false); await toggle(config.resource, true);
+  // Brief 18 — the headroom cells. The MEASURED arm: the fixture's usage
+  // pool (a bound usage source with real observations), where measured is a
+  // figure, the binding draw is named, and remaining is a number. The
+  // UNKNOWN arm back on the unmeasured pool: measured renders the explicit
+  // unknown word — never zero — and nothing competes, so the binding cell
+  // says so instead of naming a draw.
+  await page.locator('#native-resource').selectOption(config.measured);
+  await page.locator(`[data-resource-id="${config.measured}"]`).waitFor();
+  await ready();
+  const cellText = (key) => page.locator(`[data-headroom="${key}"]`).innerText();
+  assert(!/Unknown|未知/.test(await cellText('measured')), 'the measured pool shows a real figure');
+  assert(!/Unknown|未知/.test(await cellText('drawn')));
+  assert.match(await cellText('binding'), /measured spend|committed allocations|已测量消耗|已承诺分配/);
+  assert(!/Unknown|未知/.test(await cellText('remainingBeforeCeiling')));
+  await page.locator('#native-resource').selectOption(config.resource);
+  await page.locator(`[data-resource-id="${config.resource}"]`).waitFor();
+  await ready();
+  assert.match(await cellText('measured'), /Unknown|未知/, 'unmeasured renders unknown, not zero');
+  assert.match(await cellText('binding'), /no measurement this period|本周期无测量/);
   if (process.env.HAGENCY_CONSOLE_SCREENSHOTS && !config.executable) {
     await mkdir(process.env.HAGENCY_CONSOLE_SCREENSHOTS, { recursive: true });
     await page.screenshot({ path: join(process.env.HAGENCY_CONSOLE_SCREENSHOTS, 'console-resources-en.png'), fullPage: true });

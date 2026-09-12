@@ -161,10 +161,26 @@ export function validateResources(value) {
 }
 export function validateBudget(v) {
   const amount = (n) => n === null || number(n);
-  if (!object(v, ['scope', 'pool', 'seat', 'reserved', 'remainingTokens']) || v.scope !== 'resource' || !number(v.reserved) || !amount(v.remainingTokens)
+  /* The `draw` object (brief 18) carries the headroom figures the page
+   * renders. Unknown is null, never zero: `measured`/`consumed` are null
+   * when the period is unmeasured, `ceilingTokens`/`remainingBeforeCeiling`
+   * are null when no ceiling is declared, and `binding` is null when the
+   * measurement is unknown (the commitment stands alone — nothing competes
+   * for the ceiling, so nothing binds it). `binding` otherwise names the
+   * binding draw the way ADR-122's refusal does (engagement-store.js:82-83:
+   * measured > committed ? 'measured spend' : 'committed allocations').
+   * This key set is exact in BOTH directions with the route's serializer. */
+  const binding = (b) => b === null || b === 'measured spend' || b === 'committed allocations';
+  const draw = (d) => d !== null && typeof d === 'object' && !Array.isArray(d)
+    && Object.keys(d).length === 8
+    && ['committed', 'measured', 'consumed', 'drawn', 'ceilingTokens', 'period', 'binding', 'remainingBeforeCeiling'].every((k) => Object.hasOwn(d, k))
+    && number(d.committed) && amount(d.measured) && amount(d.consumed) && number(d.drawn)
+    && amount(d.ceilingTokens) && ['daily', 'monthly'].includes(d.period) && binding(d.binding)
+    && amount(d.remainingBeforeCeiling);
+  if (!object(v, ['scope', 'pool', 'seat', 'reserved', 'remainingTokens', 'draw']) || v.scope !== 'resource' || !number(v.reserved) || !amount(v.remainingTokens)
     || !object(v.pool, ['ceiling', 'period', 'committed', 'remaining']) || !amount(v.pool.ceiling) || !optionalText(v.pool.period, 64 * 1024) || !number(v.pool.committed) || !amount(v.pool.remaining)
     || !object(v.seat, ['quota', 'period', 'committed', 'remaining', 'status']) || !amount(v.seat.quota) || !optionalText(v.seat.period, 64 * 1024) || !number(v.seat.committed) || !amount(v.seat.remaining)
-    || !['undeclared', 'declared', 'period_mismatch'].includes(v.seat.status)) throw new Error('invalid_native_response');
+    || !['undeclared', 'declared', 'period_mismatch'].includes(v.seat.status) || !draw(v.draw)) throw new Error('invalid_native_response');
   return v;
 }
 export async function fetchResources(selected, after = '') {

@@ -618,6 +618,18 @@ impl DomainRepository {
     pub fn resource_budget(&self, id: &str) -> Result<Budget, Error> {
         budget(&self.db, &read_resource(&self.db, id)?, None, false)
     }
+    /// The budget the console publishes (brief 18): the commitments budget
+    /// AND the ceiling draw in ONE transaction-consistent read, so a page
+    /// can never render figures from two different writer jobs. The draw
+    /// figures (`spent`/`consumed` unknown-when-unmeasured, `drawn =
+    /// max(reserved, spent)`, `backend-v2.js:14052-14053`) are the same ones
+    /// the alarm sweep and admission publish — never a second arithmetic
+    /// path (ADR-121).
+    pub fn resource_headroom(&self, id: &str, at: u64) -> Result<(Budget, CeilingReport), Error> {
+        let budget = budget(&self.db, &read_resource(&self.db, id)?, None, false)?;
+        let report = usage::ceiling_report(&self.db, id, at)?;
+        Ok((budget, report))
+    }
 
     pub fn admit(&mut self, proof: &VerifiedRequest, now: u64) -> Result<Engagement, Error> {
         let tx = self

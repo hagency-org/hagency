@@ -17,6 +17,26 @@ function BudgetPart({ value, account = false }) {
     {account && <><dt>{t('nr.declaration')}</dt><dd>{t(`nr.seat.${value.status}`)}</dd></>}
   </dl></section>;
 }
+function HeadroomPart({ draw, number, t }) {
+  // Unknown is unknown, never zero: every null below renders the explicit
+  // unknown word, so an unmeasured period never reads as a free resource.
+  const binding = draw.binding === null
+    ? t('nr.headroom.noCompetition')
+    : draw.binding === 'measured spend' ? t('nr.headroom.bindingMeasured') : t('nr.headroom.bindingCommitted');
+  return <section className="panel" data-headroom>
+    <h3>{t('nr.headroom.title')}</h3>
+    <dl className="kv">
+      <dt>{t('nr.headroom.drawn')}</dt><dd data-headroom="drawn">{number(draw.drawn)}</dd>
+      <dt>{t('nr.headroom.committed')}</dt><dd data-headroom="committed">{number(draw.committed)}</dd>
+      <dt>{t('nr.headroom.measured')}</dt><dd data-headroom="measured">{number(draw.measured)}</dd>
+      <dt>{t('nr.headroom.consumed')}</dt><dd data-headroom="consumed">{number(draw.consumed)}</dd>
+      <dt>{t('nr.headroom.binding')}</dt><dd data-headroom="binding">{binding}</dd>
+      <dt>{t('nr.headroom.ceiling')}</dt><dd data-headroom="ceilingTokens">{number(draw.ceilingTokens)}</dd>
+      <dt>{t('nr.headroom.remaining')}</dt><dd data-headroom="remainingBeforeCeiling">{number(draw.remainingBeforeCeiling)}</dd>
+    </dl>
+    <p className="note">{t('nr.headroom.meaning')}</p>
+  </section>;
+}
 export default function NativeResources() {
   const t = useT(); const data = useData();
   const { phase, selected, resources = [], roles = [], budget, action } = data;
@@ -48,7 +68,7 @@ export default function NativeResources() {
           {resources.map((r) => <tr key={r.id} data-resource-row={r.id}><td>{label(r)}{r.provider && <div className="dim">{r.provider}</div>}<TechnicalDetails><code>{r.id}</code></TechnicalDetails></td><td>{number(r.ceiling?.tokens)}</td><td data-publication={r.published}>{t(r.published ? 'nr.included' : 'nr.withdrawn')}</td><td><a className="btn" href={`/console/resources/new/?resource_id=${r.id}`}>{t('nc.edit')}</a> <ResourceAgents preset={r} native={{ allowed: data.permissions?.publishResource && phase === 'ready', busy: action?.kind === 'pending', publish: data.publish }} /></td></tr>)}
         </tbody></table></div><p className="dim">{t('nr.pageOnly')}</p>
       </section>
-      {budget && <section className="panel" data-resource-id={selected}><h2 className="sec" style={{ marginTop: 0 }}>{t('nr.budget')}</h2><p>{t('nr.budgetMeaning')}</p><div className="split even"><BudgetPart value={budget.pool} /><BudgetPart value={budget.seat} account /></div><p>{t('nr.effectiveRemaining')}: <b>{number(budget.remainingTokens)}</b></p></section>}
+      {budget && <section className="panel" data-resource-id={selected}><h2 className="sec" style={{ marginTop: 0 }}>{t('nr.budget')}</h2><p>{t('nr.budgetMeaning')}</p><div className="split even"><BudgetPart value={budget.pool} /><BudgetPart value={budget.seat} account /></div><p>{t('nr.effectiveRemaining')}: <b>{number(budget.remainingTokens)}</b></p>{budget.draw && <HeadroomPart draw={budget.draw} number={number} t={t} />}</section>}
       <section className="panel"><h2 className="sec" style={{ marginTop: 0 }}>{t('nr.roles')}</h2><div className="tbl-wrap"><table className="tbl"><thead><tr><th>{t('nr.role')}</th><th>{t('nr.choice')}</th><th>{t('nr.eligible')}</th><th>{t('nr.crossFamily')}</th></tr></thead><tbody>{roles.map((r) => <tr key={r.role}><td>{r.role}</td><td>{t(r.explicitPublication === null ? 'nr.automatic' : r.explicitPublication ? 'nr.enabled' : 'nr.disabled')}</td><td>{t(r.available ? 'nr.yes' : 'nr.no')}</td><td>{t(r.crossFamily ? 'nr.yes' : 'nr.no')}</td></tr>)}</tbody></table></div></section>
     </div>}
     <TechnicalDetails><p>{t('nr.roleMeaning')}</p><p>{t('nr.gaps')}</p>{selected && <p>{t('nr.identifier')}: <code>{selected}</code></p>}{data.error && <code>{data.error}</code>}{action?.error && <code>{action.error}</code>}</TechnicalDetails>

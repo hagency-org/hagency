@@ -55,3 +55,25 @@ replay tests are the four selectors in
 Later slices (separately specified) fold `drawn` into admission, split the
 `no_ceiling`/`over_commit` refusal variants with the binding-draw wording, and
 publish headroom; this slice only computes and reports the draw.
+
+## Amendment: the console consumer (brief 18 — publish headroom)
+
+The deferred "publish headroom" follow-through named above. The resources
+page's budget read now carries a `draw` object: `committed` (reserved +
+active commitments), `measured`/`consumed` (the current period's fresh and
+display lower bounds — null when unmeasured, never zero), `drawn`
+(`max(reserved, spent)` with the unknown-fallback, the same figures this
+ADR's draw and ADR-124's alarm publish — one `resource_headroom(id, at)`
+store read returns the commitments budget AND the draw together in ONE
+writer job, so the page can never mix figures from two reads), `period`,
+`ceilingTokens` and `remainingBeforeCeiling` (null when no ceiling is
+declared), and `binding` — the binding draw named the way ADR-122's
+over-commit refusal names it (`engagement-store.js:82-83`: `measured >
+committed ? "measured spend" : "committed allocations"`), null when the
+measurement is unknown because then nothing competes for the ceiling.
+
+Client `validateBudget` grew the same object in the same commit (exact eight
+keys, both directions, unknown arms null). The page renders each figure in a
+`data-headroom` cell with the explicit unknown word for nulls. Statement
+time is the read's clock (the retained budget read has no clock parameter);
+the route's no-query rule is unchanged.
