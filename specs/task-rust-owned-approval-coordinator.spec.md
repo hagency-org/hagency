@@ -137,6 +137,18 @@ Scenario: No second frame is written after a resolution
   When the drive continues to completion
   Then exactly one frame exists on both the host-written and probe-read streams and the durable write count is one
 
+Scenario: A write receipt is processed before its own resolution is delivered
+  Test: native_owned_approval_receipt_before_resolution
+  Given the host held between the transport write receipt and the acceptance observation
+  When the fixture reads the frame and then resolves it
+  Then the operation completes with the acceptance row recorded and no transport cause
+
+Scenario: A resolved-away frame is never sent
+  Test: native_owned_approval_resolved_before_first_byte
+  Given the resolution emitted while the frame is armed before its first byte
+  When the host reaches the send
+  Then the operation completes quietly with no failure no Closed cause no frame on the wire and no accepted row
+
 ## Out of Scope
 
 Application bootstrap selection and request delivery, private SDK collection,

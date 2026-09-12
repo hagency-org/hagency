@@ -106,6 +106,12 @@ impl OwnedSession {
     pub fn transport_termination(&self) -> Option<&transport::Termination> {
         self.session.transport_termination()
     }
+    /// Whether the connection still holds this prepared server request. False
+    /// once `serverRequest/resolved` was parsed: the one-shot frame's transmit
+    /// path is gone, so it must never be re-sent.
+    pub fn prepared_admissible(&self, id: &crate::codex::RequestId) -> bool {
+        self.session.prepared_admissible(id)
+    }
     pub fn stderr_snapshot(&self) -> transport::StderrSnapshot {
         self.session.stderr_snapshot()
     }

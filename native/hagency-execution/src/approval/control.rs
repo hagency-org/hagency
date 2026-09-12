@@ -300,6 +300,24 @@ impl ApprovalRun {
                 if let Some(entry) = self.callbacks.entries.get_mut(&sending.id) {
                     entry.mark("checked");
                 }
+                // The runtime resolved this request before any byte was
+                // accepted. The retained ADR-046 rule for a pre-send
+                // resolution is the quiet path: the resolution is
+                // informational, the armed frame is dropped (its transmit
+                // path is gone), the entry keeps `in_flight` so it is never
+                // re-selected, and the drive continues — the same quiet
+                // completion the pre-admission resolution produces, never a
+                // named failure.
+                if !runner.prepared_admissible(&sending.id) {
+                    let id = sending.id.clone();
+                    drop(self.sending.take());
+                    if let Some(entry) = self.callbacks.entries.get_mut(&id) {
+                        entry.in_flight = true;
+                        #[cfg(any(test, feature = "test-diagnostics"))]
+                        entry.mark("resolved-before-send");
+                    }
+                    continue;
+                }
                 let step = crate::operation::bounded(
                     runner.send_prepared_approval(&mut sending.prepared),
                     cancel,
@@ -332,6 +350,17 @@ impl ApprovalRun {
                         #[cfg(test)]
                         if self.callbacks.fault == Some(super::Fault::WritePanic) {
                             panic!("actual owned response write unwind");
+                        }
+                        // ReceiptGate: hold between the transport's write
+                        // receipt and the acceptance observation, so a test
+                        // can drive a resolution in exactly that window. The
+                        // gate does not pump the session, so the resolution
+                        // stays unparsed across the hold.
+                        #[cfg(test)]
+                        if self.callbacks.fault == Some(super::Fault::ReceiptGate)
+                            && let Some(gate) = self.callbacks.gate.take()
+                        {
+                            gate.wait().await;
                         }
                         let written = drive
                             .pump(
