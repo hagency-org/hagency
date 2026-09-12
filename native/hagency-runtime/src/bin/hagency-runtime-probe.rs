@@ -40,6 +40,11 @@ fn harness_wait() -> Duration {
     Duration::from_millis(operation_budget_ms() / 10)
 }
 fn hold_until_stdin_closed(marker: &Path, budget_ms: u64) -> io::Result<()> {
+    // `StdinLock` holds a `MutexGuard` and is `!Send`: it cannot move into
+    // the reading thread, so the lock must be TAKEN there. The caller
+    // (`fake`) drops its own lock before calling here, so this lock observes
+    // the host's close instead of deadlocking on a guard that never
+    // releases.
     let (closed, host_closed) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
         let mut stdin = io::stdin().lock();

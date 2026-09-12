@@ -182,6 +182,27 @@ fn settlement_failure(report: &mut Report, error: &hagency_store::Error) -> Fail
     Failure::SettlementUnknown
 }
 
+/// H5: which drive outcomes still observe completion custody on the failure
+/// path. The excluded causes never reach settlement, so a store refusal there
+/// must not pin a `settlement_cause` onto them — the same first-cause rule
+/// brief 14 installed, now guarding the marker, not just its overwrite.
+/// `PeerUnavailable` joins the exclusions: a named peer-gone refusal never
+/// carries a settlement cause. `SettlementUnknown` is excluded by the
+/// precedence rule (ADR-046): a conclusive negative reconcile surfaces
+/// unchanged and never consults custody. Generic over the drive's success
+/// payload (the early completion path drives `()`, the later one the
+/// `Report`).
+fn observes_completion<T>(drive: &Result<T, Failure>) -> bool {
+    !matches!(
+        drive,
+        Err(Failure::Cancelled
+            | Failure::Deadline
+            | Failure::UnsupportedApproval
+            | Failure::PeerUnavailable
+            | Failure::SettlementUnknown)
+    )
+}
+
 /// Fixed diagnostics from the original owned runtime, never execution authority.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimeStage {
@@ -888,28 +909,26 @@ async fn execute(
     // A matching explicit Done+body is completion custody, not a renewed task
     // epoch or permission to continue this process. The same runner was stopped
     // above. Scope is the opaque successful Start response, never admission data.
-    //
     // A settlement verdict outranks the completion path: a drive that ended
     // in `SettlementUnknown` (ADR-046's conclusive negative reconcile) never
     // consults held completion custody, so it is neither replaced by
     // `CleanupUnknown` on macOS nor swallowed into a published completion on
     // Linux; `drive?` below surfaces it unchanged. Every other drive end that
-    // is not a cancellation, a deadline or an unsupported approval keeps
-    // consulting custody: the retained helper-finish flows end without a
-    // terminal Codex turn and complete through the held row. Any other drive
-    // error (a protocol refusal, a lost authority) also consults custody, and
-    // publication still requires the store's own held completion row, so
-    // nothing is ever published that the store did not commit as finished.
-    if !matches!(
-        drive,
-        Err(Failure::Cancelled
-            | Failure::Deadline
-            | Failure::UnsupportedApproval
-            | Failure::SettlementUnknown)
-    ) && let Some(reference) = domain
-        .observe_owned_completion(cap.clone(), started.clone())
-        .await
-        .map_err(|error| settlement_failure(report, &error))?
+    // is not a cancellation, a deadline, an unsupported approval or a named
+    // peer-gone refusal keeps consulting custody: the retained helper-finish
+    // flows end without a terminal Codex turn and complete through the held
+    // row. Any other drive error (a protocol refusal, a lost authority) also
+    // consults custody, and publication still requires the store's own held
+    // completion row, so nothing is ever published that the store did not
+    // commit as finished. The excluded causes are named in
+    // `observes_completion` (review H5): a refusal there must not pin a
+    // `settlement_cause` onto the report — the same first-cause rule brief
+    // 14 installed, now guarding the marker, not just its overwrite.
+    if observes_completion(&drive)
+        && let Some(reference) = domain
+            .observe_owned_completion(cap.clone(), started.clone())
+            .await
+            .map_err(|error| settlement_failure(report, &error))?
     {
         // A held completion reference is the store's own committed finish for
         // this dispatch, read back through custody: the canonical status it
@@ -977,8 +996,34 @@ async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use super::{Failure, Report, SettlementCause, settlement_failure};
+    use super::{Failure, Report, SettlementCause, observes_completion, settlement_failure};
     use hagency_store::Error;
+
+    /// H5: a named `PeerUnavailable` refusal never reaches settlement, so the
+    /// failure path must not observe completion custody for it — a store
+    /// refusal there can never pin a `settlement_cause` onto the named
+    /// verdict. The pre-existing exclusions keep their meaning.
+    #[test]
+    fn native_peer_unavailable_carries_no_settlement_cause() {
+        for excluded in [
+            Failure::PeerUnavailable,
+            Failure::Cancelled,
+            Failure::Deadline,
+            Failure::UnsupportedApproval,
+        ] {
+            assert!(
+                !observes_completion(&Err::<(), Failure>(excluded)),
+                "{excluded:?} must not observe completion custody"
+            );
+        }
+        // Everything else — other named failures and any success — still
+        // observes custody; their settlement rules are unchanged.
+        assert!(observes_completion(&Err::<(), Failure>(
+            Failure::SettlementUnknown
+        )));
+        assert!(observes_completion(&Err::<(), Failure>(Failure::Protocol)));
+        assert!(observes_completion(&Ok::<(), Failure>(())));
+    }
 
     /// Every store refusal that can produce `Failure::SettlementUnknown` maps
     /// to its own marker, and anything else collapses to `Storage`. The
