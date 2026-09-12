@@ -47,6 +47,9 @@ pub(crate) enum Fault {
     BeginGate,
     RecheckGate,
     MaintainGate,
+    /// Hold after the transport returns its write receipt and before the
+    /// acceptance observation, so a resolution can be driven in that window.
+    ReceiptGate,
 }
 
 #[cfg(test)]

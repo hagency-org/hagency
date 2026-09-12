@@ -117,6 +117,12 @@ impl<R, W, E> SessionDriver<R, W, E> {
     pub fn transport_termination(&self) -> Option<&transport::Termination> {
         self.wire.termination()
     }
+    /// Whether the connection still holds this prepared server request. False
+    /// once `serverRequest/resolved` was parsed: the one-shot frame's transmit
+    /// path is gone, so it must never be re-sent.
+    pub fn prepared_admissible(&self, id: &RequestId) -> bool {
+        self.wire.prepared_admissible(id)
+    }
     pub fn stderr_snapshot(&self) -> transport::StderrSnapshot {
         self.wire.stderr_snapshot()
     }
