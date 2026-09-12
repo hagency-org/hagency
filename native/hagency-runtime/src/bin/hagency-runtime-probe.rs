@@ -39,15 +39,6 @@ fn operation_budget_ms() -> u64 {
 fn harness_wait() -> Duration {
     Duration::from_millis(operation_budget_ms() / 10)
 }
-/// Stay alive after terminal output until the HOST stops ownership, which it
-/// signals by closing our stdin — the close drives the hold, and the budget
-/// (plus half again) is only the outer ceiling. The old fixed 8 s pulse was
-/// a literal while the harness grants the operation 25 s, so on a loaded
-/// host the fixture exited while the operation was still running and its
-/// next write failed as `Io` with zero bytes accepted. `StdinLock` is
-/// `!Send`, so the lock is taken in the reading thread; the caller must have
-/// dropped its own lock first (a second `io::stdin().lock()` would block on
-/// the caller's guard forever).
 fn hold_until_stdin_closed(marker: &Path, budget_ms: u64) -> io::Result<()> {
     let (closed, host_closed) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {

@@ -173,6 +173,7 @@ pub enum OwnedFailure {
     Deadline,
     CleanupUnknown,
     SettlementUnknown,
+    PeerUnavailable,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedObservation {
