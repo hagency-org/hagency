@@ -1,0 +1,2555 @@
+{
+  "source": "lib/metering/attribute.js",
+  "sourceSha256": "8cd417b72ae66a2bb93476fdba9c995e865d5090f37cf9afb7455f88457c163c",
+  "processCwd": "/",
+  "vectors": {
+    "projectDir": [
+      {
+        "name": "plain",
+        "workspacePath": "/Users/fixture/home/hagency",
+        "expected": "-Users-fixture-home-hagency"
+      },
+      {
+        "name": "unicode",
+        "workspacePath": "/fixture/工程/项目",
+        "expected": "-fixture-工程-项目"
+      },
+      {
+        "name": "dashes",
+        "workspacePath": "/Users/fixture/my-project",
+        "expected": "-Users-fixture-my-project"
+      },
+      {
+        "name": "root",
+        "workspacePath": "/",
+        "expected": "-"
+      },
+      {
+        "name": "double-slash",
+        "workspacePath": "/a//b",
+        "expected": "-a--b"
+      },
+      {
+        "name": "trailing-slash",
+        "workspacePath": "/a/b/",
+        "expected": "-a-b-"
+      },
+      {
+        "name": "relative",
+        "workspacePath": "work/thing",
+        "expected": null
+      },
+      {
+        "name": "empty",
+        "workspacePath": "",
+        "expected": null
+      },
+      {
+        "name": "null",
+        "workspacePath": null,
+        "expected": null
+      },
+      {
+        "name": "dot-segments",
+        "workspacePath": "/a/./b/../c",
+        "expected": "-a-.-b-..-c"
+      },
+      {
+        "name": "seeded-0",
+        "workspacePath": "/Users/fixture/工程-0/ws-960",
+        "expected": "-Users-fixture-工程-0-ws-960"
+      },
+      {
+        "name": "seeded-1",
+        "workspacePath": "/Users/fixture/工程-1/ws-4959",
+        "expected": "-Users-fixture-工程-1-ws-4959"
+      },
+      {
+        "name": "seeded-2",
+        "workspacePath": "/Users/fixture/工程-2/ws-4386",
+        "expected": "-Users-fixture-工程-2-ws-4386"
+      },
+      {
+        "name": "seeded-3",
+        "workspacePath": "/Users/fixture/工程-3/ws-1577",
+        "expected": "-Users-fixture-工程-3-ws-1577"
+      },
+      {
+        "name": "seeded-4",
+        "workspacePath": "/Users/fixture/工程-4/ws-6820",
+        "expected": "-Users-fixture-工程-4-ws-6820"
+      },
+      {
+        "name": "seeded-5",
+        "workspacePath": "/Users/fixture/工程-5/ws-1667",
+        "expected": "-Users-fixture-工程-5-ws-1667"
+      },
+      {
+        "name": "seeded-6",
+        "workspacePath": "/Users/fixture/工程-6/ws-6374",
+        "expected": "-Users-fixture-工程-6-ws-6374"
+      },
+      {
+        "name": "seeded-7",
+        "workspacePath": "/Users/fixture/工程-7/ws-1901",
+        "expected": "-Users-fixture-工程-7-ws-1901"
+      }
+    ],
+    "search": [
+      {
+        "name": "claude",
+        "framework": "claude",
+        "workspacePath": "/Users/fixture/work",
+        "homeDir": "/Users/fixture/home",
+        "expected": {
+          "dir": "/Users/fixture/home/.claude/projects/-Users-fixture-work",
+          "narrowed": true,
+          "recursive": false
+        }
+      },
+      {
+        "name": "claude-uppercase",
+        "framework": "CLAUDE",
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": {
+          "dir": "/h/.claude/projects/-w",
+          "narrowed": true,
+          "recursive": false
+        }
+      },
+      {
+        "name": "claude-unicode-home",
+        "framework": "claude",
+        "workspacePath": "/Users/ユーザー/проект",
+        "homeDir": "/Users/fixture/家",
+        "expected": {
+          "dir": "/Users/fixture/家/.claude/projects/-Users-ユーザー-проект",
+          "narrowed": true,
+          "recursive": false
+        }
+      },
+      {
+        "name": "claude-empty-home",
+        "framework": "claude",
+        "workspacePath": "/w",
+        "homeDir": "",
+        "expected": {
+          "dir": ".claude/projects/-w",
+          "narrowed": true,
+          "recursive": false
+        }
+      },
+      {
+        "name": "claude-null-home",
+        "framework": "claude",
+        "workspacePath": "/w",
+        "homeDir": null,
+        "expected": {
+          "dir": ".claude/projects/-w",
+          "narrowed": true,
+          "recursive": false
+        }
+      },
+      {
+        "name": "claude-relative-workspace",
+        "framework": "claude",
+        "workspacePath": "w",
+        "homeDir": "/h",
+        "expected": null
+      },
+      {
+        "name": "codex",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "homeDir": "/Users/fixture/home",
+        "expected": {
+          "dir": "/Users/fixture/home/.codex/sessions",
+          "narrowed": false,
+          "recursive": true
+        }
+      },
+      {
+        "name": "codex-mixed-case",
+        "framework": "Codex",
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": {
+          "dir": "/h/.codex/sessions",
+          "narrowed": false,
+          "recursive": true
+        }
+      },
+      {
+        "name": "codex-ignores-workspace-shape",
+        "framework": "codex",
+        "workspacePath": "relative",
+        "homeDir": "/h",
+        "expected": {
+          "dir": "/h/.codex/sessions",
+          "narrowed": false,
+          "recursive": true
+        }
+      },
+      {
+        "name": "codex-null-home",
+        "framework": "codex",
+        "workspacePath": "/w",
+        "homeDir": null,
+        "expected": {
+          "dir": ".codex/sessions",
+          "narrowed": false,
+          "recursive": true
+        }
+      },
+      {
+        "name": "unknown",
+        "framework": "something-new",
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": null
+      },
+      {
+        "name": "octos",
+        "framework": "octos",
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": null
+      },
+      {
+        "name": "empty-framework",
+        "framework": "",
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": null
+      },
+      {
+        "name": "null-framework",
+        "framework": null,
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": null
+      },
+      {
+        "name": "padded-framework",
+        "framework": "claude ",
+        "workspacePath": "/w",
+        "homeDir": "/h",
+        "expected": null
+      }
+    ],
+    "workspace": [
+      {
+        "name": "last-first",
+        "agent": {
+          "lastWorkspacePath": "/a",
+          "workspacePath": "/b",
+          "workdir": "/c"
+        },
+        "expected": "/a"
+      },
+      {
+        "name": "workspace-fallback",
+        "agent": {
+          "workspacePath": "/b",
+          "workdir": "/c"
+        },
+        "expected": "/b"
+      },
+      {
+        "name": "stopped-agent",
+        "agent": {
+          "workspacePath": null,
+          "lastWorkspacePath": "/kept"
+        },
+        "expected": "/kept"
+      },
+      {
+        "name": "workdir-ignored-off-demand",
+        "agent": {
+          "workdir": "/c",
+          "runner": {
+            "mode": "persistent"
+          }
+        },
+        "expected": null
+      },
+      {
+        "name": "workdir-on-demand",
+        "agent": {
+          "workdir": "/c",
+          "runner": {
+            "mode": "on-demand"
+          }
+        },
+        "expected": "/c"
+      },
+      {
+        "name": "homedir-on-demand",
+        "agent": {
+          "homeDir": "/hd",
+          "runner": {
+            "mode": "on-demand"
+          }
+        },
+        "expected": "/hd"
+      },
+      {
+        "name": "on-demand-still-prefers-last",
+        "agent": {
+          "lastWorkspacePath": "/a",
+          "workdir": "/c",
+          "homeDir": "/hd",
+          "runner": {
+            "mode": "on-demand"
+          }
+        },
+        "expected": "/a"
+      },
+      {
+        "name": "on-demand-case-sensitive",
+        "agent": {
+          "workdir": "/c",
+          "runner": {
+            "mode": "ON-DEMAND"
+          }
+        },
+        "expected": null
+      },
+      {
+        "name": "trimmed",
+        "agent": {
+          "lastWorkspacePath": "  /spaced  "
+        },
+        "expected": "/spaced"
+      },
+      {
+        "name": "trim-falls-through",
+        "agent": {
+          "lastWorkspacePath": "   ",
+          "workspacePath": "/kept"
+        },
+        "expected": "/kept"
+      },
+      {
+        "name": "null-fields",
+        "agent": {
+          "lastWorkspacePath": null,
+          "workspacePath": null
+        },
+        "expected": null
+      },
+      {
+        "name": "empty-agent",
+        "agent": {},
+        "expected": null
+      },
+      {
+        "name": "null-agent",
+        "agent": null,
+        "expected": null
+      },
+      {
+        "name": "non-string-fields",
+        "agent": {
+          "lastWorkspacePath": 42,
+          "workspacePath": true,
+          "workdir": {
+            "p": 1
+          }
+        },
+        "expected": null
+      },
+      {
+        "name": "bom-trimmed",
+        "agent": {
+          "lastWorkspacePath": "﻿/bom"
+        },
+        "expected": "/bom"
+      },
+      {
+        "name": "runner-null",
+        "agent": {
+          "workdir": "/c",
+          "runner": null
+        },
+        "expected": null
+      }
+    ],
+    "meterAgent": [
+      {
+        "name": "unsupported-octos",
+        "agent": {
+          "name": "o1",
+          "type": "octos",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "never-read",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-1-2-3-4-4040\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "o1",
+          "available": false,
+          "framework": "octos",
+          "reason": "octos session files record no usage object and no cwd, so consumption can be neither counted nor attributed from them"
+        }
+      },
+      {
+        "name": "unsupported-codex-acp",
+        "agent": {
+          "name": "o2",
+          "type": "codex-acp",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "o2",
+          "available": false,
+          "framework": "codex-acp",
+          "reason": "no transcript location verified for this adapter"
+        }
+      },
+      {
+        "name": "unsupported-hermes",
+        "agent": {
+          "name": "o3",
+          "type": "hermes",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "o3",
+          "available": false,
+          "framework": "hermes",
+          "reason": "no transcript location verified for this adapter"
+        }
+      },
+      {
+        "name": "unsupported-unknown",
+        "agent": {
+          "name": "o4",
+          "type": "something-new",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "o4",
+          "available": false,
+          "framework": "something-new",
+          "reason": "no metering adapter exists for this framework"
+        }
+      },
+      {
+        "name": "unsupported-framework-case",
+        "agent": {
+          "name": "o5",
+          "type": "OCTOS",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "o5",
+          "available": false,
+          "framework": "octos",
+          "reason": "octos session files record no usage object and no cwd, so consumption can be neither counted nor attributed from them"
+        }
+      },
+      {
+        "name": "null-type",
+        "agent": {
+          "name": "o6",
+          "type": null,
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "o6",
+          "available": false,
+          "framework": "",
+          "reason": "no metering adapter exists for this framework"
+        }
+      },
+      {
+        "name": "no-workspace",
+        "agent": {
+          "name": "a1",
+          "type": "claude",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "a1",
+          "available": false,
+          "framework": "claude",
+          "reason": "no workspace recorded for this agent, so its transcripts cannot be located; a running agent reports one and a stopped one may never have"
+        }
+      },
+      {
+        "name": "no-workspace-workdir-ignored",
+        "agent": {
+          "name": "a2",
+          "type": "claude",
+          "workdir": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "a2",
+          "available": false,
+          "framework": "claude",
+          "reason": "no workspace recorded for this agent, so its transcripts cannot be located; a running agent reports one and a stopped one may never have"
+        }
+      },
+      {
+        "name": "whitespace-workspace",
+        "agent": {
+          "name": "a3",
+          "type": "claude",
+          "workspacePath": "   "
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "a3",
+          "available": false,
+          "framework": "claude",
+          "reason": "no workspace recorded for this agent, so its transcripts cannot be located; a running agent reports one and a stopped one may never have"
+        }
+      },
+      {
+        "name": "empty-everything",
+        "agent": {
+          "name": "a4",
+          "type": "codex"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "a4",
+          "available": false,
+          "framework": "codex",
+          "reason": "no workspace recorded for this agent, so its transcripts cannot be located; a running agent reports one and a stopped one may never have"
+        }
+      },
+      {
+        "name": "no-sessions-at-all",
+        "agent": {
+          "name": "fresh",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/new"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": null,
+        "expected": {
+          "agent": "fresh",
+          "available": false,
+          "framework": "codex",
+          "workspace": "/Users/fixture/new",
+          "reason": "no transcripts found for this workspace yet"
+        }
+      },
+      {
+        "name": "claude-matched",
+        "agent": {
+          "name": "a1",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "😀-session.jsonl",
+            "text": "{\"type\":\"user\",\"cwd\":\"/Users/fixture/work/payments-api\"}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-2-1810-1565-339166-119\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":2,\"output_tokens\":1810,\"cache_creation_input_tokens\":1565,\"cache_read_input_tokens\":339166}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-10-90-0-1000-2778\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":90,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":1000}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a1",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 12,
+            "output": 1900,
+            "cacheWrite": 1565,
+            "cacheRead": 340166
+          },
+          "total": 343643,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "😀-session.jsonl",
+              "totals": {
+                "input": 12,
+                "output": 1900,
+                "cacheWrite": 1565,
+                "cacheRead": 340166
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "claude-resumed-replay-counted-once",
+        "agent": {
+          "name": "a2",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "resumed.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-5-5-5-5-6433\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":5,\"output_tokens\":5,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":5}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-5-5-5-5-8540\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":5,\"output_tokens\":5,\"cache_creation_input_tokens\":5,\"cache_read_input_tokens\":5}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a2",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 10,
+            "output": 10,
+            "cacheWrite": 10,
+            "cacheRead": 10
+          },
+          "total": 40,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "resumed.jsonl",
+              "totals": {
+                "input": 10,
+                "output": 10,
+                "cacheWrite": 10,
+                "cacheRead": 10
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "claude-malformed-lines-skipped",
+        "agent": {
+          "name": "a3",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "damaged.jsonl",
+            "text": "bad JSON\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-7-8-9-10-5803\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":7,\"output_tokens\":8,\"cache_creation_input_tokens\":9,\"cache_read_input_tokens\":10}}}\n{\"broken\":"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a3",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 7,
+            "output": 8,
+            "cacheWrite": 9,
+            "cacheRead": 10
+          },
+          "total": 34,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "damaged.jsonl",
+              "totals": {
+                "input": 7,
+                "output": 8,
+                "cacheWrite": 9,
+                "cacheRead": 10
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "claude-other-workspace-skipped",
+        "agent": {
+          "name": "a4",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "elsewhere.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-1-2-3-4-5022\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a4",
+          "available": false,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "reason": "opened 1 transcript(s), none of which recorded this workspace"
+        }
+      },
+      {
+        "name": "claude-no-cwd-skipped",
+        "agent": {
+          "name": "a5",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "no-cwd.jsonl",
+            "text": "{\"uuid\":\"x1\",\"message\":{\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a5",
+          "available": false,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "reason": "opened 1 transcript(s), none of which recorded this workspace"
+        }
+      },
+      {
+        "name": "claude-mixed-match-and-skip",
+        "agent": {
+          "name": "a6",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "mine.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-100-100-100-100-9221\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":100,\"output_tokens\":100,\"cache_creation_input_tokens\":100,\"cache_read_input_tokens\":100}}}"
+          },
+          {
+            "file": "theirs.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-9-9-9-9-6848\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":9,\"output_tokens\":9,\"cache_creation_input_tokens\":9,\"cache_read_input_tokens\":9}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a6",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 100,
+            "output": 100,
+            "cacheWrite": 100,
+            "cacheRead": 100
+          },
+          "total": 400,
+          "sessions": 1,
+          "skipped": 1,
+          "files": [
+            {
+              "file": "mine.jsonl",
+              "totals": {
+                "input": 100,
+                "output": 100,
+                "cacheWrite": 100,
+                "cacheRead": 100
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "claude-zero-usage-counted",
+        "agent": {
+          "name": "a7",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "zero.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-0-0-0-0-8127\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":0,\"output_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "a7",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 0,
+            "output": 0,
+            "cacheWrite": 0,
+            "cacheRead": 0
+          },
+          "total": 0,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "zero.jsonl",
+              "totals": {
+                "input": 0,
+                "output": 0,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "codex-matched",
+        "agent": {
+          "name": "c1",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-1.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4000,\"cached_input_tokens\":900,\"output_tokens\":500,\"reasoning_output_tokens\":250,\"total_tokens\":4500}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4000,\"cached_input_tokens\":900,\"output_tokens\":500,\"reasoning_output_tokens\":250,\"total_tokens\":4500}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "c1",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 3100,
+            "output": 500,
+            "cacheWrite": 0,
+            "cacheRead": 900
+          },
+          "total": 4500,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-1.jsonl",
+              "totals": {
+                "input": 3100,
+                "cacheRead": 900,
+                "cacheWrite": 0,
+                "output": 500
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "codex-two-files-summed",
+        "agent": {
+          "name": "c2",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-a.jsonl",
+            "text": "{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1000,\"cached_input_tokens\":100,\"output_tokens\":400,\"reasoning_output_tokens\":200,\"total_tokens\":1400}}}}"
+          },
+          {
+            "file": "rollout-b.jsonl",
+            "text": "{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2000,\"cached_input_tokens\":200,\"output_tokens\":600,\"reasoning_output_tokens\":300,\"total_tokens\":2600}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "c2",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 2700,
+            "output": 1000,
+            "cacheWrite": 0,
+            "cacheRead": 300
+          },
+          "total": 4000,
+          "sessions": 2,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-a.jsonl",
+              "totals": {
+                "input": 900,
+                "cacheRead": 100,
+                "cacheWrite": 0,
+                "output": 400
+              }
+            },
+            {
+              "file": "rollout-b.jsonl",
+              "totals": {
+                "input": 1800,
+                "cacheRead": 200,
+                "cacheWrite": 0,
+                "output": 600
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "codex-other-workspace-skipped",
+        "agent": {
+          "name": "c3",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-x.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/other-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":50,\"cached_input_tokens\":0,\"output_tokens\":50,\"reasoning_output_tokens\":25,\"total_tokens\":100}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "c3",
+          "available": false,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "reason": "opened 1 transcript(s), none of which recorded this workspace"
+        }
+      },
+      {
+        "name": "codex-malformed-lines",
+        "agent": {
+          "name": "c4",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-bad.jsonl",
+            "text": "not json\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":30,\"cached_input_tokens\":3,\"output_tokens\":20,\"reasoning_output_tokens\":10,\"total_tokens\":50}}}}\n{\"oops\":"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "c4",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 27,
+            "output": 20,
+            "cacheWrite": 0,
+            "cacheRead": 3
+          },
+          "total": 50,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-bad.jsonl",
+              "totals": {
+                "input": 27,
+                "cacheRead": 3,
+                "cacheWrite": 0,
+                "output": 20
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "bounds-skipped-only",
+        "agent": {
+          "name": "b1",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "theirs.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-1-1-1-1-5810\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "b1",
+          "available": false,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "reason": "opened 1 transcript(s), none of which recorded this workspace"
+        }
+      },
+      {
+        "name": "bounds-both-facts",
+        "agent": {
+          "name": "b2",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "busy-a.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/other-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":2,\"total_tokens\":15}}}}"
+          },
+          {
+            "file": "busy-b.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/other-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":10,\"cached_input_tokens\":0,\"output_tokens\":5,\"reasoning_output_tokens\":2,\"total_tokens\":15}}}}"
+          }
+        ],
+        "bounds": {
+          "droppedByCount": 380,
+          "entriesUnwalked": 7
+        },
+        "expected": {
+          "agent": "b2",
+          "available": false,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "reason": "opened 2 transcript(s), none of which recorded this workspace; and 387 further candidate transcript(s) were never opened because the scan stopped at its bounds, so this is not evidence the agent did no work — raise HAGENCY_METERING_MAX_FILES to widen the scan"
+        }
+      },
+      {
+        "name": "bounds-unreached-only",
+        "agent": {
+          "name": "b3",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [],
+        "bounds": {
+          "droppedByCount": 0,
+          "entriesUnwalked": 12
+        },
+        "expected": {
+          "agent": "b3",
+          "available": false,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "reason": "12 further candidate transcript(s) were never opened because the scan stopped at its bounds, so this is not evidence the agent did no work — raise HAGENCY_METERING_MAX_FILES to widen the scan"
+        }
+      },
+      {
+        "name": "bounds-ignored-when-matched",
+        "agent": {
+          "name": "b4",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "mine.jsonl",
+            "text": "{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":70,\"cached_input_tokens\":7,\"output_tokens\":30,\"reasoning_output_tokens\":15,\"total_tokens\":100}}}}"
+          }
+        ],
+        "bounds": {
+          "droppedByCount": 5,
+          "entriesUnwalked": 5
+        },
+        "expected": {
+          "agent": "b4",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 63,
+            "output": 30,
+            "cacheWrite": 0,
+            "cacheRead": 7
+          },
+          "total": 100,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "mine.jsonl",
+              "totals": {
+                "input": 63,
+                "cacheRead": 7,
+                "cacheWrite": 0,
+                "output": 30
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-0",
+        "agent": {
+          "name": "s0",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-0.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-733-6934-366-3971-2598\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":733,\"output_tokens\":6934,\"cache_creation_input_tokens\":366,\"cache_read_input_tokens\":3971}}}"
+          },
+          {
+            "file": "seed-0-other.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-1-1-1-1-2397\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s0",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 733,
+            "output": 6934,
+            "cacheWrite": 366,
+            "cacheRead": 3971
+          },
+          "total": 12004,
+          "sessions": 1,
+          "skipped": 1,
+          "files": [
+            {
+              "file": "seed-0.jsonl",
+              "totals": {
+                "input": 733,
+                "output": 6934,
+                "cacheWrite": 366,
+                "cacheRead": 3971
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-0",
+        "agent": {
+          "name": "t0",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-0.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":733,\"cached_input_tokens\":366,\"output_tokens\":6934,\"reasoning_output_tokens\":3467,\"total_tokens\":7667}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":733,\"cached_input_tokens\":366,\"output_tokens\":6934,\"reasoning_output_tokens\":3467,\"total_tokens\":7667}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":853,\"cached_input_tokens\":376,\"output_tokens\":6954,\"reasoning_output_tokens\":3477,\"total_tokens\":7807}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t0",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 477,
+            "output": 6954,
+            "cacheWrite": 0,
+            "cacheRead": 376
+          },
+          "total": 7807,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-0.jsonl",
+              "totals": {
+                "input": 477,
+                "cacheRead": 376,
+                "cacheWrite": 0,
+                "output": 6954
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-1",
+        "agent": {
+          "name": "s1",
+          "type": "Claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-1.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-5084-8905-2542-7258-2897\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":5084,\"output_tokens\":8905,\"cache_creation_input_tokens\":2542,\"cache_read_input_tokens\":7258}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-2188-4187-7502-8501-8112\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":2188,\"output_tokens\":4187,\"cache_creation_input_tokens\":7502,\"cache_read_input_tokens\":8501}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s1",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 7272,
+            "output": 13092,
+            "cacheWrite": 10044,
+            "cacheRead": 15759
+          },
+          "total": 46167,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-1.jsonl",
+              "totals": {
+                "input": 7272,
+                "output": 13092,
+                "cacheWrite": 10044,
+                "cacheRead": 15759
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-1",
+        "agent": {
+          "name": "t1",
+          "type": "CODEX",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-1.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":5084,\"cached_input_tokens\":2542,\"output_tokens\":8905,\"reasoning_output_tokens\":4452,\"total_tokens\":13989}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":5084,\"cached_input_tokens\":2542,\"output_tokens\":8905,\"reasoning_output_tokens\":4452,\"total_tokens\":13989}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":5204,\"cached_input_tokens\":2552,\"output_tokens\":8925,\"reasoning_output_tokens\":4462,\"total_tokens\":14129}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t1",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 2652,
+            "output": 8925,
+            "cacheWrite": 0,
+            "cacheRead": 2552
+          },
+          "total": 14129,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-1.jsonl",
+              "totals": {
+                "input": 2652,
+                "cacheRead": 2552,
+                "cacheWrite": 0,
+                "output": 8925
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-2",
+        "agent": {
+          "name": "s2",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-2.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-3987-6084-1993-1177-2036\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":3987,\"output_tokens\":6084,\"cache_creation_input_tokens\":1993,\"cache_read_input_tokens\":1177}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-4435-6390-3453-3480-6615\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":4435,\"output_tokens\":6390,\"cache_creation_input_tokens\":3453,\"cache_read_input_tokens\":3480}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s2",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 8422,
+            "output": 12474,
+            "cacheWrite": 5446,
+            "cacheRead": 4657
+          },
+          "total": 30999,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-2.jsonl",
+              "totals": {
+                "input": 8422,
+                "output": 12474,
+                "cacheWrite": 5446,
+                "cacheRead": 4657
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-2",
+        "agent": {
+          "name": "t2",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-2.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":3987,\"cached_input_tokens\":1993,\"output_tokens\":6084,\"reasoning_output_tokens\":3042,\"total_tokens\":10071}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":3987,\"cached_input_tokens\":1993,\"output_tokens\":6084,\"reasoning_output_tokens\":3042,\"total_tokens\":10071}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4107,\"cached_input_tokens\":2003,\"output_tokens\":6104,\"reasoning_output_tokens\":3052,\"total_tokens\":10211}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t2",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 2104,
+            "output": 6104,
+            "cacheWrite": 0,
+            "cacheRead": 2003
+          },
+          "total": 10211,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-2.jsonl",
+              "totals": {
+                "input": 2104,
+                "cacheRead": 2003,
+                "cacheWrite": 0,
+                "output": 6104
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-3",
+        "agent": {
+          "name": "s3",
+          "type": "Claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-3.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-8702-6307-4351-4428-7723\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":8702,\"output_tokens\":6307,\"cache_creation_input_tokens\":4351,\"cache_read_input_tokens\":4428}}}"
+          },
+          {
+            "file": "seed-3-other.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-1-1-1-1-9694\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s3",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 8702,
+            "output": 6307,
+            "cacheWrite": 4351,
+            "cacheRead": 4428
+          },
+          "total": 23788,
+          "sessions": 1,
+          "skipped": 1,
+          "files": [
+            {
+              "file": "seed-3.jsonl",
+              "totals": {
+                "input": 8702,
+                "output": 6307,
+                "cacheWrite": 4351,
+                "cacheRead": 4428
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-3",
+        "agent": {
+          "name": "t3",
+          "type": "CODEX",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-3.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":8702,\"cached_input_tokens\":4351,\"output_tokens\":6307,\"reasoning_output_tokens\":3153,\"total_tokens\":15009}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":8702,\"cached_input_tokens\":4351,\"output_tokens\":6307,\"reasoning_output_tokens\":3153,\"total_tokens\":15009}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":8822,\"cached_input_tokens\":4361,\"output_tokens\":6327,\"reasoning_output_tokens\":3163,\"total_tokens\":15149}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t3",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 4461,
+            "output": 6327,
+            "cacheWrite": 0,
+            "cacheRead": 4361
+          },
+          "total": 15149,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-3.jsonl",
+              "totals": {
+                "input": 4461,
+                "cacheRead": 4361,
+                "cacheWrite": 0,
+                "output": 6327
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-4",
+        "agent": {
+          "name": "s4",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-4.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-1433-9474-716-239-8546\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1433,\"output_tokens\":9474,\"cache_creation_input_tokens\":716,\"cache_read_input_tokens\":239}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-5833-7972-6115-9958-93\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":5833,\"output_tokens\":7972,\"cache_creation_input_tokens\":6115,\"cache_read_input_tokens\":9958}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s4",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 7266,
+            "output": 17446,
+            "cacheWrite": 6831,
+            "cacheRead": 10197
+          },
+          "total": 41740,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-4.jsonl",
+              "totals": {
+                "input": 7266,
+                "output": 17446,
+                "cacheWrite": 6831,
+                "cacheRead": 10197
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-4",
+        "agent": {
+          "name": "t4",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-4.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1433,\"cached_input_tokens\":716,\"output_tokens\":9474,\"reasoning_output_tokens\":4737,\"total_tokens\":10907}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1433,\"cached_input_tokens\":716,\"output_tokens\":9474,\"reasoning_output_tokens\":4737,\"total_tokens\":10907}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1553,\"cached_input_tokens\":726,\"output_tokens\":9494,\"reasoning_output_tokens\":4747,\"total_tokens\":11047}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t4",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 827,
+            "output": 9494,
+            "cacheWrite": 0,
+            "cacheRead": 726
+          },
+          "total": 11047,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-4.jsonl",
+              "totals": {
+                "input": 827,
+                "cacheRead": 726,
+                "cacheWrite": 0,
+                "output": 9494
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-5",
+        "agent": {
+          "name": "s5",
+          "type": "Claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-5.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-1660-8825-830-6250-4433\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1660,\"output_tokens\":8825,\"cache_creation_input_tokens\":830,\"cache_read_input_tokens\":6250}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-9612-9403-1918-709-848\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":9612,\"output_tokens\":9403,\"cache_creation_input_tokens\":1918,\"cache_read_input_tokens\":709}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s5",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 11272,
+            "output": 18228,
+            "cacheWrite": 2748,
+            "cacheRead": 6959
+          },
+          "total": 39207,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-5.jsonl",
+              "totals": {
+                "input": 11272,
+                "output": 18228,
+                "cacheWrite": 2748,
+                "cacheRead": 6959
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-5",
+        "agent": {
+          "name": "t5",
+          "type": "CODEX",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-5.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1660,\"cached_input_tokens\":830,\"output_tokens\":8825,\"reasoning_output_tokens\":4412,\"total_tokens\":10485}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1660,\"cached_input_tokens\":830,\"output_tokens\":8825,\"reasoning_output_tokens\":4412,\"total_tokens\":10485}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1780,\"cached_input_tokens\":840,\"output_tokens\":8845,\"reasoning_output_tokens\":4422,\"total_tokens\":10625}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t5",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 940,
+            "output": 8845,
+            "cacheWrite": 0,
+            "cacheRead": 840
+          },
+          "total": 10625,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-5.jsonl",
+              "totals": {
+                "input": 940,
+                "cacheRead": 840,
+                "cacheWrite": 0,
+                "output": 8845
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-6",
+        "agent": {
+          "name": "s6",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-6.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-7955-3076-3977-7593-196\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":7955,\"output_tokens\":3076,\"cache_creation_input_tokens\":3977,\"cache_read_input_tokens\":7593}}}"
+          },
+          {
+            "file": "seed-6-other.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-1-1-1-1-5459\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s6",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 7955,
+            "output": 3076,
+            "cacheWrite": 3977,
+            "cacheRead": 7593
+          },
+          "total": 22601,
+          "sessions": 1,
+          "skipped": 1,
+          "files": [
+            {
+              "file": "seed-6.jsonl",
+              "totals": {
+                "input": 7955,
+                "output": 3076,
+                "cacheWrite": 3977,
+                "cacheRead": 7593
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-6",
+        "agent": {
+          "name": "t6",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-6.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":7955,\"cached_input_tokens\":3977,\"output_tokens\":3076,\"reasoning_output_tokens\":1538,\"total_tokens\":11031}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":7955,\"cached_input_tokens\":3977,\"output_tokens\":3076,\"reasoning_output_tokens\":1538,\"total_tokens\":11031}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":8075,\"cached_input_tokens\":3987,\"output_tokens\":3096,\"reasoning_output_tokens\":1548,\"total_tokens\":11171}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t6",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 4088,
+            "output": 3096,
+            "cacheWrite": 0,
+            "cacheRead": 3987
+          },
+          "total": 11171,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-6.jsonl",
+              "totals": {
+                "input": 4088,
+                "cacheRead": 3987,
+                "cacheWrite": 0,
+                "output": 3096
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-7",
+        "agent": {
+          "name": "s7",
+          "type": "Claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-7.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-4426-5743-2213-4344-2055\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":4426,\"output_tokens\":5743,\"cache_creation_input_tokens\":2213,\"cache_read_input_tokens\":4344}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-8058-1617-1356-9819-1886\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":8058,\"output_tokens\":1617,\"cache_creation_input_tokens\":1356,\"cache_read_input_tokens\":9819}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s7",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 12484,
+            "output": 7360,
+            "cacheWrite": 3569,
+            "cacheRead": 14163
+          },
+          "total": 37576,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-7.jsonl",
+              "totals": {
+                "input": 12484,
+                "output": 7360,
+                "cacheWrite": 3569,
+                "cacheRead": 14163
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-7",
+        "agent": {
+          "name": "t7",
+          "type": "CODEX",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-7.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4426,\"cached_input_tokens\":2213,\"output_tokens\":5743,\"reasoning_output_tokens\":2871,\"total_tokens\":10169}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4426,\"cached_input_tokens\":2213,\"output_tokens\":5743,\"reasoning_output_tokens\":2871,\"total_tokens\":10169}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4546,\"cached_input_tokens\":2223,\"output_tokens\":5763,\"reasoning_output_tokens\":2881,\"total_tokens\":10309}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t7",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 2323,
+            "output": 5763,
+            "cacheWrite": 0,
+            "cacheRead": 2223
+          },
+          "total": 10309,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-7.jsonl",
+              "totals": {
+                "input": 2323,
+                "cacheRead": 2223,
+                "cacheWrite": 0,
+                "output": 5763
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-8",
+        "agent": {
+          "name": "s8",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-8.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-1145-3282-572-4719-7090\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1145,\"output_tokens\":3282,\"cache_creation_input_tokens\":572,\"cache_read_input_tokens\":4719}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-2441-2932-2355-2710-1901\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":2441,\"output_tokens\":2932,\"cache_creation_input_tokens\":2355,\"cache_read_input_tokens\":2710}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s8",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 3586,
+            "output": 6214,
+            "cacheWrite": 2927,
+            "cacheRead": 7429
+          },
+          "total": 20156,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-8.jsonl",
+              "totals": {
+                "input": 3586,
+                "output": 6214,
+                "cacheWrite": 2927,
+                "cacheRead": 7429
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-8",
+        "agent": {
+          "name": "t8",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-8.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1145,\"cached_input_tokens\":572,\"output_tokens\":3282,\"reasoning_output_tokens\":1641,\"total_tokens\":4427}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1145,\"cached_input_tokens\":572,\"output_tokens\":3282,\"reasoning_output_tokens\":1641,\"total_tokens\":4427}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1265,\"cached_input_tokens\":582,\"output_tokens\":3302,\"reasoning_output_tokens\":1651,\"total_tokens\":4567}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t8",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 683,
+            "output": 3302,
+            "cacheWrite": 0,
+            "cacheRead": 582
+          },
+          "total": 4567,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-8.jsonl",
+              "totals": {
+                "input": 683,
+                "cacheRead": 582,
+                "cacheWrite": 0,
+                "output": 3302
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-9",
+        "agent": {
+          "name": "s9",
+          "type": "Claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-9.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-124-2729-62-1226-6305\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":124,\"output_tokens\":2729,\"cache_creation_input_tokens\":62,\"cache_read_input_tokens\":1226}}}"
+          },
+          {
+            "file": "seed-9-other.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/other-api\",\"uuid\":\"id-1-1-1-1-7932\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":1,\"cache_creation_input_tokens\":1,\"cache_read_input_tokens\":1}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s9",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 124,
+            "output": 2729,
+            "cacheWrite": 62,
+            "cacheRead": 1226
+          },
+          "total": 4141,
+          "sessions": 1,
+          "skipped": 1,
+          "files": [
+            {
+              "file": "seed-9.jsonl",
+              "totals": {
+                "input": 124,
+                "output": 2729,
+                "cacheWrite": 62,
+                "cacheRead": 1226
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-9",
+        "agent": {
+          "name": "t9",
+          "type": "CODEX",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-9.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":124,\"cached_input_tokens\":62,\"output_tokens\":2729,\"reasoning_output_tokens\":1364,\"total_tokens\":2853}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":124,\"cached_input_tokens\":62,\"output_tokens\":2729,\"reasoning_output_tokens\":1364,\"total_tokens\":2853}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":244,\"cached_input_tokens\":72,\"output_tokens\":2749,\"reasoning_output_tokens\":1374,\"total_tokens\":2993}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t9",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 172,
+            "output": 2749,
+            "cacheWrite": 0,
+            "cacheRead": 72
+          },
+          "total": 2993,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-9.jsonl",
+              "totals": {
+                "input": 172,
+                "cacheRead": 72,
+                "cacheWrite": 0,
+                "output": 2749
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-10",
+        "agent": {
+          "name": "s10",
+          "type": "claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-10.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-4351-1904-2175-4581-1968\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":4351,\"output_tokens\":1904,\"cache_creation_input_tokens\":2175,\"cache_read_input_tokens\":4581}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-2399-994-7641-8292-6403\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":2399,\"output_tokens\":994,\"cache_creation_input_tokens\":7641,\"cache_read_input_tokens\":8292}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s10",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 6750,
+            "output": 2898,
+            "cacheWrite": 9816,
+            "cacheRead": 12873
+          },
+          "total": 32337,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-10.jsonl",
+              "totals": {
+                "input": 6750,
+                "output": 2898,
+                "cacheWrite": 9816,
+                "cacheRead": 12873
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-10",
+        "agent": {
+          "name": "t10",
+          "type": "codex",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-10.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4351,\"cached_input_tokens\":2175,\"output_tokens\":1904,\"reasoning_output_tokens\":952,\"total_tokens\":6255}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4351,\"cached_input_tokens\":2175,\"output_tokens\":1904,\"reasoning_output_tokens\":952,\"total_tokens\":6255}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4471,\"cached_input_tokens\":2185,\"output_tokens\":1924,\"reasoning_output_tokens\":962,\"total_tokens\":6395}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t10",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 2286,
+            "output": 1924,
+            "cacheWrite": 0,
+            "cacheRead": 2185
+          },
+          "total": 6395,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-10.jsonl",
+              "totals": {
+                "input": 2286,
+                "cacheRead": 2185,
+                "cacheWrite": 0,
+                "output": 1924
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-claude-11",
+        "agent": {
+          "name": "s11",
+          "type": "Claude",
+          "workspacePath": "/Users/fixture/work/payments-api"
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "seed-11.jsonl",
+            "text": "{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-2618-495-1309-3624-3719\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":2618,\"output_tokens\":495,\"cache_creation_input_tokens\":1309,\"cache_read_input_tokens\":3624}}}\n{\"cwd\":\"/Users/fixture/work/payments-api\",\"uuid\":\"id-7818-6065-6028-7307-6846\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":7818,\"output_tokens\":6065,\"cache_creation_input_tokens\":6028,\"cache_read_input_tokens\":7307}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "s11",
+          "available": true,
+          "framework": "claude",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 10436,
+            "output": 6560,
+            "cacheWrite": 7337,
+            "cacheRead": 10931
+          },
+          "total": 35264,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "seed-11.jsonl",
+              "totals": {
+                "input": 10436,
+                "output": 6560,
+                "cacheWrite": 7337,
+                "cacheRead": 10931
+              }
+            }
+          ]
+        }
+      },
+      {
+        "name": "seeded-codex-11",
+        "agent": {
+          "name": "t11",
+          "type": "CODEX",
+          "lastWorkspacePath": "/Users/fixture/work/payments-api",
+          "workspacePath": null
+        },
+        "homeDir": "/Users/fixture/home",
+        "sessions": [
+          {
+            "file": "rollout-11.jsonl",
+            "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2618,\"cached_input_tokens\":1309,\"output_tokens\":495,\"reasoning_output_tokens\":247,\"total_tokens\":3113}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2618,\"cached_input_tokens\":1309,\"output_tokens\":495,\"reasoning_output_tokens\":247,\"total_tokens\":3113}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work/payments-api\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2738,\"cached_input_tokens\":1319,\"output_tokens\":515,\"reasoning_output_tokens\":257,\"total_tokens\":3253}}}}"
+          }
+        ],
+        "bounds": null,
+        "expected": {
+          "agent": "t11",
+          "available": true,
+          "framework": "codex",
+          "workspace": "/Users/fixture/work/payments-api",
+          "totals": {
+            "input": 1419,
+            "output": 515,
+            "cacheWrite": 0,
+            "cacheRead": 1319
+          },
+          "total": 3253,
+          "sessions": 1,
+          "skipped": 0,
+          "files": [
+            {
+              "file": "rollout-11.jsonl",
+              "totals": {
+                "input": 1419,
+                "cacheRead": 1319,
+                "cacheWrite": 0,
+                "output": 515
+              }
+            }
+          ]
+        }
+      }
+    ],
+    "fleet": [
+      {
+        "name": "shared-workspace-ambiguous",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "totals": {
+              "input": 1,
+              "output": 2,
+              "cacheWrite": 3,
+              "cacheRead": 4
+            },
+            "total": 10
+          },
+          {
+            "agent": "a2",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "totals": {
+              "input": 10,
+              "output": 20,
+              "cacheWrite": 30,
+              "cacheRead": 40
+            },
+            "total": 100
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": false,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "reason": "workspace is shared with a2; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+            },
+            {
+              "agent": "a2",
+              "available": false,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "reason": "workspace is shared with a1; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+            }
+          ],
+          "totals": null,
+          "total": null,
+          "attributed": 0,
+          "unattributed": 2,
+          "reason": "2 of 2 agents could not be attributed"
+        }
+      },
+      {
+        "name": "distinct-workspaces-total",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "totals": {
+              "input": 1,
+              "output": 2,
+              "cacheWrite": 3,
+              "cacheRead": 4
+            },
+            "total": 10
+          },
+          {
+            "agent": "a2",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/other-api",
+            "totals": {
+              "input": 10,
+              "output": 20,
+              "cacheWrite": 30,
+              "cacheRead": 40
+            },
+            "total": 100
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": true,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "totals": {
+                "input": 1,
+                "output": 2,
+                "cacheWrite": 3,
+                "cacheRead": 4
+              },
+              "total": 10
+            },
+            {
+              "agent": "a2",
+              "available": true,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/other-api",
+              "totals": {
+                "input": 10,
+                "output": 20,
+                "cacheWrite": 30,
+                "cacheRead": 40
+              },
+              "total": 100
+            }
+          ],
+          "totals": {
+            "input": 11,
+            "output": 22,
+            "cacheWrite": 33,
+            "cacheRead": 44
+          },
+          "total": 110,
+          "attributed": 2,
+          "unattributed": 0,
+          "reason": null
+        }
+      },
+      {
+        "name": "same-workspace-different-spelling",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "totals": {
+              "input": 1,
+              "output": 1,
+              "cacheWrite": 1,
+              "cacheRead": 1
+            },
+            "total": 4
+          },
+          {
+            "agent": "a2",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api/./",
+            "totals": {
+              "input": 2,
+              "output": 2,
+              "cacheWrite": 2,
+              "cacheRead": 2
+            },
+            "total": 8
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": false,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "reason": "workspace is shared with a2; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+            },
+            {
+              "agent": "a2",
+              "available": false,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api/./",
+              "reason": "workspace is shared with a1; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+            }
+          ],
+          "totals": null,
+          "total": null,
+          "attributed": 0,
+          "unattributed": 2,
+          "reason": "2 of 2 agents could not be attributed"
+        }
+      },
+      {
+        "name": "partial-total-reports-gap",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "totals": {
+              "input": 5,
+              "output": 5,
+              "cacheWrite": 5,
+              "cacheRead": 5
+            },
+            "total": 20
+          },
+          {
+            "agent": "a2",
+            "available": false,
+            "framework": "octos",
+            "reason": "no adapter"
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": true,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "totals": {
+                "input": 5,
+                "output": 5,
+                "cacheWrite": 5,
+                "cacheRead": 5
+              },
+              "total": 20
+            },
+            {
+              "agent": "a2",
+              "available": false,
+              "framework": "octos",
+              "reason": "no adapter"
+            }
+          ],
+          "totals": {
+            "input": 5,
+            "output": 5,
+            "cacheWrite": 5,
+            "cacheRead": 5
+          },
+          "total": 20,
+          "attributed": 1,
+          "unattributed": 1,
+          "reason": "1 of 2 agents could not be attributed"
+        }
+      },
+      {
+        "name": "nothing-attributable",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": false,
+            "framework": "claude",
+            "reason": "no workspace"
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": false,
+              "framework": "claude",
+              "reason": "no workspace"
+            }
+          ],
+          "totals": null,
+          "total": null,
+          "attributed": 0,
+          "unattributed": 1,
+          "reason": "1 of 1 agents could not be attributed"
+        }
+      },
+      {
+        "name": "empty-fleet",
+        "rows": [],
+        "expected": {
+          "agents": [],
+          "totals": null,
+          "total": null,
+          "attributed": 0,
+          "unattributed": 0,
+          "reason": null
+        }
+      },
+      {
+        "name": "unavailable-row-keeps-reason",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": false,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "reason": "no transcripts found for this workspace yet"
+          },
+          {
+            "agent": "a2",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/other-api",
+            "totals": {
+              "input": 1,
+              "output": 1,
+              "cacheWrite": 1,
+              "cacheRead": 1
+            },
+            "total": 4
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": false,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "reason": "no transcripts found for this workspace yet"
+            },
+            {
+              "agent": "a2",
+              "available": true,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/other-api",
+              "totals": {
+                "input": 1,
+                "output": 1,
+                "cacheWrite": 1,
+                "cacheRead": 1
+              },
+              "total": 4
+            }
+          ],
+          "totals": {
+            "input": 1,
+            "output": 1,
+            "cacheWrite": 1,
+            "cacheRead": 1
+          },
+          "total": 4,
+          "attributed": 1,
+          "unattributed": 1,
+          "reason": "1 of 2 agents could not be attributed"
+        }
+      },
+      {
+        "name": "row-without-workspace-never-groups",
+        "rows": [
+          {
+            "agent": "a1",
+            "available": true,
+            "framework": "claude",
+            "workspace": "/Users/fixture/work/payments-api",
+            "totals": {
+              "input": 1,
+              "output": 1,
+              "cacheWrite": 1,
+              "cacheRead": 1
+            },
+            "total": 4
+          },
+          {
+            "agent": "a2",
+            "available": true,
+            "framework": "claude",
+            "totals": {
+              "input": 9,
+              "output": 9,
+              "cacheWrite": 9,
+              "cacheRead": 9
+            },
+            "total": 36
+          }
+        ],
+        "expected": {
+          "agents": [
+            {
+              "agent": "a1",
+              "available": true,
+              "framework": "claude",
+              "workspace": "/Users/fixture/work/payments-api",
+              "totals": {
+                "input": 1,
+                "output": 1,
+                "cacheWrite": 1,
+                "cacheRead": 1
+              },
+              "total": 4
+            },
+            {
+              "agent": "a2",
+              "available": true,
+              "framework": "claude",
+              "totals": {
+                "input": 9,
+                "output": 9,
+                "cacheWrite": 9,
+                "cacheRead": 9
+              },
+              "total": 36
+            }
+          ],
+          "totals": {
+            "input": 10,
+            "output": 10,
+            "cacheWrite": 10,
+            "cacheRead": 10
+          },
+          "total": 40,
+          "attributed": 2,
+          "unattributed": 0,
+          "reason": null
+        }
+      }
+    ]
+  }
+}

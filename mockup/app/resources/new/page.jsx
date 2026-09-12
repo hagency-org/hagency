@@ -10,6 +10,8 @@ import { presetCommand, fmtTokens } from '@/lib/mock-data';
 import { ExecutionPolicyChoice } from '@/components/ExecutionPermissions';
 import { useData, Provenance } from '@/components/Data';
 import { send } from '@/lib/api';
+import TechnicalDetails from '@/components/TechnicalDetails';
+import { NativeAccessNotice } from '@/components/NativeUsage';
 
 /*
  * ② 配置向导 — four steps, and three of them write a field that already exists.
@@ -58,39 +60,66 @@ function qualifiesFor(roleCapacity, framework, model, reasoning) {
 }
 
 export default function WizardPage() {
-  const t = useT();
-  const {
-    FRAMEWORKS, MODEL_SELECTABLE, modelsFor, roleCapacity, frameworks, detected,
-    provenance, refresh,
-  } = useData();
+  const data = useData(); const t = useT();
+  if (!data.nativeConsole) return <WizardForm />;
+  return <>
+    <NativeAccessNotice />
+    {data.phase === 'loading' && <p role="status">{t('nr.loading')}</p>}
+    {data.phase === 'error' && <section className="notice" role="alert"><p>{t('nr.failed')}</p><button className="btn" onClick={data.refresh}>{t('nu.refresh')}</button></section>}
+    {data.action?.configuration && <section className="notice" data-configuration-action={data.action.kind} role={data.action.kind === 'saved' || data.action.kind === 'pending' ? 'status' : 'alert'}>
+      <p>{t(`nc.action.${data.action.kind}`)}</p>
+      {data.action.error === 'resource_in_use' && <p>{t('nc.inUse')}</p>}
+      <a className="btn" href={`/console/resources/${data.action.result ? `?resource_id=${data.action.result.resourceId}` : ''}`}>{t(data.action.result ? 'nc.openSaved' : 'nr.reconcile')}</a>
+      {data.action.result && <TechnicalDetails><code>{data.action.result.resourceId}</code></TechnicalDetails>}
+    </section>}
+    {['ready', 'stale'].includes(data.phase) && (data.editor
+      ? <div data-native-configuration-id={data.editor.resource.id} aria-busy={data.refreshing === true}><WizardForm key={`${data.editing}:${data.editor.resource.id}`} native={data} /></div>
+      : <section className="panel"><PageHead title={t('nc.create')} sub={t('nc.scope')} /><p>{t('nc.noSource')}</p><a className="btn" href="/console/resources/">{t('wz.cancel')}</a></section>)}
+  </>;
+}
+const validNativeTokens = (value) => /^[0-9]+$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) >= 0;
+function nativeDraft(resource) {
+  return { framework: resource.framework, provider: resource.provider, model: resource.model, reasoning: resource.reasoning, tokens: resource.ceiling?.tokens ?? '', profileKind: 'preserve', ceilingKind: 'preserve' };
+}
+function WizardForm({ native = null }) {
+  const t = useT(); const data = useData();
+  const [observation, setObservation] = useState(native?.editor ?? null);
+  const base = observation?.resource;
+  const { FRAMEWORKS = [], MODEL_SELECTABLE = {}, modelsFor = () => [], roleCapacity, frameworks = [], detected = [], provenance = {}, refresh } = data;
   const live = provenance.presets === 'live';
   const [toast, say] = useToast();
   const [step, setStep] = useState(0);
-  const [draft, setDraft] = useState({
-    name: '', framework: null, provider: null, model: null, reasoning: null,
-    tokens: 1_000_000, rateCapPerDay: 50_000,
-    yolo: false,
-  });
-
+  const [draft, setDraft] = useState(() => native ? nativeDraft(base) : { name: '', framework: null, provider: null, model: null, reasoning: null, tokens: 1_000_000, rateCapPerDay: 50_000, yolo: false });
   const router = useRouter();
-  const set = (patch) => setDraft((d) => ({ ...d, ...patch }));
+  const set = (patch) => setDraft((d) => ({ ...d, ...patch, ...(native && ('model' in patch || 'reasoning' in patch) ? { profileKind: 'select' } : {}) }));
   const selectable = draft.framework ? MODEL_SELECTABLE[draft.framework] : null;
-  const models = draft.framework ? modelsFor(draft.framework) : [];
-  const reasonings = draft.framework ? reasoningChoices(roleCapacity, draft.framework) : [];
-  const outcome = draft.framework && draft.model
-    ? qualifiesFor(roleCapacity, draft.framework, draft.model, draft.reasoning)
-    : { tier: null, roles: [] };
-  // The manifest for the chosen framework, when the live endpoint supplied one.
+  const models = native ? observation.choices.map((c) => ({ ...c, provider: base.provider })) : draft.framework ? modelsFor(draft.framework) : [];
+  const reasonings = native ? [...new Set(observation.choices.filter((c) => c.model === draft.model).map((c) => c.reasoning))] : draft.framework ? reasoningChoices(roleCapacity, draft.framework) : [];
+  const choice = native ? observation.choices.find((c) => c.model === draft.model && c.reasoning === draft.reasoning) : null;
+  const outcome = native ? { tier: choice?.tier ?? (draft.profileKind === 'preserve' ? observation.modelTier : null), roles: (choice?.roles ?? (draft.profileKind === 'preserve' ? observation.modelRoles : [])).map((r) => ({ key: r, name: r })) }
+    : draft.framework && draft.model ? qualifiesFor(roleCapacity, draft.framework, draft.model, draft.reasoning) : { tier: null, roles: [] };
   const manifest = frameworks.find((f) => f.id === draft.framework) ?? null;
   const chosenDetect = detected.find((f) => f.id === draft.framework) ?? null;
-
+  const action = native?.action?.configuration ? native.action : null;
+  const blocked = native && (native.phase !== 'ready' || !native.permissions?.configureResource || ['pending', 'unknown', 'saved'].includes(action?.kind)
+    || (!native.editing && !choice) || (draft.ceilingKind === 'monthly' && !validNativeTokens(draft.tokens)));
+  const reload = async () => {
+    const value = await refresh();
+    if (value?.editor?.resource.id === base.id && value.editing === native.editing) { setObservation(value.editor); setDraft(nativeDraft(value.editor.resource)); }
+  };
   return (
     <>
-      <PageHead title={t('wz.title')} sub={t('wz.sub')}>
-        <Link className="btn" href="/resources">{t('wz.cancel')}</Link>
+      <PageHead title={t(native ? native.editing ? 'nc.edit' : 'nc.create' : 'wz.title')} sub={t(native ? 'nc.scope' : 'wz.sub')}>
+        {native ? <a className="btn" href="/console/resources/">{t('wz.cancel')}</a> : <Link className="btn" href="/resources">{t('wz.cancel')}</Link>}
       </PageHead>
 
-      <Provenance slices={['frameworks', 'ceilings']} />
+      {native ? <>
+        <p>{t('nc.association')}</p>
+        {native.refreshing && <p role="status">{t('nr.refreshing')}</p>}
+        {native.phase === 'stale' && <p role="alert">{t('nr.stale')}</p>}
+        {!native.permissions?.configureResource && <div className="notice"><p>{t('nc.readOnly')}</p><code>hagency console-access --state-dir &lt;state&gt; --listen &lt;address&gt; --manage-resource-configuration</code></div>}
+        <div className="btn-row"><button className="btn" onClick={refresh}>{t('nu.refresh')}</button><button className="btn" onClick={reload}>{t('nc.reload')}</button><button className="btn" onClick={native.logout}>{t('nu.logout')}</button></div>
+      </> : <Provenance slices={['frameworks', 'ceilings']} />}
 
       {/* Progress is a list of steps with the current one marked, not a bar: the
           reader needs to know which decision they are on, not a percentage. */}
@@ -103,7 +132,15 @@ export default function WizardPage() {
         ))}
       </ol>
 
-      {step === 0 && (
+      {step === 0 && native && <section className="panel"><h3 className="sub">{t('nc.source')}</h3>
+        {!native.editing && <div className="field"><label htmlFor="configuration-source">{t('nc.source')}</label><select id="configuration-source" value={base.id} onChange={(event) => native.choose(event.target.value)}>
+          {!native.resources.some((r) => r.id === base.id) && <option value={base.id}>{t('nr.outsidePage')}</option>}
+          {native.resources.map((r) => <option key={r.id} value={r.id}>{[r.framework, r.model, r.reasoning].filter(Boolean).join(' · ')}</option>)}
+        </select><div className="btn-row"><button className="btn" onClick={native.firstPage}>{t('nu.firstPage')}</button><button className="btn" disabled={!native.next_after} onClick={native.nextPage}>{t('nu.nextPage')}</button></div></div>}
+        <dl className="kv"><dt>{t('wz.step.framework')}</dt><dd>{base.framework}</dd><dt>{t('col.provider')}</dt><dd>{base.provider ?? t('nu.unknown')}</dd><dt>{t('col.model')}</dt><dd>{base.model}</dd></dl>
+        <TechnicalDetails><code>{base.id}</code></TechnicalDetails>
+      </section>}
+      {step === 0 && !native && (
         <div className="panel">
           <h3 className="sub">{t('wz.pickFramework')}</h3>
           <div className="fw-grid">
@@ -216,15 +253,15 @@ export default function WizardPage() {
                 <thead>
                   <tr>
                     <th>{t('col.model')}</th><th>{t('col.provider')}</th>
-                    <th>{t('col.family')}</th><th>{t('col.tier')}</th><th>{t('col.action')}</th>
+                    {!native && <th>{t('col.family')}</th>}<th>{t('col.tier')}</th><th>{t('col.action')}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {models.map((m) => (
                     <tr key={`${m.model}-${m.tier}-${m.reasoning ?? ''}`}>
                       <td className="mono-s">{m.model}</td>
-                      <td>{m.provider}</td>
-                      <td>{m.family}</td>
+                      <td>{m.provider ?? (native ? t('nu.unknown') : null)}</td>
+                      {!native && <td>{m.family}</td>}
                       <td>
                         <span className={`tierchip ${m.tier}`}>{m.tier}</span>
                         {m.reasoning && <span className="dim"> {t('wz.atReasoning', { r: m.reasoning })}</span>}
@@ -256,12 +293,12 @@ export default function WizardPage() {
               <div className="prefs-row" role="group" aria-label={t('wz.pickReasoning')}>
                 {reasonings.map((r) => (
                   <button
-                    key={r}
+                    key={r ?? 'default'}
                     className="seg"
                     aria-pressed={draft.reasoning === r}
                     onClick={() => set({ reasoning: r })}
                   >
-                    {r}
+                    {r ?? t('nc.defaultReasoning')}
                   </button>
                 ))}
               </div>
@@ -277,8 +314,8 @@ export default function WizardPage() {
       {step === 3 && (
         <div className="panel">
           <h3 className="sub">{t('wz.setBudget')}</h3>
-          <p className="notice">{t('rs.definitionHelp')}</p>
-          {draft.framework === 'codex' && <ExecutionPolicyChoice resource yolo={draft.yolo} onChange={yolo => set({ yolo })} />}
+          <p className="notice">{t(native ? 'nc.localCatalog' : 'rs.definitionHelp')}</p>
+          {!native && draft.framework === 'codex' && <ExecutionPolicyChoice resource yolo={draft.yolo} onChange={yolo => set({ yolo })} />}
           {/*
             * The preset's NAME, which the form never asked for.
             *
@@ -290,6 +327,7 @@ export default function WizardPage() {
             * every list that shows them. The printed equivalent command already
             * referenced a `name`, which is how the omission surfaced.
             */}
+          {!native && <>
           <div className="field-row">
             <label htmlFor="wz-name">{t('wz.presetName')}</label>
             <input
@@ -300,15 +338,20 @@ export default function WizardPage() {
             />
             <span className="dim">{t('wz.presetNameHint')}</span>
           </div>
-          <div className="field-row">
+          </>}
+          {native && <div className="field"><label htmlFor="configuration-ceiling">{t('nc.ceilingChange')}</label><select id="configuration-ceiling" value={draft.ceilingKind} onChange={(event) => set({ ceilingKind: event.target.value })}>
+            {['preserve', 'clear', 'monthly'].map((kind) => <option key={kind} value={kind}>{t(`nc.ceiling.${kind}`)}</option>)}
+          </select><p>{t('nc.ceilingMeaning')}</p></div>}
+          <div className={native ? "field" : "field-row"}>
             <label htmlFor="wz-tokens">{t('wz.monthlyTokens')}</label>
             <input
-              id="wz-tokens" type="number" min="100000" step="100000"
+              id="wz-tokens" type={native ? "text" : "number"} inputMode={native ? "numeric" : undefined} pattern={native ? "[0-9]*" : undefined} aria-invalid={native && draft.ceilingKind === 'monthly' && !validNativeTokens(draft.tokens) ? true : undefined} min={native ? "0" : "100000"} step={native ? "1" : "100000"} disabled={native && draft.ceilingKind !== 'monthly'}
               value={draft.tokens}
-              onChange={(e) => set({ tokens: Number(e.target.value) })}
+              onChange={(e) => set({ tokens: native ? e.target.value : Number(e.target.value) })}
             />
-            <span className="dim">{fmtTokens(draft.tokens)}</span>
+            <span className="dim">{native && !validNativeTokens(draft.tokens) ? draft.ceilingKind === 'monthly' ? t('nc.invalidTokens') : '—' : fmtTokens(draft.tokens)}</span>
           </div>
+          {!native && <>
           <div className="field-row">
             <label htmlFor="wz-rate">{t('wz.rateCap')}</label>
             <input
@@ -320,6 +363,8 @@ export default function WizardPage() {
           </div>
           {/* The uncomfortable admission, made once and plainly. */}
           <div className="notice warn">{t('wz.budgetNotEnforced')}</div>
+          </>}
+          {native && <TechnicalDetails><p>{t('nc.gaps')}</p></TechnicalDetails>}
         </div>
       )}
 
@@ -329,13 +374,13 @@ export default function WizardPage() {
           a decision cheaply. */}
       {outcome.tier && (
         <div className="panel outcome">
-          <h3 className="sub">{t('wz.outcome')}</h3>
+          <h3 className="sub">{t(native ? 'nc.qualification' : 'wz.outcome')}</h3>{native && <p>{t('nc.qualificationMeaning')}</p>}
           <div className="prov-row">
             <span className="grow">{t('wz.qualifiesTier')}</span>
             <span className={`tierchip ${outcome.tier}`}>{outcome.tier}</span>
           </div>
           <div className="prov-row">
-            <span className="grow">{t('wz.qualifiesRoles', { n: outcome.roles.length })}</span>
+            <span className="grow">{t(native ? 'nc.matchesRoles' : 'wz.qualifiesRoles', { n: outcome.roles.length })}</span>
             <span>{outcome.roles.map((r) => <span className="chip-role" key={r.key}>{r.name}</span>)}</span>
           </div>
         </div>
@@ -356,7 +401,12 @@ export default function WizardPage() {
         ) : (
           <button
             className="btn primary"
+            disabled={blocked}
             onClick={async () => {
+              if (native) {
+                await native.configure(base, { profileChange: draft.profileKind === 'preserve' ? { kind: 'preserve' } : { kind: 'select', model: draft.model, reasoning: draft.reasoning }, ceilingChange: draft.ceilingKind === 'monthly' ? { kind: 'monthly', tokens: Number(draft.tokens) } : { kind: draft.ceilingKind } });
+                return;
+              }
               if (!live) return say('ok', t('wz.wouldCreate'));
               /*
                * The ceiling goes in the payload. It used to be omitted on purpose,
@@ -398,7 +448,7 @@ export default function WizardPage() {
               return undefined;
             }}
           >
-            {t('wz.create')}
+            {t(native ? native.editing ? 'nc.save' : 'nc.create' : 'wz.create')}
           </button>
         )}
       </div>
@@ -406,7 +456,7 @@ export default function WizardPage() {
       {/* Shown, not hidden: a contributor must be able to reproduce and script
           what the form did, and seeing the command is how you notice the form
           built the wrong one. */}
-      {draft.framework && (
+      {!native && draft.framework && (
         <>
           <h2 className="sec">{t('wz.equivalent')}</h2>
           <pre className="cmd">{presetCommand(draft)}</pre>

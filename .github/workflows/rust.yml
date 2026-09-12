@@ -1,0 +1,162 @@
+name: Native Rust
+on:
+  push:
+    branches: [master, stable, feat/native-windows-directory-sync-20260911]
+  pull_request:
+    branches: [master, stable]
+concurrency:
+  group: native-${{ github.event.pull_request.head.ref || github.ref_name }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  console-browser:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: native-console-browser
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+          cache: npm
+          cache-dependency-path: mockup/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: mockup
+      - name: Install the explicit browser test prerequisite
+        working-directory: mockup
+        run: npx --no-install playwright-core install --with-deps chromium
+      - name: Build retained native console assets
+        run: node mockup/scripts/build-native-console.mjs --output "$RUNNER_TEMP/native-console-assets"
+      - name: Qualify actual browser and native executable
+        shell: bash
+        run: |
+          export HAGENCY_NATIVE_CONSOLE_ASSETS="$RUNNER_TEMP/native-console-assets"
+          export HAGENCY_BROWSER_NODE="$(command -v node)"
+          export HAGENCY_BROWSER_CHROME="$(cd mockup && node -e 'process.stdout.write(require("playwright-core").chromium.executablePath())')"
+          # Failure-path screenshots only: the browser drivers skip their
+          # routine screenshots when a native executable is under test.
+          export HAGENCY_CONSOLE_SCREENSHOTS="$RUNNER_TEMP/console-screenshots"
+          mkdir -p "$HAGENCY_CONSOLE_SCREENSHOTS"
+          cargo clippy --locked -p hagency --all-targets --features native-console-browser -- -D warnings
+          cargo test --locked -p hagency --features native-console-browser --test console -- --nocapture
+      - name: Keep console failure screenshots
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: console-failure-screenshots
+          path: ${{ runner.temp }}/console-screenshots
+          if-no-files-found: ignore
+  native:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, macos-15, windows-2025]
+    runs-on: ${{ matrix.os }}
+    # Hosted Windows at c96f76c: clippy 2 min, spec-binding inventory 7 min,
+    # full tests 17 min (720 passed), then the release build ran past the old
+    # 40-minute limit. Budget the whole job; no test deadline changes.
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.22.0'
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      # The Markdown oracle imports pinned pure JS dependencies; skip every
+      # installation script and native addon build in this Rust-only job.
+      - run: npm ci --ignore-scripts --omit=dev
+      - run: node native/scripts/matrix-format-vectors.mjs --check
+      - run: node native/scripts/metering-vectors.mjs --check
+      # The retained JavaScript computes POSIX layout facts with the host path
+      # module; on Windows path.join/resolve yield drive-letter backslash paths,
+      # so its oracle exists only on POSIX hosts. The recorded fixture is still
+      # replayed by the Rust tests on every OS in the test step below.
+      - run: node native/scripts/attribution-vectors.mjs --check
+        if: runner.os != 'Windows'
+      # Same POSIX-only oracle as the attribution vectors: the retained reader
+      # joins and relativizes with the host path module. The recorded fixture is
+      # replayed by the Rust reader tests on every OS in the test step below.
+      - run: node native/scripts/reader-vectors.mjs --check
+        if: runner.os != 'Windows'
+      - run: node native/scripts/usage-vectors.mjs --check
+      - run: node native/scripts/ceiling-vectors.mjs --check
+      - run: node native/scripts/account-vectors.mjs --check
+      - run: node native/scripts/canonical-vectors.mjs --check
+      - run: node native/scripts/allocation-vectors.mjs --check
+      - run: node native/scripts/project-vectors.mjs --check
+      - run: node native/scripts/qualification-vectors.mjs --check
+      - run: node native/scripts/task-vectors.mjs --check
+      - run: node native/scripts/graph-vectors.mjs --check
+      - run: node native/scripts/payload-vectors.mjs --check
+      - run: node native/scripts/execution-vectors.mjs --check
+      - run: node native/scripts/progress-vectors.mjs --check
+      - run: node native/scripts/check-rust-spec-bindings.mjs
+      - id: native-tests
+        run: cargo test --workspace --all-targets --locked --no-fail-fast
+      - name: Qualify default Windows media storage with fresh process restoration
+        if: ${{ !cancelled() && runner.os == 'Windows' }}
+        shell: pwsh
+        run: |
+          cargo build --locked -p hagency-media-store --example windows_directory_flush
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $PSNativeCommandUseErrorActionPreference = $false
+          & target/debug/examples/windows_directory_flush.exe *> windows-media-sync-original.log
+          $syncExit = $LASTEXITCODE
+          "original_exit=$syncExit" | Set-Content windows-media-sync-verdict.txt
+          Get-Content windows-media-sync-original.log
+          exit $syncExit
+      - uses: actions/upload-artifact@v4
+        if: always() && runner.os == 'Windows'
+        with:
+          name: windows-media-sync-original
+          path: |
+            windows-media-sync-original.log
+            windows-media-sync-verdict.txt
+          if-no-files-found: warn
+      - name: Diagnose the Windows Matrix outgoing library after original failure
+        if: failure() && runner.os == 'Windows' && steps.native-tests.outcome == 'failure'
+        timeout-minutes: 5
+        # The original suite remains fatal. This runs the actual failing library
+        # selectors with the same workspace/all-target feature selection,
+        # including unchanged deadlines and refusal assertions.
+        run: cargo test --workspace --all-targets --locked native_matrix_outgoing -- --test-threads=1 --nocapture
+      - name: Diagnose Windows transport failures without replacing their verdict
+        if: failure() && runner.os == 'Windows' && steps.native-tests.outcome == 'failure'
+        timeout-minutes: 8
+        # The original full-suite failure remains fatal. This unchanged, serial
+        # fixture run distinguishes repeatable failures from concurrent load;
+        # it neither widens a production deadline nor counts as a successful retry.
+        run: cargo test --locked -p hagency-matrix -p hagency-palpo --test transport --no-fail-fast -- --test-threads=1 --nocapture
+      - name: Diagnose a closed Windows MCP helper transport under the same load
+        if: failure() && runner.os == 'Windows' && steps.native-tests.outcome == 'failure'
+        timeout-minutes: 6
+        # The MCP catalog failure has only been seen under parallel load, so a
+        # serial re-run would hide it; the fixture now reports the helper's
+        # try_wait state when tools/list fails. Diagnostic only, never a retry.
+        run: cargo test --locked -p hagency --test mcp_coordination --no-fail-fast -- --test-threads=8 --nocapture
+      - name: Qualify Linux cgroup recovery on a disposable hosted VM
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          python3 -B native/scripts/test-qualify-linux-cgroup.py
+          cargo build --locked -p hagency-platform --bins
+          sudo --preserve-env=GITHUB_ACTIONS,RUNNER_ENVIRONMENT,RUNNER_OS,RUNNER_ARCH /usr/bin/python3 -B native/scripts/qualify-linux-cgroup.py --probe "$PWD/target/debug/hagency-cgroup-probe" --uid "$(id -u)" --gid "$(id -g)"
+      - run: cargo build --release --locked -p hagency
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hagency-foundation-${{ matrix.os }}
+          path: |
+            target/release/hagency
+            target/release/hagency.exe
+          if-no-files-found: error

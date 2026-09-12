@@ -1,0 +1,2 @@
+# Golden protocol vectors must have identical bytes on native Windows and Unix.
+/native/fixtures/*.json text eol=lf

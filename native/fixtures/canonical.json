@@ -1,0 +1,75 @@
+[
+  {
+    "input": null,
+    "canonical": "null",
+    "sha256": "74234e98afe7498fb5daf1f36ac2d78acc339464f950703b8c019892f982b90b"
+  },
+  {
+    "input": {},
+    "canonical": "{}",
+    "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  {
+    "input": {
+      "absent": null
+    },
+    "canonical": "{\"absent\":null}",
+    "sha256": "a30a8cdd04f78303f22b91179ab26704b46ef7f4b22113006f2406bde99f83db"
+  },
+  {
+    "input": {
+      "z": 1,
+      "a": {
+        "y": 2,
+        "x": 1
+      }
+    },
+    "canonical": "{\"a\":{\"x\":1,\"y\":2},\"z\":1}",
+    "sha256": "b5d361a1c0dc5ed1dab76fcbaa2c270ff891ced6fba0ae3d69a2c72e36a302aa"
+  },
+  {
+    "input": {
+      "小白": "中文名称",
+      "": 1,
+      "😀": 2,
+      "é": "é"
+    },
+    "canonical": "{\"é\":\"é\",\"小白\":\"中文名称\",\"😀\":2,\"\":1}",
+    "sha256": "f24f76fa665e26fc1785441308cd3f30d3b471ad1e1d19c7e891c138471d8672"
+  },
+  {
+    "input": {
+      "2": 2,
+      "10": 10,
+      "4294967294": 4,
+      "01": 1,
+      "4294967295": 5,
+      "a": [
+        null,
+        true,
+        false
+      ]
+    },
+    "canonical": "{\"2\":2,\"10\":10,\"4294967294\":4,\"01\":1,\"4294967295\":5,\"a\":[null,true,false]}",
+    "sha256": "c4f0f998cb8bfd23d3d7e347973dd1817bb1cc2a076f122e66cc74a79e61436d"
+  },
+  {
+    "input": {
+      "max": 9007199254740991,
+      "min": -9007199254740991,
+      "zero": 0
+    },
+    "canonical": "{\"max\":9007199254740991,\"min\":-9007199254740991,\"zero\":0}",
+    "sha256": "b7b2401ddca2165824e98c61890c0aaec470258d3119dd265d02be9438bf47e6"
+  },
+  {
+    "input": {
+      "control": "\b\t\n\f\r\u0000",
+      "separator": "  ",
+      "slash": "/\\\"",
+      "timestamp": "2026-09-09T12:00:00.000Z"
+    },
+    "canonical": "{\"control\":\"\\b\\t\\n\\f\\r\\u0000\",\"separator\":\"  \",\"slash\":\"/\\\\\\\"\",\"timestamp\":\"2026-09-09T12:00:00.000Z\"}",
+    "sha256": "2b984aeb9cb925e8c920ca88a3084c38950580f7463e98d3ae04e78147396730"
+  }
+]

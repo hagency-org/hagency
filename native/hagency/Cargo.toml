@@ -1,0 +1,68 @@
+[package]
+name = "hagency"
+default-run = "hagency"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[features]
+default = []
+native-console-browser = []
+
+[dependencies]
+hagency-core = { path = "../hagency-core" }
+hagency-store = { path = "../hagency-store" }
+hagency-platform = { path = "../hagency-platform" }
+hagency-execution = { path = "../hagency-execution" }
+hagency-matrix = { path = "../hagency-matrix" }
+hagency-palpo = { path = "../hagency-palpo" }
+hagency-runtime = { path = "../hagency-runtime" }
+hagency-files = { path = "../hagency-files" }
+hagency-media = { path = "../hagency-media" }
+hagency-media-store = { path = "../hagency-media-store" }
+cap-std = "=4.0.3"
+cap-fs-ext = "=4.0.3"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+hyper = { version = "=1.11.1", default-features = false, features = ["client", "http1"] }
+hyper-util = { version = "=0.1.20", default-features = false, features = ["tokio"] }
+http-body-util = "=0.1.5"
+thiserror.workspace = true
+salvo = { version = "=0.96.0", default-features = false, features = ["server", "server-handle", "http1", "test"] }
+clap = { version = "4.5.54", features = ["derive"] }
+getrandom = "0.3.4"
+subtle = "2.6.1"
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt"] }
+
+[dev-dependencies]
+matrix-sdk-base = { version = "=0.18.0", features = ["e2e-encryption"] }
+matrix-sdk-sqlite = { version = "=0.18.0", default-features = false, features = ["state-store", "bundled"] }
+matrix-sdk-store-encryption = "=0.18.0"
+matrix-sdk-crypto = "=0.18.0"
+ruma = { version = "=0.16.0", features = ["client-api-c", "events"] }
+hagency-metering = { path = "../hagency-metering" }
+tokio = { workspace = true, features = ["process"] }
+rmcp = { version = "=1.8.0", default-features = false, features = ["client", "transport-async-rw"] }
+rusqlite = { version = "=0.37.0", default-features = false, features = ["bundled"] }
+tempfile.workspace = true
+tokio-rustls = { version = "=0.26.4", default-features = false, features = ["ring", "tls12"] }
+
+[[bin]]
+name = "hagency-owned-mcp-probe"
+path = "tests/fixtures/owned_mcp_peer.rs"
+
+[[bin]]
+name = "hagency-file-mcp-probe"
+path = "tests/fixtures/file_mcp_peer.rs"
+
+[[bin]]
+name = "hagency-receive-mcp-probe"
+path = "tests/fixtures/receive_mcp_peer.rs"
+
+[lints]
+workspace = true

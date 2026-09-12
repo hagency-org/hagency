@@ -1,0 +1,2285 @@
+[
+  {
+    "name": "empty",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": []
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 1000
+    }
+  },
+  {
+    "name": "active-and-reserved",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ]
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 4300,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 700
+    }
+  },
+  {
+    "name": "retry-reservation",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "excludeEngagementId": "reserved"
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 100,
+        "remaining": 900
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 4100,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 200,
+      "remainingTokens": 900
+    }
+  },
+  {
+    "name": "retry-other-pool",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "excludeEngagementId": "other-pool"
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 300,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 700
+    }
+  },
+  {
+    "name": "unknown-ceiling",
+    "input": {
+      "preset": {
+        "id": "medium"
+      },
+      "seatId": "shared",
+      "commitments": []
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": null,
+        "period": null,
+        "committed": 0,
+        "remaining": null
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "zero-ceiling",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 0,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": []
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 0,
+        "period": "monthly",
+        "committed": 0,
+        "remaining": 0
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 0
+    }
+  },
+  {
+    "name": "overcommitted",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "too-much",
+          "presetId": "medium",
+          "allocatedTokens": 2000,
+          "seatId": "shared",
+          "state": "active"
+        }
+      ]
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 2000,
+        "remaining": 0
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 2000,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 0
+    }
+  },
+  {
+    "name": "quota-null-daily-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": null,
+        "period": "daily"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": null,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 700
+    }
+  },
+  {
+    "name": "quota-null-daily-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": null,
+        "period": "daily"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": null,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-null-monthly-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": null,
+        "period": "monthly"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": null,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 700
+    }
+  },
+  {
+    "name": "quota-null-monthly-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": null,
+        "period": "monthly"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": null,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-0-daily-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 0,
+        "period": "daily"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 0,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-0-daily-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 0,
+        "period": "daily"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 0,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-0-monthly-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 0,
+        "period": "monthly"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 0,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": 0,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 0
+    }
+  },
+  {
+    "name": "quota-0-monthly-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 0,
+        "period": "monthly"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 0,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": 0,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 0
+    }
+  },
+  {
+    "name": "quota-100-daily-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 100,
+        "period": "daily"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 100,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-100-daily-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 100,
+        "period": "daily"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 100,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-100-monthly-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 100,
+        "period": "monthly"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 100,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": 0,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 0
+    }
+  },
+  {
+    "name": "quota-100-monthly-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 100,
+        "period": "monthly"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 100,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": 0,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 0
+    }
+  },
+  {
+    "name": "quota-10000-daily-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 10000,
+        "period": "daily"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 10000,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-10000-daily-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 10000,
+        "period": "daily"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 10000,
+        "period": "daily",
+        "committed": 4300,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "quota-10000-monthly-automatic-false",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 10000,
+        "period": "monthly"
+      },
+      "forAutoJoin": false
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 10000,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": 5700,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 700
+    }
+  },
+  {
+    "name": "quota-10000-monthly-automatic-true",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [
+        {
+          "id": "other-pool",
+          "presetId": "high",
+          "allocatedTokens": 4000,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "other-account",
+          "presetId": "private",
+          "allocatedTokens": 9000,
+          "seatId": "private",
+          "state": "active"
+        },
+        {
+          "id": "active",
+          "presetId": "medium",
+          "allocatedTokens": 100,
+          "seatId": "shared",
+          "state": "active"
+        },
+        {
+          "id": "reserved",
+          "presetId": "medium",
+          "allocatedTokens": 200,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "planned"
+          }
+        },
+        {
+          "id": "ended",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "ended"
+        },
+        {
+          "id": "failed",
+          "presetId": "medium",
+          "allocatedTokens": 10000,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "failed"
+          }
+        },
+        {
+          "id": "unapproved",
+          "presetId": "medium",
+          "allocatedTokens": null,
+          "seatId": "shared",
+          "state": "pending"
+        },
+        {
+          "id": "completed",
+          "presetId": "medium",
+          "allocatedTokens": 500,
+          "seatId": "shared",
+          "state": "pending",
+          "fulfillment": {
+            "phase": "complete"
+          }
+        }
+      ],
+      "declaration": {
+        "quotaTokens": 10000,
+        "period": "monthly"
+      },
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 300,
+        "remaining": 700
+      },
+      "seat": {
+        "quota": 10000,
+        "period": "monthly",
+        "committed": 4300,
+        "remaining": 5700,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 700
+    }
+  },
+  {
+    "name": "automatic-undeclared",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [],
+      "declaration": {},
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "automatic-no-declaration",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": "monthly"
+        }
+      },
+      "seatId": "shared",
+      "commitments": [],
+      "forAutoJoin": true
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": "monthly",
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": null,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "undeclared"
+      },
+      "reserved": 0,
+      "remainingTokens": 1000
+    }
+  },
+  {
+    "name": "null-versus-missing-period",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": null
+        }
+      },
+      "seatId": "shared",
+      "commitments": [],
+      "declaration": {
+        "quotaTokens": 100
+      }
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": null,
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": 100,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "missing-versus-null-period",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000
+        }
+      },
+      "seatId": "shared",
+      "commitments": [],
+      "declaration": {
+        "quotaTokens": 100,
+        "period": null
+      }
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": null,
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": 100,
+        "period": null,
+        "committed": 0,
+        "remaining": null,
+        "status": "period_mismatch"
+      },
+      "reserved": 0,
+      "remainingTokens": null
+    }
+  },
+  {
+    "name": "both-null-period",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000,
+          "period": null
+        }
+      },
+      "seatId": "shared",
+      "commitments": [],
+      "declaration": {
+        "quotaTokens": 100,
+        "period": null
+      }
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": null,
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": 100,
+        "period": null,
+        "committed": 0,
+        "remaining": 100,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 100
+    }
+  },
+  {
+    "name": "both-missing-period",
+    "input": {
+      "preset": {
+        "id": "medium",
+        "ceiling": {
+          "tokens": 1000
+        }
+      },
+      "seatId": "shared",
+      "commitments": [],
+      "declaration": {
+        "quotaTokens": 100
+      }
+    },
+    "expected": {
+      "scope": "resource",
+      "pool": {
+        "ceiling": 1000,
+        "period": null,
+        "committed": 0,
+        "remaining": 1000
+      },
+      "seat": {
+        "quota": 100,
+        "period": null,
+        "committed": 0,
+        "remaining": 100,
+        "status": "declared"
+      },
+      "reserved": 0,
+      "remainingTokens": 100
+    }
+  }
+]

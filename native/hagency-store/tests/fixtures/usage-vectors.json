@@ -1,0 +1,3607 @@
+{
+  "source": "lib/metering/ledger.js",
+  "sourceSha256": "0d6dbf3da4c957d6edebba3a7cc9c37cf5302d149b6ec3fe8fe9c66873777a54",
+  "semantics": "retained known positive counts; observed high-water and UTC growth only",
+  "vectors": [
+    {
+      "name": "observed-utc-growth-0",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 13,
+            "output": 172,
+            "cacheWrite": 31,
+            "cacheRead": 158
+          },
+          "expected": {
+            "highWater": {
+              "input": 13,
+              "output": 172,
+              "cacheWrite": 31,
+              "cacheRead": 158
+            },
+            "total": 374,
+            "fresh": 216,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 13,
+                "output": 172,
+                "cacheWrite": 31,
+                "cacheRead": 158
+              },
+              "total": 374,
+              "drawn": 216
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 13,
+                "output": 172,
+                "cacheWrite": 31,
+                "cacheRead": 158
+              },
+              "total": 374,
+              "drawn": 216
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 13,
+            "output": 172,
+            "cacheWrite": 31,
+            "cacheRead": 158
+          },
+          "expected": {
+            "highWater": {
+              "input": 13,
+              "output": 172,
+              "cacheWrite": 31,
+              "cacheRead": 158
+            },
+            "total": 374,
+            "fresh": 216,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 13,
+                "output": 172,
+                "cacheWrite": 31,
+                "cacheRead": 158
+              },
+              "total": 374,
+              "drawn": 216
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 13,
+                "output": 172,
+                "cacheWrite": 31,
+                "cacheRead": 158
+              },
+              "total": 374,
+              "drawn": 216
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 126,
+            "output": 196,
+            "cacheWrite": 90,
+            "cacheRead": 264
+          },
+          "expected": {
+            "highWater": {
+              "input": 126,
+              "output": 196,
+              "cacheWrite": 90,
+              "cacheRead": 264
+            },
+            "total": 676,
+            "fresh": 412,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 113,
+                "output": 24,
+                "cacheWrite": 59,
+                "cacheRead": 106
+              },
+              "total": 302,
+              "drawn": 196
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 113,
+                "output": 24,
+                "cacheWrite": 59,
+                "cacheRead": 106
+              },
+              "total": 302,
+              "drawn": 196
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 6,
+            "output": 203,
+            "cacheWrite": 90,
+            "cacheRead": 264
+          },
+          "expected": {
+            "highWater": {
+              "input": 126,
+              "output": 203,
+              "cacheWrite": 90,
+              "cacheRead": 264
+            },
+            "total": 683,
+            "fresh": 419,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 113,
+                "output": 31,
+                "cacheWrite": 59,
+                "cacheRead": 106
+              },
+              "total": 309,
+              "drawn": 203
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 113,
+                "output": 31,
+                "cacheWrite": 59,
+                "cacheRead": 106
+              },
+              "total": 309,
+              "drawn": 203
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 6,
+            "output": 203,
+            "cacheWrite": 90,
+            "cacheRead": 264
+          },
+          "expected": {
+            "highWater": {
+              "input": 126,
+              "output": 203,
+              "cacheWrite": 90,
+              "cacheRead": 264
+            },
+            "total": 683,
+            "fresh": 419,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 113,
+                "output": 31,
+                "cacheWrite": 59,
+                "cacheRead": 106
+              },
+              "total": 309,
+              "drawn": 203
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 113,
+                "output": 31,
+                "cacheWrite": 59,
+                "cacheRead": 106
+              },
+              "total": 309,
+              "drawn": 203
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-1",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 69,
+            "output": 68,
+            "cacheWrite": 127,
+            "cacheRead": 54
+          },
+          "expected": {
+            "highWater": {
+              "input": 69,
+              "output": 68,
+              "cacheWrite": 127,
+              "cacheRead": 54
+            },
+            "total": 318,
+            "fresh": 264,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 69,
+                "output": 68,
+                "cacheWrite": 127,
+                "cacheRead": 54
+              },
+              "total": 318,
+              "drawn": 264
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 69,
+                "output": 68,
+                "cacheWrite": 127,
+                "cacheRead": 54
+              },
+              "total": 318,
+              "drawn": 264
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 69,
+            "output": 68,
+            "cacheWrite": 127,
+            "cacheRead": 54
+          },
+          "expected": {
+            "highWater": {
+              "input": 69,
+              "output": 68,
+              "cacheWrite": 127,
+              "cacheRead": 54
+            },
+            "total": 318,
+            "fresh": 264,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 69,
+                "output": 68,
+                "cacheWrite": 127,
+                "cacheRead": 54
+              },
+              "total": 318,
+              "drawn": 264
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 69,
+                "output": 68,
+                "cacheWrite": 127,
+                "cacheRead": 54
+              },
+              "total": 318,
+              "drawn": 264
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 182,
+            "output": 188,
+            "cacheWrite": 250,
+            "cacheRead": 200
+          },
+          "expected": {
+            "highWater": {
+              "input": 182,
+              "output": 188,
+              "cacheWrite": 250,
+              "cacheRead": 200
+            },
+            "total": 820,
+            "fresh": 620,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 113,
+                "output": 120,
+                "cacheWrite": 123,
+                "cacheRead": 146
+              },
+              "total": 502,
+              "drawn": 356
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 113,
+                "output": 120,
+                "cacheWrite": 123,
+                "cacheRead": 146
+              },
+              "total": 502,
+              "drawn": 356
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 34,
+            "output": 195,
+            "cacheWrite": 250,
+            "cacheRead": 200
+          },
+          "expected": {
+            "highWater": {
+              "input": 182,
+              "output": 195,
+              "cacheWrite": 250,
+              "cacheRead": 200
+            },
+            "total": 827,
+            "fresh": 627,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 113,
+                "output": 127,
+                "cacheWrite": 123,
+                "cacheRead": 146
+              },
+              "total": 509,
+              "drawn": 363
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 113,
+                "output": 127,
+                "cacheWrite": 123,
+                "cacheRead": 146
+              },
+              "total": 509,
+              "drawn": 363
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 34,
+            "output": 195,
+            "cacheWrite": 250,
+            "cacheRead": 200
+          },
+          "expected": {
+            "highWater": {
+              "input": 182,
+              "output": 195,
+              "cacheWrite": 250,
+              "cacheRead": 200
+            },
+            "total": 827,
+            "fresh": 627,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 113,
+                "output": 127,
+                "cacheWrite": 123,
+                "cacheRead": 146
+              },
+              "total": 509,
+              "drawn": 363
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 113,
+                "output": 127,
+                "cacheWrite": 123,
+                "cacheRead": 146
+              },
+              "total": 509,
+              "drawn": 363
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-2",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 109,
+            "output": 196,
+            "cacheWrite": 183,
+            "cacheRead": 86
+          },
+          "expected": {
+            "highWater": {
+              "input": 109,
+              "output": 196,
+              "cacheWrite": 183,
+              "cacheRead": 86
+            },
+            "total": 574,
+            "fresh": 488,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 109,
+                "output": 196,
+                "cacheWrite": 183,
+                "cacheRead": 86
+              },
+              "total": 574,
+              "drawn": 488
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 109,
+                "output": 196,
+                "cacheWrite": 183,
+                "cacheRead": 86
+              },
+              "total": 574,
+              "drawn": 488
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 109,
+            "output": 196,
+            "cacheWrite": 183,
+            "cacheRead": 86
+          },
+          "expected": {
+            "highWater": {
+              "input": 109,
+              "output": 196,
+              "cacheWrite": 183,
+              "cacheRead": 86
+            },
+            "total": 574,
+            "fresh": 488,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 109,
+                "output": 196,
+                "cacheWrite": 183,
+                "cacheRead": 86
+              },
+              "total": 574,
+              "drawn": 488
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 109,
+                "output": 196,
+                "cacheWrite": 183,
+                "cacheRead": 86
+              },
+              "total": 574,
+              "drawn": 488
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 150,
+            "output": 276,
+            "cacheWrite": 218,
+            "cacheRead": 128
+          },
+          "expected": {
+            "highWater": {
+              "input": 150,
+              "output": 276,
+              "cacheWrite": 218,
+              "cacheRead": 128
+            },
+            "total": 772,
+            "fresh": 644,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 41,
+                "output": 80,
+                "cacheWrite": 35,
+                "cacheRead": 42
+              },
+              "total": 198,
+              "drawn": 156
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 41,
+                "output": 80,
+                "cacheWrite": 35,
+                "cacheRead": 42
+              },
+              "total": 198,
+              "drawn": 156
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 54,
+            "output": 283,
+            "cacheWrite": 218,
+            "cacheRead": 128
+          },
+          "expected": {
+            "highWater": {
+              "input": 150,
+              "output": 283,
+              "cacheWrite": 218,
+              "cacheRead": 128
+            },
+            "total": 779,
+            "fresh": 651,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 41,
+                "output": 87,
+                "cacheWrite": 35,
+                "cacheRead": 42
+              },
+              "total": 205,
+              "drawn": 163
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 41,
+                "output": 87,
+                "cacheWrite": 35,
+                "cacheRead": 42
+              },
+              "total": 205,
+              "drawn": 163
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 54,
+            "output": 283,
+            "cacheWrite": 218,
+            "cacheRead": 128
+          },
+          "expected": {
+            "highWater": {
+              "input": 150,
+              "output": 283,
+              "cacheWrite": 218,
+              "cacheRead": 128
+            },
+            "total": 779,
+            "fresh": 651,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 41,
+                "output": 87,
+                "cacheWrite": 35,
+                "cacheRead": 42
+              },
+              "total": 205,
+              "drawn": 163
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 41,
+                "output": 87,
+                "cacheWrite": 35,
+                "cacheRead": 42
+              },
+              "total": 205,
+              "drawn": 163
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-3",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 173,
+            "output": 100,
+            "cacheWrite": 39,
+            "cacheRead": 174
+          },
+          "expected": {
+            "highWater": {
+              "input": 173,
+              "output": 100,
+              "cacheWrite": 39,
+              "cacheRead": 174
+            },
+            "total": 486,
+            "fresh": 312,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 173,
+                "output": 100,
+                "cacheWrite": 39,
+                "cacheRead": 174
+              },
+              "total": 486,
+              "drawn": 312
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 173,
+                "output": 100,
+                "cacheWrite": 39,
+                "cacheRead": 174
+              },
+              "total": 486,
+              "drawn": 312
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 173,
+            "output": 100,
+            "cacheWrite": 39,
+            "cacheRead": 174
+          },
+          "expected": {
+            "highWater": {
+              "input": 173,
+              "output": 100,
+              "cacheWrite": 39,
+              "cacheRead": 174
+            },
+            "total": 486,
+            "fresh": 312,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 173,
+                "output": 100,
+                "cacheWrite": 39,
+                "cacheRead": 174
+              },
+              "total": 486,
+              "drawn": 312
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 173,
+                "output": 100,
+                "cacheWrite": 39,
+                "cacheRead": 174
+              },
+              "total": 486,
+              "drawn": 312
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 334,
+            "output": 260,
+            "cacheWrite": 178,
+            "cacheRead": 320
+          },
+          "expected": {
+            "highWater": {
+              "input": 334,
+              "output": 260,
+              "cacheWrite": 178,
+              "cacheRead": 320
+            },
+            "total": 1092,
+            "fresh": 772,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 161,
+                "output": 160,
+                "cacheWrite": 139,
+                "cacheRead": 146
+              },
+              "total": 606,
+              "drawn": 460
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 161,
+                "output": 160,
+                "cacheWrite": 139,
+                "cacheRead": 146
+              },
+              "total": 606,
+              "drawn": 460
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 86,
+            "output": 267,
+            "cacheWrite": 178,
+            "cacheRead": 320
+          },
+          "expected": {
+            "highWater": {
+              "input": 334,
+              "output": 267,
+              "cacheWrite": 178,
+              "cacheRead": 320
+            },
+            "total": 1099,
+            "fresh": 779,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 161,
+                "output": 167,
+                "cacheWrite": 139,
+                "cacheRead": 146
+              },
+              "total": 613,
+              "drawn": 467
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 161,
+                "output": 167,
+                "cacheWrite": 139,
+                "cacheRead": 146
+              },
+              "total": 613,
+              "drawn": 467
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 86,
+            "output": 267,
+            "cacheWrite": 178,
+            "cacheRead": 320
+          },
+          "expected": {
+            "highWater": {
+              "input": 334,
+              "output": 267,
+              "cacheWrite": 178,
+              "cacheRead": 320
+            },
+            "total": 1099,
+            "fresh": 779,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 161,
+                "output": 167,
+                "cacheWrite": 139,
+                "cacheRead": 146
+              },
+              "total": 613,
+              "drawn": 467
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 161,
+                "output": 167,
+                "cacheWrite": 139,
+                "cacheRead": 146
+              },
+              "total": 613,
+              "drawn": 467
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-4",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 165,
+            "output": 68,
+            "cacheWrite": 143,
+            "cacheRead": 110
+          },
+          "expected": {
+            "highWater": {
+              "input": 165,
+              "output": 68,
+              "cacheWrite": 143,
+              "cacheRead": 110
+            },
+            "total": 486,
+            "fresh": 376,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 165,
+                "output": 68,
+                "cacheWrite": 143,
+                "cacheRead": 110
+              },
+              "total": 486,
+              "drawn": 376
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 165,
+                "output": 68,
+                "cacheWrite": 143,
+                "cacheRead": 110
+              },
+              "total": 486,
+              "drawn": 376
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 165,
+            "output": 68,
+            "cacheWrite": 143,
+            "cacheRead": 110
+          },
+          "expected": {
+            "highWater": {
+              "input": 165,
+              "output": 68,
+              "cacheWrite": 143,
+              "cacheRead": 110
+            },
+            "total": 486,
+            "fresh": 376,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 165,
+                "output": 68,
+                "cacheWrite": 143,
+                "cacheRead": 110
+              },
+              "total": 486,
+              "drawn": 376
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 165,
+                "output": 68,
+                "cacheWrite": 143,
+                "cacheRead": 110
+              },
+              "total": 486,
+              "drawn": 376
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 214,
+            "output": 84,
+            "cacheWrite": 202,
+            "cacheRead": 224
+          },
+          "expected": {
+            "highWater": {
+              "input": 214,
+              "output": 84,
+              "cacheWrite": 202,
+              "cacheRead": 224
+            },
+            "total": 724,
+            "fresh": 500,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 49,
+                "output": 16,
+                "cacheWrite": 59,
+                "cacheRead": 114
+              },
+              "total": 238,
+              "drawn": 124
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 49,
+                "output": 16,
+                "cacheWrite": 59,
+                "cacheRead": 114
+              },
+              "total": 238,
+              "drawn": 124
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 82,
+            "output": 91,
+            "cacheWrite": 202,
+            "cacheRead": 224
+          },
+          "expected": {
+            "highWater": {
+              "input": 214,
+              "output": 91,
+              "cacheWrite": 202,
+              "cacheRead": 224
+            },
+            "total": 731,
+            "fresh": 507,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 49,
+                "output": 23,
+                "cacheWrite": 59,
+                "cacheRead": 114
+              },
+              "total": 245,
+              "drawn": 131
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 49,
+                "output": 23,
+                "cacheWrite": 59,
+                "cacheRead": 114
+              },
+              "total": 245,
+              "drawn": 131
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 82,
+            "output": 91,
+            "cacheWrite": 202,
+            "cacheRead": 224
+          },
+          "expected": {
+            "highWater": {
+              "input": 214,
+              "output": 91,
+              "cacheWrite": 202,
+              "cacheRead": 224
+            },
+            "total": 731,
+            "fresh": 507,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 49,
+                "output": 23,
+                "cacheWrite": 59,
+                "cacheRead": 114
+              },
+              "total": 245,
+              "drawn": 131
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 49,
+                "output": 23,
+                "cacheWrite": 59,
+                "cacheRead": 114
+              },
+              "total": 245,
+              "drawn": 131
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-5",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 53,
+            "output": 68,
+            "cacheWrite": 95,
+            "cacheRead": 118
+          },
+          "expected": {
+            "highWater": {
+              "input": 53,
+              "output": 68,
+              "cacheWrite": 95,
+              "cacheRead": 118
+            },
+            "total": 334,
+            "fresh": 216,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 53,
+                "output": 68,
+                "cacheWrite": 95,
+                "cacheRead": 118
+              },
+              "total": 334,
+              "drawn": 216
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 53,
+                "output": 68,
+                "cacheWrite": 95,
+                "cacheRead": 118
+              },
+              "total": 334,
+              "drawn": 216
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 53,
+            "output": 68,
+            "cacheWrite": 95,
+            "cacheRead": 118
+          },
+          "expected": {
+            "highWater": {
+              "input": 53,
+              "output": 68,
+              "cacheWrite": 95,
+              "cacheRead": 118
+            },
+            "total": 334,
+            "fresh": 216,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 53,
+                "output": 68,
+                "cacheWrite": 95,
+                "cacheRead": 118
+              },
+              "total": 334,
+              "drawn": 216
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 53,
+                "output": 68,
+                "cacheWrite": 95,
+                "cacheRead": 118
+              },
+              "total": 334,
+              "drawn": 216
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 70,
+            "output": 92,
+            "cacheWrite": 162,
+            "cacheRead": 128
+          },
+          "expected": {
+            "highWater": {
+              "input": 70,
+              "output": 92,
+              "cacheWrite": 162,
+              "cacheRead": 128
+            },
+            "total": 452,
+            "fresh": 324,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 17,
+                "output": 24,
+                "cacheWrite": 67,
+                "cacheRead": 10
+              },
+              "total": 118,
+              "drawn": 108
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 17,
+                "output": 24,
+                "cacheWrite": 67,
+                "cacheRead": 10
+              },
+              "total": 118,
+              "drawn": 108
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 26,
+            "output": 99,
+            "cacheWrite": 162,
+            "cacheRead": 128
+          },
+          "expected": {
+            "highWater": {
+              "input": 70,
+              "output": 99,
+              "cacheWrite": 162,
+              "cacheRead": 128
+            },
+            "total": 459,
+            "fresh": 331,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 17,
+                "output": 31,
+                "cacheWrite": 67,
+                "cacheRead": 10
+              },
+              "total": 125,
+              "drawn": 115
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 17,
+                "output": 31,
+                "cacheWrite": 67,
+                "cacheRead": 10
+              },
+              "total": 125,
+              "drawn": 115
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 26,
+            "output": 99,
+            "cacheWrite": 162,
+            "cacheRead": 128
+          },
+          "expected": {
+            "highWater": {
+              "input": 70,
+              "output": 99,
+              "cacheWrite": 162,
+              "cacheRead": 128
+            },
+            "total": 459,
+            "fresh": 331,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 17,
+                "output": 31,
+                "cacheWrite": 67,
+                "cacheRead": 10
+              },
+              "total": 125,
+              "drawn": 115
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 17,
+                "output": 31,
+                "cacheWrite": 67,
+                "cacheRead": 10
+              },
+              "total": 125,
+              "drawn": 115
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-6",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 149,
+            "output": 36,
+            "cacheWrite": 199,
+            "cacheRead": 46
+          },
+          "expected": {
+            "highWater": {
+              "input": 149,
+              "output": 36,
+              "cacheWrite": 199,
+              "cacheRead": 46
+            },
+            "total": 430,
+            "fresh": 384,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 149,
+                "output": 36,
+                "cacheWrite": 199,
+                "cacheRead": 46
+              },
+              "total": 430,
+              "drawn": 384
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 149,
+                "output": 36,
+                "cacheWrite": 199,
+                "cacheRead": 46
+              },
+              "total": 430,
+              "drawn": 384
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 149,
+            "output": 36,
+            "cacheWrite": 199,
+            "cacheRead": 46
+          },
+          "expected": {
+            "highWater": {
+              "input": 149,
+              "output": 36,
+              "cacheWrite": 199,
+              "cacheRead": 46
+            },
+            "total": 430,
+            "fresh": 384,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 149,
+                "output": 36,
+                "cacheWrite": 199,
+                "cacheRead": 46
+              },
+              "total": 430,
+              "drawn": 384
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 149,
+                "output": 36,
+                "cacheWrite": 199,
+                "cacheRead": 46
+              },
+              "total": 430,
+              "drawn": 384
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 246,
+            "output": 116,
+            "cacheWrite": 282,
+            "cacheRead": 160
+          },
+          "expected": {
+            "highWater": {
+              "input": 246,
+              "output": 116,
+              "cacheWrite": 282,
+              "cacheRead": 160
+            },
+            "total": 804,
+            "fresh": 644,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 97,
+                "output": 80,
+                "cacheWrite": 83,
+                "cacheRead": 114
+              },
+              "total": 374,
+              "drawn": 260
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 97,
+                "output": 80,
+                "cacheWrite": 83,
+                "cacheRead": 114
+              },
+              "total": 374,
+              "drawn": 260
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 74,
+            "output": 123,
+            "cacheWrite": 282,
+            "cacheRead": 160
+          },
+          "expected": {
+            "highWater": {
+              "input": 246,
+              "output": 123,
+              "cacheWrite": 282,
+              "cacheRead": 160
+            },
+            "total": 811,
+            "fresh": 651,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 97,
+                "output": 87,
+                "cacheWrite": 83,
+                "cacheRead": 114
+              },
+              "total": 381,
+              "drawn": 267
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 97,
+                "output": 87,
+                "cacheWrite": 83,
+                "cacheRead": 114
+              },
+              "total": 381,
+              "drawn": 267
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 74,
+            "output": 123,
+            "cacheWrite": 282,
+            "cacheRead": 160
+          },
+          "expected": {
+            "highWater": {
+              "input": 246,
+              "output": 123,
+              "cacheWrite": 282,
+              "cacheRead": 160
+            },
+            "total": 811,
+            "fresh": 651,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 97,
+                "output": 87,
+                "cacheWrite": 83,
+                "cacheRead": 114
+              },
+              "total": 381,
+              "drawn": 267
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 97,
+                "output": 87,
+                "cacheWrite": 83,
+                "cacheRead": 114
+              },
+              "total": 381,
+              "drawn": 267
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-7",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 69,
+            "output": 20,
+            "cacheWrite": 159,
+            "cacheRead": 158
+          },
+          "expected": {
+            "highWater": {
+              "input": 69,
+              "output": 20,
+              "cacheWrite": 159,
+              "cacheRead": 158
+            },
+            "total": 406,
+            "fresh": 248,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 69,
+                "output": 20,
+                "cacheWrite": 159,
+                "cacheRead": 158
+              },
+              "total": 406,
+              "drawn": 248
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 69,
+                "output": 20,
+                "cacheWrite": 159,
+                "cacheRead": 158
+              },
+              "total": 406,
+              "drawn": 248
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 69,
+            "output": 20,
+            "cacheWrite": 159,
+            "cacheRead": 158
+          },
+          "expected": {
+            "highWater": {
+              "input": 69,
+              "output": 20,
+              "cacheWrite": 159,
+              "cacheRead": 158
+            },
+            "total": 406,
+            "fresh": 248,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 69,
+                "output": 20,
+                "cacheWrite": 159,
+                "cacheRead": 158
+              },
+              "total": 406,
+              "drawn": 248
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 69,
+                "output": 20,
+                "cacheWrite": 159,
+                "cacheRead": 158
+              },
+              "total": 406,
+              "drawn": 248
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 118,
+            "output": 76,
+            "cacheWrite": 266,
+            "cacheRead": 208
+          },
+          "expected": {
+            "highWater": {
+              "input": 118,
+              "output": 76,
+              "cacheWrite": 266,
+              "cacheRead": 208
+            },
+            "total": 668,
+            "fresh": 460,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 49,
+                "output": 56,
+                "cacheWrite": 107,
+                "cacheRead": 50
+              },
+              "total": 262,
+              "drawn": 212
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 49,
+                "output": 56,
+                "cacheWrite": 107,
+                "cacheRead": 50
+              },
+              "total": 262,
+              "drawn": 212
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 34,
+            "output": 83,
+            "cacheWrite": 266,
+            "cacheRead": 208
+          },
+          "expected": {
+            "highWater": {
+              "input": 118,
+              "output": 83,
+              "cacheWrite": 266,
+              "cacheRead": 208
+            },
+            "total": 675,
+            "fresh": 467,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 49,
+                "output": 63,
+                "cacheWrite": 107,
+                "cacheRead": 50
+              },
+              "total": 269,
+              "drawn": 219
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 49,
+                "output": 63,
+                "cacheWrite": 107,
+                "cacheRead": 50
+              },
+              "total": 269,
+              "drawn": 219
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 34,
+            "output": 83,
+            "cacheWrite": 266,
+            "cacheRead": 208
+          },
+          "expected": {
+            "highWater": {
+              "input": 118,
+              "output": 83,
+              "cacheWrite": 266,
+              "cacheRead": 208
+            },
+            "total": 675,
+            "fresh": 467,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 49,
+                "output": 63,
+                "cacheWrite": 107,
+                "cacheRead": 50
+              },
+              "total": 269,
+              "drawn": 219
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 49,
+                "output": 63,
+                "cacheWrite": 107,
+                "cacheRead": 50
+              },
+              "total": 269,
+              "drawn": 219
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-8",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 197,
+            "output": 76,
+            "cacheWrite": 191,
+            "cacheRead": 38
+          },
+          "expected": {
+            "highWater": {
+              "input": 197,
+              "output": 76,
+              "cacheWrite": 191,
+              "cacheRead": 38
+            },
+            "total": 502,
+            "fresh": 464,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 191,
+                "cacheRead": 38
+              },
+              "total": 502,
+              "drawn": 464
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 191,
+                "cacheRead": 38
+              },
+              "total": 502,
+              "drawn": 464
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 197,
+            "output": 76,
+            "cacheWrite": 191,
+            "cacheRead": 38
+          },
+          "expected": {
+            "highWater": {
+              "input": 197,
+              "output": 76,
+              "cacheWrite": 191,
+              "cacheRead": 38
+            },
+            "total": 502,
+            "fresh": 464,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 191,
+                "cacheRead": 38
+              },
+              "total": 502,
+              "drawn": 464
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 191,
+                "cacheRead": 38
+              },
+              "total": 502,
+              "drawn": 464
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 286,
+            "output": 268,
+            "cacheWrite": 274,
+            "cacheRead": 136
+          },
+          "expected": {
+            "highWater": {
+              "input": 286,
+              "output": 268,
+              "cacheWrite": 274,
+              "cacheRead": 136
+            },
+            "total": 964,
+            "fresh": 828,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 89,
+                "output": 192,
+                "cacheWrite": 83,
+                "cacheRead": 98
+              },
+              "total": 462,
+              "drawn": 364
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 89,
+                "output": 192,
+                "cacheWrite": 83,
+                "cacheRead": 98
+              },
+              "total": 462,
+              "drawn": 364
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 98,
+            "output": 275,
+            "cacheWrite": 274,
+            "cacheRead": 136
+          },
+          "expected": {
+            "highWater": {
+              "input": 286,
+              "output": 275,
+              "cacheWrite": 274,
+              "cacheRead": 136
+            },
+            "total": 971,
+            "fresh": 835,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 89,
+                "output": 199,
+                "cacheWrite": 83,
+                "cacheRead": 98
+              },
+              "total": 469,
+              "drawn": 371
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 89,
+                "output": 199,
+                "cacheWrite": 83,
+                "cacheRead": 98
+              },
+              "total": 469,
+              "drawn": 371
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 98,
+            "output": 275,
+            "cacheWrite": 274,
+            "cacheRead": 136
+          },
+          "expected": {
+            "highWater": {
+              "input": 286,
+              "output": 275,
+              "cacheWrite": 274,
+              "cacheRead": 136
+            },
+            "total": 971,
+            "fresh": 835,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 89,
+                "output": 199,
+                "cacheWrite": 83,
+                "cacheRead": 98
+              },
+              "total": 469,
+              "drawn": 371
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 89,
+                "output": 199,
+                "cacheWrite": 83,
+                "cacheRead": 98
+              },
+              "total": 469,
+              "drawn": 371
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-9",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 93,
+            "output": 44,
+            "cacheWrite": 103,
+            "cacheRead": 174
+          },
+          "expected": {
+            "highWater": {
+              "input": 93,
+              "output": 44,
+              "cacheWrite": 103,
+              "cacheRead": 174
+            },
+            "total": 414,
+            "fresh": 240,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 93,
+                "output": 44,
+                "cacheWrite": 103,
+                "cacheRead": 174
+              },
+              "total": 414,
+              "drawn": 240
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 93,
+                "output": 44,
+                "cacheWrite": 103,
+                "cacheRead": 174
+              },
+              "total": 414,
+              "drawn": 240
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 93,
+            "output": 44,
+            "cacheWrite": 103,
+            "cacheRead": 174
+          },
+          "expected": {
+            "highWater": {
+              "input": 93,
+              "output": 44,
+              "cacheWrite": 103,
+              "cacheRead": 174
+            },
+            "total": 414,
+            "fresh": 240,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 93,
+                "output": 44,
+                "cacheWrite": 103,
+                "cacheRead": 174
+              },
+              "total": 414,
+              "drawn": 240
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 93,
+                "output": 44,
+                "cacheWrite": 103,
+                "cacheRead": 174
+              },
+              "total": 414,
+              "drawn": 240
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 150,
+            "output": 204,
+            "cacheWrite": 290,
+            "cacheRead": 312
+          },
+          "expected": {
+            "highWater": {
+              "input": 150,
+              "output": 204,
+              "cacheWrite": 290,
+              "cacheRead": 312
+            },
+            "total": 956,
+            "fresh": 644,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 57,
+                "output": 160,
+                "cacheWrite": 187,
+                "cacheRead": 138
+              },
+              "total": 542,
+              "drawn": 404
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 57,
+                "output": 160,
+                "cacheWrite": 187,
+                "cacheRead": 138
+              },
+              "total": 542,
+              "drawn": 404
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 46,
+            "output": 211,
+            "cacheWrite": 290,
+            "cacheRead": 312
+          },
+          "expected": {
+            "highWater": {
+              "input": 150,
+              "output": 211,
+              "cacheWrite": 290,
+              "cacheRead": 312
+            },
+            "total": 963,
+            "fresh": 651,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 57,
+                "output": 167,
+                "cacheWrite": 187,
+                "cacheRead": 138
+              },
+              "total": 549,
+              "drawn": 411
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 57,
+                "output": 167,
+                "cacheWrite": 187,
+                "cacheRead": 138
+              },
+              "total": 549,
+              "drawn": 411
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 46,
+            "output": 211,
+            "cacheWrite": 290,
+            "cacheRead": 312
+          },
+          "expected": {
+            "highWater": {
+              "input": 150,
+              "output": 211,
+              "cacheWrite": 290,
+              "cacheRead": 312
+            },
+            "total": 963,
+            "fresh": 651,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 57,
+                "output": 167,
+                "cacheWrite": 187,
+                "cacheRead": 138
+              },
+              "total": 549,
+              "drawn": 411
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 57,
+                "output": 167,
+                "cacheWrite": 187,
+                "cacheRead": 138
+              },
+              "total": 549,
+              "drawn": 411
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-10",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 117,
+            "output": 140,
+            "cacheWrite": 39,
+            "cacheRead": 86
+          },
+          "expected": {
+            "highWater": {
+              "input": 117,
+              "output": 140,
+              "cacheWrite": 39,
+              "cacheRead": 86
+            },
+            "total": 382,
+            "fresh": 296,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 117,
+                "output": 140,
+                "cacheWrite": 39,
+                "cacheRead": 86
+              },
+              "total": 382,
+              "drawn": 296
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 117,
+                "output": 140,
+                "cacheWrite": 39,
+                "cacheRead": 86
+              },
+              "total": 382,
+              "drawn": 296
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 117,
+            "output": 140,
+            "cacheWrite": 39,
+            "cacheRead": 86
+          },
+          "expected": {
+            "highWater": {
+              "input": 117,
+              "output": 140,
+              "cacheWrite": 39,
+              "cacheRead": 86
+            },
+            "total": 382,
+            "fresh": 296,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 117,
+                "output": 140,
+                "cacheWrite": 39,
+                "cacheRead": 86
+              },
+              "total": 382,
+              "drawn": 296
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 117,
+                "output": 140,
+                "cacheWrite": 39,
+                "cacheRead": 86
+              },
+              "total": 382,
+              "drawn": 296
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 254,
+            "output": 236,
+            "cacheWrite": 106,
+            "cacheRead": 168
+          },
+          "expected": {
+            "highWater": {
+              "input": 254,
+              "output": 236,
+              "cacheWrite": 106,
+              "cacheRead": 168
+            },
+            "total": 764,
+            "fresh": 596,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 137,
+                "output": 96,
+                "cacheWrite": 67,
+                "cacheRead": 82
+              },
+              "total": 382,
+              "drawn": 300
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 137,
+                "output": 96,
+                "cacheWrite": 67,
+                "cacheRead": 82
+              },
+              "total": 382,
+              "drawn": 300
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 58,
+            "output": 243,
+            "cacheWrite": 106,
+            "cacheRead": 168
+          },
+          "expected": {
+            "highWater": {
+              "input": 254,
+              "output": 243,
+              "cacheWrite": 106,
+              "cacheRead": 168
+            },
+            "total": 771,
+            "fresh": 603,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 137,
+                "output": 103,
+                "cacheWrite": 67,
+                "cacheRead": 82
+              },
+              "total": 389,
+              "drawn": 307
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 137,
+                "output": 103,
+                "cacheWrite": 67,
+                "cacheRead": 82
+              },
+              "total": 389,
+              "drawn": 307
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 58,
+            "output": 243,
+            "cacheWrite": 106,
+            "cacheRead": 168
+          },
+          "expected": {
+            "highWater": {
+              "input": 254,
+              "output": 243,
+              "cacheWrite": 106,
+              "cacheRead": 168
+            },
+            "total": 771,
+            "fresh": 603,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 137,
+                "output": 103,
+                "cacheWrite": 67,
+                "cacheRead": 82
+              },
+              "total": 389,
+              "drawn": 307
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 137,
+                "output": 103,
+                "cacheWrite": 67,
+                "cacheRead": 82
+              },
+              "total": 389,
+              "drawn": 307
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-11",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 5,
+            "output": 44,
+            "cacheWrite": 143,
+            "cacheRead": 38
+          },
+          "expected": {
+            "highWater": {
+              "input": 5,
+              "output": 44,
+              "cacheWrite": 143,
+              "cacheRead": 38
+            },
+            "total": 230,
+            "fresh": 192,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 5,
+                "output": 44,
+                "cacheWrite": 143,
+                "cacheRead": 38
+              },
+              "total": 230,
+              "drawn": 192
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 5,
+                "output": 44,
+                "cacheWrite": 143,
+                "cacheRead": 38
+              },
+              "total": 230,
+              "drawn": 192
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 5,
+            "output": 44,
+            "cacheWrite": 143,
+            "cacheRead": 38
+          },
+          "expected": {
+            "highWater": {
+              "input": 5,
+              "output": 44,
+              "cacheWrite": 143,
+              "cacheRead": 38
+            },
+            "total": 230,
+            "fresh": 192,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 5,
+                "output": 44,
+                "cacheWrite": 143,
+                "cacheRead": 38
+              },
+              "total": 230,
+              "drawn": 192
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 5,
+                "output": 44,
+                "cacheWrite": 143,
+                "cacheRead": 38
+              },
+              "total": 230,
+              "drawn": 192
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 62,
+            "output": 92,
+            "cacheWrite": 338,
+            "cacheRead": 160
+          },
+          "expected": {
+            "highWater": {
+              "input": 62,
+              "output": 92,
+              "cacheWrite": 338,
+              "cacheRead": 160
+            },
+            "total": 652,
+            "fresh": 492,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 57,
+                "output": 48,
+                "cacheWrite": 195,
+                "cacheRead": 122
+              },
+              "total": 422,
+              "drawn": 300
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 57,
+                "output": 48,
+                "cacheWrite": 195,
+                "cacheRead": 122
+              },
+              "total": 422,
+              "drawn": 300
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 2,
+            "output": 99,
+            "cacheWrite": 338,
+            "cacheRead": 160
+          },
+          "expected": {
+            "highWater": {
+              "input": 62,
+              "output": 99,
+              "cacheWrite": 338,
+              "cacheRead": 160
+            },
+            "total": 659,
+            "fresh": 499,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 57,
+                "output": 55,
+                "cacheWrite": 195,
+                "cacheRead": 122
+              },
+              "total": 429,
+              "drawn": 307
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 57,
+                "output": 55,
+                "cacheWrite": 195,
+                "cacheRead": 122
+              },
+              "total": 429,
+              "drawn": 307
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 2,
+            "output": 99,
+            "cacheWrite": 338,
+            "cacheRead": 160
+          },
+          "expected": {
+            "highWater": {
+              "input": 62,
+              "output": 99,
+              "cacheWrite": 338,
+              "cacheRead": 160
+            },
+            "total": 659,
+            "fresh": 499,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 57,
+                "output": 55,
+                "cacheWrite": 195,
+                "cacheRead": 122
+              },
+              "total": 429,
+              "drawn": 307
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 57,
+                "output": 55,
+                "cacheWrite": 195,
+                "cacheRead": 122
+              },
+              "total": 429,
+              "drawn": 307
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-12",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 157,
+            "output": 116,
+            "cacheWrite": 63,
+            "cacheRead": 158
+          },
+          "expected": {
+            "highWater": {
+              "input": 157,
+              "output": 116,
+              "cacheWrite": 63,
+              "cacheRead": 158
+            },
+            "total": 494,
+            "fresh": 336,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 157,
+                "output": 116,
+                "cacheWrite": 63,
+                "cacheRead": 158
+              },
+              "total": 494,
+              "drawn": 336
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 157,
+                "output": 116,
+                "cacheWrite": 63,
+                "cacheRead": 158
+              },
+              "total": 494,
+              "drawn": 336
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 157,
+            "output": 116,
+            "cacheWrite": 63,
+            "cacheRead": 158
+          },
+          "expected": {
+            "highWater": {
+              "input": 157,
+              "output": 116,
+              "cacheWrite": 63,
+              "cacheRead": 158
+            },
+            "total": 494,
+            "fresh": 336,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 157,
+                "output": 116,
+                "cacheWrite": 63,
+                "cacheRead": 158
+              },
+              "total": 494,
+              "drawn": 336
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 157,
+                "output": 116,
+                "cacheWrite": 63,
+                "cacheRead": 158
+              },
+              "total": 494,
+              "drawn": 336
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 230,
+            "output": 148,
+            "cacheWrite": 202,
+            "cacheRead": 320
+          },
+          "expected": {
+            "highWater": {
+              "input": 230,
+              "output": 148,
+              "cacheWrite": 202,
+              "cacheRead": 320
+            },
+            "total": 900,
+            "fresh": 580,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 73,
+                "output": 32,
+                "cacheWrite": 139,
+                "cacheRead": 162
+              },
+              "total": 406,
+              "drawn": 244
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 73,
+                "output": 32,
+                "cacheWrite": 139,
+                "cacheRead": 162
+              },
+              "total": 406,
+              "drawn": 244
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 78,
+            "output": 155,
+            "cacheWrite": 202,
+            "cacheRead": 320
+          },
+          "expected": {
+            "highWater": {
+              "input": 230,
+              "output": 155,
+              "cacheWrite": 202,
+              "cacheRead": 320
+            },
+            "total": 907,
+            "fresh": 587,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 73,
+                "output": 39,
+                "cacheWrite": 139,
+                "cacheRead": 162
+              },
+              "total": 413,
+              "drawn": 251
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 73,
+                "output": 39,
+                "cacheWrite": 139,
+                "cacheRead": 162
+              },
+              "total": 413,
+              "drawn": 251
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 78,
+            "output": 155,
+            "cacheWrite": 202,
+            "cacheRead": 320
+          },
+          "expected": {
+            "highWater": {
+              "input": 230,
+              "output": 155,
+              "cacheWrite": 202,
+              "cacheRead": 320
+            },
+            "total": 907,
+            "fresh": 587,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 73,
+                "output": 39,
+                "cacheWrite": 139,
+                "cacheRead": 162
+              },
+              "total": 413,
+              "drawn": 251
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 73,
+                "output": 39,
+                "cacheWrite": 139,
+                "cacheRead": 162
+              },
+              "total": 413,
+              "drawn": 251
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-13",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 173,
+            "output": 180,
+            "cacheWrite": 167,
+            "cacheRead": 54
+          },
+          "expected": {
+            "highWater": {
+              "input": 173,
+              "output": 180,
+              "cacheWrite": 167,
+              "cacheRead": 54
+            },
+            "total": 574,
+            "fresh": 520,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 173,
+                "output": 180,
+                "cacheWrite": 167,
+                "cacheRead": 54
+              },
+              "total": 574,
+              "drawn": 520
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 173,
+                "output": 180,
+                "cacheWrite": 167,
+                "cacheRead": 54
+              },
+              "total": 574,
+              "drawn": 520
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 173,
+            "output": 180,
+            "cacheWrite": 167,
+            "cacheRead": 54
+          },
+          "expected": {
+            "highWater": {
+              "input": 173,
+              "output": 180,
+              "cacheWrite": 167,
+              "cacheRead": 54
+            },
+            "total": 574,
+            "fresh": 520,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 173,
+                "output": 180,
+                "cacheWrite": 167,
+                "cacheRead": 54
+              },
+              "total": 574,
+              "drawn": 520
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 173,
+                "output": 180,
+                "cacheWrite": 167,
+                "cacheRead": 54
+              },
+              "total": 574,
+              "drawn": 520
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 326,
+            "output": 276,
+            "cacheWrite": 282,
+            "cacheRead": 64
+          },
+          "expected": {
+            "highWater": {
+              "input": 326,
+              "output": 276,
+              "cacheWrite": 282,
+              "cacheRead": 64
+            },
+            "total": 948,
+            "fresh": 884,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 153,
+                "output": 96,
+                "cacheWrite": 115,
+                "cacheRead": 10
+              },
+              "total": 374,
+              "drawn": 364
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 153,
+                "output": 96,
+                "cacheWrite": 115,
+                "cacheRead": 10
+              },
+              "total": 374,
+              "drawn": 364
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 86,
+            "output": 283,
+            "cacheWrite": 282,
+            "cacheRead": 64
+          },
+          "expected": {
+            "highWater": {
+              "input": 326,
+              "output": 283,
+              "cacheWrite": 282,
+              "cacheRead": 64
+            },
+            "total": 955,
+            "fresh": 891,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 153,
+                "output": 103,
+                "cacheWrite": 115,
+                "cacheRead": 10
+              },
+              "total": 381,
+              "drawn": 371
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 153,
+                "output": 103,
+                "cacheWrite": 115,
+                "cacheRead": 10
+              },
+              "total": 381,
+              "drawn": 371
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 86,
+            "output": 283,
+            "cacheWrite": 282,
+            "cacheRead": 64
+          },
+          "expected": {
+            "highWater": {
+              "input": 326,
+              "output": 283,
+              "cacheWrite": 282,
+              "cacheRead": 64
+            },
+            "total": 955,
+            "fresh": 891,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 153,
+                "output": 103,
+                "cacheWrite": 115,
+                "cacheRead": 10
+              },
+              "total": 381,
+              "drawn": 371
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 153,
+                "output": 103,
+                "cacheWrite": 115,
+                "cacheRead": 10
+              },
+              "total": 381,
+              "drawn": 371
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-14",
+      "observations": [
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 197,
+            "output": 76,
+            "cacheWrite": 31,
+            "cacheRead": 70
+          },
+          "expected": {
+            "highWater": {
+              "input": 197,
+              "output": 76,
+              "cacheWrite": 31,
+              "cacheRead": 70
+            },
+            "total": 374,
+            "fresh": 304,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 31,
+                "cacheRead": 70
+              },
+              "total": 374,
+              "drawn": 304
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 31,
+                "cacheRead": 70
+              },
+              "total": 374,
+              "drawn": 304
+            }
+          }
+        },
+        {
+          "at": 1788220799999,
+          "totals": {
+            "input": 197,
+            "output": 76,
+            "cacheWrite": 31,
+            "cacheRead": 70
+          },
+          "expected": {
+            "highWater": {
+              "input": 197,
+              "output": 76,
+              "cacheWrite": 31,
+              "cacheRead": 70
+            },
+            "total": 374,
+            "fresh": 304,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-08-31",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 31,
+                "cacheRead": 70
+              },
+              "total": 374,
+              "drawn": 304
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-08",
+              "totals": {
+                "input": 197,
+                "output": 76,
+                "cacheWrite": 31,
+                "cacheRead": 70
+              },
+              "total": 374,
+              "drawn": 304
+            }
+          }
+        },
+        {
+          "at": 1788220800000,
+          "totals": {
+            "input": 302,
+            "output": 252,
+            "cacheWrite": 138,
+            "cacheRead": 176
+          },
+          "expected": {
+            "highWater": {
+              "input": 302,
+              "output": 252,
+              "cacheWrite": 138,
+              "cacheRead": 176
+            },
+            "total": 868,
+            "fresh": 692,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 105,
+                "output": 176,
+                "cacheWrite": 107,
+                "cacheRead": 106
+              },
+              "total": 494,
+              "drawn": 388
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 105,
+                "output": 176,
+                "cacheWrite": 107,
+                "cacheRead": 106
+              },
+              "total": 494,
+              "drawn": 388
+            }
+          }
+        },
+        {
+          "at": 1788220800002,
+          "totals": {
+            "input": 98,
+            "output": 259,
+            "cacheWrite": 138,
+            "cacheRead": 176
+          },
+          "expected": {
+            "highWater": {
+              "input": 302,
+              "output": 259,
+              "cacheWrite": 138,
+              "cacheRead": 176
+            },
+            "total": 875,
+            "fresh": 699,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 105,
+                "output": 183,
+                "cacheWrite": 107,
+                "cacheRead": 106
+              },
+              "total": 501,
+              "drawn": 395
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 105,
+                "output": 183,
+                "cacheWrite": 107,
+                "cacheRead": 106
+              },
+              "total": 501,
+              "drawn": 395
+            }
+          }
+        },
+        {
+          "at": 1788220800005,
+          "totals": {
+            "input": 98,
+            "output": 259,
+            "cacheWrite": 138,
+            "cacheRead": 176
+          },
+          "expected": {
+            "highWater": {
+              "input": 302,
+              "output": 259,
+              "cacheWrite": 138,
+              "cacheRead": 176
+            },
+            "total": 875,
+            "fresh": 699,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2026-09-01",
+              "totals": {
+                "input": 105,
+                "output": 183,
+                "cacheWrite": 107,
+                "cacheRead": 106
+              },
+              "total": 501,
+              "drawn": 395
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2026-09",
+              "totals": {
+                "input": 105,
+                "output": 183,
+                "cacheWrite": 107,
+                "cacheRead": 106
+              },
+              "total": 501,
+              "drawn": 395
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "observed-utc-growth-15",
+      "observations": [
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 29,
+            "output": 36,
+            "cacheWrite": 175,
+            "cacheRead": 22
+          },
+          "expected": {
+            "highWater": {
+              "input": 29,
+              "output": 36,
+              "cacheWrite": 175,
+              "cacheRead": 22
+            },
+            "total": 262,
+            "fresh": 240,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 29,
+                "output": 36,
+                "cacheWrite": 175,
+                "cacheRead": 22
+              },
+              "total": 262,
+              "drawn": 240
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 29,
+                "output": 36,
+                "cacheWrite": 175,
+                "cacheRead": 22
+              },
+              "total": 262,
+              "drawn": 240
+            }
+          }
+        },
+        {
+          "at": 1709251199999,
+          "totals": {
+            "input": 29,
+            "output": 36,
+            "cacheWrite": 175,
+            "cacheRead": 22
+          },
+          "expected": {
+            "highWater": {
+              "input": 29,
+              "output": 36,
+              "cacheWrite": 175,
+              "cacheRead": 22
+            },
+            "total": 262,
+            "fresh": 240,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-02-29",
+              "totals": {
+                "input": 29,
+                "output": 36,
+                "cacheWrite": 175,
+                "cacheRead": 22
+              },
+              "total": 262,
+              "drawn": 240
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-02",
+              "totals": {
+                "input": 29,
+                "output": 36,
+                "cacheWrite": 175,
+                "cacheRead": 22
+              },
+              "total": 262,
+              "drawn": 240
+            }
+          }
+        },
+        {
+          "at": 1709251200000,
+          "totals": {
+            "input": 158,
+            "output": 132,
+            "cacheWrite": 338,
+            "cacheRead": 32
+          },
+          "expected": {
+            "highWater": {
+              "input": 158,
+              "output": 132,
+              "cacheWrite": 338,
+              "cacheRead": 32
+            },
+            "total": 660,
+            "fresh": 628,
+            "regressions": 0,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 129,
+                "output": 96,
+                "cacheWrite": 163,
+                "cacheRead": 10
+              },
+              "total": 398,
+              "drawn": 388
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 129,
+                "output": 96,
+                "cacheWrite": 163,
+                "cacheRead": 10
+              },
+              "total": 398,
+              "drawn": 388
+            }
+          }
+        },
+        {
+          "at": 1709251200002,
+          "totals": {
+            "input": 14,
+            "output": 139,
+            "cacheWrite": 338,
+            "cacheRead": 32
+          },
+          "expected": {
+            "highWater": {
+              "input": 158,
+              "output": 139,
+              "cacheWrite": 338,
+              "cacheRead": 32
+            },
+            "total": 667,
+            "fresh": 635,
+            "regressions": 1,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 129,
+                "output": 103,
+                "cacheWrite": 163,
+                "cacheRead": 10
+              },
+              "total": 405,
+              "drawn": 395
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 129,
+                "output": 103,
+                "cacheWrite": 163,
+                "cacheRead": 10
+              },
+              "total": 405,
+              "drawn": 395
+            }
+          }
+        },
+        {
+          "at": 1709251200005,
+          "totals": {
+            "input": 14,
+            "output": 139,
+            "cacheWrite": 338,
+            "cacheRead": 32
+          },
+          "expected": {
+            "highWater": {
+              "input": 158,
+              "output": 139,
+              "cacheWrite": 338,
+              "cacheRead": 32
+            },
+            "total": 667,
+            "fresh": 635,
+            "regressions": 2,
+            "daily": {
+              "period": "daily",
+              "key": "2024-03-01",
+              "totals": {
+                "input": 129,
+                "output": 103,
+                "cacheWrite": 163,
+                "cacheRead": 10
+              },
+              "total": 405,
+              "drawn": 395
+            },
+            "monthly": {
+              "period": "monthly",
+              "key": "2024-03",
+              "totals": {
+                "input": 129,
+                "output": 103,
+                "cacheWrite": 163,
+                "cacheRead": 10
+              },
+              "total": 405,
+              "drawn": 395
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

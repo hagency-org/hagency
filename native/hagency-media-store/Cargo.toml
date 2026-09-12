@@ -1,0 +1,33 @@
+[package]
+name = "hagency-media-store"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hagency-files = { path = "../hagency-files" }
+hagency-media = { path = "../hagency-media" }
+hagency-store = { path = "../hagency-store" }
+cap-std = "=4.0.3"
+cap-fs-ext = "=4.0.3"
+sha2.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "=0.61.2", features = ["Win32_Foundation", "Win32_Storage_FileSystem", "Win32_Security", "Win32_Security_Authorization", "Win32_System_Threading", "Win32_System_IO", "Win32_System_SystemServices", "Wdk_Storage_FileSystem", "Wdk_System_SystemServices"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = "warn"
+
+[[example]]
+name = "windows_directory_flush"
+path = "examples/windows_directory_flush.rs"
+test = true

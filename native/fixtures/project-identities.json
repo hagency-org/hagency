@@ -1,0 +1,343 @@
+{
+  "context": {
+    "fleetId": "hf_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "targetProjectId": "project_test",
+    "requestId": "request_1"
+  },
+  "preset": "preset_fixture",
+  "resourceId": "resource_2ff700f77b6ec80ea34a2f52",
+  "vectors": [
+    {
+      "definition": {
+        "name": "edison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "edison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_edison_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "小白",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "小白",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_agent_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "中文验证-0909",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "中文验证-0909",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_0909_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "Édison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "Édison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_e_dison_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "Édison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "Édison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_e_dison_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "A",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "A",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_a_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "é-1",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "é-1",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_e_1_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "Ångström",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "Ångström",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_a_ngstro_m_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "你好123",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "你好123",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_123_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "a_b-c",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "a_b-c",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_a_b_c_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_agent_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "ÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "ÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅÅ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_a_a_a_a_a_a_a_a_a_a_a_a_a_a_a_a__2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "İbrahim",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "İbrahim",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_i_brahim_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "Σ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "Σ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_agent_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "á",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "á",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_a_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "1abc",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "_abc",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "-abc",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": " agent",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "agent ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "../edison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "a/b",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "a.b",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "a\n",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀𐐀",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "́a",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "agent👋",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "a b",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "a\u0000",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "ａｇｅｎｔ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "normalized": {
+        "name": "ａｇｅｎｔ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "runtimeName": "pa_agent_2e6a2d7954151278"
+    },
+    {
+      "definition": {
+        "name": "Ⅵ",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "小白",
+        "resourceId": "preset_fixture"
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": "edison",
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52",
+        "yolo": true
+      },
+      "rejected": true
+    },
+    {
+      "definition": {
+        "name": 42,
+        "resourceId": "resource_2ff700f77b6ec80ea34a2f52"
+      },
+      "rejected": true
+    },
+    {
+      "definition": null,
+      "rejected": true
+    }
+  ]
+}

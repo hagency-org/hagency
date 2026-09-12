@@ -26,8 +26,10 @@ The versioned JSON Schemas live under `schemas/approval/`.
   project, and `waiting_for_owner`; it has no request id, digest, input preview,
   or actions.
 - Encrypted owner room: `com.agentchat.approval.request.v1`. It contains the
-  complete binding, expiry, runtime details, input digest, and exactly two UI
-  actions: `approve_once` and `deny`.
+  complete binding, expiry, runtime details and input digest. Actions are ordered
+  `approve_once`, optional scoped choices, then `deny`; reusable choices require
+  explicit scope. The finite sequences are once/deny, once/always/deny, and
+  once/task/always/deny.
 - Encrypted owner response: `com.agentchat.approval.verdict.v1`. The bridge
   forwards the Matrix event's real `event.sender`, room id, event id, binding,
   digest, request id, and action to the backend. During the namespace transition
@@ -35,6 +37,17 @@ The versioned JSON Schemas live under `schemas/approval/`.
   names so events already in flight are not lost; it sends only `com.agentchat.*`.
   The wire namespace is pinned by the deployed Robrix2 client and does not follow
   product renames.
+
+[ADR115](../../knowledge/decisions/adr-115-native-approval-wire-interop.md) explicitly
+amends v1 for exact 32-hex retained IDs and 40-hex native IDs. Older clients need
+an upgrade for native cards. IDs and all binding fields are preserved unchanged.
+Native request-only `upstream_rpc_id` preserves integer/string type; neither RPC
+metadata field grants authority or belongs in a verdict. Native packets are
+bounded to 48 KiB encoded UTF-8 in total; schemas separately bound each field in
+characters. Retained body/description/preview ceilings remain 16384/4096/8192.
+Remote workspace validation is lexical and supports POSIX, drive and UNC roots
+without accessing the client filesystem. A valid schema does not prove a trusted
+UI click, encrypted sender, current private room, live request or allowed scope.
 
 Free-form text is ordinary chat and never becomes a verdict. `!ctl` and
 `!agentctl` are rejected in project and approval rooms even for a configured

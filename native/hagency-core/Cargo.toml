@@ -1,0 +1,20 @@
+[package]
+name = "hagency-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+regex = "=1.13.1"
+unicode-normalization = "=0.1.25"
+ruma-common = "=0.19.0"
+ryu-js = "=1.0.3"
+
+[lints]
+workspace = true

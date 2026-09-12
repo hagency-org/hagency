@@ -5,12 +5,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-export function checkSpecBindings(inventory) {
+export function checkSpecBindings(inventory, { runtime = 'node', directory = path.join(root, 'specs') } = {}) {
+  if (!['node', 'rust'].includes(runtime)) throw new Error('Unknown spec runtime');
   const names = inventory.map((entry) => entry.name);
   const missing = [];
   let count = 0;
-  for (const file of readdirSync(path.join(root, 'specs')).filter((name) => name.endsWith('.spec.md'))) {
-    const lines = readFileSync(path.join(root, 'specs', file), 'utf8').split('\n');
+  const deferred = [];
+  for (const file of readdirSync(directory).filter((name) => name.endsWith('.spec.md'))) {
+    const content = readFileSync(path.join(directory, file), 'utf8');
+    const frontmatter = content.split('\n---')[0];
+    const native = /^tags:\s*\[[^\]\n]*\brust\b[^\]\n]*\]/m.test(frontmatter);
+    if ((native ? 'rust' : 'node') !== runtime) { deferred.push(file); continue; }
+    const lines = content.split('\n');
     for (const [index, line] of lines.entries()) {
       const selector = line.match(/^\s*(?:Test|Filter):\s*(\S.*?)\s*$/)?.[1];
       if (!selector) continue;
@@ -18,7 +24,7 @@ export function checkSpecBindings(inventory) {
       if (!names.some((name) => name.includes(selector))) missing.push({ file, line: index + 1, selector });
     }
   }
-  return { count, missing };
+  return { count, missing, runtime, deferred };
 }
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

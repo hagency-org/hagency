@@ -49,3 +49,7 @@ services-macos.json
 
 # CI test reporter output (uploaded as an artifact, never committed)
 test-results.json
+
+# Native Rust build and isolated development state
+/target/
+/native/.state/

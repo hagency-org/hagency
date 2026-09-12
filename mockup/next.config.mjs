@@ -3,6 +3,7 @@
 // `npm run dev` and `npm start` keep their normal behaviour — a prototype that
 // can only be built one way is a prototype nobody runs locally.
 const pages = process.env.PAGES === '1';
+const nativeConsole = process.env.NEXT_PUBLIC_HAGENCY_NATIVE_CONSOLE === '1';
 
 const nextConfig = {
   ...(process.env.HAGENCY_CONSOLE_DIST_DIR ? { distDir: process.env.HAGENCY_CONSOLE_DIST_DIR } : {}),
@@ -17,12 +18,12 @@ const nextConfig = {
    * prerequisite for any of them to be meaningful.
    */
   allowedDevOrigins: ['127.0.0.1'],
-  ...(pages ? {
+  ...(pages || nativeConsole ? {
     output: 'export',
     // Pages serves a project site from /<repo>/, so every asset and link needs
     // the prefix or the CSS 404s and the rail stops navigating.
-    basePath: '/Hagency',
-    assetPrefix: '/Hagency',
+    basePath: nativeConsole ? '/console' : '/Hagency',
+    assetPrefix: nativeConsole ? '/console' : '/Hagency',
     // Pages has no rewrite layer, so /resources must resolve as a directory
     // with an index.html rather than a bare file.
     trailingSlash: true,

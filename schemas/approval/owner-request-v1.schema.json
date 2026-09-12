@@ -4,58 +4,451 @@
   "title": "Agent Chat encrypted owner approval request v1",
   "type": "object",
   "additionalProperties": true,
-  "required": ["msgtype", "body", "com.agentchat.approval"],
+  "required": [
+    "msgtype",
+    "body",
+    "com.agentchat.approval"
+  ],
   "properties": {
-    "msgtype": { "const": "com.agentchat.approval.request.v1" },
-    "body": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "msgtype": {
+      "const": "com.agentchat.approval.request.v1"
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 49152
+    },
     "com.agentchat.approval": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "version", "kind", "agent", "project", "project_room_id",
-        "request_id", "upstream_request_id", "input_digest", "runtime",
-        "tool_name", "description", "input_preview", "expires_at", "actions"
+        "version",
+        "kind",
+        "agent",
+        "project",
+        "project_room_id",
+        "request_id",
+        "upstream_request_id",
+        "input_digest",
+        "runtime",
+        "tool_name",
+        "description",
+        "input_preview",
+        "expires_at",
+        "actions"
       ],
       "properties": {
-        "version": { "const": 1 },
-        "kind": { "const": "request" },
-        "agent": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "project": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "project_room_id": { "type": "string", "pattern": "^!" },
-        "request_id": { "type": "string", "pattern": "^approval_[0-9a-f]{32}$" },
-        "upstream_request_id": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "input_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "runtime": { "enum": ["claude", "codex"] },
-        "tool_name": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "description": { "type": "string", "maxLength": 4096 },
-        "input_preview": { "type": "string", "maxLength": 8192 },
-        "expires_at": { "type": "integer", "minimum": 1 },
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "request"
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "project_room_id": {
+          "type": "string",
+          "pattern": "^!"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^approval_(?:[0-9a-f]{32}|[0-9a-f]{40})$"
+        },
+        "upstream_request_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "input_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "runtime": {
+          "enum": [
+            "claude",
+            "codex"
+          ]
+        },
+        "tool_name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 49152
+        },
+        "input_preview": {
+          "type": "string",
+          "maxLength": 49152
+        },
+        "expires_at": {
+          "type": "integer",
+          "minimum": 1
+        },
         "actions": {
-          "type": "array",
-          "minItems": 2,
-          "maxItems": 2,
-          "prefixItems": [
+          "oneOf": [
             {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["id", "label", "style"],
-              "properties": {
-                "id": { "const": "approve_once" },
-                "label": { "type": "string" },
-                "style": { "const": "primary" }
-              }
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/approve_once"
+                },
+                {
+                  "$ref": "#/$defs/deny"
+                }
+              ],
+              "items": false
             },
             {
-              "type": "object",
-              "additionalProperties": false,
-              "required": ["id", "label", "style"],
-              "properties": {
-                "id": { "const": "deny" },
-                "label": { "type": "string" },
-                "style": { "const": "danger" }
-              }
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/approve_once"
+                },
+                {
+                  "$ref": "#/$defs/approve_always"
+                },
+                {
+                  "$ref": "#/$defs/deny"
+                }
+              ],
+              "items": false
+            },
+            {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "prefixItems": [
+                {
+                  "$ref": "#/$defs/approve_once"
+                },
+                {
+                  "$ref": "#/$defs/approve_task"
+                },
+                {
+                  "$ref": "#/$defs/approve_always"
+                },
+                {
+                  "$ref": "#/$defs/deny"
+                }
+              ],
+              "items": false
             }
           ]
+        },
+        "upstream_rpc_id": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            }
+          ]
+        },
+        "reusable_scope": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "description",
+            "workspace",
+            "task_id"
+          ],
+          "properties": {
+            "description": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 49152
+            },
+            "workspace": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192,
+              "not": {
+                "pattern": "[\\u0000-\\u001f\\u007f]"
+              },
+              "anyOf": [
+                {
+                  "pattern": "^/"
+                },
+                {
+                  "pattern": "^[A-Za-z]:[\\\\/]"
+                },
+                {
+                  "pattern": "^\\\\\\\\[^\\\\/.? ][^\\\\/]*\\\\[^\\\\/ .][^\\\\/]*(?:\\\\.*)?$"
+                }
+              ]
+            },
+            "task_id": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 256
+                }
+              ]
+            },
+            "kind": {
+              "enum": [
+                "exact_command",
+                "network_host",
+                "permission_profile"
+              ]
+            }
+          }
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "actions": {
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "approve_task"
+                        }
+                      }
+                    }
+                  },
+                  {
+                    "type": "array",
+                    "contains": {
+                      "type": "object",
+                      "required": [
+                        "id"
+                      ],
+                      "properties": {
+                        "id": {
+                          "const": "approve_always"
+                        }
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "reusable_scope"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "actions": {
+                "type": "array",
+                "contains": {
+                  "type": "object",
+                  "required": [
+                    "id"
+                  ],
+                  "properties": {
+                    "id": {
+                      "const": "approve_task"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "reusable_scope": {
+                "type": "object",
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  },
+  "$comment": "ADR115 explicitly amends v1 to finite retained32/native40 request profiles. Native packets additionally require at most49152 encoded UTF-8 bytes in total, enforced by the original producer; JSON Schema character ceilings cannot enforce that aggregate rule. Schema conformance is not authorization.",
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "com.agentchat.approval": {
+            "type": "object",
+            "properties": {
+              "request_id": {
+                "pattern": "^approval_[0-9a-f]{32}$"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "body": {
+            "maxLength": 16384
+          },
+          "com.agentchat.approval": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "maxLength": 4096
+              },
+              "input_preview": {
+                "maxLength": 8192
+              },
+              "reusable_scope": {
+                "type": "object",
+                "properties": {
+                  "description": {
+                    "maxLength": 4096
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "com.agentchat.approval": {
+            "type": "object",
+            "required": [
+              "upstream_rpc_id"
+            ],
+            "properties": {
+              "expires_at": {
+                "maximum": 9007199254740991
+              },
+              "runtime": {
+                "const": "codex"
+              },
+              "reusable_scope": {
+                "type": "object",
+                "required": [
+                  "kind"
+                ],
+                "properties": {
+                  "task_id": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "approve_once": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "style"
+      ],
+      "properties": {
+        "id": {
+          "const": "approve_once"
+        },
+        "label": {
+          "type": "string"
+        },
+        "style": {
+          "const": "primary"
+        }
+      }
+    },
+    "deny": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "style"
+      ],
+      "properties": {
+        "id": {
+          "const": "deny"
+        },
+        "label": {
+          "type": "string"
+        },
+        "style": {
+          "const": "danger"
+        }
+      }
+    },
+    "approve_always": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "style"
+      ],
+      "properties": {
+        "id": {
+          "const": "approve_always"
+        },
+        "label": {
+          "type": "string"
+        },
+        "style": {
+          "const": "secondary"
+        }
+      }
+    },
+    "approve_task": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "label",
+        "style"
+      ],
+      "properties": {
+        "id": {
+          "const": "approve_task"
+        },
+        "label": {
+          "type": "string"
+        },
+        "style": {
+          "const": "secondary"
         }
       }
     }

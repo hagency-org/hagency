@@ -1,0 +1,1349 @@
+{
+  "sourceSha256": "5b7b70ff4dbdfd54e7df14dd832057aa1b180aa05b560c9c7ec1f97c5d22b015",
+  "vectors": [
+    {
+      "flavor": "posix",
+      "name": "exact command",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "683ca44d9dab33c5cbed1c0242817b0617e16f740265e3d52b4b5adcf25c3163",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "reason does not authorize",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "new-thread",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "reason": "allow every domain"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "683ca44d9dab33c5cbed1c0242817b0617e16f740265e3d52b4b5adcf25c3163",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "network",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "networkApprovalContext": {
+            "host": "AAPT.org:443",
+            "protocol": "https"
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "network_host",
+          "key": "abb7b5a072bf7503ea538bdbb342857037a402df53a15c9e738d8788b2a985d1",
+          "description": "Network host: aapt.org:443\nProtocol: https"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "network context without command",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": null,
+          "cwd": null,
+          "networkApprovalContext": {
+            "host": "aapt.org",
+            "protocol": "socks5Tcp"
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "network_host",
+          "key": "af7bb302fb0c9d8a56d4acbcbb5e47a2b227069ff1b815e599d6cb3f113ff51a",
+          "description": "Network host: aapt.org\nProtocol: socks5Tcp"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "command with permissions",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "additionalPermissions": {
+            "network": {
+              "enabled": true
+            },
+            "fileSystem": {
+              "read": [
+                "/data",
+                "/data"
+              ],
+              "write": [
+                "/work/小白"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "35542e5fc570025870cfd33e6eb1037e7a22d5221a15a6c4338e988ff3307c83",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: /work/小白\nNetwork access: all destinations (not limited to a domain)\nread: /data\nwrite: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "exact Unicode",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "printf \"小白\\n\"",
+          "cwd": "/work/小白",
+          "environmentId": "container-one"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": "container-one",
+        "scope": {
+          "kind": "exact_command",
+          "key": "911bb89efe40363ae55a8e61561d90721306b6df6584f066a3ecf392471adedc",
+          "description": "Exact command (including requested sandbox escalation):\nprintf \"小白\\n\"\nWorking directory: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "unknown field",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "futureEscalation": true
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "wrong kind",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "kind": "writeStdin"
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "relative path",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "relative"
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "wildcard network",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "networkApprovalContext": {
+            "host": "*.org",
+            "protocol": "https"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "combined network",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "networkApprovalContext": {
+            "host": "aapt.org",
+            "protocol": "https"
+          },
+          "additionalPermissions": {
+            "network": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "empty permissions",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "additionalPermissions": {}
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "bad environment",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白",
+          "environmentId": {}
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "read-only identity",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": false,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "/work/小白"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": false,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "12eb7d4cc63f0ce758b3cec14c34a37471637a36eeaac38f551e34260cc16d14",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "/work/小白",
+          "permissions": {
+            "network": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "permission_profile",
+          "key": "c6cee4eea5baa307a1f3c8d7eec7d1ab43982510156001ed848d23ea903a8dc7",
+          "description": "Network access: all destinations (not limited to a domain)"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "/work/小白",
+          "permissions": {
+            "network": {
+              "enabled": false
+            },
+            "fileSystem": {
+              "read": [
+                "/data",
+                "/data"
+              ],
+              "write": [
+                "/work/小白"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "permission_profile",
+          "key": "4a73bb40a24a1461840ad2d1c0be0377fb01209798eba49912d467b6b0d58206",
+          "description": "read: /data\nwrite: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "/work/小白",
+          "permissions": {
+            "fileSystem": {
+              "entries": [
+                {
+                  "access": "write",
+                  "path": {
+                    "type": "path",
+                    "path": "/data"
+                  }
+                },
+                {
+                  "access": "read",
+                  "path": {
+                    "type": "path",
+                    "path": "/work/小白"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "permission_profile",
+          "key": "e96a379e94987613faf74cd36639b49cafe97805bf173243cab3cb61120ef455",
+          "description": "write: /data\nread: /work/小白"
+        }
+      }
+    },
+    {
+      "flavor": "posix",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "/work/小白",
+          "permissions": {
+            "network": {
+              "enabled": false
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "/work/小白",
+          "permissions": {
+            "fileSystem": {
+              "globScanMaxDepth": 1,
+              "read": [
+                "/data"
+              ]
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "posix",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "/work/小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "/work/小白",
+          "permissions": {
+            "fileSystem": {
+              "entries": [
+                {
+                  "access": "write",
+                  "path": {
+                    "type": "glob_pattern",
+                    "pattern": "*"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": null,
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {},
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": false
+      },
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": true
+      },
+      "expected": {
+        "yolo": true
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": "false"
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": true,
+        "extra": 1
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": null,
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {},
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": false
+      },
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": true
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": "false"
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": true,
+        "extra": 1
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "exact command",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "0fbae46e0435043065a5bbfcd7de2adbdf89aa3ddbe81501a699fc30f8ddd91d",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "reason does not authorize",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "new-thread",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "reason": "allow every domain"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "0fbae46e0435043065a5bbfcd7de2adbdf89aa3ddbe81501a699fc30f8ddd91d",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "network",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "networkApprovalContext": {
+            "host": "AAPT.org:443",
+            "protocol": "https"
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "network_host",
+          "key": "87b79ee72f96334e047778202ea50a49961253190e793b93336236817ce4e51e",
+          "description": "Network host: aapt.org:443\nProtocol: https"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "network context without command",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": null,
+          "cwd": null,
+          "networkApprovalContext": {
+            "host": "aapt.org",
+            "protocol": "socks5Tcp"
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "network_host",
+          "key": "0a327889e7b59e2448471b2036896ef22fc906fc0ee0ae002b9fe85cdb611581",
+          "description": "Network host: aapt.org\nProtocol: socks5Tcp"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "command with permissions",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "additionalPermissions": {
+            "network": {
+              "enabled": true
+            },
+            "fileSystem": {
+              "read": [
+                "D:\\data",
+                "D:\\data"
+              ],
+              "write": [
+                "C:\\work\\小白"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "de2b1fcc9d9da9c5dd984a4862c51c042723d61a4754222d7d879310afe14419",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: C:\\work\\小白\nNetwork access: all destinations (not limited to a domain)\nread: D:\\data\nwrite: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "exact Unicode",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "printf \"小白\\n\"",
+          "cwd": "C:\\work\\小白",
+          "environmentId": "container-one"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": "container-one",
+        "scope": {
+          "kind": "exact_command",
+          "key": "6c0d9474efb5fa2bd215af2c0cb865ad1a057204db72ccfe8adc7930e755272d",
+          "description": "Exact command (including requested sandbox escalation):\nprintf \"小白\\n\"\nWorking directory: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "unknown field",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "futureEscalation": true
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "wrong kind",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "kind": "writeStdin"
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "relative path",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "relative"
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "wildcard network",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "networkApprovalContext": {
+            "host": "*.org",
+            "protocol": "https"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "combined network",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "networkApprovalContext": {
+            "host": "aapt.org",
+            "protocol": "https"
+          },
+          "additionalPermissions": {
+            "network": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "empty permissions",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "additionalPermissions": {}
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "bad environment",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白",
+          "environmentId": {}
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "read-only identity",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": false,
+        "method": "item/commandExecution/requestApproval",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "turn-1",
+          "itemId": "item-1",
+          "command": "curl https://aapt.org/report.pdf",
+          "cwd": "C:\\work\\小白"
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": false,
+        "environmentId": null,
+        "scope": {
+          "kind": "exact_command",
+          "key": "e150bc6ec4a032ccb79b62ebcb801adca1544f7b92041a2bbe8e8f7ce1bfc26d",
+          "description": "Exact command (including requested sandbox escalation):\ncurl https://aapt.org/report.pdf\nWorking directory: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "C:\\work\\小白",
+          "permissions": {
+            "network": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "permission_profile",
+          "key": "3db69d7ad306b2d29adf9b15a938c01cb59ac3849af5bdc847157ecc78497f99",
+          "description": "Network access: all destinations (not limited to a domain)"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "C:\\work\\小白",
+          "permissions": {
+            "network": {
+              "enabled": false
+            },
+            "fileSystem": {
+              "read": [
+                "D:\\data",
+                "D:\\data"
+              ],
+              "write": [
+                "C:\\work\\小白"
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "permission_profile",
+          "key": "6f1b9eeb6f1ef07fd99a656a452a792e22f175040ed6e646b92fb9c7d2e8cb34",
+          "description": "read: D:\\data\nwrite: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "C:\\work\\小白",
+          "permissions": {
+            "fileSystem": {
+              "entries": [
+                {
+                  "access": "write",
+                  "path": {
+                    "type": "path",
+                    "path": "D:\\data"
+                  }
+                },
+                {
+                  "access": "read",
+                  "path": {
+                    "type": "path",
+                    "path": "C:\\work\\小白"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "environmentId": null,
+        "scope": {
+          "kind": "permission_profile",
+          "key": "41a788a55ae0ef503f0fb71e4768207a5b2ce358672b97828f0c56e6927a611c",
+          "description": "write: D:\\data\nread: C:\\work\\小白"
+        }
+      }
+    },
+    {
+      "flavor": "win32",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "C:\\work\\小白",
+          "permissions": {
+            "network": {
+              "enabled": false
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "C:\\work\\小白",
+          "permissions": {
+            "fileSystem": {
+              "globScanMaxDepth": 1,
+              "read": [
+                "D:\\data"
+              ]
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "flavor": "win32",
+      "name": "permission profile",
+      "input": {
+        "agentId": "agent-incarnation-1",
+        "taskId": "task-1",
+        "workspace": "C:\\work\\小白",
+        "mayWrite": true,
+        "method": "item/permissions/requestApproval",
+        "params": {
+          "cwd": "C:\\work\\小白",
+          "permissions": {
+            "fileSystem": {
+              "entries": [
+                {
+                  "access": "write",
+                  "path": {
+                    "type": "glob_pattern",
+                    "pattern": "*"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": null,
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {},
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": false
+      },
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": true
+      },
+      "expected": {
+        "yolo": true
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": "false"
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "codex",
+      "input": {
+        "yolo": true,
+        "extra": 1
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": null,
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {},
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": false
+      },
+      "expected": {
+        "yolo": false
+      }
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": true
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": "false"
+      },
+      "expected": null
+    },
+    {
+      "name": "policy",
+      "framework": "claude",
+      "input": {
+        "yolo": true,
+        "extra": 1
+      },
+      "expected": null
+    }
+  ]
+}

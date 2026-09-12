@@ -14,7 +14,7 @@ function makeRouter(options = {}) {
   let now = options.start ?? 1_800_000_000_000;
   const router = openRouter({
     dbPath: path.join(root, 'router.db'),
-    now: () => now,
+    now: options.now ?? (() => now),
     eventRetention: options.eventRetention ?? 100,
   });
   return {
@@ -832,6 +832,78 @@ describe('router dispatch, capability, isolation, and recovery', () => {
     expect(router.claimDispatch({
       runnerId: 'recovered', leaseMs: 60_000, capabilityTtlMs: 60_000, maxLiveRunners: 8,
     })).toMatchObject({ ok: true, dispatchId: queued.dispatchId, runnerId: 'recovered' });
+    router.close();
+  });
+
+  test('claim wake retains a retry that becomes due between claim and wake lookup', () => {
+    let clock = 1_800_000_000_000;
+    let crossAt = null;
+    const { router } = makeRouter({ now: () => {
+      const observed = clock;
+      if (crossAt !== null) clock = crossAt;
+      return observed;
+    } });
+    const { activated } = createAndActivate(router);
+    const queued = enqueueWriter(router, activated);
+    const args = { runnerId: 'first', leaseMs: 60_000, capabilityTtlMs: 60_000, maxLiveRunners: 8 };
+    const first = router.claimDispatch(args);
+    const retry = router.requeueBeforeStart(first, 100, 'fixture executable unavailable');
+    expect(retry.ok).toBe(true);
+    clock = retry.retryAt - 1;
+    crossAt = retry.retryAt;
+
+    const observed = router.claimDispatchWithWake({ ...args, runnerId: 'before-due' });
+    expect(clock).toBe(retry.retryAt);
+    expect(observed).toEqual({ claim: null, nextAvailableAt: retry.retryAt });
+    // A new standalone future lookup has already lost this now-due retry.
+    expect(router.nextQueuedDispatchAt()).toBeNull();
+    expect(router.db.prepare(
+      'SELECT state, launch_failures FROM dispatches WHERE dispatch_id = ?',
+    ).get(queued.dispatchId)).toEqual({ state: 'queued', launch_failures: 1 });
+    expect(router.db.prepare(
+      'SELECT message_id FROM dispatch_messages WHERE dispatch_id = ?',
+    ).all(queued.dispatchId)).toEqual([{ message_id: 'm-root' }]);
+    expect(router.claimDispatchWithWake({ ...args, runnerId: 'after-wake' }))
+      .toMatchObject({ claim: { ok: true, dispatchId: queued.dispatchId }, nextAvailableAt: null });
+    router.close();
+  });
+
+  test('claim wake excludes already-due blocked work and retains future retries', () => {
+    const { router } = makeRouter();
+    const future = createAndActivate(router);
+    const queued = enqueueWriter(router, future.activated);
+    const args = { runnerId: 'first', leaseMs: 60_000, capabilityTtlMs: 60_000, maxLiveRunners: 8 };
+    const retry = router.requeueBeforeStart(router.claimDispatch(args), 100, 'fixture executable unavailable');
+    expect(retry.ok).toBe(true);
+    const blocked = createAndActivate(router, {
+      rootMessageId: 'blocked-root', eventId: '$blocked-root', requestKey: 'blocked-task',
+    });
+    const blockedQueued = enqueueWriter(router, blocked.activated);
+    router.db.prepare("UPDATE tasks SET status = 'blocked' WHERE task_id = ?").run(blocked.intent.taskId);
+    router.db.prepare('UPDATE dispatches SET available_at = ? WHERE dispatch_id = ?')
+      .run(1_800_000_000_000, blockedQueued.dispatchId);
+    expect(router.claimDispatchWithWake({ ...args, runnerId: 'blocked-plus-future' }))
+      .toEqual({ claim: null, nextAvailableAt: retry.retryAt });
+    expect(router.cancelBeforeStart(queued.dispatchId).ok).toBe(true);
+    expect(router.claimDispatchWithWake({ ...args, runnerId: 'blocked-only' }))
+      .toEqual({ claim: null, nextAvailableAt: null });
+    expect(router.db.prepare('SELECT state FROM dispatches WHERE dispatch_id = ?')
+      .get(blockedQueued.dispatchId)).toEqual({ state: 'queued' });
+    router.close();
+  });
+
+  test('claim wake preserves successful and refused claim results', () => {
+    const { router } = makeRouter();
+    const { activated } = createAndActivate(router);
+    const queued = enqueueWriter(router, activated);
+    const args = { runnerId: 'first', leaseMs: 60_000, capabilityTtlMs: 60_000, maxLiveRunners: 1 };
+    expect(router.claimDispatchWithWake(args))
+      .toMatchObject({ claim: { ok: true, dispatchId: queued.dispatchId }, nextAvailableAt: null });
+    const standalone = router.claimDispatch({ ...args, runnerId: 'capacity-refused' });
+    expect(standalone).toMatchObject({ ok: false, code: 'live_runner_cap' });
+    expect(router.claimDispatchWithWake({ ...args, runnerId: 'capacity-refused' }))
+      .toEqual({ claim: standalone, nextAvailableAt: null });
+    expect(router.nextQueuedDispatchAt()).toBeNull();
     router.close();
   });
 

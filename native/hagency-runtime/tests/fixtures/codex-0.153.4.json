@@ -1,0 +1,410 @@
+{
+  "codexVersion": "0.153.4",
+  "source": "codex app-server generate-json-schema",
+  "documentation": "https://learn.chatgpt.com/docs/app-server",
+  "schemas": [
+    {
+      "path": "RequestId.json",
+      "sha256": "9c72d59a306d827113020c6d31a14c326d55210d9bd6954f825196a52009f1c7",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "format": "int64",
+            "type": "integer"
+          }
+        ],
+        "title": "RequestId"
+      }
+    },
+    {
+      "path": "JSONRPCRequest.json",
+      "sha256": "31bd6f360b2dd8a7ceaf682708105d40d38cb0b9d0821357a04da67028438f73",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "RequestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "int64",
+                "type": "integer"
+              }
+            ]
+          },
+          "W3cTraceContext": {
+            "properties": {
+              "traceparent": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "tracestate": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "type": "object"
+          }
+        },
+        "description": "A request that expects a response.",
+        "properties": {
+          "id": {
+            "$ref": "#/definitions/RequestId"
+          },
+          "method": {
+            "type": "string"
+          },
+          "params": true,
+          "trace": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/W3cTraceContext"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Optional W3C Trace Context for distributed tracing."
+          }
+        },
+        "required": [
+          "id",
+          "method"
+        ],
+        "title": "JSONRPCRequest",
+        "type": "object"
+      }
+    },
+    {
+      "path": "JSONRPCNotification.json",
+      "sha256": "c2b43f26880db331393fe09f34bdd76dfeb4dc30d8418d1c26e18db166d6c8c8",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "description": "A notification which does not expect a response.",
+        "properties": {
+          "method": {
+            "type": "string"
+          },
+          "params": true
+        },
+        "required": [
+          "method"
+        ],
+        "title": "JSONRPCNotification",
+        "type": "object"
+      }
+    },
+    {
+      "path": "JSONRPCResponse.json",
+      "sha256": "4796738c04c74288213a08fb8d820c7b4df19e0977cdcd35b65ffcb43cfc93ab",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "RequestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "int64",
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "description": "A successful (non-error) response to a request.",
+        "properties": {
+          "id": {
+            "$ref": "#/definitions/RequestId"
+          },
+          "result": true
+        },
+        "required": [
+          "id",
+          "result"
+        ],
+        "title": "JSONRPCResponse",
+        "type": "object"
+      }
+    },
+    {
+      "path": "JSONRPCError.json",
+      "sha256": "d7ea353d4875ae204625da5a00a1ecb5afc69101d5778b9acc253a49f8932992",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "JSONRPCErrorError": {
+            "properties": {
+              "code": {
+                "format": "int64",
+                "type": "integer"
+              },
+              "data": true,
+              "message": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "code",
+              "message"
+            ],
+            "type": "object"
+          },
+          "RequestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "int64",
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "description": "A response to a request that indicates an error occurred.",
+        "properties": {
+          "error": {
+            "$ref": "#/definitions/JSONRPCErrorError"
+          },
+          "id": {
+            "$ref": "#/definitions/RequestId"
+          }
+        },
+        "required": [
+          "error",
+          "id"
+        ],
+        "title": "JSONRPCError",
+        "type": "object"
+      }
+    },
+    {
+      "path": "v1/InitializeResponse.json",
+      "sha256": "62ad689c2cb6379913c1d72749cfd8de5089d35760214123518eb92eef11acc9",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "AbsolutePathBuf": {
+            "description": "A path that is guaranteed to be absolute and normalized (though it is not guaranteed to be canonicalized or exist on the filesystem).\n\nIMPORTANT: When deserializing an `AbsolutePathBuf`, a base path must be set using [AbsolutePathBufGuard::new]. If no base path is set, the deserialization will fail unless the path being deserialized is already absolute.",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "codexHome": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/AbsolutePathBuf"
+              }
+            ],
+            "description": "Absolute path to the server's $CODEX_HOME directory."
+          },
+          "platformFamily": {
+            "description": "Platform family for the running app-server target, for example `\"unix\"` or `\"windows\"`.",
+            "type": "string"
+          },
+          "platformOs": {
+            "description": "Operating system for the running app-server target, for example `\"macos\"`, `\"linux\"`, or `\"windows\"`.",
+            "type": "string"
+          },
+          "userAgent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "codexHome",
+          "platformFamily",
+          "platformOs",
+          "userAgent"
+        ],
+        "title": "InitializeResponse",
+        "type": "object"
+      }
+    },
+    {
+      "path": "v2/TurnInterruptParams.json",
+      "sha256": "6dff382dae73d1dbc58406ed045605f647e7a49660e2540fbd2c6c24d60c5f2b",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "properties": {
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "threadId",
+          "turnId"
+        ],
+        "title": "TurnInterruptParams",
+        "type": "object"
+      }
+    },
+    {
+      "path": "v2/TurnInterruptResponse.json",
+      "sha256": "531de6be06fe979b5963f249bab82498a175e614bf65ac12fb2e849dfe60bcf1",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "title": "TurnInterruptResponse",
+        "type": "object"
+      }
+    },
+    {
+      "path": "v2/ServerRequestResolvedNotification.json",
+      "sha256": "4f03d586a5af04edd912cad08cc97eceb658e7e06744565e6d41a93e04a55966",
+      "schema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "RequestId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "format": "int64",
+                "type": "integer"
+              }
+            ]
+          }
+        },
+        "properties": {
+          "requestId": {
+            "$ref": "#/definitions/RequestId"
+          },
+          "threadId": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "requestId",
+          "threadId"
+        ],
+        "title": "ServerRequestResolvedNotification",
+        "type": "object"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "kind": "request",
+      "message": {
+        "id": 0,
+        "method": "initialize",
+        "params": {
+          "clientInfo": {
+            "name": "hagency",
+            "version": "0.1.0"
+          }
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "message": {
+        "method": "initialized",
+        "params": {}
+      }
+    },
+    {
+      "kind": "response",
+      "message": {
+        "id": 0,
+        "result": null
+      }
+    },
+    {
+      "kind": "response",
+      "message": {
+        "id": "0",
+        "result": {
+          "thread": {
+            "id": "thread-fixture"
+          }
+        }
+      }
+    },
+    {
+      "kind": "error",
+      "message": {
+        "id": -1,
+        "error": {
+          "code": -32601,
+          "message": "unsupported",
+          "data": {
+            "type": "fixture"
+          }
+        }
+      }
+    },
+    {
+      "kind": "request",
+      "message": {
+        "id": "approval-fixture",
+        "method": "item/fileChange/requestApproval",
+        "params": {
+          "threadId": "thread-fixture",
+          "turnId": "turn-fixture",
+          "itemId": "item-fixture",
+          "reason": null
+        },
+        "trace": {
+          "traceparent": null,
+          "tracestate": null
+        }
+      }
+    },
+    {
+      "kind": "request",
+      "message": {
+        "id": 2,
+        "method": "turn/interrupt",
+        "params": {
+          "threadId": "thread-fixture",
+          "turnId": "turn-fixture"
+        }
+      }
+    },
+    {
+      "kind": "response",
+      "message": {
+        "id": 2,
+        "result": {}
+      }
+    },
+    {
+      "kind": "notification",
+      "message": {
+        "method": "turn/completed",
+        "params": {
+          "threadId": "thread-fixture",
+          "turn": {
+            "id": "turn-fixture",
+            "status": "interrupted",
+            "items": []
+          }
+        }
+      }
+    },
+    {
+      "kind": "notification",
+      "message": {
+        "method": "serverRequest/resolved",
+        "params": {
+          "threadId": "thread-fixture",
+          "requestId": "approval-fixture"
+        }
+      }
+    }
+  ]
+}

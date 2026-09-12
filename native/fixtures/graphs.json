@@ -1,0 +1,5119 @@
+{
+  "conditions": [
+    {
+      "name": "operand_0_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_0_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_0_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_0_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            null
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_0_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_0_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            null
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_1_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_1_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": false
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_1_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": false
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_1_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            false
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_1_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": false
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_1_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            false
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_2_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_2_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_2_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_2_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            true
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_2_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_2_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            true
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_3_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_3_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": 0
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_3_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": 0
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_3_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            0
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_3_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": 0
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_3_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            0
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_4_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_4_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": 0
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_4_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": 0
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_4_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            0
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_4_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": 0
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_4_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            0
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_5_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0.25,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_5_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": 0.25
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0.25,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_5_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": 0.25
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0.25,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_5_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            0.25
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0.25,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_5_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": 0.25
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0.25,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_5_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            0.25
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 0.25,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_6_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1e-7,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_6_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": 1e-7
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1e-7,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_6_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": 1e-7
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1e-7,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_6_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            1e-7
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1e-7,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_6_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": 1e-7
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1e-7,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_6_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            1e-7
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1e-7,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_7_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_7_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": ""
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_7_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": ""
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_7_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            ""
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_7_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": ""
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_7_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            ""
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_8_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "yes",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_8_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": "yes"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "yes",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_8_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": "yes"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "yes",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_8_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            "yes"
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "yes",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_8_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": "yes"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "yes",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_8_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            "yes"
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "yes",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_9_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_9_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": []
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_9_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": []
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_9_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            []
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_9_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": []
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_9_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            []
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_10_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_10_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": {}
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_10_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": {}
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_10_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            {}
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_10_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": {}
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_10_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            {}
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_11_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_11_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": [
+            1
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_11_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": [
+            1
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_11_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_11_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": [
+            1
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_11_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            [
+              1
+            ]
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_12_truth",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "dep": "dep"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "score": 0.5
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_12_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": {
+            "score": 0.5
+          }
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "score": 0.5
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_12_neq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "neq": {
+            "score": 0.5
+          }
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "score": 0.5
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "operand_12_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": [
+            {
+              "score": 0.5
+            }
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "score": 0.5
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_12_op_eq",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq",
+          "value": {
+            "score": 0.5
+          }
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "score": 0.5
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "operand_12_op_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "in",
+          "value": [
+            {
+              "score": 0.5
+            }
+          ]
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "score": 0.5
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "status_pending",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "pending",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "status_dispatched",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "dispatched",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "status_active",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "active",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "status_complete",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "status_failed",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "failed",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "status_skipped",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "skipped",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "status_cancelled",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": true
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "cancelled",
+          "result": true,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "missing_eq_null",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "absent",
+          "eq": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "missing_eq_missing",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "absent",
+          "op": "eq"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "null_eq_missing",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "eq"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "missing_neq_null",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "absent",
+          "neq": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "blocked_proto",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "safe.__proto__",
+          "eq": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "safe": {
+              "value": true
+            }
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "blocked_constructor",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "constructor"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "constructor": true
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "blocked_prototype",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "safe.prototype",
+          "op": "eq"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "safe": {
+              "prototype": 1
+            }
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "nested_fraction",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "safe.value",
+          "eq": 0.25
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "safe": {
+              "value": 0.25
+            }
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "field_alias",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "safe",
+          "eq": 2
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "safe": 2
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_index",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "1",
+          "eq": 0.25
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            0,
+            0.25
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_leading_zero",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "01",
+          "eq": 2
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1,
+            2
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "array_length",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "length",
+          "eq": 2
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [
+            1,
+            2
+          ],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "unicode_length",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "length",
+          "eq": 2
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "😀",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "unicode_codeunit_length",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "0.length",
+          "eq": 1
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "😀",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "unicode_not_replacement",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "0",
+          "eq": "�"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "😀",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "ascii_codeunit",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "1",
+          "eq": "b"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": "abc",
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "null_path",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "safe",
+          "eq": null
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": null,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "non_array_in",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "in": 1
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "unknown_op",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "op": "other"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "precedence",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "eq": 1,
+          "neq": 1,
+          "in": []
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": 1,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "empty_condition",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": null
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": false,
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype___defineGetter__",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "__defineGetter__"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype___defineSetter__",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "__defineSetter__"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype_hasOwnProperty",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "hasOwnProperty"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype___lookupGetter__",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "__lookupGetter__"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype___lookupSetter__",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "__lookupSetter__"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype_isPrototypeOf",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "isPrototypeOf"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype_propertyIsEnumerable",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "propertyIsEnumerable"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype_toString",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toString"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype_valueOf",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "valueOf"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "object_prototype_toLocaleString",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toLocaleString"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_at",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "at"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_concat",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "concat"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_copyWithin",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "copyWithin"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_fill",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "fill"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_find",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "find"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_findIndex",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "findIndex"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_findLast",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "findLast"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_findLastIndex",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "findLastIndex"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_lastIndexOf",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "lastIndexOf"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_pop",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "pop"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_push",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "push"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_reverse",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "reverse"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_shift",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "shift"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_unshift",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "unshift"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_slice",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "slice"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_sort",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "sort"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_splice",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "splice"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_includes",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "includes"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_indexOf",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "indexOf"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_join",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "join"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_keys",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "keys"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_entries",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "entries"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_values",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "values"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_forEach",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "forEach"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_filter",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "filter"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_flat",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "flat"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_flatMap",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "flatMap"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_map",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "map"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_every",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "every"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_some",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "some"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_reduce",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "reduce"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_reduceRight",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "reduceRight"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_toReversed",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toReversed"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_toSorted",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toSorted"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_toSpliced",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toSpliced"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_with",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "with"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_toLocaleString",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toLocaleString"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "array_prototype_toString",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toString"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": [],
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "own_toString",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toString"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {
+            "toString": false
+          },
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "function_not_traversed",
+      "node": {
+        "id": "next",
+        "assignee": "agent",
+        "description": "Verify dependency policy",
+        "depends_on": [
+          "dep"
+        ],
+        "condition": {
+          "path": "toString.length",
+          "op": "eq"
+        }
+      },
+      "progress": {
+        "dep": {
+          "status": "complete",
+          "result": {},
+          "error": null
+        },
+        "next": {
+          "status": "pending",
+          "result": null,
+          "error": null
+        }
+      },
+      "expected": true
+    }
+  ],
+  "transitions": [
+    {
+      "name": "root_and_wait",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "root_and_wait",
+          "nodes": [
+            {
+              "id": "a",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "b",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "a"
+              ],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "b": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "dispatched",
+            "result": null,
+            "error": null
+          },
+          "b": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": [
+          {
+            "node_id": "a",
+            "assignee": "agent",
+            "description": "Verify dependency policy",
+            "dependency_results": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "fraction_branch",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "fraction_branch",
+          "nodes": [
+            {
+              "id": "a",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "yes",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "a"
+              ],
+              "condition": {
+                "path": "score",
+                "eq": 0.25
+              }
+            },
+            {
+              "id": "no",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "a"
+              ],
+              "condition": {
+                "path": "score",
+                "eq": 0.5
+              }
+            },
+            {
+              "id": "after",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "no"
+              ],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "complete",
+            "result": {
+              "score": 0.25
+            },
+            "error": null
+          },
+          "yes": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "no": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "after": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "complete",
+            "result": {
+              "score": 0.25
+            },
+            "error": null
+          },
+          "yes": {
+            "status": "dispatched",
+            "result": null,
+            "error": null
+          },
+          "no": {
+            "status": "skipped",
+            "result": null,
+            "error": null
+          },
+          "after": {
+            "status": "dispatched",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": [
+          {
+            "node_id": "yes",
+            "assignee": "agent",
+            "description": "Verify dependency policy",
+            "dependency_results": [
+              {
+                "node_id": "a",
+                "assignee": "agent",
+                "result": {
+                  "score": 0.25
+                }
+              }
+            ]
+          },
+          {
+            "node_id": "after",
+            "assignee": "agent",
+            "description": "Verify dependency policy",
+            "dependency_results": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "reverse_failure",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "reverse_failure",
+          "nodes": [
+            {
+              "id": "z",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "y"
+              ],
+              "condition": null
+            },
+            {
+              "id": "y",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "x"
+              ],
+              "condition": null
+            },
+            {
+              "id": "x",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "z": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "y": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "x": {
+            "status": "failed",
+            "result": null,
+            "error": "task failed"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "progress": {
+          "z": {
+            "status": "failed",
+            "result": null,
+            "error": "dependency failed: y"
+          },
+          "y": {
+            "status": "failed",
+            "result": null,
+            "error": "dependency failed: x"
+          },
+          "x": {
+            "status": "failed",
+            "result": null,
+            "error": "task failed"
+          }
+        },
+        "assignments": []
+      }
+    },
+    {
+      "name": "cancelled_dependency",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "cancelled_dependency",
+          "nodes": [
+            {
+              "id": "a",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "b",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "a"
+              ],
+              "condition": null
+            },
+            {
+              "id": "c",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "cancelled",
+            "result": null,
+            "error": null
+          },
+          "b": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "c": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "cancelled",
+            "result": null,
+            "error": null
+          },
+          "b": {
+            "status": "failed",
+            "result": null,
+            "error": "dependency failed: a"
+          },
+          "c": {
+            "status": "dispatched",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": [
+          {
+            "node_id": "c",
+            "assignee": "agent",
+            "description": "Verify dependency policy",
+            "dependency_results": []
+          }
+        ]
+      }
+    },
+    {
+      "name": "all_terminal",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "all_terminal",
+          "nodes": [
+            {
+              "id": "a",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "b",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "complete",
+            "result": 0.25,
+            "error": null
+          },
+          "b": {
+            "status": "skipped",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "complete",
+        "progress": {
+          "a": {
+            "status": "complete",
+            "result": 0.25,
+            "error": null
+          },
+          "b": {
+            "status": "skipped",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": []
+      }
+    },
+    {
+      "name": "all_failed",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "all_failed",
+          "nodes": [
+            {
+              "id": "a",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "b",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "failed",
+            "result": null,
+            "error": "failed"
+          },
+          "b": {
+            "status": "complete",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "progress": {
+          "a": {
+            "status": "failed",
+            "result": null,
+            "error": "failed"
+          },
+          "b": {
+            "status": "complete",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": []
+      }
+    },
+    {
+      "name": "condition_wait",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "condition_wait",
+          "nodes": [
+            {
+              "id": "next",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": {
+                "dep": "root",
+                "eq": true
+              }
+            },
+            {
+              "id": "root",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "next": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "root": {
+            "status": "active",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "active",
+        "progress": {
+          "next": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "root": {
+            "status": "active",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": []
+      }
+    },
+    {
+      "name": "condition_failed",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "condition_failed",
+          "nodes": [
+            {
+              "id": "next",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": {
+                "dep": "root",
+                "eq": true
+              }
+            },
+            {
+              "id": "root",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "next": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "root": {
+            "status": "failed",
+            "result": null,
+            "error": "failed"
+          }
+        }
+      },
+      "expected": {
+        "status": "failed",
+        "progress": {
+          "next": {
+            "status": "skipped",
+            "result": null,
+            "error": null
+          },
+          "root": {
+            "status": "failed",
+            "result": null,
+            "error": "failed"
+          }
+        },
+        "assignments": []
+      }
+    },
+    {
+      "name": "multiple_results",
+      "cancel": false,
+      "graph": {
+        "definition": {
+          "label": "multiple_results",
+          "nodes": [
+            {
+              "id": "first",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "second",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "next",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "second",
+                "first"
+              ],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "first": {
+            "status": "complete",
+            "result": 0.25,
+            "error": null
+          },
+          "second": {
+            "status": "complete",
+            "result": {
+              "summary": "ok"
+            },
+            "error": null
+          },
+          "next": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "active",
+        "progress": {
+          "first": {
+            "status": "complete",
+            "result": 0.25,
+            "error": null
+          },
+          "second": {
+            "status": "complete",
+            "result": {
+              "summary": "ok"
+            },
+            "error": null
+          },
+          "next": {
+            "status": "dispatched",
+            "result": null,
+            "error": null
+          }
+        },
+        "assignments": [
+          {
+            "node_id": "next",
+            "assignee": "agent",
+            "description": "Verify dependency policy",
+            "dependency_results": [
+              {
+                "node_id": "second",
+                "assignee": "agent",
+                "result": {
+                  "summary": "ok"
+                }
+              },
+              {
+                "node_id": "first",
+                "assignee": "agent",
+                "result": 0.25
+              }
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "cancel",
+      "cancel": true,
+      "graph": {
+        "definition": {
+          "label": "cancel",
+          "nodes": [
+            {
+              "id": "a",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            },
+            {
+              "id": "b",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [
+                "a"
+              ],
+              "condition": null
+            },
+            {
+              "id": "c",
+              "assignee": "agent",
+              "description": "Verify dependency policy",
+              "depends_on": [],
+              "condition": null
+            }
+          ]
+        },
+        "status": "active",
+        "progress": {
+          "a": {
+            "status": "active",
+            "result": null,
+            "error": null
+          },
+          "b": {
+            "status": "pending",
+            "result": null,
+            "error": null
+          },
+          "c": {
+            "status": "complete",
+            "result": 42,
+            "error": null
+          }
+        }
+      },
+      "expected": {
+        "status": "cancelled",
+        "progress": {
+          "a": {
+            "status": "cancelled",
+            "result": null,
+            "error": null
+          },
+          "b": {
+            "status": "cancelled",
+            "result": null,
+            "error": null
+          },
+          "c": {
+            "status": "complete",
+            "result": 42,
+            "error": null
+          }
+        },
+        "assignments": []
+      }
+    }
+  ]
+}

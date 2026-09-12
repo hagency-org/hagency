@@ -102,7 +102,13 @@ export declare class RouterStore {
         branchName?: string | null;
     }): void;
     claimDispatch(input: ClaimDispatchInput): ClaimResult;
+    claimDispatchWithWake(input: ClaimDispatchInput): {
+        claim: ClaimResult;
+        nextAvailableAt: number | null;
+    };
+    private claimDispatchObserved;
     nextQueuedDispatchAt(): number | null;
+    private nextQueuedDispatchAfter;
     getLaunchDescriptor(input: CapabilityInput): LaunchDescriptor | Refusal;
     private validateCapability;
     takePayload(input: CapabilityInput): StartedPayload | Refusal;

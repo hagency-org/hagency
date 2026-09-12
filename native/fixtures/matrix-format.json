@@ -1,0 +1,908 @@
+{
+  "sourceSha256": "0b01da76eb72b9bcde4aed56daf5faa75637420c8edc32d02a3ea9f2955e23c7",
+  "oracleLockSha256": "537860d96e1c26b4600093161dd3d227c74cff3012b91ee61ba21b345fa236b2",
+  "versions": {
+    "markdown-it": "15.0.1",
+    "sanitize-html": "2.17.7",
+    "linkify-it": "6.1.0"
+  },
+  "vectors": [
+    {
+      "name": "empty",
+      "input": {
+        "msgtype": "m.text",
+        "body": ""
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "",
+        "format": "org.matrix.custom.html",
+        "formatted_body": ""
+      }
+    },
+    {
+      "name": "invalid definition keeps paragraph continuation",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[bad]: javascript:x\nordinary"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[bad]: javascript:x\nordinary",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>[bad]: javascript:x<br />\nordinary</p>\n"
+      }
+    },
+    {
+      "name": "invalid definition before valid repeated identifier",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[x][id]\n\n[id]: javascript:x\n\n[id]: https://example.org"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[x][id]\n\n[id]: javascript:x\n\n[id]: https://example.org",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org\">x</a></p>\n<p><a href=\"https://example.org\">id</a>: javascript:x</p>\n"
+      }
+    },
+    {
+      "name": "IDN normalization retains raw punycode policy",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[x](https://ＥＸＡＭＰＬＥ.com) https://xn--fsqu00a.xn--fiqs8s/"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[x](https://ＥＸＡＭＰＬＥ.com) https://xn--fsqu00a.xn--fiqs8s/",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://xn--ph7chab1aes7c.com\">x</a> <a href=\"https://xn--fsqu00a.xn--fiqs8s/\">https://例子.中国/</a></p>\n"
+      }
+    },
+    {
+      "name": "FTP punctuation and unknown protocol",
+      "input": {
+        "msgtype": "m.text",
+        "body": "www.example.org/x http:example.org ftp://x.test/a。next"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "www.example.org/x http:example.org ftp://x.test/a。next",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>www.example.org/x http:example.org <a>ftp://x.test/a</a>。next</p>\n"
+      }
+    },
+    {
+      "name": "entity in automatic URL",
+      "input": {
+        "msgtype": "m.text",
+        "body": "https://x.test?a=1&amp;b=2"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "https://x.test?a=1&amp;b=2",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://x.test?a=1&amp;amp;b=2\">https://x.test?a=1&amp;amp;b=2</a></p>\n"
+      }
+    },
+    {
+      "name": "unsafe image reference",
+      "input": {
+        "msgtype": "m.text",
+        "body": "![alt][bad]\n\n[bad]: javascript:alert(1)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "![alt][bad]\n\n[bad]: javascript:alert(1)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>![alt][bad]</p>\n<p>[bad]: javascript:alert(1)</p>\n"
+      }
+    },
+    {
+      "name": "unsafe image inline",
+      "input": {
+        "msgtype": "m.text",
+        "body": "![**alt**](javascript:alert(1))"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "![**alt**](javascript:alert(1))",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>![<strong>alt</strong>](javascript:alert(1))</p>\n"
+      }
+    },
+    {
+      "name": "data image hyperlink",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[pic](data:image/png;base64,AAAA)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[pic](data:image/png;base64,AAAA)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a>pic</a></p>\n"
+      }
+    },
+    {
+      "name": "empty title",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[t](https://example.org \"\")"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[t](https://example.org \"\")",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org\">t</a></p>\n"
+      }
+    },
+    {
+      "name": "IPv6 and port",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[v](https://[::1]:8443/path) [p](https://example.org:443/path)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[v](https://[::1]:8443/path) [p](https://example.org:443/path)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://[::1]:8443/path\">v</a> <a href=\"https://example.org:443/path\">p</a></p>\n"
+      }
+    },
+    {
+      "name": "scheme case",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[a](HTTPS://Example.ORG/path) HTTPS://EXAMPLE.ORG/"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[a](HTTPS://Example.ORG/path) HTTPS://EXAMPLE.ORG/",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"HTTPS://Example.ORG/path\">a</a> <a href=\"HTTPS://EXAMPLE.ORG/\">HTTPS://EXAMPLE.ORG/</a></p>\n"
+      }
+    },
+    {
+      "name": "dangerous relative lookalikes",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[a](java&#10;script:bad) [b](/\\evil) [c](https://example.org/a%22onload%3Devil)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[a](java&#10;script:bad) [b](/\\evil) [c](https://example.org/a%22onload%3Devil)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"java%0Ascript:bad\">a</a> <a href=\"/%5Cevil\">b</a> <a href=\"https://example.org/a%22onload%3Devil\">c</a></p>\n"
+      }
+    },
+    {
+      "name": "emphasis source map regression",
+      "input": {
+        "msgtype": "m.text",
+        "body": "> *a*\n> ["
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "> *a*\n> [",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<blockquote>\n<p><em>a</em><br />\n[</p>\n</blockquote>\n"
+      }
+    },
+    {
+      "name": "percent display",
+      "input": {
+        "msgtype": "m.text",
+        "body": "<https://example.org/a%20b> https://example.org/%E4%BD%A0%E5%A5%BD"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "<https://example.org/a%20b> https://example.org/%E4%BD%A0%E5%A5%BD",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org/a%20b\">https://example.org/a b</a> <a href=\"https://example.org/%E4%BD%A0%E5%A5%BD\">https://example.org/你好</a></p>\n"
+      }
+    },
+    {
+      "name": "Unicode punctuation boundary",
+      "input": {
+        "msgtype": "m.text",
+        "body": "https://example.org/a。next https://example.org/b，later"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "https://example.org/a。next https://example.org/b，later",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org/a\">https://example.org/a</a>。next <a href=\"https://example.org/b\">https://example.org/b</a>，later</p>\n"
+      }
+    },
+    {
+      "name": "nested tables and quote",
+      "input": {
+        "msgtype": "m.text",
+        "body": "> | a | b |\n> |---|---|\n> | c | d |"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "> | a | b |\n> |---|---|\n> | c | d |",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<blockquote>\n<table>\n<thead>\n<tr>\n<th>a</th>\n<th>b</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td>c</td>\n<td>d</td>\n</tr>\n</tbody>\n</table>\n</blockquote>\n"
+      }
+    },
+    {
+      "name": "empty code",
+      "input": {
+        "msgtype": "m.text",
+        "body": "```\n```"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "```\n```",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<pre><code></code></pre>\n"
+      }
+    },
+    {
+      "name": "unusual list starts",
+      "input": {
+        "msgtype": "m.text",
+        "body": "0. zero\n1. one"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "0. zero\n1. one",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<ol start=\"0\">\n<li>zero</li>\n<li>one</li>\n</ol>\n"
+      }
+    },
+    {
+      "name": "empty link and quote title",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[empty]() [title](https://example.org \"a &quot;b&quot;\")"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[empty]() [title](https://example.org \"a &quot;b&quot;\")",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a>empty</a> <a href=\"https://example.org\" title=\"a &quot;b&quot;\">title</a></p>\n"
+      }
+    },
+    {
+      "name": "Unicode plaintext",
+      "input": {
+        "msgtype": "m.text",
+        "body": "你好 Edison 🙂 café"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "你好 Edison 🙂 café",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>你好 Edison 🙂 café</p>\n"
+      }
+    },
+    {
+      "name": "paragraphs and breaks",
+      "input": {
+        "msgtype": "m.text",
+        "body": "first\nsecond\n\nthird  \nfourth\\\nfifth"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "first\nsecond\n\nthird  \nfourth\\\nfifth",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>first<br />\nsecond</p>\n<p>third<br />\nfourth<br />\nfifth</p>\n"
+      }
+    },
+    {
+      "name": "headings and emphasis",
+      "input": {
+        "msgtype": "m.text",
+        "body": "# Title\n## 二\n### Three\n#### Four\n##### Five\n###### Six\n**bold** *em* ~~strike~~ __bold__ _em_"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "# Title\n## 二\n### Three\n#### Four\n##### Five\n###### Six\n**bold** *em* ~~strike~~ __bold__ _em_",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<h1>Title</h1>\n<h2>二</h2>\n<h3>Three</h3>\n<h4>Four</h4>\n<h5>Five</h5>\n<h6>Six</h6>\n<p><strong>bold</strong> <em>em</em> <s>strike</s> <strong>bold</strong> <em>em</em></p>\n"
+      }
+    },
+    {
+      "name": "list and quote",
+      "input": {
+        "msgtype": "m.text",
+        "body": "> quote\n>\n> - first\n> - second\n\n3. three\n4. four\n\n---"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "> quote\n>\n> - first\n> - second\n\n3. three\n4. four\n\n---",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<blockquote>\n<p>quote</p>\n<ul>\n<li>first</li>\n<li>second</li>\n</ul>\n</blockquote>\n<ol start=\"3\">\n<li>three</li>\n<li>four</li>\n</ol>\n<hr />\n"
+      }
+    },
+    {
+      "name": "nested list",
+      "input": {
+        "msgtype": "m.text",
+        "body": "- first\n  - inner\n\n    next paragraph\n- second"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "- first\n  - inner\n\n    next paragraph\n- second",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<ul>\n<li>first\n<ul>\n<li>\n<p>inner</p>\n<p>next paragraph</p>\n</li>\n</ul>\n</li>\n<li>second</li>\n</ul>\n"
+      }
+    },
+    {
+      "name": "inline and fenced code",
+      "input": {
+        "msgtype": "m.text",
+        "body": "`<tag> & \"x\"`\n\n```js extra\nconst x = \"<script>\";\n```\n\n    indented & <code>"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "`<tag> & \"x\"`\n\n```js extra\nconst x = \"<script>\";\n```\n\n    indented & <code>",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><code>&lt;tag&gt; &amp; \"x\"</code></p>\n<pre><code class=\"language-js\">const x = \"&lt;script&gt;\";\n</code></pre>\n<pre><code>indented &amp; &lt;code&gt;\n</code></pre>\n"
+      }
+    },
+    {
+      "name": "tables",
+      "input": {
+        "msgtype": "m.text",
+        "body": "| left | right | center |\n|:--|--:|:--:|\n| **bold** | `x` | 中 |"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "| left | right | center |\n|:--|--:|:--:|\n| **bold** | `x` | 中 |",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<table>\n<thead>\n<tr>\n<th>left</th>\n<th>right</th>\n<th>center</th>\n</tr>\n</thead>\n<tbody>\n<tr>\n<td><strong>bold</strong></td>\n<td><code>x</code></td>\n<td>中</td>\n</tr>\n</tbody>\n</table>\n"
+      }
+    },
+    {
+      "name": "raw HTML",
+      "input": {
+        "msgtype": "m.text",
+        "body": "<div>**bold**</div>\n<script>alert(1)</script>\n<!-- comment -->\n<svg onload=\"bad\">text</svg>"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "<div>**bold**</div>\n<script>alert(1)</script>\n<!-- comment -->\n<svg onload=\"bad\">text</svg>",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>&lt;div&gt;<strong>bold</strong>&lt;/div&gt;<br />\n&lt;script&gt;alert(1)&lt;/script&gt;<br />\n&lt;!-- comment --&gt;<br />\n&lt;svg onload=\"bad\"&gt;text&lt;/svg&gt;</p>\n"
+      }
+    },
+    {
+      "name": "HTML entities",
+      "input": {
+        "msgtype": "m.text",
+        "body": "A &quot; &amp; &#x27; &#60; &#x3e; &#0; &copy; &notit; &unknown; ' \" > <"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "A &quot; &amp; &#x27; &#60; &#x3e; &#0; &copy; &notit; &unknown; ' \" > <",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>A \" &amp; ' &lt; &gt; � © &amp;notit; &amp;unknown; ' \" &gt; &lt;</p>\n"
+      }
+    },
+    {
+      "name": "safe explicit links",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[a](https://example.org/a?x=1&y=2 \"title & more\") [b](http://example.org) [c](mailto:a@example.org) [m](matrix:u/alice:example.org)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[a](https://example.org/a?x=1&y=2 \"title & more\") [b](http://example.org) [c](mailto:a@example.org) [m](matrix:u/alice:example.org)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org/a?x=1&amp;y=2\" title=\"title &amp; more\">a</a> <a href=\"http://example.org\">b</a> <a href=\"mailto:a@example.org\">c</a> <a href=\"matrix:u/alice:example.org\">m</a></p>\n"
+      }
+    },
+    {
+      "name": "relative and unknown links",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[a](/foo) [r](//evil.test) [b](foo:bar) [c](#anchor) [d](../path) [e](?q=1)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[a](/foo) [r](//evil.test) [b](foo:bar) [c](#anchor) [d](../path) [e](?q=1)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"/foo\">a</a> <a>r</a> <a>b</a> <a href=\"#anchor\">c</a> <a href=\"../path\">d</a> <a href=\"?q=1\">e</a></p>\n"
+      }
+    },
+    {
+      "name": "unsafe schemes",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[a](javascript:alert(1)) [b](JaVaScRiPt:bad) [c](vbscript:bad) [d](file:///tmp/private) [e](data:text/html,bad)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[a](javascript:alert(1)) [b](JaVaScRiPt:bad) [c](vbscript:bad) [d](file:///tmp/private) [e](data:text/html,bad)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>[a](javascript:alert(1)) [b](JaVaScRiPt:bad) [c](vbscript:bad) [d](file:///tmp/private) [e](data:text/html,bad)</p>\n"
+      }
+    },
+    {
+      "name": "obfuscated links",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[a](jav&#x61;script:bad) [b](java&#x09;script:bad) [c](\\\\evil.test) [d](https://good.test/\"onclick=\"bad)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[a](jav&#x61;script:bad) [b](java&#x09;script:bad) [c](\\\\evil.test) [d](https://good.test/\"onclick=\"bad)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>[a](javascript:bad) <a href=\"java%09script:bad\">b</a> <a href=\"%5Cevil.test\">c</a> <a href=\"https://good.test/%22onclick=%22bad\">d</a></p>\n"
+      }
+    },
+    {
+      "name": "generated images",
+      "input": {
+        "msgtype": "m.text",
+        "body": "before ![secret **alt**](https://example.org/a.png \"title\") after\n\n![only](data:image/png;base64,AAAA)"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "before ![secret **alt**](https://example.org/a.png \"title\") after\n\n![only](data:image/png;base64,AAAA)",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>before  after</p>\n<p></p>\n"
+      }
+    },
+    {
+      "name": "automatic links",
+      "input": {
+        "msgtype": "m.text",
+        "body": "https://example.org/a?q=1&b=2 and http://example.org. email@example.org ftp://example.org/x"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "https://example.org/a?q=1&b=2 and http://example.org. email@example.org ftp://example.org/x",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org/a?q=1&amp;b=2\">https://example.org/a?q=1&amp;b=2</a> and <a href=\"http://example.org\">http://example.org</a>. <a href=\"mailto:email@example.org\">email@example.org</a> <a>ftp://example.org/x</a></p>\n"
+      }
+    },
+    {
+      "name": "no fuzzy domains",
+      "input": {
+        "msgtype": "m.text",
+        "body": "www.example.org example.org test@example.org"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "www.example.org example.org test@example.org",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>www.example.org example.org <a href=\"mailto:test@example.org\">test@example.org</a></p>\n"
+      }
+    },
+    {
+      "name": "links in protected content",
+      "input": {
+        "msgtype": "m.text",
+        "body": "`https://code.test` [https://label.test](https://target.test) ![https://alt.test](https://image.test)\n\n```\nhttps://fence.test\n```"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "`https://code.test` [https://label.test](https://target.test) ![https://alt.test](https://image.test)\n\n```\nhttps://fence.test\n```",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><code>https://code.test</code> <a href=\"https://target.test\">https://label.test</a> </p>\n<pre><code>https://fence.test\n</code></pre>\n"
+      }
+    },
+    {
+      "name": "automatic punctuation",
+      "input": {
+        "msgtype": "m.text",
+        "body": "(https://example.org/a_(b)). https://example.org/foo, done."
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "(https://example.org/a_(b)). https://example.org/foo, done.",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>(<a href=\"https://example.org/a_(b)\">https://example.org/a_(b)</a>). <a href=\"https://example.org/foo\">https://example.org/foo</a>, done.</p>\n"
+      }
+    },
+    {
+      "name": "IDN and Unicode paths",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[中文](https://例子.中国/你好) https://例子.中国/你好。"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[中文](https://例子.中国/你好) https://例子.中国/你好。",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://xn--fsqu00a.xn--fiqs8s/%E4%BD%A0%E5%A5%BD\">中文</a> <a href=\"https://xn--fsqu00a.xn--fiqs8s/%E4%BD%A0%E5%A5%BD\">https://例子.中国/你好</a>。</p>\n"
+      }
+    },
+    {
+      "name": "autolinks",
+      "input": {
+        "msgtype": "m.text",
+        "body": "<https://example.org/a?x=1&y=2> <person@example.org>"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "<https://example.org/a?x=1&y=2> <person@example.org>",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org/a?x=1&amp;y=2\">https://example.org/a?x=1&amp;y=2</a> <a href=\"mailto:person@example.org\">person@example.org</a></p>\n"
+      }
+    },
+    {
+      "name": "references",
+      "input": {
+        "msgtype": "m.text",
+        "body": "[first][id] [id][]\n\n[id]: https://example.org \"ref\""
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "[first][id] [id][]\n\n[id]: https://example.org \"ref\"",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><a href=\"https://example.org\" title=\"ref\">first</a> <a href=\"https://example.org\" title=\"ref\">id</a></p>\n"
+      }
+    },
+    {
+      "name": "raw HTML block Markdown",
+      "input": {
+        "msgtype": "m.text",
+        "body": "<section>\n**still bold**\n</section>"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "<section>\n**still bold**\n</section>",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>&lt;section&gt;<br />\n<strong>still bold</strong><br />\n&lt;/section&gt;</p>\n"
+      }
+    },
+    {
+      "name": "null and CRLF",
+      "input": {
+        "msgtype": "m.text",
+        "body": "a\u0000b\r\nc\rd"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "a\u0000b\r\nc\rd",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>a�b<br />\nc<br />\nd</p>\n"
+      }
+    },
+    {
+      "name": "linkifier lookahead regression",
+      "input": {
+        "msgtype": "m.text",
+        "body": "Hello world abcde[https://example.com/x](y)\n b[tp:///"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "Hello world abcde[https://example.com/x](y)\n b[tp:///",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>Hello world abcde<a href=\"y\">https://example.com/x</a><br />\n b[tp:///</p>\n"
+      }
+    },
+    {
+      "name": "notice thread",
+      "input": {
+        "msgtype": "m.notice",
+        "body": "**notice**",
+        "m.relates_to": {
+          "rel_type": "m.thread",
+          "event_id": "$root",
+          "m.in_reply_to": {
+            "event_id": "$reply"
+          },
+          "is_falling_back": false
+        },
+        "m.mentions": {
+          "user_ids": [
+            "@edison:example.org"
+          ]
+        }
+      },
+      "expected": {
+        "msgtype": "m.notice",
+        "body": "**notice**",
+        "m.relates_to": {
+          "rel_type": "m.thread",
+          "event_id": "$root",
+          "m.in_reply_to": {
+            "event_id": "$reply"
+          },
+          "is_falling_back": false
+        },
+        "m.mentions": {
+          "user_ids": [
+            "@edison:example.org"
+          ]
+        },
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><strong>notice</strong></p>\n"
+      }
+    },
+    {
+      "name": "direct null root",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**direct**",
+        "m.relates_to": null
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**direct**",
+        "m.relates_to": null,
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p><strong>direct</strong></p>\n"
+      }
+    },
+    {
+      "name": "replacement",
+      "input": {
+        "msgtype": "m.text",
+        "body": "* replacement",
+        "m.relates_to": {
+          "rel_type": "m.replace",
+          "event_id": "$prior"
+        },
+        "m.new_content": {
+          "msgtype": "m.text",
+          "body": "**new**"
+        }
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "* replacement",
+        "m.relates_to": {
+          "rel_type": "m.replace",
+          "event_id": "$prior"
+        },
+        "m.new_content": {
+          "msgtype": "m.text",
+          "body": "**new**",
+          "format": "org.matrix.custom.html",
+          "formatted_body": "<p><strong>new</strong></p>\n"
+        },
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<ul>\n<li>replacement</li>\n</ul>\n"
+      }
+    },
+    {
+      "name": "existing formatted HTML",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**plain**",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<span data-existing=\"yes\">already formatted</span>",
+        "m.relates_to": {
+          "rel_type": "m.thread",
+          "event_id": "$root"
+        }
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**plain**",
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<span data-existing=\"yes\">already formatted</span>",
+        "m.relates_to": {
+          "rel_type": "m.thread",
+          "event_id": "$root"
+        }
+      }
+    },
+    {
+      "name": "supplied HTML is not a sanitizer input",
+      "input": {
+        "msgtype": "m.text",
+        "body": "plain",
+        "formatted_body": "<script>caller trusted this</script>"
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "plain",
+        "formatted_body": "<script>caller trusted this</script>"
+      }
+    },
+    {
+      "name": "formatted truthiness \"\"",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": ""
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": "<p><strong>body</strong></p>\n",
+        "format": "org.matrix.custom.html"
+      }
+    },
+    {
+      "name": "formatted truthiness null",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": null
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": "<p><strong>body</strong></p>\n",
+        "format": "org.matrix.custom.html"
+      }
+    },
+    {
+      "name": "formatted truthiness false",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": false
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": "<p><strong>body</strong></p>\n",
+        "format": "org.matrix.custom.html"
+      }
+    },
+    {
+      "name": "formatted truthiness 0",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": 0
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": "<p><strong>body</strong></p>\n",
+        "format": "org.matrix.custom.html"
+      }
+    },
+    {
+      "name": "formatted truthiness true",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": true
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": true
+      }
+    },
+    {
+      "name": "formatted truthiness []",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": []
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": []
+      }
+    },
+    {
+      "name": "formatted truthiness {}",
+      "input": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": {}
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "**body**",
+        "formatted_body": {}
+      }
+    },
+    {
+      "name": "passthrough m.image",
+      "input": {
+        "msgtype": "m.image",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      },
+      "expected": {
+        "msgtype": "m.image",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      }
+    },
+    {
+      "name": "passthrough m.file",
+      "input": {
+        "msgtype": "m.file",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      },
+      "expected": {
+        "msgtype": "m.file",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      }
+    },
+    {
+      "name": "passthrough m.audio",
+      "input": {
+        "msgtype": "m.audio",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      },
+      "expected": {
+        "msgtype": "m.audio",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      }
+    },
+    {
+      "name": "passthrough m.emote",
+      "input": {
+        "msgtype": "m.emote",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      },
+      "expected": {
+        "msgtype": "m.emote",
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      }
+    },
+    {
+      "name": "passthrough null",
+      "input": {
+        "msgtype": null,
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      },
+      "expected": {
+        "msgtype": null,
+        "body": "**body**",
+        "url": "mxc://example.org/media"
+      }
+    },
+    {
+      "name": "nonstring body",
+      "input": {
+        "msgtype": "m.text",
+        "body": 42
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": 42
+      }
+    },
+    {
+      "name": "nested edit",
+      "input": {
+        "msgtype": "m.text",
+        "body": "first",
+        "m.new_content": {
+          "msgtype": "m.notice",
+          "body": "*second*",
+          "m.new_content": {
+            "msgtype": "m.text",
+            "body": "`third`"
+          }
+        }
+      },
+      "expected": {
+        "msgtype": "m.text",
+        "body": "first",
+        "m.new_content": {
+          "msgtype": "m.notice",
+          "body": "*second*",
+          "m.new_content": {
+            "msgtype": "m.text",
+            "body": "`third`",
+            "format": "org.matrix.custom.html",
+            "formatted_body": "<p><code>third</code></p>\n"
+          },
+          "format": "org.matrix.custom.html",
+          "formatted_body": "<p><em>second</em></p>\n"
+        },
+        "format": "org.matrix.custom.html",
+        "formatted_body": "<p>first</p>\n"
+      }
+    }
+  ]
+}

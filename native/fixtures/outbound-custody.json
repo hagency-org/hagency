@@ -1,0 +1,96 @@
+{
+  "source": "JavaScript JSON.stringify canonical encoder; opaque data, not authority DTOs",
+  "vectors": [
+    {
+      "input": {
+        "lane": "matrix",
+        "kind": "transaction",
+        "payload": {
+          "transactionId": "fixture-tx",
+          "body": {
+            "events": [
+              {
+                "type": "m.room.message",
+                "content": {
+                  "body": "小白",
+                  "weight": 0.125,
+                  "__proto__": {
+                    "opaque": "data"
+                  }
+                }
+              }
+            ],
+            "ephemeral": [
+              {
+                "type": "m.typing",
+                "content": {
+                  "weight": 1.25
+                }
+              }
+            ],
+            "to_device": [
+              {
+                "content": {
+                  "key": "fixture"
+                }
+              }
+            ],
+            "device_lists": {
+              "changed": [
+                "@fixture:example.test"
+              ]
+            },
+            "device_one_time_keys_count": {
+              "@fixture:example.test": {
+                "DEVICE": {
+                  "signed_curve25519": 7
+                }
+              }
+            }
+          }
+        }
+      },
+      "canonical": "{\"kind\":\"transaction\",\"lane\":\"matrix\",\"payload\":{\"body\":{\"device_lists\":{\"changed\":[\"@fixture:example.test\"]},\"device_one_time_keys_count\":{\"@fixture:example.test\":{\"DEVICE\":{\"signed_curve25519\":7}}},\"ephemeral\":[{\"content\":{\"weight\":1.25},\"type\":\"m.typing\"}],\"events\":[{\"content\":{\"__proto__\":{\"opaque\":\"data\"},\"body\":\"小白\",\"weight\":0.125},\"type\":\"m.room.message\"}],\"to_device\":[{\"content\":{\"key\":\"fixture\"}}]},\"transactionId\":\"fixture-tx\"}}",
+      "sha256": "121b5c9ed328335c3922cf5de7762a652b578c1d699e5aa4e29e4c555858d00f"
+    },
+    {
+      "input": {
+        "lane": "work",
+        "kind": "request",
+        "payload": {
+          "requestId": "fixture-request",
+          "agentDefinition": {
+            "temperature": 0.25
+          },
+          "requestedTokens": 100000
+        }
+      },
+      "canonical": "{\"kind\":\"request\",\"lane\":\"work\",\"payload\":{\"agentDefinition\":{\"temperature\":0.25},\"requestId\":\"fixture-request\",\"requestedTokens\":100000}}",
+      "sha256": "55076a1989106b7d7a5f49d02db9fdabcab4519c463132ec0ee08e9a369122d1"
+    },
+    {
+      "input": {
+        "lane": "matrix",
+        "kind": "transaction",
+        "payload": {
+          "transactionId": "number-fixture",
+          "body": {
+            "events": [],
+            "fraction": 1e-7,
+            "large": 1e+21,
+            "negativeZero": 0,
+            "keys": {
+              "2": 2,
+              "10": 10,
+              "4294967295": 1,
+              "😀": 3,
+              "￿": 4
+            }
+          }
+        }
+      },
+      "canonical": "{\"kind\":\"transaction\",\"lane\":\"matrix\",\"payload\":{\"body\":{\"events\":[],\"fraction\":1e-7,\"keys\":{\"2\":2,\"10\":10,\"4294967295\":1,\"😀\":3,\"￿\":4},\"large\":1e+21,\"negativeZero\":0},\"transactionId\":\"number-fixture\"}}",
+      "sha256": "ed4ec1c90ca28d4bdca4d97296d3d2227f0a01bb9925e777e31d915d0eb4c530"
+    }
+  ]
+}

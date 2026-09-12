@@ -1,0 +1,3713 @@
+{
+  "cases": [
+    {
+      "profile": null,
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {},
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "unrecognized"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "anthropic"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": ""
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "anthropic",
+        "reasoning": ""
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "anthropic",
+        "reasoning": "low"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "anthropic",
+        "reasoning": "medium"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "anthropic",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-opus-5",
+        "provider": "anthropic",
+        "reasoning": "unexpected"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "openai",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "contradictory",
+        "reasoning": "high"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "openai"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "openai",
+        "reasoning": ""
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "openai",
+        "reasoning": "low"
+      },
+      "tier": "lightweight",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "openai",
+        "reasoning": "medium"
+      },
+      "tier": "medium",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "openai",
+        "reasoning": "unexpected"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "moonshot"
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3"
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": ""
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "moonshot",
+        "reasoning": ""
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "moonshot",
+        "reasoning": "low"
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "moonshot",
+        "reasoning": "medium"
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "moonshot",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "kimi-k3",
+        "provider": "moonshot",
+        "reasoning": "unexpected"
+      },
+      "tier": "strong",
+      "family": "kimi",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": ""
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": ""
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "low"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "medium"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "unexpected"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "anthropic"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": ""
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "anthropic",
+        "reasoning": ""
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "anthropic",
+        "reasoning": "low"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "anthropic",
+        "reasoning": "medium"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "anthropic",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5-1",
+        "provider": "anthropic",
+        "reasoning": "unexpected"
+      },
+      "tier": "strong",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": ""
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": ""
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "low"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "medium"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "high"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "hermes",
+        "model": "deepseek-v-flash",
+        "provider": "deepseek",
+        "reasoning": "unexpected"
+      },
+      "tier": "strong",
+      "family": "deepseek",
+      "roles": {
+        "architect": {
+          "default": true,
+          "lightweight": true
+        },
+        "review": {
+          "default": true,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "anthropic"
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5"
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": ""
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "anthropic",
+        "reasoning": ""
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "anthropic",
+        "reasoning": "low"
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "anthropic",
+        "reasoning": "medium"
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "anthropic",
+        "reasoning": "high"
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-sonnet-5",
+        "provider": "anthropic",
+        "reasoning": "unexpected"
+      },
+      "tier": "medium",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning": "medium"
+      },
+      "tier": "medium",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "",
+        "reasoning": "medium"
+      },
+      "tier": "medium",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "contradictory",
+        "reasoning": "medium"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "google"
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini"
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": ""
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "google",
+        "reasoning": ""
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "google",
+        "reasoning": "low"
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "google",
+        "reasoning": "medium"
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "google",
+        "reasoning": "high"
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "octos",
+        "model": "gemini",
+        "provider": "google",
+        "reasoning": "unexpected"
+      },
+      "tier": "medium",
+      "family": "gemini",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": true,
+          "lightweight": true
+        },
+        "testing": {
+          "default": true,
+          "lightweight": true
+        },
+        "integration": {
+          "default": true,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "anthropic"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": ""
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "anthropic",
+        "reasoning": ""
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "anthropic",
+        "reasoning": "low"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "anthropic",
+        "reasoning": "medium"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "anthropic",
+        "reasoning": "high"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-haiku-4-5",
+        "provider": "anthropic",
+        "reasoning": "unexpected"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "anthropic"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": ""
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "contradictory"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "anthropic",
+        "reasoning": ""
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "anthropic",
+        "reasoning": "low"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "anthropic",
+        "reasoning": "medium"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "anthropic",
+        "reasoning": "high"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "claude",
+        "model": "claude-fable-5",
+        "provider": "anthropic",
+        "reasoning": "unexpected"
+      },
+      "tier": "lightweight",
+      "family": "claude",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "reasoning": "low"
+      },
+      "tier": "lightweight",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "",
+        "reasoning": "low"
+      },
+      "tier": "lightweight",
+      "family": "gpt",
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": true
+        },
+        "review": {
+          "default": false,
+          "lightweight": true
+        },
+        "coding": {
+          "default": false,
+          "lightweight": true
+        },
+        "testing": {
+          "default": false,
+          "lightweight": true
+        },
+        "integration": {
+          "default": false,
+          "lightweight": true
+        },
+        "documentation": {
+          "default": true,
+          "lightweight": true
+        }
+      }
+    },
+    {
+      "profile": {
+        "framework": "codex",
+        "model": "gpt-5.6-sol",
+        "provider": "contradictory",
+        "reasoning": "low"
+      },
+      "tier": null,
+      "family": null,
+      "roles": {
+        "architect": {
+          "default": false,
+          "lightweight": false
+        },
+        "review": {
+          "default": false,
+          "lightweight": false
+        },
+        "coding": {
+          "default": false,
+          "lightweight": false
+        },
+        "testing": {
+          "default": false,
+          "lightweight": false
+        },
+        "integration": {
+          "default": false,
+          "lightweight": false
+        },
+        "documentation": {
+          "default": false,
+          "lightweight": false
+        }
+      }
+    }
+  ],
+  "presets": [
+    {
+      "id": "z-strong",
+      "framework": "claude",
+      "model": "claude-opus-5",
+      "ceiling": {
+        "tokens": 100
+      }
+    },
+    {
+      "id": "b-medium",
+      "framework": "codex",
+      "model": "gpt-5.6-sol",
+      "reasoning": "medium",
+      "ceiling": {
+        "tokens": 100
+      }
+    },
+    {
+      "id": "a-medium",
+      "framework": "claude",
+      "model": "claude-sonnet-5",
+      "ceiling": {
+        "tokens": 0
+      }
+    },
+    {
+      "id": "c-light",
+      "framework": "claude",
+      "model": "claude-fable-5",
+      "ceiling": {
+        "tokens": 100
+      }
+    },
+    {
+      "id": "no-ceiling",
+      "framework": "claude",
+      "model": "claude-opus-5"
+    },
+    {
+      "id": "foreign",
+      "framework": "codex",
+      "provider": "wrong",
+      "model": "gpt-5.6-sol",
+      "reasoning": "high",
+      "ceiling": {
+        "tokens": 100
+      }
+    }
+  ],
+  "rankings": [
+    {
+      "role": "architect",
+      "tier": "strong",
+      "ids": [
+        "z-strong"
+      ]
+    },
+    {
+      "role": "architect",
+      "tier": "medium",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "architect",
+      "tier": "lightweight",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "review",
+      "tier": "strong",
+      "ids": [
+        "z-strong"
+      ]
+    },
+    {
+      "role": "review",
+      "tier": "medium",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "review",
+      "tier": "lightweight",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "coding",
+      "tier": "strong",
+      "ids": [
+        "z-strong"
+      ]
+    },
+    {
+      "role": "coding",
+      "tier": "medium",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "coding",
+      "tier": "lightweight",
+      "ids": [
+        "c-light",
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "testing",
+      "tier": "strong",
+      "ids": [
+        "z-strong"
+      ]
+    },
+    {
+      "role": "testing",
+      "tier": "medium",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "testing",
+      "tier": "lightweight",
+      "ids": [
+        "c-light",
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "integration",
+      "tier": "strong",
+      "ids": [
+        "z-strong"
+      ]
+    },
+    {
+      "role": "integration",
+      "tier": "medium",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "integration",
+      "tier": "lightweight",
+      "ids": [
+        "c-light",
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "documentation",
+      "tier": "strong",
+      "ids": [
+        "z-strong"
+      ]
+    },
+    {
+      "role": "documentation",
+      "tier": "medium",
+      "ids": [
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    },
+    {
+      "role": "documentation",
+      "tier": "lightweight",
+      "ids": [
+        "c-light",
+        "a-medium",
+        "b-medium",
+        "z-strong"
+      ]
+    }
+  ]
+}

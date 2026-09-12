@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "next dev -p 3100 -H 127.0.0.1",
     "build": "next build",
+    "build:native": "node scripts/build-native-console.mjs",
     "start": "next start -p 3100 -H 127.0.0.1",
     "check": "node scripts/check-invariants.mjs",
     "check:switches": "node scripts/check-switches.mjs",

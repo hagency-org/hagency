@@ -1,0 +1,467 @@
+{
+  "version": 2,
+  "legacy_baseline": "5dbef22dc5ad4e0bb1a886538406ec91a5893f9b",
+  "inventory_contract": "specs/task-native-migration-inventory.spec.md",
+  "parser": {
+    "name": "espree",
+    "version": "11.2.0",
+    "provided_by": "direct espree devDependency and package-lock.json"
+  },
+  "helper_groups": [
+    {
+      "id": "control",
+      "owner": "native-api",
+      "phase": "M7",
+      "role": "runtime",
+      "disposition": "replace-native",
+      "validation_gate": "Port operator and private API projections with current scope, error and pagination behavior.",
+      "files": [
+        "backend-v2.js"
+      ]
+    },
+    {
+      "id": "transport",
+      "owner": "native-matrix-transport",
+      "phase": "M5",
+      "role": "runtime",
+      "disposition": "replace-native",
+      "validation_gate": "Prove outbound custody, full Matrix identity, encrypted-device persistence and retry semantics.",
+      "files": [
+        "bin/hagency-appservice-edge",
+        "bridge-matrix.js",
+        "bridge-matrix.service",
+        "hagency-push-relay.service",
+        "push-relay.js",
+        "remote/push-relay.js",
+        "remote/push-relay.plist",
+        "remote/push-relay.service"
+      ]
+    },
+    {
+      "id": "mcp",
+      "owner": "native-runner-tools",
+      "phase": "M6",
+      "role": "runtime",
+      "disposition": "replace-native",
+      "validation_gate": "Port the current bounded tools and capability provenance without keeping a Node helper process.",
+      "files": [
+        "mcp-server.js",
+        "remote/mcp-server.js"
+      ]
+    },
+    {
+      "id": "tasks",
+      "owner": "native-orchestration",
+      "phase": "M3",
+      "role": "runtime",
+      "disposition": "replace-native",
+      "validation_gate": "Verify canonical task, graph and inner-monitor semantics with exact current capabilities.",
+      "files": [
+        "bin/hagency-graph",
+        "bin/hagency-project",
+        "scripts/hagency-graph.js",
+        "scripts/hagency-project.js",
+        "scripts/write-v1-agent-task.js",
+        "skills/hagency-inner-loop/scripts/monitor.mjs"
+      ]
+    },
+    {
+      "id": "permissions",
+      "owner": "native-execution-policy",
+      "phase": "M6",
+      "role": "runtime",
+      "disposition": "replace-native",
+      "validation_gate": "Prove effective sandbox policy, durable grants and tool-hook authorization on every supported runtime.",
+      "files": [
+        "bin/hagency-install-progress-hooks",
+        "bin/hagency-progress",
+        "lib/codex-hook-trust.js",
+        "lib/codex-permission-hook.js",
+        "lib/codex-project-trust.js",
+        "remote/lib/codex-hook-trust.js",
+        "remote/lib/codex-permission-hook.js",
+        "remote/lib/codex-project-trust.js",
+        "remote/scripts/resolve-agent-sandbox-roots.js",
+        "remote/scripts/validate-agent-launch-extra-args.js",
+        "scripts/resolve-agent-sandbox-roots.js",
+        "scripts/validate-agent-launch-extra-args.js"
+      ]
+    },
+    {
+      "id": "process",
+      "owner": "native-platform",
+      "phase": "M4",
+      "role": "runtime",
+      "disposition": "replace-native",
+      "validation_gate": "Prove startup, restart, process custody, workspaces and terminal behavior on supported OS/runtime pairs.",
+      "files": [
+        "bin/hagency-acp-down",
+        "bin/hagency-acp-up",
+        "bin/hagency-autostart.sh",
+        "bin/hagency-down",
+        "bin/hagency-service",
+        "bin/hagency-supervisor",
+        "bin/hagency-up",
+        "bin/hagency-up-v1",
+        "bin/register-agents",
+        "remote/bin/hagency-down",
+        "remote/bin/hagency-service",
+        "remote/bin/hagency-up",
+        "scripts/hagency-acp-agent.mjs",
+        "scripts/hagency-supervise-agent.mjs",
+        "scripts/provision-team.mjs",
+        "scripts/provision-v1-agent-home.js",
+        "scripts/with-timeout.js",
+        "scripts/write-supervisor-state.js",
+        "scripts/write-v1-agent-runtime-profile.js"
+      ]
+    },
+    {
+      "id": "libraries",
+      "owner": "native-platform-state",
+      "phase": "M4",
+      "role": "runtime-module",
+      "disposition": "replace-native",
+      "validation_gate": "Replace shared supervisor/process/bridge state modules; importing a module is not a standalone process.",
+      "files": [
+        "src/bridge-container-owner.mjs",
+        "src/dispatch-lease-store.mjs",
+        "src/health-record.mjs",
+        "src/local-service-supervisor.mjs",
+        "src/matrix-dispatch-store.mjs",
+        "src/matrix-event-store.mjs",
+        "src/matrix-rate-limit-gate.mjs",
+        "src/process-identity.mjs",
+        "src/service-profile.mjs",
+        "src/supervised-service-child.mjs"
+      ]
+    },
+    {
+      "id": "operations",
+      "owner": "native-operations",
+      "phase": "M7",
+      "role": "operator",
+      "disposition": "replace-native",
+      "validation_gate": "Port installed local/remote administration and diagnosis; native deployment must not require Node or tmux.",
+      "files": [
+        "bin/check-mcp",
+        "bin/hagency",
+        "bin/hagency-audit",
+        "bin/hagency-benchmark",
+        "bin/hagency-cli",
+        "bin/hagency-legacy",
+        "bin/hagency-ls",
+        "bin/hagency-maintain",
+        "bin/hagency-prune-agents",
+        "bin/hagency-resume-id",
+        "bin/hagency-send",
+        "bin/hagency-sync-skills",
+        "bin/hagency-update",
+        "bin/self-time-reminder",
+        "bin/verify-remote",
+        "deploy/com.hagency.supervisor.plist",
+        "hagency-backend.service",
+        "hagency-stable-autodeploy.service",
+        "remote/bin/hagency",
+        "remote/bin/hagency-cli",
+        "remote/bin/hagency-legacy",
+        "remote/bin/hagency-ls",
+        "remote/bin/hagency-maintain",
+        "remote/bin/hagency-prune-agents",
+        "remote/bin/hagency-send",
+        "remote/bin/hagency-update",
+        "remote/bin/self-time-reminder",
+        "remote/bin/verify-remote",
+        "remote/push-relay-autodeploy.service",
+        "remote/scripts/framework-info.js",
+        "scripts/benchmark-workflow.js",
+        "scripts/framework-info.js",
+        "services/configure-standalone-env.mjs",
+        "services/hagency-services.mjs",
+        "services/prepare-bridge-container.mjs",
+        "services/run-bridge-container.sh",
+        "services/standalone-doctor.mjs"
+      ]
+    },
+    {
+      "id": "installation",
+      "owner": "native-packaging",
+      "phase": "M8",
+      "role": "install",
+      "disposition": "replace-native",
+      "validation_gate": "Produce and validate platform-native installation, service registration and upgrade/uninstall artifacts.",
+      "files": [
+        "install-full.sh",
+        "install-v2.sh",
+        "install.sh",
+        "install/bootstrap.sh",
+        "install/install-macos.sh",
+        "remote/install-remote.sh",
+        "scripts/hagency-dev-autodeploy.sh",
+        "scripts/hagency-remote-autodeploy.sh",
+        "scripts/hagency-stable-autodeploy.sh",
+        "uninstall.sh",
+        "upgrade.sh"
+      ]
+    },
+    {
+      "id": "build",
+      "owner": "build-verification",
+      "phase": "M8",
+      "role": "build-or-test",
+      "disposition": "retain-build-only",
+      "validation_gate": "Keep development verification only; exclude Node-based build/test scripts from the supported native runtime dependency chain.",
+      "files": [
+        "scripts/audit-agent-docs.js",
+        "scripts/audit-baseline.mjs",
+        "scripts/build-release-package.sh",
+        "scripts/check-agent-ops-contract.js",
+        "scripts/check-architecture-boundaries.js",
+        "scripts/check-cli-contract.js",
+        "scripts/check-remote-package-smoke.sh",
+        "scripts/check-requirement-traceability.mjs",
+        "scripts/check-router-boundary.js",
+        "scripts/check-router-build.sh",
+        "scripts/check-spec-bindings.js",
+        "scripts/check-syntax.sh",
+        "scripts/eslint-globals.js",
+        "scripts/eye-test-2026-08-14.sh",
+        "scripts/flake-hunt.sh",
+        "scripts/heap-probe-config.js",
+        "scripts/heap-probe-setup.mjs",
+        "scripts/probe-task-maintenance.mjs",
+        "scripts/probe-thread-continuity.mjs",
+        "scripts/report-ci-env.js",
+        "scripts/run-kernel-tests.sh",
+        "scripts/run-suite-tests.mjs",
+        "scripts/stamp-version.sh",
+        "scripts/supervisor-parity-check.js",
+        "scripts/verify-agent-e2e.sh",
+        "scripts/verify-ci.sh",
+        "scripts/verify-multi-side.sh"
+      ]
+    },
+    {
+      "id": "dual-use-verification",
+      "owner": "native-packaging",
+      "phase": "M8",
+      "role": "operator-and-build",
+      "disposition": "replace-runtime-retain-build",
+      "validation_gate": "The current audit/autodeploy command calls this helper. Retain its Node implementation only in development; replace installed audit/update behavior and remove runtime references before native cutover.",
+      "files": [
+        "scripts/audit-deps.sh",
+        "scripts/build-remote-package.sh",
+        "scripts/check-dep-isolation.sh",
+        "scripts/check-remote-sync.sh",
+        "scripts/verify-cd-preflight.sh"
+      ]
+    }
+  ],
+  "route_groups": [
+    {
+      "id": "authority",
+      "prefixes": [
+        "/",
+        "/api"
+      ],
+      "owner": "native-api",
+      "phase": "M7",
+      "disposition": "port-current-authority",
+      "validation_gate": "Preserve global parser, CORS, rate limits and authentication middleware ordering."
+    },
+    {
+      "id": "operations",
+      "prefixes": [
+        "/health",
+        "/api/servers",
+        "/api/supervisor",
+        "/api/supervisor-state",
+        "/api/system",
+        "/api/alerts",
+        "/api/usage",
+        "/api/frameworks"
+      ],
+      "owner": "native-operations",
+      "phase": "M7",
+      "disposition": "port-current-authority",
+      "validation_gate": "Verify native status, monitoring, usage and operator workflows; no debug credential leakage."
+    },
+    {
+      "id": "allocation",
+      "prefixes": [
+        "/api/agents",
+        "/api/pool",
+        "/api/dispatch",
+        "/api/project-sides",
+        "/api/engagements",
+        "/api/framework-presets",
+        "/api/seats",
+        "/api/offers",
+        "/api/offer-book",
+        "/api/capability",
+        "/api/contributions",
+        "/api/whitelist"
+      ],
+      "owner": "native-allocation",
+      "phase": "M2",
+      "disposition": "port-current-authority",
+      "validation_gate": "Prove complete allocation lifecycle, selected resource budgets, identity provisioning and revocation parity."
+    },
+    {
+      "id": "orchestration",
+      "prefixes": [
+        "/api/router",
+        "/api/tasks",
+        "/api/task-graphs",
+        "/api/project-board",
+        "/api/groups",
+        "/api/runtime"
+      ],
+      "owner": "native-orchestration",
+      "phase": "M3",
+      "disposition": "port-current-authority",
+      "validation_gate": "Verify scoped tasks, conversations, graph, dispatch and recovery behavior through production API adapters."
+    },
+    {
+      "id": "approval",
+      "prefixes": [
+        "/api/approvals",
+        "/api/approval-bindings",
+        "/api/agent-ops"
+      ],
+      "owner": "native-execution-policy",
+      "phase": "M6",
+      "disposition": "port-current-authority",
+      "validation_gate": "Verify private owner approval, revocation, persistent grants and operator/client capability separation."
+    },
+    {
+      "id": "matrix",
+      "prefixes": [
+        "/api/matrix",
+        "/api/matrix-work",
+        "/api/fleet-control",
+        "/api/dm",
+        "/api/messages",
+        "/api/inbox",
+        "/api/media",
+        "/api/delivery-events",
+        "/msg/:id"
+      ],
+      "owner": "native-matrix-transport",
+      "phase": "M5",
+      "disposition": "port-current-authority",
+      "validation_gate": "Prove actual Matrix delivery, DM/group/thread privacy, file custody and idempotent responses."
+    },
+    {
+      "id": "delivery",
+      "prefixes": [
+        "/api/queue",
+        "/api/reminders",
+        "/api/idle"
+      ],
+      "owner": "native-delivery-scheduler",
+      "phase": "M3",
+      "disposition": "port-current-authority",
+      "validation_gate": "Preserve scheduler, reminder and deferred-delivery behavior with durable retry custody."
+    },
+    {
+      "id": "console",
+      "prefixes": [
+        "/api/stream"
+      ],
+      "owner": "native-console",
+      "phase": "M7",
+      "disposition": "port-current-authority",
+      "validation_gate": "Replace SSE subscription transport with matching lifetime, payload and authorization behavior."
+    }
+  ],
+  "listeners": [
+    {
+      "source": "bin/hagency-appservice-edge",
+      "expression": "http.createServer",
+      "dispatcher": "lib/appservice-edge.js",
+      "owner": "native-matrix-transport",
+      "phase": "M5",
+      "validation_gate": "Retain the optional edge deployment profile or explicitly retire it after replacement acceptance; never assume outbound Palpo removes every non-Palpo edge use."
+    },
+    {
+      "source": "lib/appservice-listener.js",
+      "expression": "createServer",
+      "dispatcher": "lib/appservice-receiver.js",
+      "owner": "native-matrix-transport",
+      "phase": "M5",
+      "validation_gate": "Keep inbound App Service mode optional and verify token, event custody and namespace query behavior."
+    }
+  ],
+  "dispatchers": [
+    "lib/appservice-edge.js",
+    "lib/appservice-receiver.js",
+    "lib/fleet-protocol.js"
+  ],
+  "proxy": "mockup/app/api/hagency/[...path]/route.js",
+  "remaining_gates": [
+    {
+      "id": "M0-behavior-traceability",
+      "status": "open",
+      "gate": "Complete requirement and exact behavioral test mapping for Matrix events, schemas/stores, feature flags and optional features; source inventory alone does not establish it."
+    },
+    {
+      "id": "M0-target-hardware",
+      "status": "open",
+      "gate": "Choose exact supported embedded CPU/libc/RAM/storage profiles and measure resource/latency budgets; CI OS labels are not hardware qualification."
+    },
+    {
+      "id": "M0-runtime-versions",
+      "status": "open",
+      "gate": "Pin supported Agent runtime versions and per-platform protocol/auth/sandbox/process-cleanup combinations. Source adapters and current CLI names are not support guarantees."
+    },
+    {
+      "id": "M4-terminal-mode",
+      "status": "open",
+      "gate": "Verify native persistent terminal behavior or explicitly constrain the first release; the existing tmux path cannot count as a Node-free native port."
+    },
+    {
+      "id": "M8-parity-and-cutover",
+      "status": "open",
+      "gate": "Run complete local/remote/Matrix/browser and failure suites, packaging and soak proofs before a controlled M9 production cutover."
+    }
+  ],
+  "source_baseline": "a41ab10ca0c5c27e870d331f868757c80d760846",
+  "registration_links": [
+    {
+      "source": "backend-v2.js",
+      "callee": "installDeliveryQueueRoutes",
+      "target": "lib/delivery-queue.js"
+    },
+    {
+      "source": "bin/hagency-appservice-edge",
+      "callee": "edge.handle",
+      "target": "lib/appservice-edge.js"
+    },
+    {
+      "source": "lib/appservice-listener.js",
+      "callee": "receiver.handle",
+      "target": "lib/appservice-receiver.js"
+    },
+    {
+      "source": "lib/appservice-receiver.js",
+      "callee": "match.entry.receiver.handle",
+      "target": "lib/appservice-receiver.js"
+    },
+    {
+      "source": "bridge-matrix.js",
+      "callee": "this.fleetProtocolForBridge().handle",
+      "target": "lib/fleet-protocol.js"
+    },
+    {
+      "source": "bridge-matrix.js",
+      "callee": "startAppserviceListener",
+      "target": "lib/appservice-listener.js"
+    },
+    {
+      "source": "bridge-matrix.js",
+      "callee": "createAppserviceRouter",
+      "target": "lib/appservice-receiver.js"
+    }
+  ]
+}

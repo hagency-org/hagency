@@ -13,7 +13,7 @@ an executable task contract.
 ## Constraints
 
 ### Must
-- User-visible, protocol, authorization, and sandbox changes must have deterministic Vitest regression coverage.
+- User-visible, protocol, authorization, and sandbox changes must have deterministic regression coverage: Vitest for JS/TS, Cargo tests for Rust, and shared behavior vectors at protocol boundaries.
 - Durable architecture and security decisions must be recorded under `knowledge/` with stable identifiers.
 - Active implementation work must be linked to accepted requirements through `satisfies`.
 - Matrix authorization must use the authenticated event sender's complete MXID, never a display name or localpart alone.
@@ -27,7 +27,7 @@ an executable task contract.
 
 ## Decisions
 
-- Runtime: Node.js 22 or newer, ESM modules, and Vitest.
+- Existing runtime: Node.js 22 or newer, ESM modules, and Vitest. The authorized native migration uses Rust 2024, Salvo and Cargo tests in an isolated worktree. Existing privacy, authorization and sandbox requirements apply unchanged; development coexistence does not authorize production cutover.
 - Specifications live in `specs/`; machine-consumable truth lives in `knowledge/`; explanatory documents live in `docs/`.
 - Coding agents launch sandboxed by default: Claude uses `--permission-mode auto`; Codex uses `workspace-write` with `on-request` approval.
 - Matrix project rooms use mention-only wake behavior by default.
@@ -35,6 +35,11 @@ an executable task contract.
 ## Boundaries
 
 ### Allowed Changes
+- ./Cargo.toml
+- ./Cargo.lock
+- ./rust-toolchain.toml
+- ./.gitattributes
+- native/**
 - bin/**
 - remote/**
 - scripts/**

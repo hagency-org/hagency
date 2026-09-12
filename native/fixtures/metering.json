@@ -1,0 +1,2771 @@
+{
+  "source": "lib/metering/parsers.js",
+  "sourceSha256": "a0fd53ded125e42df0c20f4c61f5ae3a9e8234ab92707f6844a97c84f6fe4579",
+  "vectors": [
+    {
+      "name": "claude-0",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-0-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":8176,\"output_tokens\":1039,\"cache_creation_input_tokens\":66,\"cache_read_input_tokens\":8665}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-0-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":8176,\"output_tokens\":1039,\"cache_creation_input_tokens\":66,\"cache_read_input_tokens\":8665}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-0-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":5284,\"output_tokens\":9091,\"cache_creation_input_tokens\":6278,\"cache_read_input_tokens\":7021}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13460,
+          "output": 10130,
+          "cacheWrite": 6344,
+          "cacheRead": 15686
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-0",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8896,\"cached_input_tokens\":7996,\"output_tokens\":2971,\"reasoning_output_tokens\":2871,\"total_tokens\":11867},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8896,\"cached_input_tokens\":7996,\"output_tokens\":2971,\"reasoning_output_tokens\":2871,\"total_tokens\":11867},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10096,\"cached_input_tokens\":8796,\"output_tokens\":3171,\"reasoning_output_tokens\":2961,\"total_tokens\":13267},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8796,
+          "cacheWrite": 0,
+          "output": 3171
+        },
+        "turns": 2,
+        "reasoningOutput": 2961,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13267,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-1",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-1-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":394,\"output_tokens\":209,\"cache_creation_input_tokens\":940,\"cache_read_input_tokens\":1323}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-1-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":394,\"output_tokens\":209,\"cache_creation_input_tokens\":940,\"cache_read_input_tokens\":1323}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-1-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":1790,\"output_tokens\":2277,\"cache_creation_input_tokens\":9472,\"cache_read_input_tokens\":2895}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 2184,
+          "output": 2486,
+          "cacheWrite": 10412,
+          "cacheRead": 4218
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-1",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7050,\"cached_input_tokens\":6150,\"output_tokens\":2749,\"reasoning_output_tokens\":2649,\"total_tokens\":9799},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7050,\"cached_input_tokens\":6150,\"output_tokens\":2749,\"reasoning_output_tokens\":2649,\"total_tokens\":9799},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8250,\"cached_input_tokens\":6950,\"output_tokens\":2949,\"reasoning_output_tokens\":2739,\"total_tokens\":11199},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 6950,
+          "cacheWrite": 0,
+          "output": 2949
+        },
+        "turns": 2,
+        "reasoningOutput": 2739,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11199,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-2",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-2-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":9188,\"output_tokens\":2899,\"cache_creation_input_tokens\":4726,\"cache_read_input_tokens\":397}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-2-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":9188,\"output_tokens\":2899,\"cache_creation_input_tokens\":4726,\"cache_read_input_tokens\":397}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-2-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":2952,\"output_tokens\":2983,\"cache_creation_input_tokens\":1626,\"cache_read_input_tokens\":2449}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 12140,
+          "output": 5882,
+          "cacheWrite": 6352,
+          "cacheRead": 2846
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-2",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7876,\"cached_input_tokens\":6976,\"output_tokens\":1279,\"reasoning_output_tokens\":1179,\"total_tokens\":9155},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7876,\"cached_input_tokens\":6976,\"output_tokens\":1279,\"reasoning_output_tokens\":1179,\"total_tokens\":9155},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9076,\"cached_input_tokens\":7776,\"output_tokens\":1479,\"reasoning_output_tokens\":1269,\"total_tokens\":10555},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7776,
+          "cacheWrite": 0,
+          "output": 1479
+        },
+        "turns": 2,
+        "reasoningOutput": 1269,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10555,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-3",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-3-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":8702,\"output_tokens\":3141,\"cache_creation_input_tokens\":2944,\"cache_read_input_tokens\":2303}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-3-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":8702,\"output_tokens\":3141,\"cache_creation_input_tokens\":2944,\"cache_read_input_tokens\":2303}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-3-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":6482,\"output_tokens\":1033,\"cache_creation_input_tokens\":516,\"cache_read_input_tokens\":3571}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 15184,
+          "output": 4174,
+          "cacheWrite": 3460,
+          "cacheRead": 5874
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-3",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4366,\"cached_input_tokens\":3466,\"output_tokens\":9553,\"reasoning_output_tokens\":9453,\"total_tokens\":13919},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4366,\"cached_input_tokens\":3466,\"output_tokens\":9553,\"reasoning_output_tokens\":9453,\"total_tokens\":13919},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5566,\"cached_input_tokens\":4266,\"output_tokens\":9753,\"reasoning_output_tokens\":9543,\"total_tokens\":15319},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 4266,
+          "cacheWrite": 0,
+          "output": 9753
+        },
+        "turns": 2,
+        "reasoningOutput": 9543,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 15319,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-4",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-4-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4088,\"output_tokens\":8295,\"cache_creation_input_tokens\":7226,\"cache_read_input_tokens\":3601}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-4-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4088,\"output_tokens\":8295,\"cache_creation_input_tokens\":7226,\"cache_read_input_tokens\":3601}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-4-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3036,\"output_tokens\":9947,\"cache_creation_input_tokens\":9166,\"cache_read_input_tokens\":2949}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7124,
+          "output": 18242,
+          "cacheWrite": 16392,
+          "cacheRead": 6550
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-4",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1848,\"cached_input_tokens\":948,\"output_tokens\":7539,\"reasoning_output_tokens\":7439,\"total_tokens\":9387},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1848,\"cached_input_tokens\":948,\"output_tokens\":7539,\"reasoning_output_tokens\":7439,\"total_tokens\":9387},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3048,\"cached_input_tokens\":1748,\"output_tokens\":7739,\"reasoning_output_tokens\":7529,\"total_tokens\":10787},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1748,
+          "cacheWrite": 0,
+          "output": 7739
+        },
+        "turns": 2,
+        "reasoningOutput": 7529,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10787,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-5",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-5-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8162,\"output_tokens\":7865,\"cache_creation_input_tokens\":4036,\"cache_read_input_tokens\":7555}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-5-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8162,\"output_tokens\":7865,\"cache_creation_input_tokens\":4036,\"cache_read_input_tokens\":7555}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-5-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":2790,\"output_tokens\":2029,\"cache_creation_input_tokens\":1880,\"cache_read_input_tokens\":4439}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 10952,
+          "output": 9894,
+          "cacheWrite": 5916,
+          "cacheRead": 11994
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-5",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8258,\"cached_input_tokens\":7358,\"output_tokens\":7653,\"reasoning_output_tokens\":7553,\"total_tokens\":15911},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8258,\"cached_input_tokens\":7358,\"output_tokens\":7653,\"reasoning_output_tokens\":7553,\"total_tokens\":15911},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9458,\"cached_input_tokens\":8158,\"output_tokens\":7853,\"reasoning_output_tokens\":7643,\"total_tokens\":17311},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8158,
+          "cacheWrite": 0,
+          "output": 7853
+        },
+        "turns": 2,
+        "reasoningOutput": 7643,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 17311,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-6",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-6-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1916,\"output_tokens\":5979,\"cache_creation_input_tokens\":4606,\"cache_read_input_tokens\":165}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-6-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1916,\"output_tokens\":5979,\"cache_creation_input_tokens\":4606,\"cache_read_input_tokens\":165}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-6-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":8160,\"output_tokens\":9311,\"cache_creation_input_tokens\":2226,\"cache_read_input_tokens\":2057}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 10076,
+          "output": 15290,
+          "cacheWrite": 6832,
+          "cacheRead": 2222
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-6",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4284,\"cached_input_tokens\":3384,\"output_tokens\":359,\"reasoning_output_tokens\":259,\"total_tokens\":4643},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4284,\"cached_input_tokens\":3384,\"output_tokens\":359,\"reasoning_output_tokens\":259,\"total_tokens\":4643},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5484,\"cached_input_tokens\":4184,\"output_tokens\":559,\"reasoning_output_tokens\":349,\"total_tokens\":6043},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 4184,
+          "cacheWrite": 0,
+          "output": 559
+        },
+        "turns": 2,
+        "reasoningOutput": 349,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 6043,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-7",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-7-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":8662,\"output_tokens\":4221,\"cache_creation_input_tokens\":24,\"cache_read_input_tokens\":4775}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-7-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":8662,\"output_tokens\":4221,\"cache_creation_input_tokens\":24,\"cache_read_input_tokens\":4775}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-7-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":1050,\"output_tokens\":1665,\"cache_creation_input_tokens\":4236,\"cache_read_input_tokens\":5947}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9712,
+          "output": 5886,
+          "cacheWrite": 4260,
+          "cacheRead": 10722
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-7",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1094,\"cached_input_tokens\":194,\"output_tokens\":1161,\"reasoning_output_tokens\":1061,\"total_tokens\":2255},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1094,\"cached_input_tokens\":194,\"output_tokens\":1161,\"reasoning_output_tokens\":1061,\"total_tokens\":2255},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2294,\"cached_input_tokens\":994,\"output_tokens\":1361,\"reasoning_output_tokens\":1151,\"total_tokens\":3655},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 994,
+          "cacheWrite": 0,
+          "output": 1361
+        },
+        "turns": 2,
+        "reasoningOutput": 1151,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 3655,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-8",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-8-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":7968,\"output_tokens\":8847,\"cache_creation_input_tokens\":6962,\"cache_read_input_tokens\":4601}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-8-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":7968,\"output_tokens\":8847,\"cache_creation_input_tokens\":6962,\"cache_read_input_tokens\":4601}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-8-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":5140,\"output_tokens\":5843,\"cache_creation_input_tokens\":6166,\"cache_read_input_tokens\":6781}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13108,
+          "output": 14690,
+          "cacheWrite": 13128,
+          "cacheRead": 11382
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-8",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1728,\"cached_input_tokens\":828,\"output_tokens\":1355,\"reasoning_output_tokens\":1255,\"total_tokens\":3083},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1728,\"cached_input_tokens\":828,\"output_tokens\":1355,\"reasoning_output_tokens\":1255,\"total_tokens\":3083},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2928,\"cached_input_tokens\":1628,\"output_tokens\":1555,\"reasoning_output_tokens\":1345,\"total_tokens\":4483},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1628,
+          "cacheWrite": 0,
+          "output": 1555
+        },
+        "turns": 2,
+        "reasoningOutput": 1345,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 4483,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-9",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-9-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4602,\"output_tokens\":5873,\"cache_creation_input_tokens\":9180,\"cache_read_input_tokens\":6779}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-9-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4602,\"output_tokens\":5873,\"cache_creation_input_tokens\":9180,\"cache_read_input_tokens\":6779}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-9-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":9870,\"output_tokens\":8821,\"cache_creation_input_tokens\":4160,\"cache_read_input_tokens\":4239}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 14472,
+          "output": 14694,
+          "cacheWrite": 13340,
+          "cacheRead": 11018
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-9",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3258,\"cached_input_tokens\":2358,\"output_tokens\":8845,\"reasoning_output_tokens\":8745,\"total_tokens\":12103},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3258,\"cached_input_tokens\":2358,\"output_tokens\":8845,\"reasoning_output_tokens\":8745,\"total_tokens\":12103},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4458,\"cached_input_tokens\":3158,\"output_tokens\":9045,\"reasoning_output_tokens\":8835,\"total_tokens\":13503},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3158,
+          "cacheWrite": 0,
+          "output": 9045
+        },
+        "turns": 2,
+        "reasoningOutput": 8835,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13503,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-10",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-10-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4404,\"output_tokens\":3747,\"cache_creation_input_tokens\":7414,\"cache_read_input_tokens\":1517}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-10-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4404,\"output_tokens\":3747,\"cache_creation_input_tokens\":7414,\"cache_read_input_tokens\":1517}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-10-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3880,\"output_tokens\":9879,\"cache_creation_input_tokens\":4218,\"cache_read_input_tokens\":6385}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8284,
+          "output": 13626,
+          "cacheWrite": 11632,
+          "cacheRead": 7902
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-10",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9716,\"cached_input_tokens\":8816,\"output_tokens\":3919,\"reasoning_output_tokens\":3819,\"total_tokens\":13635},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9716,\"cached_input_tokens\":8816,\"output_tokens\":3919,\"reasoning_output_tokens\":3819,\"total_tokens\":13635},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10916,\"cached_input_tokens\":9616,\"output_tokens\":4119,\"reasoning_output_tokens\":3909,\"total_tokens\":15035},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9616,
+          "cacheWrite": 0,
+          "output": 4119
+        },
+        "turns": 2,
+        "reasoningOutput": 3909,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 15035,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-11",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-11-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":6382,\"output_tokens\":9941,\"cache_creation_input_tokens\":3296,\"cache_read_input_tokens\":6399}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-11-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":6382,\"output_tokens\":9941,\"cache_creation_input_tokens\":3296,\"cache_read_input_tokens\":6399}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-11-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3234,\"output_tokens\":6137,\"cache_creation_input_tokens\":1892,\"cache_read_input_tokens\":4963}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9616,
+          "output": 16078,
+          "cacheWrite": 5188,
+          "cacheRead": 11362
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-11",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6894,\"cached_input_tokens\":5994,\"output_tokens\":9425,\"reasoning_output_tokens\":9325,\"total_tokens\":16319},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6894,\"cached_input_tokens\":5994,\"output_tokens\":9425,\"reasoning_output_tokens\":9325,\"total_tokens\":16319},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8094,\"cached_input_tokens\":6794,\"output_tokens\":9625,\"reasoning_output_tokens\":9415,\"total_tokens\":17719},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 6794,
+          "cacheWrite": 0,
+          "output": 9625
+        },
+        "turns": 2,
+        "reasoningOutput": 9415,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 17719,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-12",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-12-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1624,\"output_tokens\":2631,\"cache_creation_input_tokens\":8250,\"cache_read_input_tokens\":193}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-12-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1624,\"output_tokens\":2631,\"cache_creation_input_tokens\":8250,\"cache_read_input_tokens\":193}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-12-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":5948,\"output_tokens\":1691,\"cache_creation_input_tokens\":3918,\"cache_read_input_tokens\":8741}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7572,
+          "output": 4322,
+          "cacheWrite": 12168,
+          "cacheRead": 8934
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-12",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2888,\"cached_input_tokens\":1988,\"output_tokens\":4515,\"reasoning_output_tokens\":4415,\"total_tokens\":7403},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2888,\"cached_input_tokens\":1988,\"output_tokens\":4515,\"reasoning_output_tokens\":4415,\"total_tokens\":7403},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4088,\"cached_input_tokens\":2788,\"output_tokens\":4715,\"reasoning_output_tokens\":4505,\"total_tokens\":8803},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 2788,
+          "cacheWrite": 0,
+          "output": 4715
+        },
+        "turns": 2,
+        "reasoningOutput": 4505,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 8803,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-13",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-13-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":354,\"output_tokens\":1593,\"cache_creation_input_tokens\":3604,\"cache_read_input_tokens\":4787}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-13-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":354,\"output_tokens\":1593,\"cache_creation_input_tokens\":3604,\"cache_read_input_tokens\":4787}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-13-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":7398,\"output_tokens\":4957,\"cache_creation_input_tokens\":4568,\"cache_read_input_tokens\":7271}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7752,
+          "output": 6550,
+          "cacheWrite": 8172,
+          "cacheRead": 12058
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-13",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9026,\"cached_input_tokens\":8126,\"output_tokens\":2389,\"reasoning_output_tokens\":2289,\"total_tokens\":11415},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9026,\"cached_input_tokens\":8126,\"output_tokens\":2389,\"reasoning_output_tokens\":2289,\"total_tokens\":11415},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10226,\"cached_input_tokens\":8926,\"output_tokens\":2589,\"reasoning_output_tokens\":2379,\"total_tokens\":12815},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8926,
+          "cacheWrite": 0,
+          "output": 2589
+        },
+        "turns": 2,
+        "reasoningOutput": 2379,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12815,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-14",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-14-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8620,\"output_tokens\":9755,\"cache_creation_input_tokens\":6830,\"cache_read_input_tokens\":7285}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-14-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8620,\"output_tokens\":9755,\"cache_creation_input_tokens\":6830,\"cache_read_input_tokens\":7285}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-14-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":9088,\"output_tokens\":6415,\"cache_creation_input_tokens\":6578,\"cache_read_input_tokens\":1945}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 17708,
+          "output": 16170,
+          "cacheWrite": 13408,
+          "cacheRead": 9230
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-14",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4412,\"cached_input_tokens\":3512,\"output_tokens\":1079,\"reasoning_output_tokens\":979,\"total_tokens\":5491},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4412,\"cached_input_tokens\":3512,\"output_tokens\":1079,\"reasoning_output_tokens\":979,\"total_tokens\":5491},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5612,\"cached_input_tokens\":4312,\"output_tokens\":1279,\"reasoning_output_tokens\":1069,\"total_tokens\":6891},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 4312,
+          "cacheWrite": 0,
+          "output": 1279
+        },
+        "turns": 2,
+        "reasoningOutput": 1069,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 6891,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-15",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-15-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":8246,\"output_tokens\":3165,\"cache_creation_input_tokens\":7432,\"cache_read_input_tokens\":5751}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-15-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":8246,\"output_tokens\":3165,\"cache_creation_input_tokens\":7432,\"cache_read_input_tokens\":5751}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-15-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":666,\"output_tokens\":1249,\"cache_creation_input_tokens\":2876,\"cache_read_input_tokens\":2155}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8912,
+          "output": 4414,
+          "cacheWrite": 10308,
+          "cacheRead": 7906
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-15",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1462,\"cached_input_tokens\":562,\"output_tokens\":2953,\"reasoning_output_tokens\":2853,\"total_tokens\":4415},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1462,\"cached_input_tokens\":562,\"output_tokens\":2953,\"reasoning_output_tokens\":2853,\"total_tokens\":4415},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2662,\"cached_input_tokens\":1362,\"output_tokens\":3153,\"reasoning_output_tokens\":2943,\"total_tokens\":5815},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1362,
+          "cacheWrite": 0,
+          "output": 3153
+        },
+        "turns": 2,
+        "reasoningOutput": 2943,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 5815,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-16",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-16-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":3968,\"output_tokens\":1503,\"cache_creation_input_tokens\":2882,\"cache_read_input_tokens\":809}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-16-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":3968,\"output_tokens\":1503,\"cache_creation_input_tokens\":2882,\"cache_read_input_tokens\":809}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-16-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":340,\"output_tokens\":8403,\"cache_creation_input_tokens\":4326,\"cache_read_input_tokens\":1581}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 4308,
+          "output": 9906,
+          "cacheWrite": 7208,
+          "cacheRead": 2390
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-16",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3552,\"cached_input_tokens\":2652,\"output_tokens\":1403,\"reasoning_output_tokens\":1303,\"total_tokens\":4955},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3552,\"cached_input_tokens\":2652,\"output_tokens\":1403,\"reasoning_output_tokens\":1303,\"total_tokens\":4955},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4752,\"cached_input_tokens\":3452,\"output_tokens\":1603,\"reasoning_output_tokens\":1393,\"total_tokens\":6355},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3452,
+          "cacheWrite": 0,
+          "output": 1603
+        },
+        "turns": 2,
+        "reasoningOutput": 1393,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 6355,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-17",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-17-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8938,\"output_tokens\":4561,\"cache_creation_input_tokens\":1356,\"cache_read_input_tokens\":5979}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-17-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8938,\"output_tokens\":4561,\"cache_creation_input_tokens\":1356,\"cache_read_input_tokens\":5979}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-17-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":1006,\"output_tokens\":8677,\"cache_creation_input_tokens\":2800,\"cache_read_input_tokens\":6847}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9944,
+          "output": 13238,
+          "cacheWrite": 4156,
+          "cacheRead": 12826
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-17",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8298,\"cached_input_tokens\":7398,\"output_tokens\":1309,\"reasoning_output_tokens\":1209,\"total_tokens\":9607},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8298,\"cached_input_tokens\":7398,\"output_tokens\":1309,\"reasoning_output_tokens\":1209,\"total_tokens\":9607},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9498,\"cached_input_tokens\":8198,\"output_tokens\":1509,\"reasoning_output_tokens\":1299,\"total_tokens\":11007},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8198,
+          "cacheWrite": 0,
+          "output": 1509
+        },
+        "turns": 2,
+        "reasoningOutput": 1299,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11007,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-18",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-18-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":3140,\"output_tokens\":707,\"cache_creation_input_tokens\":2022,\"cache_read_input_tokens\":637}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-18-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":3140,\"output_tokens\":707,\"cache_creation_input_tokens\":2022,\"cache_read_input_tokens\":637}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-18-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":4456,\"output_tokens\":8487,\"cache_creation_input_tokens\":5962,\"cache_read_input_tokens\":2321}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7596,
+          "output": 9194,
+          "cacheWrite": 7984,
+          "cacheRead": 2958
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-18",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4180,\"cached_input_tokens\":3280,\"output_tokens\":9519,\"reasoning_output_tokens\":9419,\"total_tokens\":13699},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4180,\"cached_input_tokens\":3280,\"output_tokens\":9519,\"reasoning_output_tokens\":9419,\"total_tokens\":13699},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5380,\"cached_input_tokens\":4080,\"output_tokens\":9719,\"reasoning_output_tokens\":9509,\"total_tokens\":15099},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 4080,
+          "cacheWrite": 0,
+          "output": 9719
+        },
+        "turns": 2,
+        "reasoningOutput": 9509,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 15099,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-19",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-19-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4798,\"output_tokens\":341,\"cache_creation_input_tokens\":6336,\"cache_read_input_tokens\":1503}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-19-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4798,\"output_tokens\":341,\"cache_creation_input_tokens\":6336,\"cache_read_input_tokens\":1503}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-19-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":434,\"output_tokens\":89,\"cache_creation_input_tokens\":2980,\"cache_read_input_tokens\":371}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 5232,
+          "output": 430,
+          "cacheWrite": 9316,
+          "cacheRead": 1874
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-19",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10142,\"cached_input_tokens\":9242,\"output_tokens\":7361,\"reasoning_output_tokens\":7261,\"total_tokens\":17503},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10142,\"cached_input_tokens\":9242,\"output_tokens\":7361,\"reasoning_output_tokens\":7261,\"total_tokens\":17503},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11342,\"cached_input_tokens\":10042,\"output_tokens\":7561,\"reasoning_output_tokens\":7351,\"total_tokens\":18903},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10042,
+          "cacheWrite": 0,
+          "output": 7561
+        },
+        "turns": 2,
+        "reasoningOutput": 7351,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 18903,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-20",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-20-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4440,\"output_tokens\":5127,\"cache_creation_input_tokens\":7770,\"cache_read_input_tokens\":9041}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-20-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4440,\"output_tokens\":5127,\"cache_creation_input_tokens\":7770,\"cache_read_input_tokens\":9041}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-20-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3116,\"output_tokens\":1819,\"cache_creation_input_tokens\":8174,\"cache_read_input_tokens\":6773}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7556,
+          "output": 6946,
+          "cacheWrite": 15944,
+          "cacheRead": 15814
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-20",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5384,\"cached_input_tokens\":4484,\"output_tokens\":8195,\"reasoning_output_tokens\":8095,\"total_tokens\":13579},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5384,\"cached_input_tokens\":4484,\"output_tokens\":8195,\"reasoning_output_tokens\":8095,\"total_tokens\":13579},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6584,\"cached_input_tokens\":5284,\"output_tokens\":8395,\"reasoning_output_tokens\":8185,\"total_tokens\":14979},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 5284,
+          "cacheWrite": 0,
+          "output": 8395
+        },
+        "turns": 2,
+        "reasoningOutput": 8185,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 14979,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-21",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-21-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4514,\"output_tokens\":9305,\"cache_creation_input_tokens\":724,\"cache_read_input_tokens\":3347}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-21-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4514,\"output_tokens\":9305,\"cache_creation_input_tokens\":724,\"cache_read_input_tokens\":3347}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-21-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3958,\"output_tokens\":9389,\"cache_creation_input_tokens\":3256,\"cache_read_input_tokens\":6695}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8472,
+          "output": 18694,
+          "cacheWrite": 3980,
+          "cacheRead": 10042
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-21",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9010,\"cached_input_tokens\":8110,\"output_tokens\":149,\"reasoning_output_tokens\":49,\"total_tokens\":9159},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9010,\"cached_input_tokens\":8110,\"output_tokens\":149,\"reasoning_output_tokens\":49,\"total_tokens\":9159},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10210,\"cached_input_tokens\":8910,\"output_tokens\":349,\"reasoning_output_tokens\":139,\"total_tokens\":10559},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8910,
+          "cacheWrite": 0,
+          "output": 349
+        },
+        "turns": 2,
+        "reasoningOutput": 139,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10559,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-22",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-22-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1564,\"output_tokens\":7243,\"cache_creation_input_tokens\":5694,\"cache_read_input_tokens\":8277}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-22-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1564,\"output_tokens\":7243,\"cache_creation_input_tokens\":5694,\"cache_read_input_tokens\":8277}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-22-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":6608,\"output_tokens\":7455,\"cache_creation_input_tokens\":1602,\"cache_read_input_tokens\":2841}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8172,
+          "output": 14698,
+          "cacheWrite": 7296,
+          "cacheRead": 11118
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-22",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7916,\"cached_input_tokens\":7016,\"output_tokens\":839,\"reasoning_output_tokens\":739,\"total_tokens\":8755},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7916,\"cached_input_tokens\":7016,\"output_tokens\":839,\"reasoning_output_tokens\":739,\"total_tokens\":8755},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9116,\"cached_input_tokens\":7816,\"output_tokens\":1039,\"reasoning_output_tokens\":829,\"total_tokens\":10155},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7816,
+          "cacheWrite": 0,
+          "output": 1039
+        },
+        "turns": 2,
+        "reasoningOutput": 829,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10155,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-23",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-23-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8022,\"output_tokens\":5885,\"cache_creation_input_tokens\":5688,\"cache_read_input_tokens\":9063}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-23-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8022,\"output_tokens\":5885,\"cache_creation_input_tokens\":5688,\"cache_read_input_tokens\":9063}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-23-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":5098,\"output_tokens\":4113,\"cache_creation_input_tokens\":7244,\"cache_read_input_tokens\":9115}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13120,
+          "output": 9998,
+          "cacheWrite": 12932,
+          "cacheRead": 18178
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-23",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4774,\"cached_input_tokens\":3874,\"output_tokens\":6809,\"reasoning_output_tokens\":6709,\"total_tokens\":11583},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4774,\"cached_input_tokens\":3874,\"output_tokens\":6809,\"reasoning_output_tokens\":6709,\"total_tokens\":11583},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5974,\"cached_input_tokens\":4674,\"output_tokens\":7009,\"reasoning_output_tokens\":6799,\"total_tokens\":12983},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 4674,
+          "cacheWrite": 0,
+          "output": 7009
+        },
+        "turns": 2,
+        "reasoningOutput": 6799,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12983,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-24",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-24-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":6288,\"output_tokens\":2191,\"cache_creation_input_tokens\":5346,\"cache_read_input_tokens\":8617}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-24-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":6288,\"output_tokens\":2191,\"cache_creation_input_tokens\":5346,\"cache_read_input_tokens\":8617}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-24-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3652,\"output_tokens\":6147,\"cache_creation_input_tokens\":6022,\"cache_read_input_tokens\":4013}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9940,
+          "output": 8338,
+          "cacheWrite": 11368,
+          "cacheRead": 12630
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-24",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1536,\"cached_input_tokens\":636,\"output_tokens\":7835,\"reasoning_output_tokens\":7735,\"total_tokens\":9371},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1536,\"cached_input_tokens\":636,\"output_tokens\":7835,\"reasoning_output_tokens\":7735,\"total_tokens\":9371},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2736,\"cached_input_tokens\":1436,\"output_tokens\":8035,\"reasoning_output_tokens\":7825,\"total_tokens\":10771},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1436,
+          "cacheWrite": 0,
+          "output": 8035
+        },
+        "turns": 2,
+        "reasoningOutput": 7825,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10771,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-25",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-25-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":442,\"output_tokens\":6321,\"cache_creation_input_tokens\":9884,\"cache_read_input_tokens\":1899}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-25-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":442,\"output_tokens\":6321,\"cache_creation_input_tokens\":9884,\"cache_read_input_tokens\":1899}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-25-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":8910,\"output_tokens\":805,\"cache_creation_input_tokens\":3008,\"cache_read_input_tokens\":6735}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9352,
+          "output": 7126,
+          "cacheWrite": 12892,
+          "cacheRead": 8634
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-25",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2090,\"cached_input_tokens\":1190,\"output_tokens\":6877,\"reasoning_output_tokens\":6777,\"total_tokens\":8967},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2090,\"cached_input_tokens\":1190,\"output_tokens\":6877,\"reasoning_output_tokens\":6777,\"total_tokens\":8967},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3290,\"cached_input_tokens\":1990,\"output_tokens\":7077,\"reasoning_output_tokens\":6867,\"total_tokens\":10367},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1990,
+          "cacheWrite": 0,
+          "output": 7077
+        },
+        "turns": 2,
+        "reasoningOutput": 6867,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10367,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-26",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-26-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":7268,\"output_tokens\":8419,\"cache_creation_input_tokens\":5078,\"cache_read_input_tokens\":2877}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-26-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":7268,\"output_tokens\":8419,\"cache_creation_input_tokens\":5078,\"cache_read_input_tokens\":2877}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-26-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":5192,\"output_tokens\":4935,\"cache_creation_input_tokens\":3962,\"cache_read_input_tokens\":6113}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 12460,
+          "output": 13354,
+          "cacheWrite": 9040,
+          "cacheRead": 8990
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-26",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9572,\"cached_input_tokens\":8672,\"output_tokens\":431,\"reasoning_output_tokens\":331,\"total_tokens\":10003},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9572,\"cached_input_tokens\":8672,\"output_tokens\":431,\"reasoning_output_tokens\":331,\"total_tokens\":10003},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10772,\"cached_input_tokens\":9472,\"output_tokens\":631,\"reasoning_output_tokens\":421,\"total_tokens\":11403},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9472,
+          "cacheWrite": 0,
+          "output": 631
+        },
+        "turns": 2,
+        "reasoningOutput": 421,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11403,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-27",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-27-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":2126,\"output_tokens\":5285,\"cache_creation_input_tokens\":5344,\"cache_read_input_tokens\":911}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-27-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":2126,\"output_tokens\":5285,\"cache_creation_input_tokens\":5344,\"cache_read_input_tokens\":911}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-27-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":322,\"output_tokens\":425,\"cache_creation_input_tokens\":2916,\"cache_read_input_tokens\":627}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 2448,
+          "output": 5710,
+          "cacheWrite": 8260,
+          "cacheRead": 1538
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-27",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6414,\"cached_input_tokens\":5514,\"output_tokens\":4513,\"reasoning_output_tokens\":4413,\"total_tokens\":10927},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6414,\"cached_input_tokens\":5514,\"output_tokens\":4513,\"reasoning_output_tokens\":4413,\"total_tokens\":10927},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7614,\"cached_input_tokens\":6314,\"output_tokens\":4713,\"reasoning_output_tokens\":4503,\"total_tokens\":12327},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 6314,
+          "cacheWrite": 0,
+          "output": 4713
+        },
+        "turns": 2,
+        "reasoningOutput": 4503,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12327,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-28",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-28-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1032,\"output_tokens\":1543,\"cache_creation_input_tokens\":1242,\"cache_read_input_tokens\":977}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-28-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1032,\"output_tokens\":1543,\"cache_creation_input_tokens\":1242,\"cache_read_input_tokens\":977}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-28-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":6076,\"output_tokens\":2987,\"cache_creation_input_tokens\":1790,\"cache_read_input_tokens\":7253}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7108,
+          "output": 4530,
+          "cacheWrite": 3032,
+          "cacheRead": 8230
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-28",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9144,\"cached_input_tokens\":8244,\"output_tokens\":9267,\"reasoning_output_tokens\":9167,\"total_tokens\":18411},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9144,\"cached_input_tokens\":8244,\"output_tokens\":9267,\"reasoning_output_tokens\":9167,\"total_tokens\":18411},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10344,\"cached_input_tokens\":9044,\"output_tokens\":9467,\"reasoning_output_tokens\":9257,\"total_tokens\":19811},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9044,
+          "cacheWrite": 0,
+          "output": 9467
+        },
+        "turns": 2,
+        "reasoningOutput": 9257,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 19811,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-29",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-29-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8898,\"output_tokens\":8505,\"cache_creation_input_tokens\":2660,\"cache_read_input_tokens\":3891}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-29-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":8898,\"output_tokens\":8505,\"cache_creation_input_tokens\":2660,\"cache_read_input_tokens\":3891}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-29-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":9654,\"output_tokens\":9789,\"cache_creation_input_tokens\":7992,\"cache_read_input_tokens\":5255}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 18552,
+          "output": 18294,
+          "cacheWrite": 10652,
+          "cacheRead": 9146
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-29",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10050,\"cached_input_tokens\":9150,\"output_tokens\":7541,\"reasoning_output_tokens\":7441,\"total_tokens\":17591},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10050,\"cached_input_tokens\":9150,\"output_tokens\":7541,\"reasoning_output_tokens\":7441,\"total_tokens\":17591},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11250,\"cached_input_tokens\":9950,\"output_tokens\":7741,\"reasoning_output_tokens\":7531,\"total_tokens\":18991},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9950,
+          "cacheWrite": 0,
+          "output": 7741
+        },
+        "turns": 2,
+        "reasoningOutput": 7531,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 18991,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-30",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-30-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4492,\"output_tokens\":5035,\"cache_creation_input_tokens\":7246,\"cache_read_input_tokens\":2597}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-30-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4492,\"output_tokens\":5035,\"cache_creation_input_tokens\":7246,\"cache_read_input_tokens\":2597}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-30-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":1696,\"output_tokens\":367,\"cache_creation_input_tokens\":6082,\"cache_read_input_tokens\":3017}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 6188,
+          "output": 5402,
+          "cacheWrite": 13328,
+          "cacheRead": 5614
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-30",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10236,\"cached_input_tokens\":9336,\"output_tokens\":4567,\"reasoning_output_tokens\":4467,\"total_tokens\":14803},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10236,\"cached_input_tokens\":9336,\"output_tokens\":4567,\"reasoning_output_tokens\":4467,\"total_tokens\":14803},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11436,\"cached_input_tokens\":10136,\"output_tokens\":4767,\"reasoning_output_tokens\":4557,\"total_tokens\":16203},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10136,
+          "cacheWrite": 0,
+          "output": 4767
+        },
+        "turns": 2,
+        "reasoningOutput": 4557,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 16203,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-31",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-31-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":9974,\"output_tokens\":2029,\"cache_creation_input_tokens\":9144,\"cache_read_input_tokens\":1447}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-31-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":9974,\"output_tokens\":2029,\"cache_creation_input_tokens\":9144,\"cache_read_input_tokens\":1447}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-31-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3562,\"output_tokens\":9105,\"cache_creation_input_tokens\":8748,\"cache_read_input_tokens\":1803}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13536,
+          "output": 11134,
+          "cacheWrite": 17892,
+          "cacheRead": 3250
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-31",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8854,\"cached_input_tokens\":7954,\"output_tokens\":1417,\"reasoning_output_tokens\":1317,\"total_tokens\":10271},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8854,\"cached_input_tokens\":7954,\"output_tokens\":1417,\"reasoning_output_tokens\":1317,\"total_tokens\":10271},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10054,\"cached_input_tokens\":8754,\"output_tokens\":1617,\"reasoning_output_tokens\":1407,\"total_tokens\":11671},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8754,
+          "cacheWrite": 0,
+          "output": 1617
+        },
+        "turns": 2,
+        "reasoningOutput": 1407,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11671,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-32",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-32-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":2528,\"output_tokens\":6207,\"cache_creation_input_tokens\":1954,\"cache_read_input_tokens\":3529}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-32-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":2528,\"output_tokens\":6207,\"cache_creation_input_tokens\":1954,\"cache_read_input_tokens\":3529}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-32-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":6852,\"output_tokens\":8387,\"cache_creation_input_tokens\":3622,\"cache_read_input_tokens\":8893}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9380,
+          "output": 14594,
+          "cacheWrite": 5576,
+          "cacheRead": 12422
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-32",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1680,\"cached_input_tokens\":780,\"output_tokens\":619,\"reasoning_output_tokens\":519,\"total_tokens\":2299},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1680,\"cached_input_tokens\":780,\"output_tokens\":619,\"reasoning_output_tokens\":519,\"total_tokens\":2299},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2880,\"cached_input_tokens\":1580,\"output_tokens\":819,\"reasoning_output_tokens\":609,\"total_tokens\":3699},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1580,
+          "cacheWrite": 0,
+          "output": 819
+        },
+        "turns": 2,
+        "reasoningOutput": 609,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 3699,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-33",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-33-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4810,\"output_tokens\":4929,\"cache_creation_input_tokens\":3068,\"cache_read_input_tokens\":3419}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-33-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4810,\"output_tokens\":4929,\"cache_creation_input_tokens\":3068,\"cache_read_input_tokens\":3419}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-33-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3918,\"output_tokens\":405,\"cache_creation_input_tokens\":9872,\"cache_read_input_tokens\":1007}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8728,
+          "output": 5334,
+          "cacheWrite": 12940,
+          "cacheRead": 4426
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-33",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8266,\"cached_input_tokens\":7366,\"output_tokens\":3677,\"reasoning_output_tokens\":3577,\"total_tokens\":11943},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8266,\"cached_input_tokens\":7366,\"output_tokens\":3677,\"reasoning_output_tokens\":3577,\"total_tokens\":11943},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9466,\"cached_input_tokens\":8166,\"output_tokens\":3877,\"reasoning_output_tokens\":3667,\"total_tokens\":13343},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8166,
+          "cacheWrite": 0,
+          "output": 3877
+        },
+        "turns": 2,
+        "reasoningOutput": 3667,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13343,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-34",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-34-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":7652,\"output_tokens\":6915,\"cache_creation_input_tokens\":4662,\"cache_read_input_tokens\":6317}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-34-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":7652,\"output_tokens\":6915,\"cache_creation_input_tokens\":4662,\"cache_read_input_tokens\":6317}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-34-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":4600,\"output_tokens\":4167,\"cache_creation_input_tokens\":2202,\"cache_read_input_tokens\":6449}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 12252,
+          "output": 11082,
+          "cacheWrite": 6864,
+          "cacheRead": 12766
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-34",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10068,\"cached_input_tokens\":9168,\"output_tokens\":3071,\"reasoning_output_tokens\":2971,\"total_tokens\":13139},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10068,\"cached_input_tokens\":9168,\"output_tokens\":3071,\"reasoning_output_tokens\":2971,\"total_tokens\":13139},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11268,\"cached_input_tokens\":9968,\"output_tokens\":3271,\"reasoning_output_tokens\":3061,\"total_tokens\":14539},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9968,
+          "cacheWrite": 0,
+          "output": 3271
+        },
+        "turns": 2,
+        "reasoningOutput": 3061,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 14539,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-35",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-35-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4910,\"output_tokens\":9173,\"cache_creation_input_tokens\":3760,\"cache_read_input_tokens\":6351}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-35-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4910,\"output_tokens\":9173,\"cache_creation_input_tokens\":3760,\"cache_read_input_tokens\":6351}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-35-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":4370,\"output_tokens\":9769,\"cache_creation_input_tokens\":2516,\"cache_read_input_tokens\":7411}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9280,
+          "output": 18942,
+          "cacheWrite": 6276,
+          "cacheRead": 13762
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-35",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7790,\"cached_input_tokens\":6890,\"output_tokens\":1393,\"reasoning_output_tokens\":1293,\"total_tokens\":9183},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7790,\"cached_input_tokens\":6890,\"output_tokens\":1393,\"reasoning_output_tokens\":1293,\"total_tokens\":9183},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8990,\"cached_input_tokens\":7690,\"output_tokens\":1593,\"reasoning_output_tokens\":1383,\"total_tokens\":10583},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7690,
+          "cacheWrite": 0,
+          "output": 1593
+        },
+        "turns": 2,
+        "reasoningOutput": 1383,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10583,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-36",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-36-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":5992,\"output_tokens\":7319,\"cache_creation_input_tokens\":8154,\"cache_read_input_tokens\":1473}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-36-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":5992,\"output_tokens\":7319,\"cache_creation_input_tokens\":8154,\"cache_read_input_tokens\":1473}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-36-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3036,\"output_tokens\":75,\"cache_creation_input_tokens\":1214,\"cache_read_input_tokens\":245}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9028,
+          "output": 7394,
+          "cacheWrite": 9368,
+          "cacheRead": 1718
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-36",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10600,\"cached_input_tokens\":9700,\"output_tokens\":8531,\"reasoning_output_tokens\":8431,\"total_tokens\":19131},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10600,\"cached_input_tokens\":9700,\"output_tokens\":8531,\"reasoning_output_tokens\":8431,\"total_tokens\":19131},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11800,\"cached_input_tokens\":10500,\"output_tokens\":8731,\"reasoning_output_tokens\":8521,\"total_tokens\":20531},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10500,
+          "cacheWrite": 0,
+          "output": 8731
+        },
+        "turns": 2,
+        "reasoningOutput": 8521,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 20531,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-37",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-37-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":2738,\"output_tokens\":3593,\"cache_creation_input_tokens\":4820,\"cache_read_input_tokens\":3379}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-37-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":2738,\"output_tokens\":3593,\"cache_creation_input_tokens\":4820,\"cache_read_input_tokens\":3379}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-37-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":5078,\"output_tokens\":3677,\"cache_creation_input_tokens\":6792,\"cache_read_input_tokens\":4407}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7816,
+          "output": 7270,
+          "cacheWrite": 11612,
+          "cacheRead": 7786
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-37",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5426,\"cached_input_tokens\":4526,\"output_tokens\":6805,\"reasoning_output_tokens\":6705,\"total_tokens\":12231},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5426,\"cached_input_tokens\":4526,\"output_tokens\":6805,\"reasoning_output_tokens\":6705,\"total_tokens\":12231},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6626,\"cached_input_tokens\":5326,\"output_tokens\":7005,\"reasoning_output_tokens\":6795,\"total_tokens\":13631},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 5326,
+          "cacheWrite": 0,
+          "output": 7005
+        },
+        "turns": 2,
+        "reasoningOutput": 6795,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13631,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-38",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-38-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":9692,\"output_tokens\":8219,\"cache_creation_input_tokens\":9646,\"cache_read_input_tokens\":6773}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-38-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":9692,\"output_tokens\":8219,\"cache_creation_input_tokens\":9646,\"cache_read_input_tokens\":6773}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-38-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":48,\"output_tokens\":2431,\"cache_creation_input_tokens\":9890,\"cache_read_input_tokens\":8633}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9740,
+          "output": 10650,
+          "cacheWrite": 19536,
+          "cacheRead": 15406
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-38",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7644,\"cached_input_tokens\":6744,\"output_tokens\":5431,\"reasoning_output_tokens\":5331,\"total_tokens\":13075},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7644,\"cached_input_tokens\":6744,\"output_tokens\":5431,\"reasoning_output_tokens\":5331,\"total_tokens\":13075},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8844,\"cached_input_tokens\":7544,\"output_tokens\":5631,\"reasoning_output_tokens\":5421,\"total_tokens\":14475},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7544,
+          "cacheWrite": 0,
+          "output": 5631
+        },
+        "turns": 2,
+        "reasoningOutput": 5421,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 14475,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-39",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-39-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4198,\"output_tokens\":6109,\"cache_creation_input_tokens\":7400,\"cache_read_input_tokens\":7527}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-39-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4198,\"output_tokens\":6109,\"cache_creation_input_tokens\":7400,\"cache_read_input_tokens\":7527}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-39-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":346,\"output_tokens\":625,\"cache_creation_input_tokens\":1100,\"cache_read_input_tokens\":2923}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 4544,
+          "output": 6734,
+          "cacheWrite": 8500,
+          "cacheRead": 10450
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-39",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3494,\"cached_input_tokens\":2594,\"output_tokens\":6233,\"reasoning_output_tokens\":6133,\"total_tokens\":9727},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3494,\"cached_input_tokens\":2594,\"output_tokens\":6233,\"reasoning_output_tokens\":6133,\"total_tokens\":9727},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4694,\"cached_input_tokens\":3394,\"output_tokens\":6433,\"reasoning_output_tokens\":6223,\"total_tokens\":11127},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3394,
+          "cacheWrite": 0,
+          "output": 6433
+        },
+        "turns": 2,
+        "reasoningOutput": 6223,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11127,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-40",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-40-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":400,\"output_tokens\":4463,\"cache_creation_input_tokens\":1250,\"cache_read_input_tokens\":6153}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-40-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":400,\"output_tokens\":4463,\"cache_creation_input_tokens\":1250,\"cache_read_input_tokens\":6153}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-40-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":7124,\"output_tokens\":835,\"cache_creation_input_tokens\":4758,\"cache_read_input_tokens\":3117}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7524,
+          "output": 5298,
+          "cacheWrite": 6008,
+          "cacheRead": 9270
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-40",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1440,\"cached_input_tokens\":540,\"output_tokens\":3067,\"reasoning_output_tokens\":2967,\"total_tokens\":4507},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1440,\"cached_input_tokens\":540,\"output_tokens\":3067,\"reasoning_output_tokens\":2967,\"total_tokens\":4507},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2640,\"cached_input_tokens\":1340,\"output_tokens\":3267,\"reasoning_output_tokens\":3057,\"total_tokens\":5907},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1340,
+          "cacheWrite": 0,
+          "output": 3267
+        },
+        "turns": 2,
+        "reasoningOutput": 3057,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 5907,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-41",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-41-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":1850,\"output_tokens\":8817,\"cache_creation_input_tokens\":428,\"cache_read_input_tokens\":7195}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-41-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":1850,\"output_tokens\":8817,\"cache_creation_input_tokens\":428,\"cache_read_input_tokens\":7195}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-41-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3038,\"output_tokens\":9845,\"cache_creation_input_tokens\":1280,\"cache_read_input_tokens\":2431}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 4888,
+          "output": 18662,
+          "cacheWrite": 1708,
+          "cacheRead": 9626
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-41",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3146,\"cached_input_tokens\":2246,\"output_tokens\":8637,\"reasoning_output_tokens\":8537,\"total_tokens\":11783},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3146,\"cached_input_tokens\":2246,\"output_tokens\":8637,\"reasoning_output_tokens\":8537,\"total_tokens\":11783},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4346,\"cached_input_tokens\":3046,\"output_tokens\":8837,\"reasoning_output_tokens\":8627,\"total_tokens\":13183},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3046,
+          "cacheWrite": 0,
+          "output": 8837
+        },
+        "turns": 2,
+        "reasoningOutput": 8627,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13183,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-42",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-42-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":3252,\"output_tokens\":5379,\"cache_creation_input_tokens\":1526,\"cache_read_input_tokens\":9405}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-42-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":3252,\"output_tokens\":5379,\"cache_creation_input_tokens\":1526,\"cache_read_input_tokens\":9405}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-42-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":8040,\"output_tokens\":6407,\"cache_creation_input_tokens\":9706,\"cache_read_input_tokens\":3073}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 11292,
+          "output": 11786,
+          "cacheWrite": 11232,
+          "cacheRead": 12478
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-42",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5636,\"cached_input_tokens\":4736,\"output_tokens\":7087,\"reasoning_output_tokens\":6987,\"total_tokens\":12723},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5636,\"cached_input_tokens\":4736,\"output_tokens\":7087,\"reasoning_output_tokens\":6987,\"total_tokens\":12723},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6836,\"cached_input_tokens\":5536,\"output_tokens\":7287,\"reasoning_output_tokens\":7077,\"total_tokens\":14123},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 5536,
+          "cacheWrite": 0,
+          "output": 7287
+        },
+        "turns": 2,
+        "reasoningOutput": 7077,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 14123,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-43",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-43-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4590,\"output_tokens\":4565,\"cache_creation_input_tokens\":6992,\"cache_read_input_tokens\":3375}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-43-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":4590,\"output_tokens\":4565,\"cache_creation_input_tokens\":6992,\"cache_read_input_tokens\":3375}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-43-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3074,\"output_tokens\":1353,\"cache_creation_input_tokens\":7156,\"cache_read_input_tokens\":5123}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7664,
+          "output": 5918,
+          "cacheWrite": 14148,
+          "cacheRead": 8498
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-43",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3470,\"cached_input_tokens\":2570,\"output_tokens\":5281,\"reasoning_output_tokens\":5181,\"total_tokens\":8751},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3470,\"cached_input_tokens\":2570,\"output_tokens\":5281,\"reasoning_output_tokens\":5181,\"total_tokens\":8751},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4670,\"cached_input_tokens\":3370,\"output_tokens\":5481,\"reasoning_output_tokens\":5271,\"total_tokens\":10151},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3370,
+          "cacheWrite": 0,
+          "output": 5481
+        },
+        "turns": 2,
+        "reasoningOutput": 5271,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 10151,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-44",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-44-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4520,\"output_tokens\":8631,\"cache_creation_input_tokens\":5850,\"cache_read_input_tokens\":2385}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-44-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4520,\"output_tokens\":8631,\"cache_creation_input_tokens\":5850,\"cache_read_input_tokens\":2385}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-44-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":4460,\"output_tokens\":2059,\"cache_creation_input_tokens\":9534,\"cache_read_input_tokens\":6597}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8980,
+          "output": 10690,
+          "cacheWrite": 15384,
+          "cacheRead": 8982
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-44",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3544,\"cached_input_tokens\":2644,\"output_tokens\":7955,\"reasoning_output_tokens\":7855,\"total_tokens\":11499},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3544,\"cached_input_tokens\":2644,\"output_tokens\":7955,\"reasoning_output_tokens\":7855,\"total_tokens\":11499},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4744,\"cached_input_tokens\":3444,\"output_tokens\":8155,\"reasoning_output_tokens\":7945,\"total_tokens\":12899},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3444,
+          "cacheWrite": 0,
+          "output": 8155
+        },
+        "turns": 2,
+        "reasoningOutput": 7945,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12899,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-45",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-45-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":6290,\"output_tokens\":9497,\"cache_creation_input_tokens\":676,\"cache_read_input_tokens\":9651}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-45-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":6290,\"output_tokens\":9497,\"cache_creation_input_tokens\":676,\"cache_read_input_tokens\":9651}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-45-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":4278,\"output_tokens\":9853,\"cache_creation_input_tokens\":3672,\"cache_read_input_tokens\":5319}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 10568,
+          "output": 19350,
+          "cacheWrite": 4348,
+          "cacheRead": 14970
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-45",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8018,\"cached_input_tokens\":7118,\"output_tokens\":5669,\"reasoning_output_tokens\":5569,\"total_tokens\":13687},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8018,\"cached_input_tokens\":7118,\"output_tokens\":5669,\"reasoning_output_tokens\":5569,\"total_tokens\":13687},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9218,\"cached_input_tokens\":7918,\"output_tokens\":5869,\"reasoning_output_tokens\":5659,\"total_tokens\":15087},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7918,
+          "cacheWrite": 0,
+          "output": 5869
+        },
+        "turns": 2,
+        "reasoningOutput": 5659,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 15087,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-46",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-46-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1692,\"output_tokens\":7915,\"cache_creation_input_tokens\":4030,\"cache_read_input_tokens\":6405}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-46-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1692,\"output_tokens\":7915,\"cache_creation_input_tokens\":4030,\"cache_read_input_tokens\":6405}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-46-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3888,\"output_tokens\":3775,\"cache_creation_input_tokens\":9186,\"cache_read_input_tokens\":5481}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 5580,
+          "output": 11690,
+          "cacheWrite": 13216,
+          "cacheRead": 11886
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-46",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3644,\"cached_input_tokens\":2744,\"output_tokens\":8343,\"reasoning_output_tokens\":8243,\"total_tokens\":11987},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3644,\"cached_input_tokens\":2744,\"output_tokens\":8343,\"reasoning_output_tokens\":8243,\"total_tokens\":11987},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4844,\"cached_input_tokens\":3544,\"output_tokens\":8543,\"reasoning_output_tokens\":8333,\"total_tokens\":13387},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3544,
+          "cacheWrite": 0,
+          "output": 8543
+        },
+        "turns": 2,
+        "reasoningOutput": 8333,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13387,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-47",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-47-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4102,\"output_tokens\":3837,\"cache_creation_input_tokens\":1448,\"cache_read_input_tokens\":3575}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-47-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4102,\"output_tokens\":3837,\"cache_creation_input_tokens\":1448,\"cache_read_input_tokens\":3575}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-47-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":2970,\"output_tokens\":2257,\"cache_creation_input_tokens\":1052,\"cache_read_input_tokens\":187}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7072,
+          "output": 6094,
+          "cacheWrite": 2500,
+          "cacheRead": 3762
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-47",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1574,\"cached_input_tokens\":674,\"output_tokens\":2409,\"reasoning_output_tokens\":2309,\"total_tokens\":3983},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1574,\"cached_input_tokens\":674,\"output_tokens\":2409,\"reasoning_output_tokens\":2309,\"total_tokens\":3983},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":2774,\"cached_input_tokens\":1474,\"output_tokens\":2609,\"reasoning_output_tokens\":2399,\"total_tokens\":5383},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 1474,
+          "cacheWrite": 0,
+          "output": 2609
+        },
+        "turns": 2,
+        "reasoningOutput": 2399,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 5383,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-48",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-48-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":6832,\"output_tokens\":5359,\"cache_creation_input_tokens\":8178,\"cache_read_input_tokens\":5833}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-48-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":6832,\"output_tokens\":5359,\"cache_creation_input_tokens\":8178,\"cache_read_input_tokens\":5833}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-48-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":8868,\"output_tokens\":9107,\"cache_creation_input_tokens\":3190,\"cache_read_input_tokens\":365}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 15700,
+          "output": 14466,
+          "cacheWrite": 11368,
+          "cacheRead": 6198
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-48",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10720,\"cached_input_tokens\":9820,\"output_tokens\":1003,\"reasoning_output_tokens\":903,\"total_tokens\":11723},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10720,\"cached_input_tokens\":9820,\"output_tokens\":1003,\"reasoning_output_tokens\":903,\"total_tokens\":11723},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11920,\"cached_input_tokens\":10620,\"output_tokens\":1203,\"reasoning_output_tokens\":993,\"total_tokens\":13123},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10620,
+          "cacheWrite": 0,
+          "output": 1203
+        },
+        "turns": 2,
+        "reasoningOutput": 993,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13123,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-49",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-49-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":122,\"output_tokens\":113,\"cache_creation_input_tokens\":8284,\"cache_read_input_tokens\":1163}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-49-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":122,\"output_tokens\":113,\"cache_creation_input_tokens\":8284,\"cache_read_input_tokens\":1163}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-49-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":814,\"output_tokens\":7701,\"cache_creation_input_tokens\":8096,\"cache_read_input_tokens\":8607}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 936,
+          "output": 7814,
+          "cacheWrite": 16380,
+          "cacheRead": 9770
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-49",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7674,\"cached_input_tokens\":6774,\"output_tokens\":9229,\"reasoning_output_tokens\":9129,\"total_tokens\":16903},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7674,\"cached_input_tokens\":6774,\"output_tokens\":9229,\"reasoning_output_tokens\":9129,\"total_tokens\":16903},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8874,\"cached_input_tokens\":7574,\"output_tokens\":9429,\"reasoning_output_tokens\":9219,\"total_tokens\":18303},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7574,
+          "cacheWrite": 0,
+          "output": 9429
+        },
+        "turns": 2,
+        "reasoningOutput": 9219,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 18303,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-50",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-50-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4820,\"output_tokens\":1059,\"cache_creation_input_tokens\":6998,\"cache_read_input_tokens\":4589}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-50-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":4820,\"output_tokens\":1059,\"cache_creation_input_tokens\":6998,\"cache_read_input_tokens\":4589}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-50-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":9784,\"output_tokens\":7959,\"cache_creation_input_tokens\":3290,\"cache_read_input_tokens\":1233}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 14604,
+          "output": 9018,
+          "cacheWrite": 10288,
+          "cacheRead": 5822
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-50",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10324,\"cached_input_tokens\":9424,\"output_tokens\":8863,\"reasoning_output_tokens\":8763,\"total_tokens\":19187},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10324,\"cached_input_tokens\":9424,\"output_tokens\":8863,\"reasoning_output_tokens\":8763,\"total_tokens\":19187},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11524,\"cached_input_tokens\":10224,\"output_tokens\":9063,\"reasoning_output_tokens\":8853,\"total_tokens\":20587},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10224,
+          "cacheWrite": 0,
+          "output": 9063
+        },
+        "turns": 2,
+        "reasoningOutput": 8853,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 20587,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-51",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-51-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":9182,\"output_tokens\":4741,\"cache_creation_input_tokens\":1520,\"cache_read_input_tokens\":8639}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-51-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":9182,\"output_tokens\":4741,\"cache_creation_input_tokens\":1520,\"cache_read_input_tokens\":8639}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-51-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":7074,\"output_tokens\":3465,\"cache_creation_input_tokens\":7508,\"cache_read_input_tokens\":867}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 16256,
+          "output": 8206,
+          "cacheWrite": 9028,
+          "cacheRead": 9506
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-51",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10638,\"cached_input_tokens\":9738,\"output_tokens\":7377,\"reasoning_output_tokens\":7277,\"total_tokens\":18015},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10638,\"cached_input_tokens\":9738,\"output_tokens\":7377,\"reasoning_output_tokens\":7277,\"total_tokens\":18015},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11838,\"cached_input_tokens\":10538,\"output_tokens\":7577,\"reasoning_output_tokens\":7367,\"total_tokens\":19415},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10538,
+          "cacheWrite": 0,
+          "output": 7577
+        },
+        "turns": 2,
+        "reasoningOutput": 7367,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 19415,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-52",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-52-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":6936,\"output_tokens\":5895,\"cache_creation_input_tokens\":3914,\"cache_read_input_tokens\":6657}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-52-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":6936,\"output_tokens\":5895,\"cache_creation_input_tokens\":3914,\"cache_read_input_tokens\":6657}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-52-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":8396,\"output_tokens\":1995,\"cache_creation_input_tokens\":9230,\"cache_read_input_tokens\":1573}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 15332,
+          "output": 7890,
+          "cacheWrite": 13144,
+          "cacheRead": 8230
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-52",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10120,\"cached_input_tokens\":9220,\"output_tokens\":659,\"reasoning_output_tokens\":559,\"total_tokens\":10779},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10120,\"cached_input_tokens\":9220,\"output_tokens\":659,\"reasoning_output_tokens\":559,\"total_tokens\":10779},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11320,\"cached_input_tokens\":10020,\"output_tokens\":859,\"reasoning_output_tokens\":649,\"total_tokens\":12179},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10020,
+          "cacheWrite": 0,
+          "output": 859
+        },
+        "turns": 2,
+        "reasoningOutput": 649,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12179,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-53",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-53-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":626,\"output_tokens\":9897,\"cache_creation_input_tokens\":52,\"cache_read_input_tokens\":6003}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-53-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":626,\"output_tokens\":9897,\"cache_creation_input_tokens\":52,\"cache_read_input_tokens\":6003}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-53-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":7510,\"output_tokens\":5549,\"cache_creation_input_tokens\":2344,\"cache_read_input_tokens\":5335}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8136,
+          "output": 15446,
+          "cacheWrite": 2396,
+          "cacheRead": 11338
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-53",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3874,\"cached_input_tokens\":2974,\"output_tokens\":165,\"reasoning_output_tokens\":65,\"total_tokens\":4039},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3874,\"cached_input_tokens\":2974,\"output_tokens\":165,\"reasoning_output_tokens\":65,\"total_tokens\":4039},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5074,\"cached_input_tokens\":3774,\"output_tokens\":365,\"reasoning_output_tokens\":155,\"total_tokens\":5439},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3774,
+          "cacheWrite": 0,
+          "output": 365
+        },
+        "turns": 2,
+        "reasoningOutput": 155,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 5439,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-54",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-54-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4476,\"output_tokens\":5595,\"cache_creation_input_tokens\":1854,\"cache_read_input_tokens\":1429}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-54-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4476,\"output_tokens\":5595,\"cache_creation_input_tokens\":1854,\"cache_read_input_tokens\":1429}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-54-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":9184,\"output_tokens\":319,\"cache_creation_input_tokens\":242,\"cache_read_input_tokens\":2617}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13660,
+          "output": 5914,
+          "cacheWrite": 2096,
+          "cacheRead": 4046
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-54",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6188,\"cached_input_tokens\":5288,\"output_tokens\":3719,\"reasoning_output_tokens\":3619,\"total_tokens\":9907},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6188,\"cached_input_tokens\":5288,\"output_tokens\":3719,\"reasoning_output_tokens\":3619,\"total_tokens\":9907},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7388,\"cached_input_tokens\":6088,\"output_tokens\":3919,\"reasoning_output_tokens\":3709,\"total_tokens\":11307},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 6088,
+          "cacheWrite": 0,
+          "output": 3919
+        },
+        "turns": 2,
+        "reasoningOutput": 3709,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11307,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-55",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-55-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":7526,\"output_tokens\":7645,\"cache_creation_input_tokens\":3032,\"cache_read_input_tokens\":1015}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-55-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":7526,\"output_tokens\":7645,\"cache_creation_input_tokens\":3032,\"cache_read_input_tokens\":1015}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-55-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":346,\"output_tokens\":401,\"cache_creation_input_tokens\":9388,\"cache_read_input_tokens\":9003}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 7872,
+          "output": 8046,
+          "cacheWrite": 12420,
+          "cacheRead": 10018
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-55",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3446,\"cached_input_tokens\":2546,\"output_tokens\":6425,\"reasoning_output_tokens\":6325,\"total_tokens\":9871},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":3446,\"cached_input_tokens\":2546,\"output_tokens\":6425,\"reasoning_output_tokens\":6325,\"total_tokens\":9871},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4646,\"cached_input_tokens\":3346,\"output_tokens\":6625,\"reasoning_output_tokens\":6415,\"total_tokens\":11271},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3346,
+          "cacheWrite": 0,
+          "output": 6625
+        },
+        "turns": 2,
+        "reasoningOutput": 6415,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 11271,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-56",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-56-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":6256,\"output_tokens\":9359,\"cache_creation_input_tokens\":2242,\"cache_read_input_tokens\":4281}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-56-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":6256,\"output_tokens\":9359,\"cache_creation_input_tokens\":2242,\"cache_read_input_tokens\":4281}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-56-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3620,\"output_tokens\":7075,\"cache_creation_input_tokens\":8038,\"cache_read_input_tokens\":9069}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 9876,
+          "output": 16434,
+          "cacheWrite": 10280,
+          "cacheRead": 13350
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-56",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8272,\"cached_input_tokens\":7372,\"output_tokens\":2747,\"reasoning_output_tokens\":2647,\"total_tokens\":11019},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8272,\"cached_input_tokens\":7372,\"output_tokens\":2747,\"reasoning_output_tokens\":2647,\"total_tokens\":11019},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9472,\"cached_input_tokens\":8172,\"output_tokens\":2947,\"reasoning_output_tokens\":2737,\"total_tokens\":12419},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 8172,
+          "cacheWrite": 0,
+          "output": 2947
+        },
+        "turns": 2,
+        "reasoningOutput": 2737,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12419,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-57",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-57-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1322,\"output_tokens\":7457,\"cache_creation_input_tokens\":9676,\"cache_read_input_tokens\":8299}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-57-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1322,\"output_tokens\":7457,\"cache_creation_input_tokens\":9676,\"cache_read_input_tokens\":8299}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-57-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":7486,\"output_tokens\":6981,\"cache_creation_input_tokens\":7600,\"cache_read_input_tokens\":8175}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 8808,
+          "output": 14438,
+          "cacheWrite": 17276,
+          "cacheRead": 16474
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-57",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10170,\"cached_input_tokens\":9270,\"output_tokens\":9805,\"reasoning_output_tokens\":9705,\"total_tokens\":19975},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":10170,\"cached_input_tokens\":9270,\"output_tokens\":9805,\"reasoning_output_tokens\":9705,\"total_tokens\":19975},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11370,\"cached_input_tokens\":10070,\"output_tokens\":10005,\"reasoning_output_tokens\":9795,\"total_tokens\":21375},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 10070,
+          "cacheWrite": 0,
+          "output": 10005
+        },
+        "turns": 2,
+        "reasoningOutput": 9795,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 21375,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-58",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-58-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":7524,\"output_tokens\":4915,\"cache_creation_input_tokens\":5990,\"cache_read_input_tokens\":61}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-58-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":7524,\"output_tokens\":4915,\"cache_creation_input_tokens\":5990,\"cache_read_input_tokens\":61}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-58-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":6456,\"output_tokens\":375,\"cache_creation_input_tokens\":3834,\"cache_read_input_tokens\":7201}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13980,
+          "output": 5290,
+          "cacheWrite": 9824,
+          "cacheRead": 7262
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-58",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7588,\"cached_input_tokens\":6688,\"output_tokens\":7983,\"reasoning_output_tokens\":7883,\"total_tokens\":15571},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7588,\"cached_input_tokens\":6688,\"output_tokens\":7983,\"reasoning_output_tokens\":7883,\"total_tokens\":15571},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":8788,\"cached_input_tokens\":7488,\"output_tokens\":8183,\"reasoning_output_tokens\":7973,\"total_tokens\":16971},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 7488,
+          "cacheWrite": 0,
+          "output": 8183
+        },
+        "turns": 2,
+        "reasoningOutput": 7973,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 16971,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-59",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-59-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":5214,\"output_tokens\":1925,\"cache_creation_input_tokens\":1296,\"cache_read_input_tokens\":9071}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-59-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":5214,\"output_tokens\":1925,\"cache_creation_input_tokens\":1296,\"cache_read_input_tokens\":9071}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-59-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":1538,\"output_tokens\":377,\"cache_creation_input_tokens\":2420,\"cache_read_input_tokens\":6323}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 6752,
+          "output": 2302,
+          "cacheWrite": 3716,
+          "cacheRead": 15394
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-59",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9918,\"cached_input_tokens\":9018,\"output_tokens\":1025,\"reasoning_output_tokens\":925,\"total_tokens\":10943},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9918,\"cached_input_tokens\":9018,\"output_tokens\":1025,\"reasoning_output_tokens\":925,\"total_tokens\":10943},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11118,\"cached_input_tokens\":9818,\"output_tokens\":1225,\"reasoning_output_tokens\":1015,\"total_tokens\":12343},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9818,
+          "cacheWrite": 0,
+          "output": 1225
+        },
+        "turns": 2,
+        "reasoningOutput": 1015,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 12343,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-60",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-60-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":2376,\"output_tokens\":4823,\"cache_creation_input_tokens\":698,\"cache_read_input_tokens\":65}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-60-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":2376,\"output_tokens\":4823,\"cache_creation_input_tokens\":698,\"cache_read_input_tokens\":65}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-60-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3356,\"output_tokens\":9707,\"cache_creation_input_tokens\":3038,\"cache_read_input_tokens\":1189}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 5732,
+          "output": 14530,
+          "cacheWrite": 3736,
+          "cacheRead": 1254
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-60",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9928,\"cached_input_tokens\":9028,\"output_tokens\":1715,\"reasoning_output_tokens\":1615,\"total_tokens\":11643},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":9928,\"cached_input_tokens\":9028,\"output_tokens\":1715,\"reasoning_output_tokens\":1615,\"total_tokens\":11643},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":11128,\"cached_input_tokens\":9828,\"output_tokens\":1915,\"reasoning_output_tokens\":1705,\"total_tokens\":13043},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 9828,
+          "cacheWrite": 0,
+          "output": 1915
+        },
+        "turns": 2,
+        "reasoningOutput": 1705,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13043,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-61",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-61-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":642,\"output_tokens\":857,\"cache_creation_input_tokens\":4452,\"cache_read_input_tokens\":1171}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-61-a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":642,\"output_tokens\":857,\"cache_creation_input_tokens\":4452,\"cache_read_input_tokens\":1171}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-61-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":2102,\"output_tokens\":1133,\"cache_creation_input_tokens\":7208,\"cache_read_input_tokens\":6071}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 2744,
+          "output": 1990,
+          "cacheWrite": 11660,
+          "cacheRead": 7242
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-61",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4146,\"cached_input_tokens\":3246,\"output_tokens\":965,\"reasoning_output_tokens\":865,\"total_tokens\":5111},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4146,\"cached_input_tokens\":3246,\"output_tokens\":965,\"reasoning_output_tokens\":865,\"total_tokens\":5111},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5346,\"cached_input_tokens\":4046,\"output_tokens\":1165,\"reasoning_output_tokens\":955,\"total_tokens\":6511},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 4046,
+          "cacheWrite": 0,
+          "output": 1165
+        },
+        "turns": 2,
+        "reasoningOutput": 955,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 6511,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-62",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-62-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":588,\"output_tokens\":9547,\"cache_creation_input_tokens\":6574,\"cache_read_input_tokens\":6229}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-62-a\",\"message\":{\"model\":\"模型\",\"usage\":{\"input_tokens\":588,\"output_tokens\":9547,\"cache_creation_input_tokens\":6574,\"cache_read_input_tokens\":6229}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-62-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":3936,\"output_tokens\":8095,\"cache_creation_input_tokens\":8418,\"cache_read_input_tokens\":585}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 4524,
+          "output": 17642,
+          "cacheWrite": 14992,
+          "cacheRead": 6814
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "模型"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-62",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4076,\"cached_input_tokens\":3176,\"output_tokens\":8279,\"reasoning_output_tokens\":8179,\"total_tokens\":12355},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":4076,\"cached_input_tokens\":3176,\"output_tokens\":8279,\"reasoning_output_tokens\":8179,\"total_tokens\":12355},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5276,\"cached_input_tokens\":3976,\"output_tokens\":8479,\"reasoning_output_tokens\":8269,\"total_tokens\":13755},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 3976,
+          "cacheWrite": 0,
+          "output": 8479
+        },
+        "turns": 2,
+        "reasoningOutput": 8269,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 13755,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-63",
+      "framework": "claude",
+      "text": "{\"type\":\"user\",\"cwd\":\"/fixture/工程/project\"}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-63-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4902,\"output_tokens\":3021,\"cache_creation_input_tokens\":3496,\"cache_read_input_tokens\":2887}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-63-a\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":4902,\"output_tokens\":3021,\"cache_creation_input_tokens\":3496,\"cache_read_input_tokens\":2887}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"id-63-b\",\"message\":{\"model\":\"alpha\",\"usage\":{\"input_tokens\":8234,\"output_tokens\":9793,\"cache_creation_input_tokens\":28,\"cache_read_input_tokens\":2459}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 13136,
+          "output": 12814,
+          "cacheWrite": 3524,
+          "cacheRead": 5346
+        },
+        "messages": 2,
+        "models": [
+          "alpha",
+          "😀"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-63",
+      "framework": "codex",
+      "text": "{\"payload\":{\"type\":\"session_meta\",\"cwd\":\"/fixture/工程/project\"}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6166,\"cached_input_tokens\":5266,\"output_tokens\":1017,\"reasoning_output_tokens\":917,\"total_tokens\":7183},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":6166,\"cached_input_tokens\":5266,\"output_tokens\":1017,\"reasoning_output_tokens\":917,\"total_tokens\":7183},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":7366,\"cached_input_tokens\":6066,\"output_tokens\":1217,\"reasoning_output_tokens\":1007,\"total_tokens\":8583},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1300,
+          "cacheRead": 6066,
+          "cacheWrite": 0,
+          "output": 1217
+        },
+        "turns": 2,
+        "reasoningOutput": 1007,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 8583,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "claude-zero",
+      "framework": "claude",
+      "text": "{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"zero\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":0,\"output_tokens\":0,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "cacheWrite": 0,
+          "cacheRead": 0
+        },
+        "messages": 1,
+        "models": [
+          "model-fixture"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "claude-no-id",
+      "framework": "claude",
+      "text": "{\"cwd\":\"/fixture/工程/project\",\"uuid\":null,\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":null,\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 2,
+          "output": 4,
+          "cacheWrite": 6,
+          "cacheRead": 8
+        },
+        "messages": 2,
+        "models": [
+          "model-fixture"
+        ],
+        "undedupable": 2
+      }
+    },
+    {
+      "name": "claude-damaged-lines",
+      "framework": "claude",
+      "text": "bad JSON\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"ok\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}\n{\"broken\":",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 1,
+          "output": 2,
+          "cacheWrite": 3,
+          "cacheRead": 4
+        },
+        "messages": 1,
+        "models": [
+          "model-fixture"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "claude-utf16-model-order",
+      "framework": "claude",
+      "text": "{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"a\",\"message\":{\"model\":\"\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}\n{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"b\",\"message\":{\"model\":\"😀\",\"usage\":{\"input_tokens\":1,\"output_tokens\":2,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":4}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 2,
+          "output": 4,
+          "cacheWrite": 6,
+          "cacheRead": 8
+        },
+        "messages": 2,
+        "models": [
+          "😀",
+          ""
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "claude-large-cache",
+      "framework": "claude",
+      "text": "{\"cwd\":\"/fixture/工程/project\",\"uuid\":\"cache\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":19765,\"output_tokens\":300,\"cache_creation_input_tokens\":20,\"cache_read_input_tokens\":4800089833}}}",
+      "expected": {
+        "framework": "claude",
+        "cwd": "/fixture/工程/project",
+        "totals": {
+          "input": 19765,
+          "output": 300,
+          "cacheWrite": 20,
+          "cacheRead": 4800089833
+        },
+        "messages": 1,
+        "models": [
+          "model-fixture"
+        ],
+        "undedupable": 0
+      }
+    },
+    {
+      "name": "codex-zero",
+      "framework": "codex",
+      "text": "{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":0,\"cached_input_tokens\":0,\"output_tokens\":0,\"reasoning_output_tokens\":0,\"total_tokens\":0},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": null,
+        "totals": {
+          "input": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "output": 0
+        },
+        "turns": 1,
+        "reasoningOutput": 0,
+        "nonMonotonic": 0,
+        "cumulativeTotal": 0,
+        "agreesWithCli": true
+      }
+    },
+    {
+      "name": "codex-nonmonotonic",
+      "framework": "codex",
+      "text": "{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":5000,\"cached_input_tokens\":4500,\"output_tokens\":300,\"reasoning_output_tokens\":120,\"total_tokens\":5300},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}\n{\"payload\":{\"info\":{\"total_token_usage\":{\"input_tokens\":1000,\"cached_input_tokens\":900,\"output_tokens\":100,\"reasoning_output_tokens\":40,\"total_tokens\":1100},\"last_token_usage\":{\"input_tokens\":999999,\"output_tokens\":777777}}}}",
+      "expected": {
+        "framework": "codex",
+        "cwd": null,
+        "totals": {
+          "input": 100,
+          "cacheRead": 900,
+          "cacheWrite": 0,
+          "output": 100
+        },
+        "turns": 2,
+        "reasoningOutput": 40,
+        "nonMonotonic": 1,
+        "cumulativeTotal": 1100,
+        "agreesWithCli": true
+      }
+    }
+  ]
+}

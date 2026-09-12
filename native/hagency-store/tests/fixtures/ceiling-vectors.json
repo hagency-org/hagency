@@ -1,0 +1,354 @@
+{
+  "source": "lib/metering/ledger.js + backend-v2.js remainingFor drawn rule",
+  "ledgerSha256": "0d6dbf3da4c957d6edebba3a7cc9c37cf5302d149b6ec3fe8fe9c66873777a54",
+  "backendSha256": "c1baf3c3c0ec556422c86e6671112298d76008184ee7a18055cb951f79997c53",
+  "engagementStoreSha256": "cec888e2ecfe23f0c06c34231e1bec260c2a575864c4229e25b893fda9b42faf",
+  "semantics": "fresh-token draw per current period; max(reserved, spent) with unknown fallback",
+  "vectors": [
+    {
+      "name": "lockout-cache-swamp",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786795200000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 604823,
+                "output": 76266,
+                "cacheWrite": 0,
+                "cacheRead": 12928512
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 681089,
+        "consumed": 13609601,
+        "drawn": 681089,
+        "spendPeriodKey": "2026-08"
+      }
+    },
+    {
+      "name": "fresh-exhaustion",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786795200000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 9500000,
+                "output": 500000,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 10000000,
+        "consumed": 10000000,
+        "drawn": 10000000,
+        "spendPeriodKey": "2026-08"
+      }
+    },
+    {
+      "name": "no-cache-parity",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786795200000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 1000,
+                "output": 500,
+                "cacheWrite": 250,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 1750,
+        "consumed": 1750,
+        "drawn": 1750,
+        "spendPeriodKey": "2026-08"
+      }
+    },
+    {
+      "name": "cache-write-draws",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786795200000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 0,
+                "output": 0,
+                "cacheWrite": 5000,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 5000,
+        "consumed": 5000,
+        "drawn": 5000,
+        "spendPeriodKey": "2026-08"
+      }
+    },
+    {
+      "name": "committed-binding",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786795200000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 40,
+                "output": 0,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 40,
+        "consumed": 40,
+        "drawn": 100,
+        "spendPeriodKey": "2026-08"
+      }
+    },
+    {
+      "name": "cache-read-growth-never-draws",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786798800000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 100,
+                "output": 50,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            },
+            {
+              "at": 1786798800000,
+              "totals": {
+                "input": 100,
+                "output": 50,
+                "cacheWrite": 0,
+                "cacheRead": 5000
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 150,
+        "consumed": 5150,
+        "drawn": 150,
+        "spendPeriodKey": "2026-08"
+      }
+    },
+    {
+      "name": "month-roll-unknown",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1789473600000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 700,
+                "output": 0,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": null,
+        "consumed": null,
+        "drawn": 100,
+        "spendPeriodKey": null
+      }
+    },
+    {
+      "name": "two-sources-additive",
+      "reserved": 100,
+      "ceilingTokens": 1000,
+      "period": "monthly",
+      "queryAt": 1786798800000,
+      "sources": [
+        {
+          "key": "a",
+          "observations": [
+            {
+              "at": 1786795200000,
+              "totals": {
+                "input": 100,
+                "output": 0,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            }
+          ]
+        },
+        {
+          "key": "b",
+          "observations": [
+            {
+              "at": 1786798800000,
+              "totals": {
+                "input": 0,
+                "output": 50,
+                "cacheWrite": 0,
+                "cacheRead": 0
+              }
+            }
+          ]
+        }
+      ],
+      "expected": {
+        "reserved": 100,
+        "spent": 150,
+        "consumed": 150,
+        "drawn": 150,
+        "spendPeriodKey": "2026-08"
+      }
+    }
+  ],
+  "messages": [
+    {
+      "name": "plain-form",
+      "agent": "a1",
+      "alloc": 500,
+      "remaining": 100,
+      "context": null,
+      "expected": "allocating 500 would exceed the 100 left on a1"
+    },
+    {
+      "name": "measured-binding",
+      "agent": "BigLittle",
+      "alloc": 50000,
+      "remaining": 0,
+      "context": {
+        "period": "monthly",
+        "reserved": 250000,
+        "spent": 10000000,
+        "consumed": 13609601,
+        "ceilingTokens": 10000000,
+        "presetName": "codex-strong",
+        "spendPeriodKey": "2026-08"
+      },
+      "expected": "allocating 50k would exceed the 0 left on BigLittle — its ceiling is 10.0M per monthly; 250k is committed to active engagements and 10.0M of fresh tokens was measured this monthly (2026-08), so measured spend is what is binding; total consumption reads 13.6M because cache reads are measured and shown but do not draw against a ceiling. To proceed, raise the ceiling on preset \"codex-strong\" or wait for the monthly to roll over."
+    },
+    {
+      "name": "committed-binding-mirror",
+      "agent": "BigLittle",
+      "alloc": 50000,
+      "remaining": 0,
+      "context": {
+        "period": "monthly",
+        "reserved": 9000000,
+        "spent": 100000,
+        "consumed": 100000,
+        "ceilingTokens": 9000000,
+        "presetName": "codex-strong",
+        "spendPeriodKey": "2026-08"
+      },
+      "expected": "allocating 50k would exceed the 0 left on BigLittle — its ceiling is 9.0M per monthly; 9.0M is committed to active engagements and 100k of fresh tokens was measured this monthly (2026-08), so committed allocations is what is binding. To proceed, raise the ceiling on preset \"codex-strong\" or wait for the monthly to roll over."
+    }
+  ],
+  "admission": [
+    {
+      "name": "admission-lockout",
+      "ceilingTokens": 10000000,
+      "alloc": 1000000,
+      "seed": {
+        "input": 604823,
+        "output": 76266,
+        "cacheWrite": 0,
+        "cacheRead": 12928512
+      },
+      "expected": {
+        "spent": 681089,
+        "consumed": 13609601,
+        "drawnBefore": 681089,
+        "byCeiling": 9318911,
+        "approved": true,
+        "remainingAfterApproval": 9000000
+      }
+    },
+    {
+      "name": "admission-fresh-exhaustion",
+      "ceilingTokens": 10000000,
+      "alloc": 1000000,
+      "seed": {
+        "input": 9500000,
+        "output": 500000,
+        "cacheWrite": 0,
+        "cacheRead": 0
+      },
+      "expected": {
+        "spent": 10000000,
+        "consumed": 10000000,
+        "drawnBefore": 10000000,
+        "byCeiling": 0,
+        "approved": false,
+        "remainingAfterApproval": 0
+      }
+    }
+  ]
+}

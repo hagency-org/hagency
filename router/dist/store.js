@@ -1010,6 +1010,19 @@ export class RouterStore {
         tx();
     }
     claimDispatch(input) {
+        return this.claimDispatchObserved(input).claim;
+    }
+    claimDispatchWithWake(input) {
+        const { claim, cutoff } = this.claimDispatchObserved(input);
+        return {
+            claim,
+            // A retry can become due between eligibility selection and this lookup.
+            // Keep the actual selection cutoff so that work cannot miss both checks.
+            nextAvailableAt: claim?.ok ? null : this.nextQueuedDispatchAfter(cutoff ?? this.now()),
+        };
+    }
+    claimDispatchObserved(input) {
+        let cutoff = null;
         try {
             const tx = this.db.transaction(() => {
                 const runnerId = requiredText(input.runnerId, 'runner_id', 255);
@@ -1021,6 +1034,7 @@ export class RouterStore {
                 if (live >= input.maxLiveRunners)
                     return refusal('live_runner_cap', 'live runner cap is full');
                 const now = this.now();
+                cutoff = now;
                 this.db.prepare(`DELETE FROM resource_leases WHERE dispatch_id IN
            (SELECT dispatch_id FROM dispatches
             WHERE state IN ('queued','completed','cancelled_before_start','outcome_unknown'))`).run();
@@ -1136,17 +1150,20 @@ export class RouterStore {
                 }
                 return null;
             });
-            return tx();
+            return { claim: tx(), cutoff };
         }
         catch (error) {
             if (error instanceof RouterInputError)
-                return refusal('bad_request', error.message);
+                return { claim: refusal('bad_request', error.message), cutoff };
             throw error;
         }
     }
     nextQueuedDispatchAt() {
+        return this.nextQueuedDispatchAfter(this.now());
+    }
+    nextQueuedDispatchAfter(cutoff) {
         const row = this.db.prepare(`SELECT MIN(available_at) AS available_at FROM dispatches
-       WHERE state = 'queued' AND available_at IS NOT NULL AND available_at > ?`).get(this.now());
+       WHERE state = 'queued' AND available_at IS NOT NULL AND available_at > ?`).get(cutoff);
         return row?.available_at ?? null;
     }
     getLaunchDescriptor(input) {

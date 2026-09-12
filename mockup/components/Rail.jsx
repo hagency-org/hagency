@@ -76,6 +76,27 @@ const SECTIONS = [
 const isUnder = (pathname, href) => pathname.startsWith(`${href}/`);
 
 export default function Rail() {
+  const data = useData();
+  return data.nativeConsole ? <NativeRail /> : <LegacyRail />;
+}
+
+function NativeRail() {
+  const t = useT();
+  const pathname = usePathname();
+  return <nav className="rail" aria-label={t('rail.nav')}>
+    <div className="rail-brand"><b>HAGENCY</b><span>{t('nr.nativeConsole')}</span></div>
+    <div className="rail-fleet">{SECTIONS.map((sec) => <div key={sec.head}>
+      <h2 className="rail-sec">{t(sec.head)}</h2>
+      <ul className="rail-list">{sec.rows.map((row) => <li key={row.key}>
+        {['usage', 'resources'].includes(row.key) ? <a className="fleet-row" href={`/console/${row.key}/`} aria-current={pathname.endsWith(`/${row.key}`) || pathname.endsWith(`/${row.key}/`) || pathname.startsWith(`/console/${row.key}/`) ? 'page' : undefined}><span className="ico">{row.icon}</span><span className="grow">{t(`nav.${row.key}`)}</span></a>
+          : <span className="fleet-row" aria-disabled="true" title={t('nu.unavailableRoute')}><span className="ico">{row.icon}</span><span className="grow">{t(`nav.${row.key}`)}</span><span>—</span></span>}
+      </li>)}</ul>
+    </div>)}</div>
+    <PrefsSwitch />
+  </nav>;
+}
+
+function LegacyRail() {
   const t = useT();
   const pathname = usePathname();
   const [filter, setFilter] = useState('');

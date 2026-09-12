@@ -2698,14 +2698,13 @@ async function pumpRouterDispatches() {
     }
     while (liveThreadSessionRunners.size < MAX_LIVE_RUNNERS) {
       const runnerId = `runner_${randomBytes(16).toString('hex')}`;
-      const claim = routerStore.claimDispatch({
+      const { claim, nextAvailableAt } = routerStore.claimDispatchWithWake({
         runnerId,
         leaseMs: RUNNER_LEASE_MS + APPROVAL_TTL_MS,
         capabilityTtlMs: RUNNER_LEASE_MS + APPROVAL_TTL_MS,
         maxLiveRunners: MAX_LIVE_RUNNERS,
       });
       if (!claim || !claim.ok) {
-        const nextAvailableAt = routerStore.nextQueuedDispatchAt();
         if (nextAvailableAt !== null) scheduleRouterPump(Math.max(1, nextAvailableAt - Date.now()));
         break;
       }
