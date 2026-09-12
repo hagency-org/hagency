@@ -743,7 +743,6 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
         0
     );
 }
-
 /// The harness's derived wait: one tenth of the operation budget every
 /// scenario below grants (`Limits::operation_ms`, 25 s). A literal here is
 /// what let a loaded run miss a notice the host had lawfully not yet sent —
@@ -752,8 +751,15 @@ const fn harness_wait() -> Duration {
     Duration::from_millis(crate::approval::Gate::OPERATION_BUDGET_MS / 10)
 }
 
-/// Response frames the HOST actually wrote (from the probe parent's wire
-/// record): lines with an `approval-*` id and a `result` field.
+/// Approval response frames the probe actually read, one JSON line each.
+fn probe_read_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(work.join("owned-dispatch.approval-bytes"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+/// Host-written approval response frames (id starts with `approval-`).
 fn host_response_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
     std::fs::read_to_string(work.join("owned-dispatch.requests"))
         .unwrap()
@@ -768,16 +774,6 @@ fn host_response_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
-/// Frames the PROBE actually read (its `approval-bytes` append log) — the
-/// read-side counterpart of [`host_response_frames`], so a mismatch names
-/// which side lost the frame.
-fn probe_read_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
-    std::fs::read_to_string(work.join("owned-dispatch.approval-bytes"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
-        .collect()
-}
 
 /// Every `owned-dispatch.*` marker file currently present under `work`, so an
 /// expired wait reports what the probe DID emit: a timing miss (the marker
@@ -798,4 +794,164 @@ fn markers_present(work: &std::path::Path) -> String {
             }
         })
         .unwrap_or_else(|_| "<unreadable>".to_owned())
+}
+/// The middle case (design §3a): the host is held at the recheck gate with
+/// `in_flight` set and the frame armed but unwritten; the fixture then emits
+/// the resolution for that in-flight id. The write must still complete — a
+/// resolution must not cancel a frame committed to the transport. Fails on
+/// the pre-change predicate (`write.is_none()` alone cancels).
+#[tokio::test]
+async fn native_owned_approval_in_flight_resolution_completes_write() {
+    use std::sync::{Arc, atomic::Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path());
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(&work, Fault::RecheckGate, "owned-approval-gate-resolve");
+    configured.approval_gate = Some(gate.clone());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        configured,
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "original recheck did not reach gate"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // The host is in flight at the gate; release both halves. The probe now
+    // emits the resolution BEFORE the write, which is the state under test.
+    gate.release.store(true, Ordering::Release);
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert!(report.failure.is_none());
+    assert_eq!(host_response_frames(&work).len(), 1);
+    assert_eq!(probe_read_frames(&work).len(), 1);
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        1
+    );
+}
+
+/// The named first case (design §3b): a resolution before admission still
+/// cancels with the exact variant, and nothing reaches the wire.
+#[tokio::test]
+async fn native_owned_approval_resolution_before_admission_cancels() {
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path());
+    // RecheckGate without an attached gate is inert: the take() finds None.
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        host(&work, Fault::RecheckGate, "owned-approval-resolve"),
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let _notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    // Deliberately NO owner verdict: the probe resolves while the entry is
+    // retained but not admitted, which is the pre-admission case.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.failure,
+        Some(Failure::ApprovalCancelled),
+        "{:?}; {}",
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert!(!work.join("owned-dispatch.approval-bytes").exists());
+    assert!(host_response_frames(&work).is_empty());
+}
+
+/// The re-entry guard (design §3c): after one written frame and its legal
+/// post-write resolution, no second frame for that id is ever written — the
+/// probe itself fails if one arrives.
+#[tokio::test]
+async fn native_owned_approval_no_second_frame_after_resolution() {
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        host(
+            &work,
+            Fault::RecheckGate,
+            "owned-approval-admitted-resolve-count",
+        ),
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert_eq!(host_response_frames(&work).len(), 1);
+    assert_eq!(probe_read_frames(&work).len(), 1);
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        1
+    );
 }

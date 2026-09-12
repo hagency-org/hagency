@@ -81,7 +81,17 @@ impl Drive<'_> {
                 }
                 (
                     None,
-                    if callbacks.entries.values().any(|e| e.write.is_none()) {
+                    // A turn end invalidates transmission: an admitted entry
+                    // whose frame was never sent (not in flight) is still a
+                    // cancellation. `!admitted` deliberately appears only in
+                    // the resolution arm, where a resolution — unlike a turn
+                    // end — must not cancel a prepared-but-unsent frame the
+                    // send path still owns.
+                    if callbacks
+                        .entries
+                        .values()
+                        .any(|e| e.write.is_none() && !e.in_flight)
+                    {
                         Err(Failure::ApprovalCancelled)
                     } else {
                         Ok(true)

@@ -235,8 +235,15 @@ impl ApprovalRun {
                     .callbacks
                     .entries
                     .iter_mut()
-                    .find(|(_, e)| e.admitted && e.write.is_none())
+                    .find(|(_, e)| e.admitted && e.write.is_none() && !e.in_flight)
             {
+                // The frame is about to be committed to the transport. Set
+                // this on the same borrow, BEFORE the recheck pump below,
+                // because that pump can deliver this entry's own resolution
+                // and must not cancel the frame it is answering.
+                entry.in_flight = true;
+                #[cfg(any(test, feature = "test-diagnostics"))]
+                entry.mark("in-flight");
                 self.sending = Some(Sending {
                     id: key.clone(),
                     prepared: entry.prepared.take().ok_or(Failure::Protocol)?,
@@ -278,6 +285,14 @@ impl ApprovalRun {
                     continue;
                 }
                 checked.output.map_err(|_| Failure::LostAuthority)?;
+                // Deliberate decision (ADR-046 amendment 2026-09-12): a turn
+                // end arriving on this pump while the frame is armed maps to
+                // `ApprovalCancelled`, unlike the four other pumps that map a
+                // turn end to a clean exit. A turn end invalidates
+                // transmission — the wire is closed — so an armed-but-unwritten
+                // frame next to a turn end is a cancellation, and the send is
+                // never started. Only the resolution arm exempts an in-flight
+                // frame; a turn end never does.
                 if checked.terminal? {
                     return Err(Failure::ApprovalCancelled);
                 }
@@ -308,6 +323,10 @@ impl ApprovalRun {
                             .get_mut(&sending.id)
                             .ok_or(Failure::Protocol)?;
                         entry.write = Some(write); // actual receipt before any await
+                        // The write is accepted: the entry is no longer in
+                        // flight, and `write` now carries the receipt. A later
+                        // resolution is post-write and is informational.
+                        entry.in_flight = false;
                         #[cfg(any(test, feature = "test-diagnostics"))]
                         entry.mark("write-accepted");
                         #[cfg(test)]

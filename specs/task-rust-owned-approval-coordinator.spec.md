@@ -119,6 +119,24 @@ Scenario: Pending control preserves exact ordered usage observations
   When domain receipts are delayed or refused
   Then the original usage slot and ordered facts remain retained with explicit unknown status and no fabricated observations
 
+Scenario: An in-flight approval frame survives its own resolution
+  Test: native_owned_approval_in_flight_resolution_completes_write
+  Given a host held at the recheck gate with the prepared frame committed to the transport
+  When the fixture emits the resolution for that in-flight id before the write lands
+  Then the bounded write completes and is recorded and the operation reports no failure
+
+Scenario: Pre-admission resolution still cancels with the named variant
+  Test: native_owned_approval_resolution_before_admission_cancels
+  Given an entry retained before any durable admission
+  When the fixture resolves it
+  Then the operation fails with ApprovalCancelled and no frame reaches the wire
+
+Scenario: No second frame is written after a resolution
+  Test: native_owned_approval_no_second_frame_after_resolution
+  Given one written response frame and its legal post-write resolution
+  When the drive continues to completion
+  Then exactly one frame exists on both the host-written and probe-read streams and the durable write count is one
+
 ## Out of Scope
 
 Application bootstrap selection and request delivery, private SDK collection,
