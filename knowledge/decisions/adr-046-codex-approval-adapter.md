@@ -273,3 +273,69 @@ second frame and no double-write is possible. This amendment changes no bound, a
 and never `Applied`; native application remains unconfirmed exactly as this ADR
 states. The reconcile read is read-only and grants no retry, reply, lease or
 completion authority.
+## Amendment (2026-09-12)
+
+ADR-046's two named states were not exhaustive, and the case between them was
+cancel. The Windows trace (upstream 63c4ac9, run under eight-way load) records,
+for every cancellation, an entry whose phases are
+
+    retained, acknowledged, prepared, begun, admitted, checked, resolved-before-write
+
+with `stage: Update` and no transport termination. The primitive is therefore
+`serverRequest/resolved` observed for an entry that had passed
+`check_approval_response` and had not recorded a write receipt, while the peer had
+already read that entry's response frame. `turn/completed` is excluded: it closes
+the wire, so its observation necessarily carries a termination cause.
+
+The mechanism is an ordering hazard between two paths that are not atomic with
+respect to each other. The session's event delivery
+(`SessionDriver::receive` -> `Driver::next_event`) pops the transport's parsed
+event queue unconditionally (`transport.rs`, the `self.events.pop()` arm) and is
+not gated on whether a frame write is in flight; the write path returns its
+receipt only after the flush is observed. A resolution parsed on one of the
+host's pumps can therefore be consumed while the entry's frame is committed but
+its receipt is not yet recorded. The previous code cancelled in that window.
+
+An entry that has been committed to the transport is not cancellable by its own
+resolution. Its frame is one-shot and authoritative: the durable decision was
+consumed by `begin_approval_responses`, the typed frame was built by the pinned
+response constructor, and that value is retained by the entry. The host must
+complete that frame's bounded write and record its acceptance, or fail with the
+transport's own error; it must not cancel, and it must not re-enter the send path
+with a frame it has already committed. Re-entry is specifically harmful: a parsed
+resolution removes the connection's pending server request, so a subsequent
+attempt to send the same frame is refused as closed, which would report a
+transport failure for a frame the host itself had already committed.
+
+The three cases are now named. **Before admission**: a resolution cancels with
+`Failure::ApprovalCancelled` and no write (unchanged). **Committed to the
+transport, receipt not yet recorded**: the resolution is recorded and the write
+completes or fails on its own error; no cancellation. **After write acceptance**:
+the resolution is recorded and the drive continues; it neither revokes nor renews
+authority (unchanged).
+
+Deliberately not claimed: none of this proves the runtime *applied* the response.
+Local write acceptance is transport-level, and native application remains
+unconfirmed, exactly as ADR-046 requires. No acknowledgment, retry,
+reconstruction, renewed authority, widened deadline or new fallback follows.
+Missing phases and absent observations remain unobserved rather than
+reinterpreted.
+
+**Addendum to the amendment (review corrections).** This amendment interprets,
+and does not alter, ADR-046's own rulings at lines 121–125: a resolution
+observed before response admission cancels the callback; uncertain
+transmission closes/fences the original attempt; after known local write
+acceptance a resolution remains native application-unconfirmed and neither
+revokes nor renews authority. The `in_flight` flag only prevents a
+cancellation the wire already contradicts; it relaxes none of those rulings.
+Two outcomes are possible for the corrected window, and both are correct: if
+the resolution is delivered by a host pump (M1), the in-flight frame
+completes to `WriteAccepted` and the drive continues; if the session dropped
+the write receipt after the bytes were written (M2), the send path fails with
+the transport's own error and the operation reports `Failure::Protocol`
+truthfully — the middle-case test fails on that path, which is correct,
+because a real receipt loss must not be hidden behind a clean completion. A
+turn end remains a cancellation everywhere, including on the recheck pump
+next to an armed frame: a turn end invalidates transmission — the wire is
+closed — so the frame is never sent and the operation reports
+`ApprovalCancelled`; only a resolution exempts an in-flight frame.
