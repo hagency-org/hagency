@@ -247,3 +247,32 @@ closed bit; no writer job, no lock, no allocation beyond the reply (the
 never authority: nothing may read it to retry, release or complete anything; it names states,
 never private counts or fleet detail — the native boundary is deliberately stricter than the
 retained route, which publishes agent/server counts to a local operator.
+
+## Amendment: the retained health contract and the ready boundary (brief 21)
+
+The brief-19 amendment above changed `/health` from always-200 to 503-when-not-ready. That
+diverged from the retained contract (`backend-v2.js:7585`: unauthenticated, always 200,
+readiness as body detail) with three consumers keying on 200 — the supervisor's dependency
+wait (`bin/hagency-supervisor:116-130`), the CLI startup probe (`tests/cli.rs:36-49`), and
+the local service supervisor — and the divergence was unstated. **Superseded, twice over:**
+
+1. **`GET /health` keeps the retained contract**: unauthenticated, **200 whenever the process
+   is live**, readiness as BODY detail — names and state words only (the stricter native body
+   stays; no counts, no fleet detail). No existing consumer changes.
+2. **`GET /ready` (new, beside it)** carries the 503-when-any-component-not-ready semantics
+   with the SAME body, for uptime monitoring: 200 when every component is ready, 503 with the
+   full component list otherwise — never a silent 200. Readiness stays diagnostic, never
+   authority: nothing may read either boundary to retry, release or complete anything.
+
+**One vocabulary (F3).** The component states are one `pub enum ComponentState` (plus
+`TickOutcome` for the tick's words) from which BOTH the wire words and the ready predicate
+derive — the word set and the arm list can no longer encode two vocabularies. The wiring-bug
+arm (a handle without its tick channel) reports `not_started`, and it is not ready.
+`native_health_readiness_enumerates_every_state` pins every variant's word and ready answer.
+
+**A refused tick is a live loop (F1).** The sweep's ready predicate is liveness alone, never
+the tick's outcome word: `refused_busy`, `refused_outcome_unknown` and `refused` are outcome
+words of a LIVE loop that was refused — the loop's own `tracing::warn!` says it waits for the
+next tick — so every `Tick(_)` state is ready. The words stay on the wire for diagnosis.
+`native_health_readiness_refused_tick_is_ready` injects the loop's own busy-refusal word on
+the real channel type with a genuinely-live task and asserts both boundaries answer 200.

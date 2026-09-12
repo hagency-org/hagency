@@ -88,6 +88,123 @@ async fn native_health_readiness_ready() {
     cancel.expect("the ready case wires the sweep").cancel();
 }
 
+/// F1: a refused tick is a LIVE loop that was refused, not a dead one — the
+/// tick's outcome word never feeds readiness. Injected per the brief ("a
+/// test that injects a refused tick"): the tick channel carries the loop's
+/// own refusal word for a saturated writer, and the handle is a REAL live
+/// task (a spawn that runs until cancelled), so liveness is observed, not
+/// mocked. The remaining outcome words are enumerated against the same
+/// predicate by the F3 test.
+#[tokio::test]
+async fn native_health_readiness_refused_tick_is_ready() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state");
+    let custody = Store::start(Repository::open(&state).unwrap(), 16).unwrap();
+    let domain = DomainStore::start(DomainRepository::open(&state).unwrap(), 16).unwrap();
+    // The injected refusal: the exact word the loop publishes when the
+    // writer queue is saturated (bootstrap.rs:440), on the exact channel
+    // type the loop reports through.
+    let (seed, tick) =
+        tokio::sync::watch::channel(hagency::bootstrap::CeilingSweepTick::Refused("busy"));
+    let cancel = CancellationToken::new();
+    // A genuinely-live task: it runs and never finishes until cancelled, so
+    // the liveness probe observes a real task, exactly as it would the loop.
+    let live = tokio::spawn({
+        let gate = cancel.clone();
+        async move {
+            gate.cancelled().await;
+        }
+    });
+    let shared = Arc::new(live);
+    let app = App::new(
+        custody.clone(),
+        TOKEN.as_bytes(),
+        "127.0.0.1:13300".parse().unwrap(),
+    )
+    .unwrap()
+    .with_domain(domain.clone())
+    .with_ceiling_sweep(shared.clone(), tick);
+    let service = Arc::new(Service::new(app.router()));
+    // /health: ALWAYS 200 while the process is live (F2) — the refused tick
+    // is body detail, never a 503.
+    let mut response = TestClient::get(format!("{BASE}/health"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(
+        value["status"], "ok",
+        "a refused tick never fails readiness"
+    );
+    let states = component_states(&value);
+    assert_eq!(states["ceiling_sweep"], "alive", "the loop is live");
+    assert_eq!(
+        states["ceiling_sweep_last_tick"], "refused_busy",
+        "the refusal stays on the wire for diagnosis"
+    );
+    // /ready: also ready — the same predicate, one vocabulary.
+    let response = TestClient::get(format!("{BASE}/ready"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    drop(seed);
+    cancel.cancel();
+    // The handle lives inside the Arc the app borrowed; wait on liveness
+    // (is_finished) instead of awaiting the Arc, which is not a future.
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !shared.is_finished() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    custody.shutdown().await.unwrap();
+    domain.shutdown().await.unwrap();
+}
+
+/// F3: ONE vocabulary — every enum variant's word and ready answer, so the
+/// wire words and the predicate can never disagree again.
+#[test]
+fn native_health_readiness_enumerates_every_state() {
+    use hagency::ComponentState;
+    let every: Vec<(ComponentState, &str, bool)> = vec![
+        (ComponentState::Open, "open", true),
+        (ComponentState::Alive, "alive", true),
+        (ComponentState::Disabled, "disabled", true),
+        (ComponentState::Ready, "ready", true),
+        (ComponentState::Unstarted, "unstarted", true),
+        (ComponentState::Running, "running", true),
+        (
+            ComponentState::Tick(hagency::TickOutcome::Swept),
+            "swept",
+            true,
+        ),
+        (
+            ComponentState::Tick(hagency::TickOutcome::RefusedBusy),
+            "refused_busy",
+            true,
+        ),
+        (
+            ComponentState::Tick(hagency::TickOutcome::RefusedOutcomeUnknown),
+            "refused_outcome_unknown",
+            true,
+        ),
+        (
+            ComponentState::Tick(hagency::TickOutcome::Refused),
+            "refused",
+            true,
+        ),
+        (ComponentState::Closed, "closed", false),
+        (ComponentState::Stopped, "stopped", false),
+        (ComponentState::Unavailable, "unavailable", false),
+        (ComponentState::OutcomeUnknown, "outcome_unknown", false),
+        (ComponentState::NotStarted, "not_started", false),
+    ];
+    for (state, word, is_ready) in every {
+        assert!(state.is_ready() == is_ready, "{word} readiness mismatch");
+        assert_eq!(state.word(), word, "the wire word is derived from the enum");
+    }
+}
+
 #[tokio::test]
 async fn native_health_readiness_names_stopped_sweep() {
     let dir = tempfile::tempdir().unwrap();
@@ -120,19 +237,37 @@ async fn native_health_readiness_names_stopped_sweep() {
     .with_domain(domain.clone())
     .with_ceiling_sweep(shared, tick);
     let service = Arc::new(Service::new(app.router()));
+    // F2: /health keeps the retained contract — 200 whenever the process is
+    // live, the stopped sweep as body detail; /ready is the 503 boundary.
     let mut response = TestClient::get(format!("{BASE}/health"))
         .add_header("host", "127.0.0.1:13300", true)
         .send(&*service)
         .await;
-    assert_eq!(response.status_code, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert_eq!(response.status_code, Some(StatusCode::OK));
     let value = response.take_json::<Value>().await.unwrap();
-    assert_eq!(value["status"], "unavailable", "never a silent 200");
+    assert_eq!(
+        value["status"], "unavailable",
+        "the body still tells the truth"
+    );
     let states = component_states(&value);
     assert_eq!(states["ceiling_sweep"], "stopped", "named by component");
     assert_eq!(states["ceiling_sweep_last_tick"], "unstarted");
     // One bad component never lies about the healthy ones.
     assert_eq!(states["domain_writer"], "open");
     assert_eq!(states["custody_store"], "open");
+    // /ready: 503 with the same component list — never a silent 200.
+    let mut response = TestClient::get(format!("{BASE}/ready"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::SERVICE_UNAVAILABLE));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(value["status"], "unavailable");
+    assert_eq!(
+        component_states(&value)["ceiling_sweep"],
+        "stopped",
+        "the same body on the refusing boundary"
+    );
 }
 
 #[tokio::test]
@@ -150,11 +285,13 @@ async fn native_health_readiness_names_closed_domain_writer() {
     .unwrap()
     .with_domain(domain.clone());
     let service = Arc::new(Service::new(app.router()));
+    // F2: /health keeps the retained contract — 200 while the process is
+    // live, the closed writer as body detail; /ready is the 503 boundary.
     let mut response = TestClient::get(format!("{BASE}/health"))
         .add_header("host", "127.0.0.1:13300", true)
         .send(&*service)
         .await;
-    assert_eq!(response.status_code, Some(StatusCode::SERVICE_UNAVAILABLE));
+    assert_eq!(response.status_code, Some(StatusCode::OK));
     let value = response.take_json::<Value>().await.unwrap();
     assert_eq!(value["status"], "unavailable");
     let states = component_states(&value);
@@ -163,6 +300,17 @@ async fn native_health_readiness_names_closed_domain_writer() {
     // No sweep was wired: `disabled` is a ready word, so the 503 is honest
     // about exactly one component.
     assert_eq!(states["ceiling_sweep"], "disabled");
+    let mut response = TestClient::get(format!("{BASE}/ready"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(
+        response.status_code,
+        Some(StatusCode::SERVICE_UNAVAILABLE),
+        "never a silent 200 on /ready"
+    );
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(component_states(&value)["domain_writer"], "closed");
     custody.shutdown().await.unwrap();
 }
 

@@ -306,6 +306,13 @@ async fn native_console_resources_executable() {
     let resource = native_resource("private_executable_resource");
     db.put_resource(&resource).unwrap();
     drop(db);
+    // Brief 21: the executable lane seeds the SAME measured pool the plain
+    // lane does (seed() plants private_usage_pool with a bound usage source
+    // and real observations), so both lanes prove the same headroom cells —
+    // the orchestrator's failing run was the driver selecting an id this
+    // config never carried. The id is the deterministic resource hash, so
+    // constructing the resource computes the seeded row's id.
+    let measured = native_resource("private_usage_pool");
     let address = address();
     let mut server = Command::new(binary)
         .args(["serve", "--state-dir"])
@@ -360,7 +367,7 @@ async fn native_console_resources_executable() {
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    browser.stdin.take().unwrap().write_all(format!("{}\n", json!({"base":format!("http://{address}"),"url":url,"resource":resource.id(),"executable":true})).as_bytes()).await.unwrap();
+    browser.stdin.take().unwrap().write_all(format!("{}\n", json!({"base":format!("http://{address}"),"url":url,"resource":resource.id(),"measured":measured.id(),"executable":true})).as_bytes()).await.unwrap();
     assert!(
         tokio::time::timeout(Duration::from_secs(45), browser.wait())
             .await

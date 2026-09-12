@@ -85,23 +85,35 @@ Scenario: Background work does not stall control requests
   When health and additional custody requests arrive
   Then health responds promptly and excess work returns a busy response
 
-Scenario: Health reports readiness by component
+Scenario: Health and ready report the component rollup
   Test: native_health_readiness_ready
   Given a serving app wired the way Bootstrap serve wires it with both writers open and the ceiling sweep loop attached
-  When the unauthenticated health boundary is read
-  Then the rollup answers two hundred with every component named by state word and no private counts and readiness never requires a sweep to have run
+  When the unauthenticated health and ready boundaries are read
+  Then both answer two hundred with every component named by state word and no private counts and readiness never requires a sweep to have run
 
-Scenario: Health names a stopped sweep and stays diagnostic
+Scenario: A refused sweep tick never fails readiness
+  Test: native_health_readiness_refused_tick_is_ready
+  Given a live sweep task whose last tick was refused busy the word the loop publishes under worker saturation
+  When the health and ready boundaries are read
+  Then both answer two hundred naming the loop alive and the refusal on the wire for diagnosis because a refused tick is a live loop waiting for the next tick
+
+Scenario: Every readiness vocabulary word is enumerated
+  Test: native_health_readiness_enumerates_every_state
+  Given the one component state enum from which the wire words and the ready predicate both derive
+  When every variant is scored
+  Then each word and ready answer is pinned so the word set and the predicate can never disagree and tick outcomes are always ready
+
+Scenario: Ready names a stopped sweep and health stays live
   Test: native_health_readiness_names_stopped_sweep
   Given the ceiling sweep loop cancelled and finished while both writers remain open
-  When the health boundary is read
-  Then the rollup answers five oh three naming the stopped sweep and its unstarted tick while the healthy components stay named and open
+  When the health and ready boundaries are read
+  Then health answers two hundred with the stopped sweep named in the body while ready answers five oh three with the same component list and the healthy components stay named and open
 
-Scenario: Health names a closed domain writer
+Scenario: Ready names a closed domain writer and health stays live
   Test: native_health_readiness_names_closed_domain_writer
   Given the domain writer shut down while the custody store remains open
-  When the health boundary is read
-  Then the rollup answers five oh three naming the closed domain writer by component and never a silent two hundred
+  When the health and ready boundaries are read
+  Then health answers two hundred with the closed writer named in the body while ready answers five oh three never a silent two hundred
 
 Scenario: Signing bytes preserve existing wire semantics
   Test: canonical_vectors_match_javascript

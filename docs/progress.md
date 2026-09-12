@@ -1,3 +1,34 @@
+## 2026-09-12 — Readiness contract edits F1–F3 + both lanes' headroom (brief 21)
+
+- F2 (the retained health contract): `/health` is again unauthenticated,
+  **200 whenever the process is live**, readiness as body detail (names and
+  state words only — the stricter native body stays); a new `GET /ready`
+  beside it carries the 503-when-any-component-not-ready semantics with the
+  same body, for uptime monitoring. No consumer changes: the supervisor's
+  dependency wait, the CLI startup probe and the local service supervisor
+  all keep their 200. Both boundaries stay diagnostic, never authority.
+- F1 (a refused tick is a live loop): the sweep's ready predicate is
+  liveness alone, never the tick's outcome — `refused_busy`,
+  `refused_outcome_unknown`, `refused` and `swept` are ALL ready (the
+  loop's own warn says it waits for the next tick); the words stay on the
+  wire for diagnosis. Pinned by `native_health_readiness_refused_tick_is_ready`
+  (the loop's own busy-refusal word injected on the real channel type with a
+  genuinely-live task; both boundaries answer 200).
+- F3 (one vocabulary): a `pub enum ComponentState` (+ `TickOutcome`) from
+  which BOTH the wire words and the ready predicate derive; the wiring-bug
+  arm now reports `not_started` (not ready). Pinned by
+  `native_health_readiness_enumerates_every_state` (every variant's word
+  and ready answer).
+- The executable browser lane now seeds and passes the SAME measured pool
+  as the plain lane (`private_usage_pool`, idempotent id from the preset
+  hash), so both lanes prove the same headroom cells — fixing the
+  orchestrator's real-browser failure
+  (`browser::native_console_resources_executable`:
+  `selectOption: options[0]: expected object, got undefined`).
+- Spec: five scenarios (the three rewritten for the split + the two new
+  tests). ADR-096: the brief-21 amendment, superseding the brief-19
+  503-on-`/health` statement twice over.
+
 ## 2026-09-12 — Headroom review edits E1–E4 (review of 6eae4834)
 
 - E1 (two predicates, one invariant): the shared-seat console test pins that

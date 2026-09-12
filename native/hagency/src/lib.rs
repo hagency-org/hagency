@@ -117,6 +117,7 @@ impl App {
         Router::new()
             .hoop(self)
             .push(Router::with_path("health").get(health))
+            .push(Router::with_path("ready").get(ready))
             .push(runner::router())
             .push(console::router())
             .push(
@@ -132,80 +133,195 @@ impl App {
     }
 }
 
+/// The readiness vocabulary (brief 21, F3): ONE enum from which both the
+/// wire words and the ready predicate derive — the word set and the arm
+/// list can no longer encode two vocabularies. Every variant is enumerated
+/// by `native_health_readiness_enumerates_every_state`. Public because the
+/// integration test enumerates it against the predicate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ComponentState {
+    /// A writer channel is open (`domain_writer`, `custody_store`).
+    Open,
+    /// The sweep task is running (whether or not it has ever ticked).
+    Alive,
+    /// Never configured — unit wiring without `Bootstrap`. Ready by
+    /// design: readiness never requires a component to exist.
+    Disabled,
+    /// A configured owner reported a healthy state word.
+    Ready,
+    /// The sweep is wired but has not ticked yet. Ready: readiness never
+    /// requires a sweep to have RUN (F1's rule).
+    Unstarted,
+    /// A tick completed (any outcome, including refusals — see `Tick`).
+    Tick(TickOutcome),
+    /// An owner's settled running word.
+    Running,
+    /// A writer channel is closed (drained and exited). Not ready.
+    Closed,
+    /// The sweep task finished (cancelled or dead). Not ready.
+    Stopped,
+    /// An owner's settled failure word. Not ready.
+    Unavailable,
+    /// An owner's outcome-unknown word. Not ready.
+    OutcomeUnknown,
+    /// A wiring bug: a sweep handle exists but no tick channel does. Not
+    /// ready — the honest word for an impossible configuration (F3).
+    NotStarted,
+}
+
+/// The sweep tick's outcome, decoupled from liveness (F1): a refused tick
+/// is a LIVE loop that was refused, not a dead one, so the outcome NEVER
+/// feeds the ready predicate — only the loop's liveness and the tick's age
+/// do. The words stay on the wire for diagnosis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TickOutcome {
+    Swept,
+    RefusedBusy,
+    RefusedOutcomeUnknown,
+    Refused,
+}
+
+impl ComponentState {
+    /// The wire word. Names and state words only — never counts. Public for
+    /// the enumeration test (the vocabulary IS the contract).
+    pub fn word(self) -> &'static str {
+        match self {
+            ComponentState::Open => "open",
+            ComponentState::Alive => "alive",
+            ComponentState::Disabled => "disabled",
+            ComponentState::Ready => "ready",
+            ComponentState::Unstarted => "unstarted",
+            ComponentState::Tick(TickOutcome::Swept) => "swept",
+            ComponentState::Tick(TickOutcome::RefusedBusy) => "refused_busy",
+            ComponentState::Tick(TickOutcome::RefusedOutcomeUnknown) => "refused_outcome_unknown",
+            ComponentState::Tick(TickOutcome::Refused) => "refused",
+            ComponentState::Running => "running",
+            ComponentState::Closed => "closed",
+            ComponentState::Stopped => "stopped",
+            ComponentState::Unavailable => "unavailable",
+            ComponentState::OutcomeUnknown => "outcome_unknown",
+            ComponentState::NotStarted => "not_started",
+        }
+    }
+    /// The ONE ready predicate (F1): a component is ready unless it is a
+    /// settled not-serving state. A tick outcome — swept OR refused — is
+    /// always ready: a refused tick is a live loop waiting for the next
+    /// tick, exactly what the loop's own `tracing::warn!` promises, and a
+    /// routine back-pressure refusal must never report the service down.
+    /// Public for the enumeration test.
+    pub fn is_ready(self) -> bool {
+        !matches!(
+            self,
+            ComponentState::Closed
+                | ComponentState::Stopped
+                | ComponentState::Unavailable
+                | ComponentState::OutcomeUnknown
+                | ComponentState::NotStarted
+        )
+    }
+}
+
 #[handler]
 async fn health(depot: &mut Depot, res: &mut Response) {
-    // Readiness rollup (brief 19, ADR-096 amendment). Every probe is
-    // SYNCHRONOUS: no writer job, no lock, no allocation on the request path
-    // beyond the reply — the `bounded_work_keeps_health_responsive`
-    // invariant. States are words, never private counts, mirroring the
-    // retained rule that `/health` is unauthenticated and must not leak
-    // fleet detail (`backend-v2.js:7585` publishes counts to a local
-    // operator; the native boundary is stricter: names and states only).
-    // Readiness is DIAGNOSTIC, never authority: nothing may read it to
-    // retry, release or complete anything.
+    // Brief 21 (F2): /health KEEPS the retained contract — unauthenticated,
+    // 200 whenever the process is live, readiness as BODY detail with names
+    // and state words only (the stricter native body stays). The
+    // 503-when-not-ready semantics live on /ready, added beside it for
+    // uptime monitoring; no existing consumer changes. Both boundaries are
+    // diagnostic, never authority: nothing may read either to retry,
+    // release or complete anything.
+    readiness(depot, res, false);
+}
+
+#[handler]
+async fn ready(res: &mut Response, depot: &mut Depot) {
+    readiness(depot, res, true);
+}
+
+/// The shared rollup (brief 19/21): every probe is SYNCHRONOUS — no writer
+/// job, no lock, no allocation on the request path beyond the reply (the
+/// `bounded_work_keeps_health_responsive` invariant). Readiness is
+/// diagnostic, never authority.
+fn readiness(depot: &mut Depot, res: &mut Response, refuse: bool) {
     let app = depot.get_typed::<App>().ok();
-    let mut components: Vec<(&str, &str)> = Vec::new();
+    let mut components: Vec<(&str, ComponentState)> = Vec::new();
     let domain = app.as_ref().and_then(|a| a.domain.as_ref());
     components.push((
         "domain_writer",
         match domain {
-            None => "disabled",
-            Some(store) if store.writer_open() => "open",
-            Some(_) => "closed",
+            None => ComponentState::Disabled,
+            Some(store) if store.writer_open() => ComponentState::Open,
+            Some(_) => ComponentState::Closed,
         },
     ));
     let custody = app.as_ref().map(|a| &a.store);
     components.push((
         "custody_store",
         if custody.is_some_and(|s| s.writer_open()) {
-            "open"
+            ComponentState::Open
         } else {
-            "closed"
+            ComponentState::Closed
         },
     ));
-    // The sweep: liveness is the task; the last tick's outcome is a separate
-    // named component so a dead loop can never hide behind a good outcome —
-    // and an outcome (swept, or a back-pressure refusal waiting for the next
-    // tick) can never fail readiness on its own.
+    // The sweep: liveness is the task; the last tick's outcome is a
+    // separate named component so a dead loop can never hide behind a good
+    // outcome — and an outcome (swept, or any refusal waiting for the next
+    // tick) can NEVER fail readiness (F1): the ready predicate for the
+    // sweep is liveness alone, never the tick's outcome word.
     let sweep = app.as_ref().and_then(|a| a.ceiling_sweep.as_ref());
     let tick = app.as_ref().and_then(|a| a.sweep_tick.as_ref());
     let (sweep_state, last_tick) = match (sweep, tick) {
-        (None, _) => ("disabled", None),
+        (None, _) => (ComponentState::Disabled, None),
         (Some(handle), Some(receiver)) => {
             let last = match &*receiver.borrow() {
-                bootstrap::CeilingSweepTick::Swept(_) => "swept",
-                bootstrap::CeilingSweepTick::Refused("unstarted") => "unstarted",
-                bootstrap::CeilingSweepTick::Refused("busy") => "refused_busy",
-                bootstrap::CeilingSweepTick::Refused("outcome_unknown") => {
-                    "refused_outcome_unknown"
+                bootstrap::CeilingSweepTick::Swept(_) => ComponentState::Tick(TickOutcome::Swept),
+                bootstrap::CeilingSweepTick::Refused("unstarted") => ComponentState::Unstarted,
+                bootstrap::CeilingSweepTick::Refused("busy") => {
+                    ComponentState::Tick(TickOutcome::RefusedBusy)
                 }
-                bootstrap::CeilingSweepTick::Refused(_) => "refused",
+                bootstrap::CeilingSweepTick::Refused("outcome_unknown") => {
+                    ComponentState::Tick(TickOutcome::RefusedOutcomeUnknown)
+                }
+                bootstrap::CeilingSweepTick::Refused(_) => {
+                    ComponentState::Tick(TickOutcome::Refused)
+                }
             };
             (
                 if handle.is_finished() {
-                    "stopped"
-                } else if last == "unstarted" {
-                    "unstarted"
+                    ComponentState::Stopped
                 } else {
-                    "alive"
+                    ComponentState::Alive
                 },
                 Some(last),
             )
         }
-        (Some(_), None) => ("unknown", None),
+        // F3: a handle without its tick channel is a wiring bug — the honest
+        // word is `not_started`, and it is NOT ready (it can never be
+        // observed making progress).
+        (Some(_), None) => (ComponentState::NotStarted, None),
     };
     components.push(("ceiling_sweep", sweep_state));
-    components.push(("ceiling_sweep_last_tick", last_tick.unwrap_or("disabled")));
+    components.push((
+        "ceiling_sweep_last_tick",
+        last_tick.unwrap_or(ComponentState::Disabled),
+    ));
     // Optional owners report their own state words; only the settled
-    // failure words fail readiness. `stopped` fails too: a finished loop or
-    // owner is not serving, and 503 during shutdown is the honest answer.
-    let owner_state = |configured: bool, state: &'static str| -> &'static str {
+    // failure words fail readiness. `stopped` fails too: a finished owner
+    // is not serving, and 503 during shutdown is the honest answer (on
+    // /ready; /health keeps 200).
+    let owner_state = |configured: bool, state: &'static str| -> ComponentState {
         if !configured {
-            "disabled"
+            ComponentState::Disabled
         } else if matches!(state, "unavailable" | "outcome_unknown" | "stopped") {
-            state
+            match state {
+                "unavailable" => ComponentState::Unavailable,
+                "outcome_unknown" => ComponentState::OutcomeUnknown,
+                _ => ComponentState::Stopped,
+            }
+        } else if state == "running" {
+            ComponentState::Running
         } else {
-            "ready"
+            ComponentState::Ready
         }
     };
     if let Some(status) = app.as_ref().and_then(|a| a.development.as_ref()) {
@@ -214,21 +330,19 @@ async fn health(depot: &mut Depot, res: &mut Response) {
     if let Some(status) = app.as_ref().and_then(|a| a.palpo.as_ref()) {
         components.push(("palpo_transport", owner_state(true, status.state())));
     }
-    let ready = components.iter().all(|(_, state)| {
-        matches!(
-            *state,
-            "open" | "alive" | "disabled" | "ready" | "unstarted" | "swept" | "running"
-        )
-    });
+    let all_ready = components.iter().all(|(_, state)| state.is_ready());
     let value = serde_json::json!({
-        "status": if ready { "ok" } else { "unavailable" },
+        "status": if all_ready { "ok" } else { "unavailable" },
         "implementation": "rust",
         "components": components
             .into_iter()
-            .map(|(name, state)| serde_json::json!({"name": name, "state": state}))
+            .map(|(name, state)| serde_json::json!({"name": name, "state": state.word()}))
             .collect::<Vec<_>>(),
     });
-    if !ready {
+    // F2: /health is ALWAYS 200 while the process is live (the retained
+    // contract); /ready is the 503-when-not-ready boundary. Never a silent
+    // 200 on /ready.
+    if refuse && !all_ready {
         res.status_code(StatusCode::SERVICE_UNAVAILABLE);
     }
     res.render(Json(value));
