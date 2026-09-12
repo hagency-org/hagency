@@ -175,3 +175,19 @@ Cargo remains held while the host is memory pressured until parent release.
 
 Browser enrollment effective provider auth qualification login API-key enrollment
 external-home adoption credential rotation full M7 and production migration.
+
+Scenario: Inspection subcommands render the operator routes verbatim
+  Test: native_cli_inspection_matches_operator_routes
+  Level: integration
+  Test Double: actual native executable served routes and private temporary state
+  Given a running native service with one seeded resource and the alerts engagements and resources operator routes
+  When the hagency inspection subcommands run with json passthrough and as tables
+  Then the passthrough equals the route body byte for byte except the alerts read clock and every table column is a route key with no derived figure
+
+Scenario: Inspection refusals exit distinctly and are named
+  Test: native_cli_inspection_exit_codes_name_refusals
+  Level: integration
+  Test Double: actual native executable a dead port a foreign credential directory and a fixed 503 responder
+  Given the inspection subcommands facing unreachable refused invalid and unavailable conditions
+  When each executes
+  Then exit codes are three four five and six respectively each refusal named on stderr and never a silent zero

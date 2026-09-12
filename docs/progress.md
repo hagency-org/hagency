@@ -1,3 +1,28 @@
+## 2026-09-12 — Read-only inspection subcommands (brief 22)
+
+- Three `hagency` subcommands — `alerts`, `engagements`, `resources` —
+  are thin clients of the operator routes the service already publishes
+  (`GET /api/native/v1/{…}`), built like `console-access` (ADR-107's
+  ticket pattern): loopback-only `--listen`, the private operator token
+  from `--state-dir`, one bounded hyper exchange (5 s, 512 KiB cap),
+  `--limit` forwarded (routes refuse out-of-range, never clamp) and
+  `--json` passing the route body through verbatim. Table columns are the
+  routes' own wire keys — never a derived figure. Read-only by
+  construction: nothing creates, verdicts, revokes or resolves.
+- The client is `src/inspect.rs`, a lib module beside `console::client`
+  (there is no cli module; every `main.rs` arm calls a lib module — the
+  brief's "say which" option, stated here and in the ADR).
+- Refusals exit distinctly, never a silent 0: 3 unreachable, 4 refused
+  (401/403 or an unreadable local credential), 5 invalid, 6
+  busy/unavailable — each named on stderr.
+- Tests: `native_cli_inspection_matches_operator_routes` (the passthrough
+  equals the route body — byte-for-byte for resources/engagements, rows
+  parsed for alerts whose `at_ms` is a read clock; table columns asserted
+  verbatim) and `native_cli_inspection_exit_codes_name_refusals` (dead
+  port → 3, foreign credential dir → 4, `--limit 0` → 5, a 503 responder
+  → 6, each named). Spec scenarios with both `Test:` names appended beside
+  `native_account_cli`'s; ADR-107 gains the inspection amendment.
+
 ## 2026-09-12 — Readiness contract edits F1–F3 + both lanes' headroom (brief 21)
 
 - F2 (the retained health contract): `/health` is again unauthenticated,

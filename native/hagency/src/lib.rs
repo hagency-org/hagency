@@ -4,6 +4,7 @@ mod alerts;
 pub mod bootstrap;
 pub mod console;
 pub(crate) mod file_service;
+pub mod inspect;
 pub mod mcp;
 pub(crate) mod receive_service;
 mod resources;

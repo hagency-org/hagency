@@ -141,6 +141,189 @@ fn native_binary_survives_crash_without_node() {
     );
 }
 
+/// Brief 22: the inspection subcommands are clients of the operator routes —
+/// the `--json` output is the route's body verbatim, and the table's columns
+/// are the route's own keys. The alerts envelope carries the read clock
+/// (`at_ms`), so its two fetches differ in that field alone; the rows are
+/// compared parsed, the other two commands byte-for-byte.
+fn operator_get(address: SocketAddr, token: &str, path: &str) -> String {
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: {address}\r\nAuthorization: Bearer {token}\r\nConnection: close\r\n\r\n"
+    )
+    .unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert!(
+        response.starts_with("HTTP/1.1 200"),
+        "operator read failed: {path}"
+    );
+    response.split("\r\n\r\n").nth(1).unwrap().to_owned()
+}
+
+fn inspect(state: &Path, address: SocketAddr, verb: &str, extra: &[&str]) -> std::process::Output {
+    Command::new(env!("CARGO_BIN_EXE_hagency"))
+        .arg(verb)
+        .arg("--state-dir")
+        .arg(state)
+        .arg("--listen")
+        .arg(address.to_string())
+        .args(extra)
+        .env("PATH", "")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap()
+}
+
+#[test]
+fn native_cli_inspection_matches_operator_routes() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("inspect state");
+    let init = Command::new(env!("CARGO_BIN_EXE_hagency"))
+        .args(["init", "--state-dir"])
+        .arg(&state)
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(
+        init.status.success(),
+        "init failed: {}",
+        String::from_utf8_lossy(&init.stderr)
+    );
+    let token = fs::read_to_string(state.join("operator.token")).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    let running = launch(&state, address);
+    // One catalog row so the table and the passthrough are non-empty.
+    let _resource = resource_call(address, &token, true);
+
+    // Resources: the passthrough equals the route body byte-for-byte.
+    let route = operator_get(address, &token, "/api/native/v1/resources?limit=100");
+    let output = inspect(&state, address, "resources", &["--json"]);
+    assert!(
+        output.status.success(),
+        "resources --json failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout).trim(),
+        route.trim(),
+        "the passthrough must equal the route body"
+    );
+    // The table's columns are the route's own keys, never derived figures.
+    let table = String::from_utf8_lossy(&output.stdout);
+    let _ = table;
+    let output = inspect(&state, address, "resources", &[]);
+    assert!(output.status.success());
+    let table = String::from_utf8_lossy(&output.stdout);
+    let header = table.lines().next().unwrap();
+    for column in ["id", "framework", "model", "tier", "ceiling"] {
+        assert!(header.contains(column), "missing column {column}: {header}");
+    }
+    assert!(
+        table.lines().count() >= 2,
+        "the seeded resource renders as a row"
+    );
+
+    // Engagements: empty state, still byte-for-byte.
+    let route = operator_get(address, &token, "/api/native/v1/engagements?limit=100");
+    let output = inspect(&state, address, "engagements", &["--json"]);
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8_lossy(&output.stdout).trim(), route.trim());
+    let output = inspect(&state, address, "engagements", &[]);
+    assert!(output.status.success());
+    let table = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        table.lines().next().unwrap().starts_with("id"),
+        "the engagements header leads with the route's key"
+    );
+
+    // Alerts: `at_ms` is the read clock, so the rows compare parsed.
+    let route = operator_get(address, &token, "/api/native/v1/alerts?limit=100");
+    let output = inspect(&state, address, "alerts", &["--json"]);
+    assert!(output.status.success());
+    let passed: serde_json::Value =
+        serde_json::from_str(String::from_utf8_lossy(&output.stdout).trim()).unwrap();
+    let served: serde_json::Value = serde_json::from_str(route.trim()).unwrap();
+    assert_eq!(passed["alerts"], served["alerts"]);
+    assert!(passed["at_ms"].is_u64() && served["at_ms"].is_u64());
+    let output = inspect(&state, address, "alerts", &[]);
+    assert!(output.status.success());
+    let table = String::from_utf8_lossy(&output.stdout);
+    assert!(table.contains("at_ms"), "the envelope's clock key renders");
+    drop(running);
+}
+
+#[test]
+fn native_cli_inspection_exit_codes_name_refusals() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("refusal state");
+    let init = Command::new(env!("CARGO_BIN_EXE_hagency"))
+        .args(["init", "--state-dir"])
+        .arg(&state)
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    let running = launch(&state, address);
+
+    // Unreachable (3): a port nothing answers.
+    let free = TcpListener::bind("127.0.0.1:0").unwrap();
+    let dead = free.local_addr().unwrap();
+    drop(free);
+    let output = inspect(&state, dead, "resources", &["--limit", "5"]);
+    assert_eq!(output.status.code(), Some(3), "unreachable exits 3");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("unreachable"));
+
+    // Refused (4): a state directory whose operator credential is not the
+    // running service's — the local read or the route's 401, either path.
+    let wrong = tempfile::tempdir().unwrap();
+    fs::write(wrong.path().join("operator.token"), "a".repeat(64)).unwrap();
+    let output = inspect(wrong.path(), address, "resources", &[]);
+    assert_eq!(output.status.code(), Some(4), "refused exits 4");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("refused"),
+        "the refusal is named"
+    );
+
+    // Invalid (5): a limit no route accepts (they refuse, never clamp).
+    let output = inspect(&state, address, "engagements", &["--limit", "0"]);
+    assert_eq!(output.status.code(), Some(5), "invalid exits 5");
+    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid"));
+
+    // Unavailable (6): a server that answers 503.
+    let busy = TcpListener::bind("127.0.0.1:0").unwrap();
+    let busy_address = busy.local_addr().unwrap();
+    let responder = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = busy.accept() {
+            use std::io::{Read as _, Write as _};
+            let mut scratch = [0u8; 1024];
+            let _ = stream.read(&mut scratch);
+            let _ = stream.write_all(
+                b"HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        }
+    });
+    let output = inspect(&state, busy_address, "alerts", &[]);
+    assert_eq!(output.status.code(), Some(6), "unavailable exits 6");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("unavailable"),
+        "the unavailability is named"
+    );
+    let _ = responder.join();
+    drop(running);
+}
+
 #[tokio::test]
 async fn native_guardian_cli_entry() {
     use hagency_platform::{Launch, StopCause, SupervisedProcess};

@@ -57,6 +57,45 @@ enum Command {
         #[arg(long)]
         manage_resource_configuration: bool,
     },
+    /// Read-only inspection: open ceiling overrun alerts from the running service.
+    Alerts {
+        #[arg(long)]
+        state_dir: PathBuf,
+        #[arg(long, default_value = "127.0.0.1:13300")]
+        listen: SocketAddr,
+        /// Page size; the route refuses out-of-range values, never clamps.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+        /// Print the route's body verbatim instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read-only inspection: engagements from the running service.
+    Engagements {
+        #[arg(long)]
+        state_dir: PathBuf,
+        #[arg(long, default_value = "127.0.0.1:13300")]
+        listen: SocketAddr,
+        /// Page size; the route refuses out-of-range values, never clamps.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+        /// Print the route's body verbatim instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
+    /// Read-only inspection: the resource catalog from the running service.
+    Resources {
+        #[arg(long)]
+        state_dir: PathBuf,
+        #[arg(long, default_value = "127.0.0.1:13300")]
+        listen: SocketAddr,
+        /// Page size; the route refuses out-of-range values, never clamps.
+        #[arg(long, default_value_t = 100)]
+        limit: u32,
+        /// Print the route's body verbatim instead of a table.
+        #[arg(long)]
+        json: bool,
+    },
     /// Run the isolated native API. Does not load .env or any existing Hagency state.
     Serve {
         #[arg(long)]
@@ -208,6 +247,54 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                     hagency::console::client::access(&state_dir, listen).await?
                 }
             );
+        }
+        // Read-only inspection (brief 22): each arm renders exactly what its
+        // operator route returns and exits distinctly on refusal — never a
+        // silent 0. No arm creates, verdicts, revokes or resolves anything.
+        Command::Alerts {
+            state_dir,
+            listen,
+            limit,
+            json,
+        } => {
+            hagency::inspect::run(
+                hagency::inspect::Kind::Alerts,
+                &state_dir,
+                listen,
+                limit,
+                json,
+            )
+            .await;
+        }
+        Command::Engagements {
+            state_dir,
+            listen,
+            limit,
+            json,
+        } => {
+            hagency::inspect::run(
+                hagency::inspect::Kind::Engagements,
+                &state_dir,
+                listen,
+                limit,
+                json,
+            )
+            .await;
+        }
+        Command::Resources {
+            state_dir,
+            listen,
+            limit,
+            json,
+        } => {
+            hagency::inspect::run(
+                hagency::inspect::Kind::Resources,
+                &state_dir,
+                listen,
+                limit,
+                json,
+            )
+            .await;
         }
     }
     Ok(())

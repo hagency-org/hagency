@@ -101,3 +101,22 @@ allowlist (`assets.rs` mime + the `engagements/index.html →
 /console/engagements/` key mapping), the document route rule (`console.rs`)
 and the build staging (`build-native-console.mjs`) land in the same commit
 as the page — the loader lesson from the alerts slice, applied.
+
+## Amendment: read-only inspection subcommands (brief 22)
+
+Three `hagency` subcommands — `alerts`, `engagements`, `resources` — are thin clients of the
+operator routes this migration already publishes (`GET /api/native/v1/{alerts,engagements,resources}`),
+built exactly like the `console-access` command above this paragraph: loopback-only `--listen`, the
+private operator token read from `--state-dir`, one bounded hyper exchange (5 s deadline, 512 KiB
+reply cap), `--limit` forwarded (the routes refuse out-of-range values, never clamp) and `--json`
+printing the route's body verbatim. The table mode's columns are the routes' own wire keys — never
+a derived figure the route does not publish (alerts: `dedupe_key resource_id occurrences resolved
+summary` plus the envelope's `at_ms` clock; engagements: `id agentName projectId role
+requestedTokens state`; resources: `id framework model tier ceiling`). Read-only by construction:
+no subcommand creates, verdicts, revokes or resolves anything.
+
+Refusals exit distinctly, never a silent 0: **3** unreachable (connect/handshake/timeout), **4**
+refused (401/403, or an unreadable local operator credential), **5** invalid request (bad flags or
+a route 400), **6** busy/unavailable (route 503 or any other server state) — each named on stderr.
+The client lives in `src/inspect.rs` as a lib module beside `console::client` (there is no cli
+module; every `main.rs` arm calls a lib module), and `main.rs` only wires the three arms.
