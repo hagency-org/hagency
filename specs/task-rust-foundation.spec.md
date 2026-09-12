@@ -85,6 +85,24 @@ Scenario: Background work does not stall control requests
   When health and additional custody requests arrive
   Then health responds promptly and excess work returns a busy response
 
+Scenario: Health reports readiness by component
+  Test: native_health_readiness_ready
+  Given a serving app wired the way Bootstrap serve wires it with both writers open and the ceiling sweep loop attached
+  When the unauthenticated health boundary is read
+  Then the rollup answers two hundred with every component named by state word and no private counts and readiness never requires a sweep to have run
+
+Scenario: Health names a stopped sweep and stays diagnostic
+  Test: native_health_readiness_names_stopped_sweep
+  Given the ceiling sweep loop cancelled and finished while both writers remain open
+  When the health boundary is read
+  Then the rollup answers five oh three naming the stopped sweep and its unstarted tick while the healthy components stay named and open
+
+Scenario: Health names a closed domain writer
+  Test: native_health_readiness_names_closed_domain_writer
+  Given the domain writer shut down while the custody store remains open
+  When the health boundary is read
+  Then the rollup answers five oh three naming the closed domain writer by component and never a silent two hundred
+
 Scenario: Signing bytes preserve existing wire semantics
   Test: canonical_vectors_match_javascript
   Given sanitized Unicode null integer and property-order vectors

@@ -1,5 +1,30 @@
 # Repository audit — 2026-09-05
 
+## 2026-09-12 — Health/readiness by component (brief 19, ADR-096 amendment)
+
+- `/health` (unauthenticated, the retained route's boundary) now answers a
+  readiness rollup instead of the foundation-era constant: components
+  `domain_writer`, `custody_store` (both `writer_open()` synchronous probes
+  — no writer job, no lock), `ceiling_sweep` (liveness via the SHARED task
+  handle, started in `Bootstrap::serve` before the router snapshot so the
+  served app carries it from the first request) and
+  `ceiling_sweep_last_tick` (reported, never readiness-failing alone), plus
+  the optional `development_driver`/`palpo_transport` owners via
+  `StatusHandle::state()` state words. 200 when every state is a ready word;
+  503 with the full component list otherwise — never a silent 200. `stage`
+  is gone. States are words, never counts: stricter than the retained route,
+  which publishes agent/server counts (`backend-v2.js:7585-7618`).
+- Readiness is diagnostic, never authority: nothing may read it to retry,
+  release or complete anything (stated in the probes' doc comments, the
+  handler and the ADR amendment).
+- Tests `native_health_readiness_ready`, `_names_stopped_sweep`,
+  `_names_closed_domain_writer` wire the app exactly as `Bootstrap::serve`
+  does (writers + shared sweep handle + tick channel); the stopped case
+  cancels the loop and proves the healthy components stay named, the closed
+  case shuts the domain writer with the sweep `disabled` (a ready word) so
+  the 503 is honest about exactly one component. Spec scenarios appended to
+  the foundation spec beside `bounded_work_keeps_health_responsive`.
+
 ## 2026-09-12 — Resources headroom section (brief 18, ADR-121 amendment)
 
 - The budget route now answers ONE combined read: new store method

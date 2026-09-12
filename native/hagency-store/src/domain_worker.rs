@@ -2417,6 +2417,15 @@ impl DomainStore {
     pub fn last_unknown_dequeued(&self) -> Option<bool> {
         self.progress.unknown_dequeued()
     }
+    /// Readiness probe (brief 19): the domain writer's channel is still
+    /// open. Synchronous by design — `/health` must never enqueue a job or
+    /// take the writer (the `bounded_work_keeps_health_responsive`
+    /// invariant); a closed channel is a settled fact (the writer drained
+    /// and exited). Diagnostic only: never authority for a retry, release
+    /// or completion.
+    pub fn writer_open(&self) -> bool {
+        !self.tx.is_closed()
+    }
     pub async fn shutdown(&self) -> Result<(), Error> {
         self.shutdown_tracked(None).await.0
     }

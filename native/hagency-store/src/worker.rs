@@ -105,6 +105,15 @@ impl Store {
         })
     }
 
+    /// Readiness probe (brief 19): the custody worker thread's channel is
+    /// still open. Synchronous by design — `/health` must never enqueue a
+    /// job or take the writer; a closed channel is a settled fact (the
+    /// worker drained and exited). Diagnostic only: nothing may read this to
+    /// retry, release or complete anything.
+    pub fn writer_open(&self) -> bool {
+        !self.tx.is_closed()
+    }
+
     /// Drain preceding commands and release the database before acknowledging shutdown.
     pub async fn shutdown(&self) -> Result<(), Error> {
         self.shutdown_tracked(None).await.0

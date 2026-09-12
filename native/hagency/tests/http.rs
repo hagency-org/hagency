@@ -1,4 +1,5 @@
 use hagency::App;
+use hagency_matrix::CancellationToken;
 use hagency_store::{DomainRepository, DomainStore, Repository, Store};
 use salvo::{
     prelude::*,
@@ -8,6 +9,162 @@ use serde_json::{Value, json};
 use std::{sync::Arc, time::Duration};
 const TOKEN: &str = "fixture_operator_token_32_bytes_minimum";
 const BASE: &str = "http://127.0.0.1:13300";
+
+/// Brief 19: wire the app the way `Bootstrap::serve` does — writers plus the
+/// shared ceiling-sweep handle and its tick channel — so the readiness
+/// read observes the real serving shape.
+async fn readiness_app(
+    state: &std::path::Path,
+    sweep: Option<Duration>,
+) -> (Arc<Service>, Option<CancellationToken>) {
+    let custody = Store::start(Repository::open(state).unwrap(), 16).unwrap();
+    let domain = DomainStore::start(DomainRepository::open(state).unwrap(), 16).unwrap();
+    let mut app = App::new(
+        custody.clone(),
+        TOKEN.as_bytes(),
+        "127.0.0.1:13300".parse().unwrap(),
+    )
+    .unwrap()
+    .with_domain(domain.clone());
+    let cancel = match sweep {
+        None => None,
+        Some(period) => {
+            let cancel = CancellationToken::new();
+            let (handle, tick) =
+                hagency::bootstrap::start_ceiling_sweep(domain.clone(), cancel.clone(), period);
+            app = app.with_ceiling_sweep(Arc::new(handle), tick);
+            Some(cancel)
+        }
+    };
+    (Arc::new(Service::new(app.router())), cancel)
+}
+
+fn component_states(value: &Value) -> std::collections::BTreeMap<String, String> {
+    value["components"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| {
+            (
+                c["name"].as_str().unwrap().to_owned(),
+                c["state"].as_str().unwrap().to_owned(),
+            )
+        })
+        .collect()
+}
+
+#[tokio::test]
+async fn native_health_readiness_ready() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state");
+    // A short period plus a settled first tick keeps the rollup
+    // deterministic: the loop is alive and the last tick is a real sweep.
+    let (service, cancel) = readiness_app(&state, Some(Duration::from_millis(50))).await;
+    let mut response = TestClient::get(format!("{BASE}/health"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(value["status"], "ok");
+    assert_eq!(value["implementation"], "rust");
+    assert!(
+        value.get("stage").is_none(),
+        "the foundation-era stage word is gone"
+    );
+    let states = component_states(&value);
+    assert_eq!(states["domain_writer"], "open");
+    assert_eq!(states["custody_store"], "open");
+    // Before the first tick the sweep is `unstarted`; after it, `alive`/`swept`.
+    // Both are ready words — readiness never depends on a sweep HAVING run.
+    assert!(matches!(
+        states["ceiling_sweep"].as_str(),
+        "alive" | "unstarted"
+    ));
+    assert!(matches!(
+        states["ceiling_sweep_last_tick"].as_str(),
+        "swept" | "unstarted"
+    ));
+    cancel.expect("the ready case wires the sweep").cancel();
+}
+
+#[tokio::test]
+async fn native_health_readiness_names_stopped_sweep() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state");
+    // A long period means the only transition under test is the stop.
+    let custody = Store::start(Repository::open(&state).unwrap(), 16).unwrap();
+    let domain = DomainStore::start(DomainRepository::open(&state).unwrap(), 16).unwrap();
+    let cancel = CancellationToken::new();
+    let (handle, tick) = hagency::bootstrap::start_ceiling_sweep(
+        domain.clone(),
+        cancel.clone(),
+        Duration::from_secs(3600),
+    );
+    let shared = Arc::new(handle);
+    cancel.cancel();
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while !shared.is_finished() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    assert!(
+        shared.is_finished(),
+        "the sweep loop must stop after cancellation"
+    );
+    let app = App::new(
+        custody.clone(),
+        TOKEN.as_bytes(),
+        "127.0.0.1:13300".parse().unwrap(),
+    )
+    .unwrap()
+    .with_domain(domain.clone())
+    .with_ceiling_sweep(shared, tick);
+    let service = Arc::new(Service::new(app.router()));
+    let mut response = TestClient::get(format!("{BASE}/health"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::SERVICE_UNAVAILABLE));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(value["status"], "unavailable", "never a silent 200");
+    let states = component_states(&value);
+    assert_eq!(states["ceiling_sweep"], "stopped", "named by component");
+    assert_eq!(states["ceiling_sweep_last_tick"], "unstarted");
+    // One bad component never lies about the healthy ones.
+    assert_eq!(states["domain_writer"], "open");
+    assert_eq!(states["custody_store"], "open");
+}
+
+#[tokio::test]
+async fn native_health_readiness_names_closed_domain_writer() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = dir.path().join("state");
+    let custody = Store::start(Repository::open(&state).unwrap(), 16).unwrap();
+    let domain = DomainStore::start(DomainRepository::open(&state).unwrap(), 16).unwrap();
+    domain.shutdown().await.unwrap();
+    let app = App::new(
+        custody.clone(),
+        TOKEN.as_bytes(),
+        "127.0.0.1:13300".parse().unwrap(),
+    )
+    .unwrap()
+    .with_domain(domain.clone());
+    let service = Arc::new(Service::new(app.router()));
+    let mut response = TestClient::get(format!("{BASE}/health"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .send(&*service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::SERVICE_UNAVAILABLE));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(value["status"], "unavailable");
+    let states = component_states(&value);
+    assert_eq!(states["domain_writer"], "closed", "named by component");
+    assert_eq!(states["custody_store"], "open");
+    // No sweep was wired: `disabled` is a ready word, so the 503 is honest
+    // about exactly one component.
+    assert_eq!(states["ceiling_sweep"], "disabled");
+    custody.shutdown().await.unwrap();
+}
 
 #[tokio::test]
 async fn native_resource_management_is_authenticated() {

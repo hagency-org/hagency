@@ -309,6 +309,12 @@ impl StatusHandle {
     pub(crate) fn get(&self) -> Status {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
+    /// The state word alone, for the readiness rollup (brief 19): the full
+    /// `Status` stays console-only; `/health` names components by state
+    /// words, never private detail.
+    pub(crate) fn state(&self) -> &'static str {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).state
+    }
     fn phase(&self, phase: &'static str) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).state = phase;
     }
@@ -490,7 +496,10 @@ pub struct Bootstrap {
     domain_closed: bool,
     store_closed: bool,
     ceiling_sweep_period: Duration,
-    ceiling_sweep: Option<tokio::task::JoinHandle<()>>,
+    /// Shared with the readiness read in `App` (brief 19): bootstrap keeps
+    /// this to abort at shutdown, `/health` observes liveness. Neither owns
+    /// the loop alone.
+    ceiling_sweep: Option<std::sync::Arc<tokio::task::JoinHandle<()>>>,
 }
 impl Bootstrap {
     /// Own fresh development state. No live repository, .env, arbitrary command
@@ -729,6 +738,20 @@ impl Bootstrap {
             .try_bind()
             .await
             .map_err(|_| Failure::Server)?;
+        // Hourly ceiling-overrun sweep (ADR-124 slice b): started beside the
+        // other background owners, after the writer exists and BEFORE the
+        // router snapshot below — the served `App` must carry the handle and
+        // tick channel from the first request, or readiness would report the
+        // loop `disabled` forever (brief 19). The handle is shared: bootstrap
+        // keeps it to abort at shutdown, `/health` observes liveness.
+        let (ceiling_sweep, sweep_tick) = start_ceiling_sweep(
+            self.domain.clone(),
+            shutdown.clone(),
+            self.ceiling_sweep_period,
+        );
+        let sweep = std::sync::Arc::new(ceiling_sweep);
+        self.ceiling_sweep = Some(sweep.clone());
+        self.app = self.app.clone().with_ceiling_sweep(sweep, sweep_tick);
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: server_poll_entered");
         let server = Server::new(acceptor).max_connections(64);
         let handle = server.handle();
@@ -753,14 +776,6 @@ impl Bootstrap {
                 self.status.clone(),
             )?);
         }
-        // Hourly ceiling-overrun sweep (ADR-124 slice b): started beside the
-        // other background owners, after the writer exists and before serving.
-        let (ceiling_sweep, _) = start_ceiling_sweep(
-            self.domain.clone(),
-            shutdown.clone(),
-            self.ceiling_sweep_period,
-        );
-        self.ceiling_sweep = Some(ceiling_sweep);
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: serving");
         tracing::info!("native service ready; production Agent execution remains unavailable");
         tokio::select! {

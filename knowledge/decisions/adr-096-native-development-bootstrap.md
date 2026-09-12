@@ -226,3 +226,24 @@ close receipt. There is no automatic replacement claim or shutdown retry.
   profile unnecessarily and still would need separate real Codex qualification.
 - Call this a completed send_file workflow: source association/registration is
   only a prerequisite; actual durable file delivery remains ADR092/097 work.
+
+## Amendment: readiness by component on the health boundary (brief 19)
+
+The foundation-era `/health` answered a constant `{"status":"ok","stage":"foundation"}`; the served
+reality has distinguishable components whose failure modes differ. The boundary (ADR-096's
+bootstrap, unauthenticated, same as the retained `backend-v2.js:7585` route) now reports a
+readiness ROLLUP: `domain_writer` (`open`/`closed`/`disabled`), `custody_store`, `ceiling_sweep`
+(`alive`/`unstarted`/`stopped`/`disabled` — liveness is the shared task handle; the loop is
+started in `Bootstrap::serve` before the router snapshot so the served `App` carries it from the
+first request), `ceiling_sweep_last_tick` (`swept`/`busy`/`outcome_unknown`/`failed`/`unstarted`
+— reported, never readiness-failing alone), and the optional owners (`development_driver`,
+`palpo_transport`) when configured. 200 when every component's state is a ready word
+(`open`/`alive`/`disabled`/`ready`/`unstarted`/`swept`/`running`); 503 with the full component
+list when any is not — never a silent 200.
+
+**What readiness may NOT be:** every probe is synchronous — `writer_open()` reads the channel's
+closed bit; no writer job, no lock, no allocation beyond the reply (the
+`bounded_work_keeps_health_responsive` invariant stays binding). And readiness is DIAGNOSTIC,
+never authority: nothing may read it to retry, release or complete anything; it names states,
+never private counts or fleet detail — the native boundary is deliberately stricter than the
+retained route, which publishes agent/server counts to a local operator.

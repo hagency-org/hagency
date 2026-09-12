@@ -87,6 +87,12 @@ impl StatusHandle {
     pub(crate) fn get(&self) -> Status {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).clone()
     }
+    /// The state word alone, for the readiness rollup (brief 19): the full
+    /// `Status` stays console-only; `/health` names components by state
+    /// words, never private detail.
+    pub(crate) fn state(&self) -> &'static str {
+        self.0.lock().unwrap_or_else(|e| e.into_inner()).state
+    }
     fn set(&self, state: &'static str, error: Option<&'static str>) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
         status.state = state;

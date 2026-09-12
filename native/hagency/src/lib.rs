@@ -32,6 +32,11 @@ pub struct App {
     files: Option<file_service::FileHandle>,
     receives: Option<receive_service::ReceiveHandle>,
     console: Option<console::Console>,
+    /// The ceiling-sweep loop's task handle (shared so readiness can observe
+    /// liveness without owning the loop) and its tick channel. Both None
+    /// when the loop was never started (unit wiring without `Bootstrap`).
+    ceiling_sweep: Option<Arc<tokio::task::JoinHandle<()>>>,
+    sweep_tick: Option<tokio::sync::watch::Receiver<bootstrap::CeilingSweepTick>>,
 }
 
 impl App {
@@ -57,11 +62,29 @@ impl App {
             files: None,
             receives: None,
             console: None,
+            ceiling_sweep: None,
+            sweep_tick: None,
         })
     }
 
     pub fn with_domain(mut self, domain: DomainStore) -> Self {
         self.domain = Some(domain);
+        self
+    }
+
+    /// Attach the ceiling-sweep loop for readiness observation (brief 19).
+    /// Called by `Bootstrap::serve` after `start_ceiling_sweep`; the handle
+    /// is SHARED (bootstrap keeps it to abort at shutdown, `/health` reads
+    /// liveness) so neither owns the loop. Public because integration tests
+    /// wire the loop the same way bootstrap does. Readiness is diagnostic
+    /// only: nothing may read it to retry, release or complete anything.
+    pub fn with_ceiling_sweep(
+        mut self,
+        sweep: std::sync::Arc<tokio::task::JoinHandle<()>>,
+        tick: tokio::sync::watch::Receiver<bootstrap::CeilingSweepTick>,
+    ) -> Self {
+        self.ceiling_sweep = Some(sweep);
+        self.sweep_tick = Some(tick);
         self
     }
 
@@ -110,10 +133,105 @@ impl App {
 }
 
 #[handler]
-async fn health(res: &mut Response) {
-    res.render(Json(
-        serde_json::json!({"status":"ok", "implementation":"rust", "stage":"foundation"}),
+async fn health(depot: &mut Depot, res: &mut Response) {
+    // Readiness rollup (brief 19, ADR-096 amendment). Every probe is
+    // SYNCHRONOUS: no writer job, no lock, no allocation on the request path
+    // beyond the reply — the `bounded_work_keeps_health_responsive`
+    // invariant. States are words, never private counts, mirroring the
+    // retained rule that `/health` is unauthenticated and must not leak
+    // fleet detail (`backend-v2.js:7585` publishes counts to a local
+    // operator; the native boundary is stricter: names and states only).
+    // Readiness is DIAGNOSTIC, never authority: nothing may read it to
+    // retry, release or complete anything.
+    let app = depot.get_typed::<App>().ok();
+    let mut components: Vec<(&str, &str)> = Vec::new();
+    let domain = app.as_ref().and_then(|a| a.domain.as_ref());
+    components.push((
+        "domain_writer",
+        match domain {
+            None => "disabled",
+            Some(store) if store.writer_open() => "open",
+            Some(_) => "closed",
+        },
     ));
+    let custody = app.as_ref().map(|a| &a.store);
+    components.push((
+        "custody_store",
+        if custody.is_some_and(|s| s.writer_open()) {
+            "open"
+        } else {
+            "closed"
+        },
+    ));
+    // The sweep: liveness is the task; the last tick's outcome is a separate
+    // named component so a dead loop can never hide behind a good outcome —
+    // and an outcome (swept, or a back-pressure refusal waiting for the next
+    // tick) can never fail readiness on its own.
+    let sweep = app.as_ref().and_then(|a| a.ceiling_sweep.as_ref());
+    let tick = app.as_ref().and_then(|a| a.sweep_tick.as_ref());
+    let (sweep_state, last_tick) = match (sweep, tick) {
+        (None, _) => ("disabled", None),
+        (Some(handle), Some(receiver)) => {
+            let last = match &*receiver.borrow() {
+                bootstrap::CeilingSweepTick::Swept(_) => "swept",
+                bootstrap::CeilingSweepTick::Refused("unstarted") => "unstarted",
+                bootstrap::CeilingSweepTick::Refused("busy") => "refused_busy",
+                bootstrap::CeilingSweepTick::Refused("outcome_unknown") => {
+                    "refused_outcome_unknown"
+                }
+                bootstrap::CeilingSweepTick::Refused(_) => "refused",
+            };
+            (
+                if handle.is_finished() {
+                    "stopped"
+                } else if last == "unstarted" {
+                    "unstarted"
+                } else {
+                    "alive"
+                },
+                Some(last),
+            )
+        }
+        (Some(_), None) => ("unknown", None),
+    };
+    components.push(("ceiling_sweep", sweep_state));
+    components.push(("ceiling_sweep_last_tick", last_tick.unwrap_or("disabled")));
+    // Optional owners report their own state words; only the settled
+    // failure words fail readiness. `stopped` fails too: a finished loop or
+    // owner is not serving, and 503 during shutdown is the honest answer.
+    let owner_state = |configured: bool, state: &'static str| -> &'static str {
+        if !configured {
+            "disabled"
+        } else if matches!(state, "unavailable" | "outcome_unknown" | "stopped") {
+            state
+        } else {
+            "ready"
+        }
+    };
+    if let Some(status) = app.as_ref().and_then(|a| a.development.as_ref()) {
+        components.push(("development_driver", owner_state(true, status.state())));
+    }
+    if let Some(status) = app.as_ref().and_then(|a| a.palpo.as_ref()) {
+        components.push(("palpo_transport", owner_state(true, status.state())));
+    }
+    let ready = components.iter().all(|(_, state)| {
+        matches!(
+            *state,
+            "open" | "alive" | "disabled" | "ready" | "unstarted" | "swept" | "running"
+        )
+    });
+    let value = serde_json::json!({
+        "status": if ready { "ok" } else { "unavailable" },
+        "implementation": "rust",
+        "components": components
+            .into_iter()
+            .map(|(name, state)| serde_json::json!({"name": name, "state": state}))
+            .collect::<Vec<_>>(),
+    });
+    if !ready {
+        res.status_code(StatusCode::SERVICE_UNAVAILABLE);
+    }
+    res.render(Json(value));
 }
 
 #[handler]
