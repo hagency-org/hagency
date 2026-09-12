@@ -220,6 +220,76 @@ async fn native_console_resource_observations() {
     );
     assert_eq!(draw["remainingBeforeCeiling"], 1000 - drawn);
     assert_eq!(draw["period"], "monthly");
+    // Brief 20 (E1): the two committed predicates are DIFFERENT SQL and
+    // agree by an invariant, not by coincidence — pin it with a seat shared
+    // across two presets. `pool.committed` folds `preset_id=?` grouped;
+    // `draw.committed` folds bare `resource_id=?`; they select the same
+    // engagement set only because `resource_id = public_resource_id(preset_id)`
+    // is injective (`project.rs:67-69`). `seat.committed` (`preset_id=? OR
+    // seat_id=?`) is deliberately the LARGER cross-preset figure. With a
+    // second preset on the SAME seat holding an approved 250-token
+    // engagement: the pool's own committed figures stay 100 (both
+    // predicates agree), while the seat figure is 350.
+    let shared_seat_pool = common::resource("private_shared_seat_pool", "private_usage_seat", 1000);
+    f.domain
+        .put_resource(shared_seat_pool.clone())
+        .await
+        .unwrap();
+    let shared_request = common::request(
+        "shared_seat_request",
+        "SharedSeatWorker",
+        &shared_seat_pool,
+        250,
+    );
+    // The async store takes proofs BY VALUE (domain_worker.rs:2623/:2635);
+    // a second `common::proof` of the same request yields the same id and
+    // digest, so admit and approve address the same engagement.
+    f.domain
+        .admit(common::proof(&shared_request), 1000)
+        .await
+        .unwrap();
+    f.domain
+        .approve(
+            "approve_shared_seat".to_owned(),
+            common::proof(&shared_request),
+            1000,
+        )
+        .await
+        .unwrap();
+    let mut response = get(
+        &format!("/console/api/resources/{}/budget", usage_pool.id()),
+        &cookie,
+    )
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(
+        value["draw"]["committed"], value["pool"]["committed"],
+        "the two committed predicates agree across a shared seat"
+    );
+    assert_eq!(
+        value["draw"]["committed"].as_u64().unwrap(),
+        100,
+        "the pool's own draw is untouched by the other preset's engagement"
+    );
+    assert_eq!(
+        value["seat"]["committed"].as_u64().unwrap(),
+        350,
+        "the seat figure is deliberately the cross-preset roll-up"
+    );
+    // And the mirror read on the shared-seat resource itself.
+    let mut response = get(
+        &format!("/console/api/resources/{}/budget", shared_seat_pool.id()),
+        &cookie,
+    )
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<Value>().await.unwrap();
+    assert_eq!(value["draw"]["committed"], 250);
+    assert_eq!(value["pool"]["committed"], 250);
+    assert_eq!(value["seat"]["committed"].as_u64().unwrap(), 350);
     for query in ["limit=17", "limit=0", "limit=1&limit=2", "unknown=1"] {
         assert_eq!(
             get(&format!("/console/api/resources?{query}"), &cookie)

@@ -77,3 +77,38 @@ keys, both directions, unknown arms null). The page renders each figure in a
 `data-headroom` cell with the explicit unknown word for nulls. Statement
 time is the read's clock (the retained budget read has no clock parameter);
 the route's no-query rule is unchanged.
+
+## Amendment: the headroom review (brief 20, E1/E3/E4)
+
+**E1 — one committed figure, two predicates, one invariant.** The budget's
+`pool.committed` and the draw's `committed` are computed by different SQL —
+`budget()` folds `preset_id=? OR seat_id=?` grouped by preset/seat, while
+`ceiling_report` folds bare `resource_id=?`. They select the same engagement
+set **only because** `resource_id = public_resource_id(preset_id)` is
+injective (`project.rs:67-69`: a truncated hash of the preset id). That is
+the rule: the two figures are equal by that invariant, never by accident,
+and a future non-injective mapping must re-derive one from the other rather
+than let two different "committed" numbers share a panel. Pinned by the
+shared-seat console test: a second preset on the same seat holding an
+approved engagement keeps `draw.committed == pool.committed == 100` on the
+first pool while `seat.committed` is deliberately the larger cross-preset
+figure (350) — the seat roll-up is the one place the predicates are
+*supposed* to differ.
+
+**E3 — the always-zero `reserved` is off the console wire.** The console
+route runs `budget()` with `exclude_engagement_id: None`, and the core
+assigns `reserved` only inside that arm (`allocation.rs:155-159`), so the
+top-level key was a constant 0 beside two meaningful commitment figures. It
+is removed from the console wire and from `validateBudget`'s exact key list
+in the same commit; the page renders one committed cell (the budget panel's
+`pool.committed`, which equals `draw.committed` per E1).
+
+**E4 — the operator route keeps its five-key shape.**
+`/api/native/v1/resources/{id}/budget` (the operator API, ADR-067's read
+surface) still returns the plain commitments budget without `draw`: its
+consumer is machine-to-machine operator tooling that already treats the
+budget as allocation facts, and adding measured-evidence figures there is a
+separate decision about that route's contract. The console route carries
+`draw` because its consumer is a human deciding whether a resource is close
+to its ceiling. One concept, two shapes, two consumers — stated here so the
+asymmetry is a decision, not a drift.

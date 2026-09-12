@@ -1,4 +1,29 @@
-# Repository audit — 2026-09-05
+## 2026-09-12 — Headroom review edits E1–E4 (review of 6eae4834)
+
+- E1 (two predicates, one invariant): the shared-seat console test pins that
+  `draw.committed` (bare `resource_id=?`) and `pool.committed`
+  (`preset_id=?` grouped) agree across a second preset sharing the pool's
+  seat (both 100) while `seat.committed` is deliberately the larger
+  cross-preset figure (350) — equal by the injectivity of
+  `public_resource_id` (`project.rs:67-69`), stated in ADR-121, never by
+  accident.
+- E2 (a name that lies): the budget route's clock fault now refuses as
+  `console_unavailable` (503 via `Error::Unavailable`) instead of `busy` —
+  `Busy` names worker saturation and invites a retry; a failed clock is the
+  console's own unavailability and is not in the client's retryable set.
+- E3 (always-zero key off the wire): the console budget wire no longer
+  emits the top-level `reserved` (a constant 0 — `budget()` runs without an
+  exclusion and the core assigns `reserved` only inside that arm,
+  `allocation.rs:155-159`); `validateBudget`'s exact key list drops it in
+  the same commit; the page's headroom panel drops its duplicate committed
+  cell (the budget panel's `pool.committed` carries the equal figure), and
+  the `nr.headroom.committed` key left both dictionaries (parity 11/11).
+- E4 (two shapes, two consumers, stated): ADR-121 records that the operator
+  route `/api/native/v1/resources/{id}/budget` keeps its five-key
+  commitments shape while the console route carries `draw` — an
+  asymmetry made a decision, not drift.
+- Spec: the observations scenario now names the shared-seat fixture, the
+  omitted reserved key, and the clock refusal.
 
 ## 2026-09-12 — Health/readiness by component (brief 19, ADR-096 amendment)
 

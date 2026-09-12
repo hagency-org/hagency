@@ -112,10 +112,10 @@ Scenario: Browser publication needs its exact management scope
 Scenario: Resource observations preserve native meanings
   Test: native_console_resource_observations
   Level: integration
-  Test Double: canonical configurations seats roles and commitments in fresh native state with one unmeasured resource and one carrying a bound usage source and observations
+  Test Double: canonical configurations seats roles and commitments in fresh native state with one unmeasured resource one carrying a bound usage source and observations and a second preset sharing the first pool's seat
   Given published withdrawn missing and partially bounded resources
   When bounded resource and budget reads complete or lose authority
-  Then safe DTOs preserve current native facts and absent values without private fields and the budget draw object carries drawn measured consumed the binding draw named as the over-commit refusal names it and remaining before the ceiling with every unknown figure null never zero
+  Then safe DTOs preserve current native facts and absent values without private fields and the budget draw object carries drawn measured consumed the binding draw named as the over-commit refusal names it and remaining before the ceiling with every unknown figure null never zero while the console wire omits the always-zero reserved key and the draw's committed equals the pool's committed across the shared seat with the seat figure deliberately larger and a clock fault refuses as console unavailable never busy
 
 Scenario: Retained resource controls work in both languages
   Test: native_console_resources_browser

@@ -177,7 +177,15 @@ export function validateBudget(v) {
     && number(d.committed) && amount(d.measured) && amount(d.consumed) && number(d.drawn)
     && amount(d.ceilingTokens) && ['daily', 'monthly'].includes(d.period) && binding(d.binding)
     && amount(d.remainingBeforeCeiling);
-  if (!object(v, ['scope', 'pool', 'seat', 'reserved', 'remainingTokens', 'draw']) || v.scope !== 'resource' || !number(v.reserved) || !amount(v.remainingTokens)
+  /* Brief 20 (E3): the top-level `reserved` key is GONE from the console
+   * wire — it was a constant 0 there (`budget()` runs with no exclusion;
+   * the core assigns `reserved` only inside the exclude arm,
+   * allocation.rs:155-159). The meaningful commitment figures are
+   * `pool.committed` (the shared-seat pool roll-up) and `draw.committed`
+   * (this resource's own holding engagements), which the ADR states are
+   * equal by the `resource_id = public_resource_id(preset_id)` invariant
+   * (project.rs:67-69) — pinned by the shared-seat console test. */
+  if (!object(v, ['scope', 'pool', 'seat', 'remainingTokens', 'draw']) || v.scope !== 'resource' || !amount(v.remainingTokens)
     || !object(v.pool, ['ceiling', 'period', 'committed', 'remaining']) || !amount(v.pool.ceiling) || !optionalText(v.pool.period, 64 * 1024) || !number(v.pool.committed) || !amount(v.pool.remaining)
     || !object(v.seat, ['quota', 'period', 'committed', 'remaining', 'status']) || !amount(v.seat.quota) || !optionalText(v.seat.period, 64 * 1024) || !number(v.seat.committed) || !amount(v.seat.remaining)
     || !['undeclared', 'declared', 'period_mismatch'].includes(v.seat.status) || !draw(v.draw)) throw new Error('invalid_native_response');

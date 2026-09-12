@@ -20,6 +20,10 @@ function BudgetPart({ value, account = false }) {
 function HeadroomPart({ draw, number, t }) {
   // Unknown is unknown, never zero: every null below renders the explicit
   // unknown word, so an unmeasured period never reads as a free resource.
+  // Brief 20 (E3): no separate "committed" cell here — the budget panel's
+  // "Committed allocation" already shows pool.committed, which equals
+  // draw.committed by the resource_id = public_resource_id(preset_id)
+  // invariant (pinned by the shared-seat console test; ADR-121).
   const binding = draw.binding === null
     ? t('nr.headroom.noCompetition')
     : draw.binding === 'measured spend' ? t('nr.headroom.bindingMeasured') : t('nr.headroom.bindingCommitted');
@@ -27,7 +31,6 @@ function HeadroomPart({ draw, number, t }) {
     <h3>{t('nr.headroom.title')}</h3>
     <dl className="kv">
       <dt>{t('nr.headroom.drawn')}</dt><dd data-headroom="drawn">{number(draw.drawn)}</dd>
-      <dt>{t('nr.headroom.committed')}</dt><dd data-headroom="committed">{number(draw.committed)}</dd>
       <dt>{t('nr.headroom.measured')}</dt><dd data-headroom="measured">{number(draw.measured)}</dd>
       <dt>{t('nr.headroom.consumed')}</dt><dd data-headroom="consumed">{number(draw.consumed)}</dd>
       <dt>{t('nr.headroom.binding')}</dt><dd data-headroom="binding">{binding}</dd>

@@ -212,14 +212,18 @@ async fn budget(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // report together, so the page can never mix figures from two reads.
     // Statement time (the retained budget read has no clock parameter), and
     // the no-query rule above stays.
+    // Brief 20 (E2): a CLOCK fault is `console_unavailable` (503), never
+    // `busy` — `Busy` names worker saturation and invites a retry; a failed
+    // clock is the console's own unavailability. `console_unavailable` is
+    // not in the client's retryable set, so no reader retries on it.
     let at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map_err(|_| hagency_store::Error::Busy)
-        .and_then(|d| u64::try_from(d.as_millis()).map_err(|_| hagency_store::Error::Busy));
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok());
     let at = match at {
-        Ok(at) => at,
-        Err(error) => {
-            failure(res, error);
+        Some(at) => at,
+        None => {
+            failed(res, Error::Unavailable);
             return;
         }
     };
@@ -245,6 +249,16 @@ async fn budget(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .ceiling_tokens
                 .map(|ceiling| ceiling.saturating_sub(draw.drawn));
             let mut wire = serde_json::to_value(&value).expect("fixed budget serializes");
+            // Brief 20 (E3): the top-level `reserved` key is a constant 0 on
+            // this route — `budget()` runs with `exclude_engagement_id: None`
+            // and the core assigns `reserved` only inside that arm
+            // (allocation.rs:155-159). The meaningful commitment figures are
+            // `pool.committed` and `draw.committed`; a constant 0 beside
+            // them is noise, so it never leaves the server. The client
+            // validator's key list drops it in the same commit.
+            if let Some(object) = wire.as_object_mut() {
+                object.remove("reserved");
+            }
             wire["draw"] = serde_json::json!({
                 "committed": draw.reserved,
                 "measured": draw.spent,
