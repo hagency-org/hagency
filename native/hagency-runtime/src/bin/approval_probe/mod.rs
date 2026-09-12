@@ -138,6 +138,43 @@ pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::R
         // drive promptly, quietly, with no approval frame on the wire.
         return Ok(true);
     }
+    if mode == "owned-approval-turn-untransmitted" {
+        // The final verdict.s rule, untransmitted arm: end the turn while
+        // the host is held at the recheck gate — in flight, armed, but not
+        // one byte on the wire. The host parses this turn end during the
+        // hold (the pump polls the wire while the gate future is awaited),
+        // so the rule decides with zero accepted bytes and the operation
+        // must never complete silently. No frame may reach the wire.
+        gate(marker)?;
+        note(
+            "turn/completed",
+            json!({ "threadId": "owned-thread", "turn": { "id": "owned-turn", "status": "completed", "items": [] } }),
+        )?;
+        announce(marker, "approval-resolving")?;
+        return Ok(false);
+    }
+    if mode == "owned-approval-turn-midwrite" {
+        // The final verdict's rule, uncertain arm. No gate: the host's send
+        // is free to run. The probe stays silent long enough for the whole
+        // frame to be accepted (the write completes into the OS buffer the
+        // moment the choice round-trip lands), then ends the turn and exits
+        // with the frame UNREAD — no read at all, so no buffered reader can
+        // drain the pipe and complete the flush. On Windows the transport's
+        // flush (`FlushFileBuffers`) is still pending over the unread bytes
+        // when the read handle closes, so the send fails mid-write with
+        // bytes accepted — transmitted, receipt-less, uncertain:
+        // `SettlementUnknown`, never a silent completion. On POSIX the
+        // 51-byte pipe write is atomic and the flush is a no-op, so the
+        // write is accepted and recorded before the turn end arrives: the
+        // clean control arm, asserted as such by the scenario.
+        std::thread::sleep(Duration::from_millis(1200));
+        note(
+            "turn/completed",
+            json!({ "threadId": "owned-thread", "turn": { "id": "owned-turn", "status": "completed", "items": [] } }),
+        )?;
+        announce(marker, "approval-midwrite-exit")?;
+        return Ok(false);
+    }
     if mode == "owned-approval-gate-resolve" {
         // Host is held at the recheck gate: in_flight is set and the frame is
         // armed but not yet committed to the OS. Emit the resolution for the

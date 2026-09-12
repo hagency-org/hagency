@@ -191,6 +191,17 @@ impl<R, W, E> Driver<R, W, E> {
         self.connection.has_prepared_approval(id)
     }
 
+    /// Read-only progress of the frame currently in the transport's write
+    /// custody: `(accepted, total)` bytes, or `None` when no frame is held.
+    /// Diagnostic only — no deadline, retry or verdict derives from it in the
+    /// transport; the approval turn-end rule reads it to decide whether an
+    /// in-flight, receipt-less frame was transmitted at all.
+    pub(super) fn write_progress(&self) -> Option<(usize, usize)> {
+        self.writing
+            .as_ref()
+            .map(|writing| (writing.offset, writing.bytes.len()))
+    }
+
     /// Drain the transport's received snapshot without reading any more IO.
     /// The session checks partial bytes separately before closing this snapshot.
     pub(super) fn buffered_event(&mut self) -> Result<Option<Event>, Error> {

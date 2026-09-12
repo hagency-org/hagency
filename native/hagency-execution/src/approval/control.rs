@@ -15,9 +15,12 @@ use tokio::time::Instant;
 /// A frame that never accepted a byte was never transmitted: a transport
 /// refusal there is the peer being gone — **non-uncertain by construction**
 /// (nothing was sent, so there is no lost response to be uncertain about and
-/// no idempotency question). Any byte accepted keeps the existing verdicts:
-/// the send refusal itself stays `Protocol`, and a *written* frame whose
-/// acknowledgement was lost keeps the reconcile's uncertainty (ADR-046).
+/// no idempotency question). Any byte accepted means the frame **was**
+/// transmitted: its fate is unknown (the peer may hold the bytes), so a
+/// transport refusal mid-write is the uncertain `SettlementUnknown` — never
+/// a silent completion, never a protocol fault. `Protocol` stays for
+/// genuine malformed-frame refusals, and a *written* frame whose
+/// acceptance row was lost keeps the reconcile's rules (ADR-046).
 /// `zero_accepted` comes from the transport's termination snapshot
 /// (`unconfirmed_write.accepted_bytes == 0`, or no writer at all).
 fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bool) -> Failure {
@@ -28,6 +31,12 @@ fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bo
             | hagency_runtime::codex::transport::Error::HostClosed
             | hagency_runtime::codex::transport::Error::Closed,
         ) if zero_accepted => Failure::PeerUnavailable,
+        hagency_runtime::codex::session::Error::Transport(
+            hagency_runtime::codex::transport::Error::Io(_)
+            | hagency_runtime::codex::transport::Error::PeerEof
+            | hagency_runtime::codex::transport::Error::HostClosed
+            | hagency_runtime::codex::transport::Error::Closed,
+        ) => Failure::SettlementUnknown,
         _ => Failure::Protocol,
     }
 }
@@ -578,14 +587,16 @@ mod send_failure_tests {
     #[test]
     fn native_partial_write_keeps_protocol_and_uncertainty() {
         // The negative control: once any byte is accepted the frame was
-        // transmitted, so the send refusal is the fencing verdict and the
-        // written frame's fate belongs to the reconcile's uncertainty rules.
+        // transmitted, so its fate is UNKNOWN — the mid-write send refusal
+        // is the uncertain verdict (never a silent completion, never a
+        // protocol fault), and a *recorded* frame's fate belongs to the
+        // reconcile's rules.
         assert_eq!(
             send_failure(
                 session::Error::Transport(transport::Error::Io("stdin write")),
                 false
             ),
-            Failure::Protocol
+            Failure::SettlementUnknown
         );
         // A genuine protocol error is never re-labelled, at any offset.
         assert_eq!(

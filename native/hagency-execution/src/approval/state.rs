@@ -444,6 +444,43 @@ mod trace_tests {
             cancelling.mark(label);
         }
         assert_eq!(cancelling.as_slice().last(), Some(&"resolved-cancels"));
+        // The final verdict's rule: an in-flight, receipt-less, unresolved
+        // entry names its fate at a turn end — never a silent completion.
+        // The two arms are mutually exclusive in one run (the transport's
+        // write custody decides), so each is pinned as its own sequence.
+        for (labels, arm) in [
+            (
+                vec![
+                    "acknowledged",
+                    "prepared",
+                    "begun",
+                    "admitted",
+                    "in-flight",
+                    "checked",
+                    "turn-ended-unwritten",
+                ],
+                "turn-ended-in-flight-uncertain",
+            ),
+            (
+                vec![
+                    "acknowledged",
+                    "prepared",
+                    "begun",
+                    "admitted",
+                    "in-flight",
+                    "checked",
+                    "turn-ended-unwritten",
+                ],
+                "turn-ended-in-flight-untransmitted",
+            ),
+        ] {
+            let mut trace = PhaseTrace::new();
+            for label in labels {
+                trace.mark(label);
+            }
+            trace.mark(arm);
+            assert_eq!(trace.as_slice().last(), Some(&arm));
+        }
         // The journal is keyed by dispatch: records of another operation are
         // invisible to this one's reads (parallel tests never interleave).
         let dispatch = "dispatch-a";
