@@ -133,33 +133,45 @@ try {
   // The scoped session: exchange its ticket, then the walk is unchanged.
   // Present in the in-process lane; the executable lane reuses the read-only
   // walk because its link is minted by the real subcommand.
-  if (config.scopedUrl) await page.goto(config.scopedUrl);
-  await page.locator('[data-native-state="ready"]').waitFor();
-  await page.goto(`${config.base}/console/alerts/`);
-  await page.locator('[data-native-state="ready"]').waitFor();
-  // The open row offers exactly the served map: acknowledge, resolve, suppress.
-  const buttons = page.locator('[data-transition]');
-  assert(await buttons.count() === 3, 'the open row serves exactly three transitions');
-  assert((await page.locator('[data-transition="acknowledged"]').count()) === 1);
-  assert((await page.locator('[data-transition="resolved"]').count()) === 1);
-  assert((await page.locator('[data-transition="suppressed"]').count()) === 1);
-  // A REAL press: acknowledge, then the served map narrows to resolve/suppress.
-  await page.locator('[data-transition="acknowledged"]').click();
-  // The page is already in its ready state while the transition request is in
-  // flight, so the wait is for the served map to change: the pressed control
-  // leaves the DOM when the reply renders (bounded, so a page that never
-  // re-renders still fails here rather than passing on the stale set).
-  await page.locator('[data-transition="acknowledged"]').waitFor({ state: 'detached', timeout: 10_000 });
-  assert((await page.locator('[data-transition="acknowledged"]').count()) === 0, 'acknowledged is no longer offered');
-  assert((await buttons.count()) === 2, 'the acknowledged row serves resolve and suppress');
-  // To terminal: resolve, and the terminal row serves nothing.
-  await page.locator('[data-transition="resolved"]').click();
-  await page.locator('[data-transition="resolved"]').waitFor({ state: 'detached', timeout: 10_000 });
-  assert((await buttons.count()) === 0, 'resolved is terminal');
-  // The console read serves open alerts only, so the resolved row leaves the
-  // list and the page shows its no-open-alerts state rather than a terminal
-  // notice for a row it no longer lists.
-  assert.match(await page.locator('main').innerText(), /No open alerts\. The sweep resolves them|没有未解决的告警/);
+  // One access ticket is outstanding at a time (`authority.rs` `issue_scope`
+  // replaces it), so the scoped link is minted only now, after the read-only
+  // ticket was exchanged above: the in-process lane asks the harness for it
+  // and walks the buttons; the executable lane has no scoped walk because its
+  // link is minted by the real subcommand once.
+  if (!config.executable) {
+    console.log('SCOPED_LINK');
+    const scopedUrl = JSON.parse((await lines.next()).value).scopedUrl;
+    // The exchange lands on the resources page, which carries no
+    // `data-native-state` marker; the session cookie is set once its main
+    // content renders.
+    await page.goto(scopedUrl);
+    await page.locator('main').waitFor();
+    await page.goto(`${config.base}/console/alerts/`);
+    await page.locator('[data-native-state="ready"]').waitFor();
+    // The open row offers exactly the served map: acknowledge, resolve, suppress.
+    const buttons = page.locator('[data-transition]');
+    assert(await buttons.count() === 3, 'the open row serves exactly three transitions');
+    assert((await page.locator('[data-transition="acknowledged"]').count()) === 1);
+    assert((await page.locator('[data-transition="resolved"]').count()) === 1);
+    assert((await page.locator('[data-transition="suppressed"]').count()) === 1);
+    // A REAL press: acknowledge, then the served map narrows to resolve/suppress.
+    await page.locator('[data-transition="acknowledged"]').click();
+    // The page is already in its ready state while the transition request is in
+    // flight, so the wait is for the served map to change: the pressed control
+    // leaves the DOM when the reply renders (bounded, so a page that never
+    // re-renders still fails here rather than passing on the stale set).
+    await page.locator('[data-transition="acknowledged"]').waitFor({ state: 'detached', timeout: 10_000 });
+    assert((await page.locator('[data-transition="acknowledged"]').count()) === 0, 'acknowledged is no longer offered');
+    assert((await buttons.count()) === 2, 'the acknowledged row serves resolve and suppress');
+    // To terminal: resolve, and the terminal row serves nothing.
+    await page.locator('[data-transition="resolved"]').click();
+    await page.locator('[data-transition="resolved"]').waitFor({ state: 'detached', timeout: 10_000 });
+    assert((await buttons.count()) === 0, 'resolved is terminal');
+    // The console read serves open alerts only, so the resolved row leaves the
+    // list and the page shows its no-open-alerts state rather than a terminal
+    // notice for a row it no longer lists.
+    assert.match(await page.locator('main').innerText(), /No open alerts\. The sweep resolves them|没有未解决的告警/);
+  }
   // The engagements page (the console consumer slice, read-only): the list
   // read the usage flow already carries, rendered as triage. Ready state,
   // the seeded engagement's row, the read-only note, no mutating buttons.

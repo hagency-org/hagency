@@ -47,11 +47,6 @@ async fn native_console_browser() {
     let url = hagency::console::client::access(&f.root.path().join("state"), address)
         .await
         .unwrap();
-    tokio::time::sleep(Duration::from_millis(1010)).await;
-    let scoped_url =
-        hagency::console::client::configuration_access(&f.root.path().join("state"), address)
-            .await
-            .unwrap();
     let mut child = Command::new(node())
         .arg(script())
         .stdin(Stdio::piped())
@@ -65,7 +60,7 @@ async fn native_console_browser() {
         .write_all(
             format!(
                 "{}\n",
-                json!({"base":format!("http://{address}"),"url":url,"scopedUrl":scoped_url,"engagement":f.engagement})
+                json!({"base":format!("http://{address}"),"url":url,"engagement":f.engagement})
             )
             .as_bytes(),
         )
@@ -83,6 +78,20 @@ async fn native_console_browser() {
                     .await
                     .unwrap();
                 created = true;
+            } else if line == "SCOPED_LINK" {
+                // One access ticket is outstanding at a time, so the scoped
+                // link is minted only after the browser exchanged the
+                // read-only one (the walk that precedes this marker).
+                let scoped_url = hagency::console::client::configuration_access(
+                    &f.root.path().join("state"),
+                    address,
+                )
+                .await
+                .unwrap();
+                input
+                    .write_all(format!("{}\n", json!({"scopedUrl":scoped_url})).as_bytes())
+                    .await
+                    .unwrap();
             } else {
                 println!("{line}");
             }
@@ -166,25 +175,6 @@ async fn native_console_executable() {
         "native access command must work without Node on PATH"
     );
     let url = String::from_utf8(link.stdout).unwrap().trim().to_owned();
-    tokio::time::sleep(Duration::from_millis(1010)).await;
-    let scoped_link = Command::new(binary)
-        .args(["console-access", "--state-dir"])
-        .arg(&state)
-        .args([
-            "--listen",
-            &address.to_string(),
-            "--manage-resource-configuration",
-        ])
-        .env_clear()
-        .env("PATH", &empty_path)
-        .output()
-        .await
-        .unwrap();
-    assert!(scoped_link.status.success());
-    let scoped_url = String::from_utf8(scoped_link.stdout)
-        .unwrap()
-        .trim()
-        .to_owned();
     assert!(!url.contains(TOKEN));
     let mut browser = Command::new(node())
         .arg(script())
@@ -194,7 +184,7 @@ async fn native_console_executable() {
         .kill_on_drop(true)
         .spawn()
         .unwrap();
-    browser.stdin.take().unwrap().write_all(format!("{}\n", json!({"base":format!("http://{address}"),"url":url,"scopedUrl":scoped_url,"engagement":engagement,"executable":true})).as_bytes()).await.unwrap();
+    browser.stdin.take().unwrap().write_all(format!("{}\n", json!({"base":format!("http://{address}"),"url":url,"engagement":engagement,"executable":true})).as_bytes()).await.unwrap();
     assert!(
         tokio::time::timeout(Duration::from_secs(45), browser.wait())
             .await

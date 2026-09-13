@@ -8320,3 +8320,10 @@ client qualification and ongoing identity/key management remain separate.
   identity); spec scenarios bound in the alarm spec; the browser lane
   gains the read-only arm (buttons absent, notice rendered) and mints a
   scoped link for the unchanged walk.
+- 2026-09-13: the console transition authority fix carried a browser-lane
+  change its author's sandbox could not run: the harness minted the scoped
+  ticket before the browser exchanged the read-only one, and the authority
+  keeps one outstanding ticket, so the read-only session never existed. The
+  in-process lane now mints the scoped link only when the driver asks for it
+  after the read-only walk; the executable lane has no scoped walk; the
+  post-exchange wait targets the resources page, which carries no ready marker.
