@@ -128,7 +128,15 @@ impl Fixture {
     /// digest covers transport/room identity, never the thread binding),
     /// so read 6's `scope_digest=?3` matching is unchanged.
     fn admit_threaded(&mut self, id: &str, at: u64, thread_root: &str) -> (u64, String) {
-        let thread_session = format!("session_{}_{}", self.agent, thread_root);
+        // The binding id is a VALID OPAQUE IDENTIFIER derived from the
+        // thread root (the raw event id carries '$', which the identifier
+        // rules reject — the macOS oracle's Err at this call): a short hex
+        // fold. The `thread_root` itself still rides in the SessionBinding,
+        // which is what the route check compares against.
+        let thread_id = thread_root.bytes().fold(0u64, |acc, byte| {
+            acc.wrapping_mul(31).wrapping_add(byte as u64)
+        });
+        let thread_session = format!("session_{}_t{:x}", self.agent, thread_id);
         self.db
             .resolve_verified_matrix_session(
                 &SessionBinding {
