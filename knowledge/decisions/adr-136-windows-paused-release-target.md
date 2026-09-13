@@ -3,6 +3,8 @@ kind: decision
 id: ADR-136
 title: "Windows is paused as a native release target"
 status: Accepted
+requirements: [REQ-RUST-MIGRATION-EXECUTION]
+liveness: auto
 tags: [platform, windows, release, ci]
 ---
 
@@ -17,7 +19,7 @@ directories (ADR-104 sync), and a hosted `windows-2025` CI lane. On
 Windows is not a release target for now. Commit `cda737cd` made the hosted
 lane non-blocking (`continue-on-error: ${{ matrix.os == 'windows-2025' }}` at
 `.github/workflows/rust.yml:64`, rationale comment at `:61-63`); the same
-decision is logged in `docs/progress.md`.
+decision is logged in `docs/progress.md:8285-8288`.
 
 ## Decision
 

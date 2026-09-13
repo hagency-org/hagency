@@ -1,7 +1,7 @@
 ---
 kind: decision
 id: ADR-140
-title: "Qualify the real Codex sandbox behind a compiled-out feature"
+title: "Qualify the real Codex sandbox with an operator-run example and a fail-closed CI check"
 status: Proposed
 requirements: [REQ-RUST-MIGRATION-EXECUTION]
 tags: [runner, codex, sandbox, qualification, testing]
@@ -9,55 +9,62 @@ tags: [runner, codex, sandbox, qualification, testing]
 
 ## Context
 
-The runner evidence review (finding 3,
-`.peer/evidence/context-runner-evidence-review.md`) showed that slice A's
-"skipped, and reported as skipped" is not expressible with ordinary cargo test
-mechanics: a test that returns early when the real binary is absent reports
-**ok/passed**, and an `#[ignore]`d test reports *ignored* while
-`cargo test -- --list` still emits its selector, so
-`native/scripts/check-rust-spec-bindings.mjs` binds the name and the suite
-reads covered without the real child ever running. The house rule is explicit
-(`docs/workspace-agents-md-template.md:58`, the spec-governance template both
-`CLAUDE.md` and `AGENTS.md` point at): "Never reinterpret a `fail`, `skip`, or
-`uncertain` scenario as passing." Neither mechanism can honour it. The hosted
-workflow (`.github/workflows/rust.yml`) has no `codex` binary, and the
-sandboxed fixture peers cannot prove effective OS sandboxing by construction.
+The runner evidence review (finding 3) showed that "skipped, and reported as
+skipped" is not expressible with ordinary cargo test mechanics: an env-gated
+early return reports **ok/passed** when the real binary is absent, and
+`#[ignore]` still appears in `cargo test -- --list`. The service review's F4
+adds the binding constraint: `native/scripts/check-rust-spec-bindings.mjs`
+inventories selectors on **every hosted matrix leg** (`rust.yml:59` matrix,
+`:108` step) and exits 1 on any missing name, so a selector hidden behind a
+cargo feature or a file-level `#![cfg]` fails CI on the legs that do not
+compile it. The hosted workflow has no `codex` binary, and the sandboxed
+fixture peers cannot prove effective OS sandboxing by construction. The house
+rule stands (`docs/workspace-agents-md-template.md:58`): "Never reinterpret a
+`fail`, `skip`, or `uncertain` scenario as passing."
 
 ## Decision
 
-Real-binary sandbox qualification is a **separate test target compiled only
-under a non-default cargo feature `real-codex`** (the `hagency-execution`
-crate already carries a default-off precedent, `test-diagnostics`). The
-hosted workflow never enables the feature, so the two selectors
-`native_codex_real_app_server_sandbox_write_inside` and
-`native_codex_real_app_server_sandbox_refuses_outside` are **absent from the
-default `cargo test --list` inventory** — that absence is the recorded,
-machine-checkable "not run here" state, not a green result pretending to be
-one. An operator with the binary runs
-`cargo test --locked -p hagency-execution --features real-codex` on a host
-with `HAGENCY_CODEX_QUALIFY_BIN` set to the pinned executable's path, and
-records: the log path of the run, the pinned Codex version
-(`codex --version`), the host OS/arch, and the commit under test. Until that
-record exists for a release, effective sandbox qualification is **not
-claimed**; the bound selector alone is never cited as gate evidence.
+Real-binary sandbox qualification is an **operator-run example binary**:
+`cargo run --locked -p hagency-execution --example codex_qualify` on a host
+with `HAGENCY_CODEX_QUALIFY_BIN` pointing at the pinned executable. The
+example launches the real `codex app-server`, exercises the write-inside and
+write-outside cases through the existing `Host`/owned-session path, and
+writes an **evidence file** at a documented path
+(`native/hagency-execution/qualification/codex-sandbox.json`, tracked in git)
+containing: the pinned Codex version string, the two verdicts
+(`write_inside`, `refuses_outside`), the full log path, the host OS/arch, and
+the commit under test.
 
-`native_codex_probe_sandbox_policy_echo` stays in the **default suite** — it
-is the probe class (the typed initialize request's sandbox policy echoes back
-through the offline fixture peer), unconditional because it does not need the
-real binary.
+The two CI tests — `native_codex_real_app_server_sandbox_write_inside` and
+`native_codex_real_app_server_sandbox_refuses_outside` — live in an
+**ungated** test file, run on every hosted leg, and **validate the evidence
+file**: its shape, its pinned version, and its freshness against the
+repository state. **They FAIL — never skip — when the evidence file is
+missing, stale, or records a non-passing verdict.** A missing evidence file
+is a red gate, not an untested one; the house rule is honoured by failing
+closed. The selectors are therefore always present in `--list` on every leg.
+`native_codex_probe_sandbox_policy_echo` stays unconditional and unchanged:
+it is the probe class (the typed initialize request's sandbox policy echoing
+through the offline fixture peer), needing no real binary.
+
+When the pinned Codex version moves, the operator re-runs the example and
+the evidence file changes in the same commit; the CI tests pin that
+co-movement.
 
 ## Consequences
 
-Good, because absent-from-`--list` is honest and machine-distinguishable from
-passed; the binding check cannot accidentally credit an unrun qualification.
-Bad, because release evidence now depends on an operator-run procedure that
-CI cannot enforce, and the feature must stay off by default to stay honest.
+Good, because the gate fails closed on missing evidence, the selectors bind
+on every hosted leg, and the evidence file is reviewable diff, not prose.
+Bad, because qualification freshness is a commit-time discipline — a source
+change to the launch path can land without re-qualification unless the check
+also pins the relevant source digests (left to the builder lane to wire).
 
 ## Alternatives Considered
 
-- Env-gated early return — rejected: reports *passed* when absent (review
-  finding 3).
-- `#[ignore]` — rejected: still binds in `--list`, so the name masquerades as
-  covered.
+- A `real-codex` cargo feature gating the target — rejected: the selectors
+  vanish from `--list` on legs that do not enable the feature and the
+  binding gate fails everywhere (review F4).
+- Env-gated early return — rejected: reports *passed* when absent.
+- `#[ignore]` — rejected: still binds in `--list*, masquerading as covered.
 - Running the real binary in CI — rejected: no `codex` on hosted runners and
   model execution is out of scope for the gate.

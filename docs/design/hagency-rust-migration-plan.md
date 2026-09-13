@@ -148,7 +148,8 @@ static binary before auditing SDK, SQLite, TLS and runner dependencies.
 ## 5. Native platform plan
 
 Proposed first release architecture matrix: Windows x86_64, Linux x86_64/aarch64,
-and macOS x86_64/aarch64. Exact OS versions and Windows ARM64 are open until the
+and macOS x86_64/aarch64 (the Windows cell of that proposal is superseded by the
+Platform scope note below). Exact OS versions and Windows ARM64 are open until the
 runner/SDK/dependency checks. Native Windows must be tested on Windows, not inferred
 from a successful Linux cross-compilation.
 

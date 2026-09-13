@@ -137,32 +137,29 @@ Scenario: The Codex argv is exactly the app-server subcommand
 Scenario: The bare argv still yields stdio on the pinned Codex CLI
   Test: native_codex_stdio_flag_matches_pinned_cli
   Level: integration
-  Test Double: pinned codex app-server fixture probe with its help or version metadata captured
-  Given the pinned Codex CLI recorded for the host
-  When its app-server transport default or explicit --stdio equivalence is probed offline
-  Then stdio remains the default transport or an exact equivalent of the default
-  And a pinned CLI whose default transport is no longer stdio fails the probe and reopens ADR-139
-  And the captured excerpt is from codex-cli 0.154.0 captured 2026-09-13 pinned by strict version equality
+  Test Double: the recorded help excerpt at native/fixtures/codex-cli/app-server-help-0.153.4.excerpt.txt
+  Given the fixture excerpt captured from the spec-pinned Codex 0.153.4 binary
+  When its captured_version header and transport assertions are validated offline
+  Then the excerpt records stdio as the --listen default with --stdio an exact synonym
+  And a captured_version other than the pinned 0.153.4 or a transport default that is not stdio fails the test never skips
 
 Scenario: A real app-server write inside the sandbox succeeds
   Test: native_codex_real_app_server_sandbox_write_inside
   Level: integration
-  Feature: real-codex
-  Test Double: real pinned codex app-server child on a host with the binary
-  Given the real-codex feature and HAGENCY_CODEX_QUALIFY_BIN pointing at the pinned executable
-  When the owned session requests a write inside the host workspace
-  Then the write completes and the sandboxed filesystem observes the change
-  And the operator record cites the log path pinned codex version and commit under test
+  Test Double: tracked evidence file written by the operator-run codex_qualify example
+  Given the qualification evidence file at its documented path with a pinned codex version
+  When the CI test validates its shape pin and freshness on any hosted leg
+  Then the write_inside verdict is recorded as passing with a log path and commit under test
+  And a missing stale or non-passing evidence file fails the test never skips
 
 Scenario: A real app-server write outside the sandbox is refused
   Test: native_codex_real_app_server_sandbox_refuses_outside
   Level: integration
-  Feature: real-codex
-  Test Double: real pinned codex app-server child on a host with the binary
-  Given the same session and a path outside the writable workspace
-  When the owned session requests a write outside the sandbox
-  Then the request is refused with the app-server sandbox error and no file appears
-  And the refusal does not fail the task or infer a completion outcome
+  Test Double: tracked evidence file written by the operator-run codex_qualify example
+  Given the same evidence file and its refuses_outside verdict
+  When the CI test validates the refusal record and the pinned codex version
+  Then the verdict shows the app-server sandbox error with no file created outside
+  And a missing stale or mismatched pin fails the test never skips
 
 Scenario: The typed sandbox policy echoes back through the offline peer
   Test: native_codex_probe_sandbox_policy_echo

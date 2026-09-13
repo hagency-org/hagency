@@ -136,58 +136,63 @@ Scenario: Incomplete migration capabilities are explicit
 Scenario: A supervisor-less service fixture starts and reports ready
   Test: native_service_unit_starts_and_reports_ready
   Level: integration
-  Test Double: fixture harness spawning the serve binary and polling its routes
+  Test Double: fixture harness spawning the serve binary and polling its routes in an ungated test file
   Given a fresh private state directory and the serve command the systemd unit renders
-  When the harness starts the binary and polls health and ready
-  Then health answers 200 from the first response while the process is live
-  And ready answers 200 only after every component reports a ready word with the existing vocabulary
+  When the harness starts the binary and polls health and ready with #[cfg(target_os = "linux")] inside the body
+  Then on Linux ready answers 200 only after every component reports a ready word with the existing vocabulary
+  And on the other hosted OSes the same named test asserts the documented not-a-Linux-service refusal never skipping
 
 Scenario: A supervisor-less service fixture stops cleanly inside the budget
   Test: native_service_unit_stops_cleanly_within_timeout_budget
   Level: integration
-  Test Double: fixture harness sending SIGTERM and observing the drain sequence
-  Given a running serve process with open writer channels
+  Test Double: fixture harness sending SIGTERM and observing the existing drain sequence
+  Given a running serve process with open writer channels on Linux
   When the harness sends SIGTERM within the unit's TimeoutStopSec budget
   Then ready flips to 503 naming the stopped components while health keeps 200
-  And the bounded writer drains and both stores close leaving WAL files for next-open replay
-  And the process exits zero before the budget expires
+  And the bounded writer drains and both stores close per ADR-120 leaving WAL files for replay
+  And the process exits zero before the budget expires or parks on an unknown close without exiting zero
+  And on the other hosted OSes the named test asserts the not-a-Linux-service refusal never skipping
 
 Scenario: Pending state survives a service restart
   Test: native_service_unit_restart_preserves_pending_state
   Level: integration
   Test Double: fixture harness seeding an outcome-unknown row then restarting the serve binary
-  Given a seeded pending or outcome-unknown custody row and a running service
+  Given a seeded pending or outcome-unknown custody row and a running service on Linux
   When the harness stops the service and starts it again on the same state directory
   Then the pending row is still reported pending or unknown and never resolved or dropped
   And the store stays locked to every other process between the two runs
+  And on the other hosted OSes the named test asserts the not-a-Linux-service refusal never skipping
 
 Scenario: The rendered launchd agent carries the required keys
   Test: native_launchd_agent_starts_and_reports_ready
   Level: integration
-  Test Double: fixture harness rendering the plist template and spawning the serve command it names
+  Test Double: fixture harness rendering the plist template and spawning the serve command it names in an ungated test file
   Given the launchd plist template rendered with explicit install and state placeholders
-  When the harness checks its keys and starts the serve command the wrapper execs
-  Then RunAtLoad KeepAlive SuccessfulExit false ThrottleInterval and the log paths are all present
-  And the started command polls to a ready 200 with health 200 from the first response
+  When the harness checks its keys with #[cfg(target_os = "macos")] inside the body and runs the serve command the wrapper execs
+  Then on macOS RunAtLoad KeepAlive true ThrottleInterval the log paths and the fixed loopback listen are present
+  And ready answers 200 only after every component reports a ready word
+  And on the other hosted OSes the same named test asserts the documented not-a-macOS-agent refusal never skipping
 
 Scenario: The launchd stop path drains and exits inside the budget
   Test: native_launchd_agent_stops_cleanly
   Level: integration
   Test Double: fixture harness sending SIGTERM to the serve command under the plist wrapper
-  Given a running native service started through the launchd wrapper
-  When the harness sends SIGTERM within the keep-alive-free operator stop window
+  Given a running native service started through the launchd wrapper on macOS
+  When the harness sends SIGTERM the existing token drain handles
   Then ready flips to 503 naming stopped components while health keeps 200
-  And the writer drains and stores close leaving WAL files before exit zero
-  And a zero exit is not restarted by the rendered KeepAlive policy
+  And the writer drains and stores close leaving WAL files before exit zero or a parked unknown close
+  And the deliberate stop is launchctl bootout not kill by pid because KeepAlive true restarts a killed process
+  And on the other hosted OSes the named test asserts the not-a-macOS-agent refusal never skipping
 
 Scenario: The launchd restart preserves pending state
   Test: native_launchd_restart_preserves_pending_state
   Level: integration
   Test Double: fixture harness seeding an outcome-unknown row then re-running the wrapper
-  Given a seeded pending or outcome-unknown custody row and a first run through the wrapper
+  Given a seeded pending or outcome-unknown custody row and a first run through the wrapper on macOS
   When the wrapper is stopped and run again on the same state directory
   Then the pending row is still reported pending or unknown and never resolved or dropped
   And no rotation is applied to the log files because none is configured
+  And on the other hosted OSes the named test asserts the not-a-macOS-agent refusal never skipping
 
 ## Out of Scope
 
