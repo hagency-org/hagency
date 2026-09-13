@@ -364,3 +364,34 @@ the entry for diagnostics. What remains of the earlier vocabulary note is
 `write-accepted`); `write-started` is withdrawn with the hold. A lost
 acceptance observation after a **written** frame keeps its named cause via
 the reconcile (the `settlement_cause` rules above), which owns that path.
+
+**Never-transmitted verdicts, corrected (the landing review's Q1–Q3).** The
+classifier's rule, stated in full:
+
+1. *The rule.* With an in-flight, receipt-less approval frame at a turn end
+   the operation must not complete silently: bytes accepted means the frame
+   **was** transmitted and its fate is unknown — `SettlementUnknown`; zero
+   bytes from a **peer-side** cause means never transmitted —
+   `PeerUnavailable`.
+2. *Who closed first is part of the verdict.* `Transport(HostClosed)` is the
+   host's own close: the turn-end path stops the transport before the send
+   is consulted and `stop()` takes the write custody. A `HostClosed` cause
+   with an unwritten frame is a host refusal and is never reported as a
+   peer departure (`Closed`, the parse-removed-id sentinel, likewise).
+3. *Scope of the zero-byte class.* A read-side `PeerEof` with **no frame
+   ever armed** is in the class: the separator is "was a frame armed",
+   carried by the coordinator's entry state (`prepared` or `in_flight`),
+   never by the absence of a `RuntimeWriteObservation`. An armed entry with
+   no snapshot stays `SettlementUnknown` — the custody was taken, the fate
+   is genuinely unknown.
+4. *Witness.* 4-vCPU Windows VM, `--test-threads=8`: the peer-exit shape is
+   `PeerUnavailable` + `Io("stdin write")` + `accepted_bytes: 0` +
+   `pending_server_requests: 1`; the host-close shape is
+   `transport_cause: Some(HostClosed)` + `write: None`. Both are named, on
+   the scenarios `peer_gone_before_first_byte` and the two turn-end arms.
+5. *Harness caveat recorded with it.* A probe bound may be a fraction of
+   the budget only where the probe may legitimately leave early; the
+   terminal lifetime and every held reader are driven by the host's stdin
+   close with the full budget as the outer ceiling, and the phase journal
+   is per-dispatch on write (`reset(dispatch)`) or it reports another
+   test's clear as a missing host phase.
