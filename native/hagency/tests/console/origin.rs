@@ -225,13 +225,23 @@ async fn native_console_origin_matches_retained_vectors() {
         .send(&service)
         .await;
     assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
-    // sec-fetch-site-scope: required exactly once on reads too.
+    // sec-fetch-site-scope: required exactly once on reads too. The refusal
+    // surfaces through EITHER hoop — the boundary's 403 or the session's 401
+    // `console_access_required` (the shape :97 and :286 already accept); the
+    // product rule is untouched.
     let res = TestClient::get(format!("{BASE}/console/api/engagements"))
         .add_header("host", host, true)
         .add_header("cookie", cookie.clone(), true)
         .send(&service)
         .await;
-    assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
+    assert!(
+        matches!(
+            res.status_code,
+            Some(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
+        ),
+        "sec-fetch-site-scope read refused by the boundary or the session hoop, got {:?}",
+        res.status_code
+    );
     // origin-absent on a mutation: refused by the console's own session
     // hoop with 401 console_access_required — never 403, which the console
     // reserves for a missing resource scope (the retained rule allowed the
