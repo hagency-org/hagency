@@ -40,11 +40,24 @@ not offer a knob that makes the service die-and-loop); `RunAtLoad` true
 trap: the condition is **unsatisfiable for a job that has never run**, so
 launchd showed `pended … speculative` with `runs = 0` and the service never
 started; and the worry behind it was wrong anyway, because `launchctl
-bootout` removes the job and stops it regardless of KeepAlive. `true` costs
-exactly one thing — killing the process by pid restarts it — which is the
-restart-on-crash behaviour a service wants. Deliberate stops go through
-`bootout` (or `launchctl kill` + a KeepAlive exception, which this unit does
-not carry).
+bootout` removes the job and stops it regardless of KeepAlive.
+
+**What `true` actually does — stated so no reader inverts it.** `true` restarts
+on **any exit: a crash, a clean exit-0, and a pid-kill** alike; it is not
+"restart on failure". The one stop that stays stopped is **`bootout`**, and
+that is not a KeepAlive exception — `bootout` *removes the job from launchd*,
+so no KeepAlive policy of any form applies to it. The first start is untrapped
+(`true` carries no precondition to evaluate). So the honest cost of `true` is:
+an exit-0 stop made any way other than `bootout` restarts, which is why the
+runbook and the installer name `bootout` as *the* deliberate stop. The
+supervisor plist's comment block is the post-mortem that fixes this reading:
+a first version used `{SuccessfulExit: false}` reasoning that a clean stop
+would make `bootout` unusable, and the condition — *skip restart on a clean
+exit* — is **unsatisfiable for a job that has never run** (nothing has exited,
+cleanly or otherwise), so launchd showed `pended nondemand spawn =
+speculative` with `runs = 0` and the service never started at all. The form
+that would skip a clean exit-0 restart is exactly the form that cannot start
+the job; it is kept out for that reason, not for style.
 
 **State/auth provisioning and start gate** (as ADR-127): the installer runs
 `hagency init --state-dir <fresh empty dir>` first, places ownership/mode,
@@ -80,9 +93,10 @@ load the plist into a real `launchd`.
 
 ## Consequences
 
-Good, because the keep-alive semantics match a service that must start at
-boot and restart on crash, the recorded trap is not repeated, and the
-selectors bind on every leg.
+Good, because the keep-alive semantics are stated truthfully — restart on
+any exit, a first start with no precondition, and `bootout` as the one
+deliberate stop — the recorded trap is not repeated, and the selectors bind
+on every leg.
 Bad, because pid-kill restarts (the stated cost of `true`), CI never
 exercises a real `launchctl bootstrap`, and unbounded logs remain real
 operational debt until a rotation slice exists.
