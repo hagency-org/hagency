@@ -192,3 +192,27 @@ retained gap, and would put a second writer beside the single domain writer.
 **Enforce the macOS log lifetime in the installer (write a `newsyslog` entry).**
 Deferred, not rejected: today the installer prints paths only; the retention
 sentence is an acceptance item, and a `newsyslog` entry is a later variant.
+
+---
+
+## What is retained, for how long, and what is never retained (the docs lane's
+adoption note)
+
+**Retained, and for how long.** On the native side: nothing by this ADR —
+stderr goes to the service manager (journald's `SystemMaxUse`/`MaxRetentionSec`
+on Linux; the operator's own rotation on macOS until a `newsyslog` entry
+exists), and the media store is bounded structurally, not by time. On the
+retained Node side: the four jsonl files rotate **by size, keeping the newest
+N rotations** (N and the size gate are the maintainer's existing
+configuration surface, `bin/hagency-maintain`), and `MEDIA_FETCH_CACHE_DIR`
+prunes by **TTL or total byte cap** — the numbers are configuration, not
+schema, and the installer prints them. **Never retained:** no credential, no
+token, no auth material, no owner-identifying log line — the `/credential/`
+naming guard and the store's opacity rules apply to every rotation and every
+cache entry exactly as to the live files.
+
+**Migration need: none.** Both surfaces are filesystem behaviour plus one
+maintainer command; no schema change, no new table, no receipt row. Should
+implementation discover one anyway (it is not expected), it takes the next
+ledger number, **032**, per the serial chain (028 MA-S1's, 029 MA-S4's, 030
+MA-S2's, 031 PC-C1's).

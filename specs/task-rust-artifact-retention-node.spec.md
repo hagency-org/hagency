@@ -94,3 +94,17 @@ The native half of ADR129 (bound by `specs/task-rust-artifact-retention.spec.md`
 the store-resident retention slices and the retention tick; the Windows service
 wrapper and the macOS `newsyslog` entry, both deferred by ADR129; and every
 retained scenario in the design's §11a that this contract does not bind.
+
+## Out of Scope (owed by Node, recorded here as unbound)
+
+The five retained-side `Test:` selectors above — the Vitest sentence names
+`a rotated message archive keeps its last complete line…`,
+`archivedMessageExists still finds a message…`, the two media-cache
+survival scenarios, and `a failed media cache delete is logged…` — are
+**owed by the Node lane and bound by no Rust test**. This file carries the
+`node` tag, so the rust binding checker defers it and no Rust inventory
+will ever list these names; they remain here as the retained contract's
+scenarios, executable only by the retained Vitest suite
+(`tests/artifact-retention.test.js`, in Allowed Changes). An integrator
+reading the rust gate's `missing` list will never see them, and that is the
+split working as designed — not a gap.
