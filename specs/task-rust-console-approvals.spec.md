@@ -24,7 +24,7 @@ refusal for a nonexistent route asserts nothing.
 - Withhold, and state in the row's absence: the retained-only set (`owner_mxid`, `owner_dm_room_id`, `tool_name`, `description`, `input_preview`, the card bytes), the native columns deliberately withheld (`description`, the `config`/`application`/`observation` JSON), and the no-native-source fields (`decided_at`, `created_at`, `consumed_at`, `denial_reason`, `decision_event_id`, the agent name).
 - Mount `console/approvals.rs` beside the four existing sub-routers under the API hoop; reads carry no scope — a read-only ticket can reach no mutation.
 - Render the page section from `state`/`choice` words and a status word for an undelivered card — never a card, never a preview; the five-document exception stays five and `/console/approvals` is a non-document.
-- Assert the negative over the serialized response, not only the key set, with the two value classes stated: the escaped-prone pair (input preview text, card document text) over the **decoded** string values, and the metacharacter-free pair (owner mxid, owner room id, tool name) over the **raw** bytes — a raw search for the escaped pair is unsound and must not be used.
+- Assert the byte-level negative over the serialized response, not only the key set.
 
 ### Must Not
 - Do not add a new `Scope`, a mutation route, a verdict route or a detail route.
@@ -49,8 +49,6 @@ refusal for a nonexistent route asserts nothing.
 - mockup/app/approvals/page.jsx
 - mockup/scripts/build-native-console.mjs
 - mockup/lib/i18n.js
-  # (beyond v5's ownership list: the page renders its words through t(), as every
-  #  other Native* page does, so the new strings need the shared dictionary)
 - specs/task-rust-console-approvals.spec.md
 - knowledge/decisions/adr-138-bounded-native-approval-observation.md
 - docs/progress.md
@@ -77,7 +75,7 @@ Scenario: The observation projection omits owner identity and tool detail
   Given a valid console session and approvals whose withheld fields exist in the store
   When the list and single observation routes are served
   Then every row carries exactly the seven declared keys with no nested object
-  And the decoded string values of every response contain no input preview text and no card document text, while the raw body contains no owner mxid, owner room id or tool name byte
+  And no byte of any response contains an owner mxid, an owner room id, a tool name, an input preview or any card byte
   And the absent never-invented fields appear as absent rather than null-derived guesses
 
 Scenario: A foreign origin cannot observe approvals
@@ -88,14 +86,14 @@ Scenario: A foreign origin cannot observe approvals
   When the routes are called with a cross-site sec-fetch-site or a foreign host or origin
   Then each refuses with console_origin_required and serves no approval row
 
-Scenario: An approval with no delivery status serves its state words and never a card
+Scenario: An approval with no delivery status shows its state word and never a card
   Test: native_console_approval_undelivered_shows_status_not_a_card
   Level: integration
-  Test Double: the console fixture with an undelivered approval row; the delivery route not yet landed
-  Given an undelivered approval served by the observation routes
-  When its row is read
-  Then it serves the state word and the choice word and neither a card nor a preview
-  And no key exists in the seven-key set that could carry card bytes, a preview or a delivery stage word — the delivery stage is the deferred route's own field, not C2b's
+  Test Double: the console fixture and the built approvals page; the delivery route not yet landed
+  Given an undelivered approval rendered on the page
+  When the row renders
+  Then it shows the state word and a status word and never a card or a preview
+  And no property of the page could carry card bytes because no key exists for one
 
 Scenario: A read-only session can observe but cannot decide
   Test: native_console_approval_observation_is_read_only
@@ -121,9 +119,3 @@ world (the routes do).
 The delivery route (its own commit behind PC-C0, owning `lib.rs` and `bootstrap.rs`),
 the MCP approval tool pair (PC-C3), the fail-closed denial (PC-C1), and every other
 console page.
-
-A browser lane for this page is deliberately absent (review r1 C3): Spec C2's
-selector set is exactly the five console selectors, no browser driver is
-licensed for this slice, and the page's rendering is covered by the Rust
-key-set assertions plus the staged build. Recording it as a decision, not
-leaving it silent.
