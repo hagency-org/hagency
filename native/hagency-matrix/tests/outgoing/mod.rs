@@ -1117,3 +1117,6 @@ async fn native_matrix_outgoing_domain_changed_receipt_or_fence_cannot_settle() 
     f.store.shutdown().await.unwrap();
     fake.close().await;
 }
+
+#[path = "two_agents.rs"]
+mod two_agents;

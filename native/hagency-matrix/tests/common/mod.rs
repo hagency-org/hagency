@@ -20,6 +20,7 @@ use tokio_rustls::{
 };
 #[path = "../../../hagency-store/tests/common/mod.rs"]
 pub mod domain;
+pub mod pair;
 pub mod stall;
 pub const TOKEN: &str = "synthetic-Matrix-token-not-real";
 /// Tight fixture bounds for the transport-bound tests of this crate, which
