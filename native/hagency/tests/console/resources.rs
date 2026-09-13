@@ -406,7 +406,7 @@ async fn native_console_resource_observations() {
 }
 
 /// G5: every catalogue value comes from ONE predicate and the model
-/// family. Three extra resources join the fixture's two gpt-strong pools:
+/// family. Three extra resources join the fixture's two gpt-medium pools:
 /// an octos/kimi-k3 resource (a REAL model family, but non-provisionable —
 /// `provisionable()` is claude|codex only), and a codex resource whose
 /// model matches no policy tier (`model() == (None, None)` — it cannot
@@ -491,13 +491,14 @@ async fn native_console_catalogue_fillability_is_derived() {
             "{role}: a framework name is never a family"
         );
         assert_eq!(over_tier, expect_over, "{role}: strictly stronger only");
-        assert!(
-            if role == "review" {
-                !available
-            } else {
-                expect_fillable > 0
-            },
-            "{role}: available agrees with the predicate — review additionally needs two families among active engagements, and these fixtures span only gpt"
+        let expect_available = if role == "review" {
+            false // cross-family: needs two families among ACTIVE engagements; none seeded here
+        } else {
+            expect_fillable > 0
+        };
+        assert_eq!(
+            available, expect_available,
+            "{role}: available agrees with the predicate"
         );
     }
     // The negative arm: withdraw BOTH gpt pools through the store and the
