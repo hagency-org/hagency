@@ -45,6 +45,12 @@ Scenario: Malformed and oversized profiles never become schema-valid
   When IDs scopes ordering metadata bounds or closed detail fields change
   Then invalid packets refuse and exact legacy limits remain unchanged
 
+Scenario: The oracle replays the retained producer over the extended corpus
+  Test: native approval wire profiles preserve actual producer packets and finite retained scopes
+  Given the regenerated approval vectors computed by the retained request notice and verdict producers
+  When this corpus producer and finite-scope cases are extended with the oracle rows
+  Then the retained producer's own packet shapes and refusal verdicts are compared beside the native cards without substituting a hand-authored producer
+
 ## Out of Scope
 
 Robrix parser and owned-click origin fixes, encrypted SDK sending, and executable

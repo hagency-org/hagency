@@ -1,0 +1,632 @@
+{
+  "source": "bridge-matrix.js + mockup/app/api/hagency/[...path]/route.js",
+  "bridgeFile": "bridge-matrix.js",
+  "routeFile": "mockup/app/api/hagency/[...path]/route.js",
+  "bridgeSha256": "201cc578188799b445712ccab39275025e726009531d52781a96e26c9004a072",
+  "routeSha256": "884d00c3bd084a13e61c1c856752bd834bd2ededb62fe5652033299fef3c5ccc",
+  "semantics": "two complete verdict shapes and nothing mixed; 32-hex request ids; approve_task needs a task id; one-origin write gate",
+  "eventKey": "com.agentchat.approval",
+  "requestMsgtype": "com.agentchat.approval.request.v1",
+  "statusMsgtype": "com.agentchat.approval.status.v1",
+  "requests": [
+    {
+      "name": "bare-no-scope",
+      "input": {
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "upstream_request_id": "7",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "runtime": "codex",
+        "tool_name": "app_server_command",
+        "description": "Run the requested command",
+        "input_preview": "{\"command\":\"echo ok\"}",
+        "expires_at": 1789300800000
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.request.v1",
+        "actions": [
+          "approve_once",
+          "deny"
+        ],
+        "requestIdPreserved": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "descriptionBytes": 25,
+        "inputPreviewBytes": 21,
+        "noTruncation": true
+      }
+    },
+    {
+      "name": "scoped-with-task",
+      "input": {
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "upstream_request_id": "7",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "runtime": "codex",
+        "tool_name": "app_server_command",
+        "description": "Run the requested command",
+        "input_preview": "{\"command\":\"echo ok\"}",
+        "expires_at": 1789300800000,
+        "reusable_scope": {
+          "description": "Workspace write",
+          "workspace": "/work/a",
+          "task_id": "task_1"
+        }
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.request.v1",
+        "actions": [
+          "approve_once",
+          "approve_task",
+          "approve_always",
+          "deny"
+        ],
+        "requestIdPreserved": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "descriptionBytes": 257,
+        "inputPreviewBytes": 21,
+        "noTruncation": true
+      }
+    },
+    {
+      "name": "scoped-project-only",
+      "input": {
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "upstream_request_id": "7",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "runtime": "codex",
+        "tool_name": "app_server_command",
+        "description": "Run the requested command",
+        "input_preview": "{\"command\":\"echo ok\"}",
+        "expires_at": 1789300800000,
+        "reusable_scope": {
+          "description": "Workspace write",
+          "workspace": "/work/a"
+        }
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.request.v1",
+        "actions": [
+          "approve_once",
+          "approve_always",
+          "deny"
+        ],
+        "requestIdPreserved": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "descriptionBytes": 239,
+        "inputPreviewBytes": 21,
+        "noTruncation": true
+      }
+    },
+    {
+      "name": "long-preview",
+      "input": {
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "upstream_request_id": "7",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "runtime": "codex",
+        "tool_name": "app_server_command",
+        "description": "Run the requested command",
+        "input_preview": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…",
+        "expires_at": 1789300800000
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.request.v1",
+        "actions": [
+          "approve_once",
+          "deny"
+        ],
+        "requestIdPreserved": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "descriptionBytes": 25,
+        "inputPreviewBytes": 9000,
+        "noTruncation": true
+      }
+    },
+    {
+      "name": "blank-agent-and-project",
+      "input": {
+        "agent": "",
+        "project": "",
+        "project_room_id": "!project:hq.test",
+        "id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "upstream_request_id": "7",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "runtime": "codex",
+        "tool_name": "app_server_command",
+        "description": "Run the requested command",
+        "input_preview": "{\"command\":\"echo ok\"}",
+        "expires_at": 1789300800000
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.request.v1",
+        "actions": [
+          "approve_once",
+          "deny"
+        ],
+        "requestIdPreserved": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "descriptionBytes": 25,
+        "inputPreviewBytes": 21,
+        "noTruncation": true
+      }
+    }
+  ],
+  "notices": [
+    {
+      "name": "plain",
+      "input": {
+        "agent": "agent-one",
+        "project": "project-one"
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.status.v1",
+        "body": "Agent agent-one is waiting for approval from its owner.",
+        "com.agentchat.approval": {
+          "version": 1,
+          "kind": "status",
+          "agent": "agent-one",
+          "project": "project-one",
+          "state": "waiting_for_owner"
+        }
+      }
+    },
+    {
+      "name": "threaded",
+      "input": {
+        "agent": "agent-one",
+        "project": "project-one",
+        "thread_root_event_id": "$root"
+      },
+      "expected": {
+        "msgtype": "com.agentchat.approval.status.v1",
+        "body": "Agent agent-one is waiting for approval from its owner.",
+        "com.agentchat.approval": {
+          "version": 1,
+          "kind": "status",
+          "agent": "agent-one",
+          "project": "project-one",
+          "state": "waiting_for_owner"
+        },
+        "m.relates_to": {
+          "rel_type": "m.thread",
+          "event_id": "$root",
+          "is_falling_back": true,
+          "m.in_reply_to": {
+            "event_id": "$root"
+          }
+        }
+      }
+    }
+  ],
+  "verdicts": [
+    {
+      "name": "current-approve-once",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": {
+        "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sender_mxid": "@owner:hq.test",
+        "room_id": "!owner-dm:hq.test",
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "action": "approve_once",
+        "event_id": "$verdict"
+      }
+    },
+    {
+      "name": "current-deny",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "deny",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": {
+        "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sender_mxid": "@owner:hq.test",
+        "room_id": "!owner-dm:hq.test",
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "action": "deny",
+        "event_id": "$verdict"
+      }
+    },
+    {
+      "name": "legacy-paired-deny",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.hagency.approval.verdict.v1",
+          "com.hagency.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "deny",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": {
+        "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "sender_mxid": "@owner:hq.test",
+        "room_id": "!owner-dm:hq.test",
+        "agent": "agent-one",
+        "project": "project-one",
+        "project_room_id": "!project:hq.test",
+        "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "action": "deny",
+        "event_id": "$verdict"
+      }
+    },
+    {
+      "name": "mixed-current-msgtype-legacy-key",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.hagency.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "mixed-legacy-msgtype-current-key",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.hagency.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "forty-hex-request-id",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "short-request-id",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_ff",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "non-hex-request-id",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "unknown-action",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_forever",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "wrong-version",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 2,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "wrong-kind",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "request",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "bad-sender-mxid",
+      "event": {
+        "sender": "not-an-mxid",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "bad-project-room-id",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "project",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "bad-input-digest",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.agentchat.approval.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "short"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "foreign-msgtype",
+      "event": {
+        "sender": "@owner:hq.test",
+        "event_id": "$verdict",
+        "content": {
+          "msgtype": "com.other.verdict.v1",
+          "com.agentchat.approval": {
+            "version": 1,
+            "kind": "verdict",
+            "action": "approve_once",
+            "request_id": "approval_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "agent": "agent-one",
+            "project": "project-one",
+            "project_room_id": "!project:hq.test",
+            "input_digest": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+          }
+        }
+      },
+      "expected": null
+    },
+    {
+      "name": "missing-content",
+      "event": {
+        "sender": "@owner:hq.test",
+        "content": null
+      },
+      "expected": null
+    }
+  ],
+  "origin": [
+    {
+      "name": "sec-fetch-same-origin",
+      "secFetchSite": "same-origin",
+      "origin": null,
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "sec-fetch-cross-site",
+      "secFetchSite": "cross-site",
+      "origin": null,
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "sec-fetch-none",
+      "secFetchSite": "none",
+      "origin": null,
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "origin-same-host",
+      "secFetchSite": null,
+      "origin": "http://127.0.0.1:3100",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "origin-foreign-host",
+      "secFetchSite": null,
+      "origin": "https://evil.example.com",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "no-browser-headers",
+      "secFetchSite": null,
+      "origin": null,
+      "expected": {
+        "allowed": true
+      }
+    }
+  ],
+  "nativeNotes": [
+    {
+      "rule": "request-id-length",
+      "retained": "The verdict parser admits exactly thirty-two lowercase hex characters after `approval_` (bridge-matrix.js:2676).",
+      "native": "ADR-115 pairs the profiles and admits thirty-two OR forty; the row `forty-hex-request-id` refuses here and must be accepted natively.",
+      "citation": "knowledge/decisions/adr-115-native-approval-wire-interop.md"
+    },
+    {
+      "rule": "packet-kind",
+      "retained": "A status notice carries `kind: \"status\"` under the same event key as the request (bridge-matrix.js:2586-2592).",
+      "native": "`Frozen::validate` refuses any non-request msgtype, any kind other than `request`, and any content object not exactly three keys; a status notice cannot pass it unmodified.",
+      "citation": "native/hagency-matrix/src/approval_delivery/state.rs:104-124"
+    },
+    {
+      "rule": "public-status-schema",
+      "retained": "The status notice shape has a checked-in schema: `kind: \"status\"`, `state: \"waiting_for_owner\"` at most 512 bytes.",
+      "native": "No native encoder emits it yet; the schema is the contract a future slice binds.",
+      "citation": "schemas/approval/public-status-v1.schema.json"
+    }
+  ]
+}
