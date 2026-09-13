@@ -921,7 +921,7 @@ fn native_file_delivery_schema_migration() {
     let path = root.path().join("state/domain.sqlite3");
     let sql = rusqlite::Connection::open(&path).unwrap();
     sql.execute_batch(
-        "DROP TABLE approval_responses; DROP TABLE received_files; DROP TABLE file_deliveries; PRAGMA user_version=19;",
+        "DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; DROP TABLE received_files; DROP TABLE file_deliveries; PRAGMA user_version=19;",
     )
     .unwrap();
     drop(sql);

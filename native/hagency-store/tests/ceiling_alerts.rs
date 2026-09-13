@@ -606,7 +606,10 @@ fn native_ceiling_sweep_respects_operator_status() {
     assert_eq!(alert.status, "suppressed", "the sweep never reopens it");
     assert_eq!(alert.note.as_deref(), Some("known overrun"));
     assert_eq!(alert.occurrences, 2);
-    // Acknowledged auto-resolves on recovery like an open row.
+    // Acknowledged auto-resolves on recovery like an open row. The map
+    // releases a suppression only through `open` (`suppressed` offers `open`
+    // and `resolved`), so the operator reopens before acknowledging.
+    transition(&mut alarm, "open", None).unwrap();
     transition(&mut alarm, "acknowledged", None).unwrap();
     set_ceiling(&mut alarm, Framework::Codex, GENEROUS);
     let outcome = alarm.db.sweep_ceiling_overruns(3_000_000).unwrap();

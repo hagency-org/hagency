@@ -721,7 +721,7 @@ fn verify_schema_upgrade() {
     let Fixture { root, db, .. } = f;
     drop(db);
     sql.execute_batch(
-        "DROP TABLE approval_responses; DROP TABLE received_files; PRAGMA user_version=20;",
+        "DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; DROP TABLE received_files; PRAGMA user_version=20;",
     )
     .unwrap();
     drop(sql);

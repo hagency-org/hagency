@@ -8269,3 +8269,11 @@ client qualification and ongoing identity/key management remain separate.
   custody), and ADR-060 states the invariant the exclusion list relies on: every
   drive outcome outside the four verdict classes consults custody, and
   publication still requires the store's own held completion row.
+- 2026-09-13: integrating the alert close path (operator transitions on ceiling
+  alerts, migration 025) surfaced two defects its author's sandbox could not
+  run: every recovery fixture that rewinds below 25 replayed the migration's
+  ADD COLUMN over an already-upgraded table (fixed by rebuilding the table in
+  the innermost shared removal helper and in the four direct-drop fixtures,
+  the store's existing convention for ADD COLUMN migrations), and the sweep
+  test drove `suppressed` straight to `acknowledged`, which the map refuses;
+  the operator reopens first.

@@ -177,6 +177,15 @@ pub fn remove_usage_schema(db: &rusqlite::Connection) {
 
 /// Remove delivery and upload additions before constructing an older database.
 pub fn remove_upload_schema(db: &rusqlite::Connection) {
+    // Migration 025 adds columns to `ceiling_alerts`, and an ADD COLUMN replay
+    // over an already-upgraded table fails on the duplicate column (no ADD
+    // COLUMN migration in this store supports that replay). Every chained
+    // `remove_*_schema` helper reaches this innermost one, so the table is
+    // rebuilt from 024 here; the fixtures that drop tables directly instead
+    // of chaining (`approvals/responses.rs`, `file_delivery.rs`,
+    // `received_files.rs`, `schema_fixtures.rs`) carry the same drop.
+    db.execute_batch("DROP TABLE IF EXISTS ceiling_alerts;")
+        .unwrap();
     db.execute_batch("DROP TABLE IF EXISTS approval_responses; DROP TABLE IF EXISTS received_files; DROP TABLE IF EXISTS file_deliveries; DROP TABLE IF EXISTS file_uploads;")
         .unwrap();
 }
