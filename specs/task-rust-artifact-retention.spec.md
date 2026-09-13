@@ -7,7 +7,7 @@ tags: [active, rust, retention, artifacts, platform]
 
 ## Intent
 
-Implement accepted ADR126's native half: name the retention posture native already
+Implement accepted ADR129's native half: name the retention posture native already
 has (stderr only, structural media bounds, no eviction path) and prove it, so the
 migration plan's cutover step 9 requirement to "keep recovery artifacts private
 with documented retention" (`docs/design/hagency-rust-migration-plan.md:489`) has
@@ -65,7 +65,7 @@ names the **refusal** on the other OS instead of disappearing from the leg.
 - native/hagency/src/main.rs
 - native/hagency/src/mcp/**
 - native/hagency/tests/**
-- knowledge/decisions/adr-126-native-recovery-artifact-retention.md
+- knowledge/decisions/adr-129-native-recovery-artifact-retention.md
 - specs/task-rust-artifact-retention.spec.md
 - specs/task-rust-artifact-retention-node.spec.md
 - docs/progress.md
@@ -120,5 +120,5 @@ Scenario: Native logs to stderr and constructs no file sink
 Retained-side jsonl rotation and the retained media-cache prune (bound by the
 sibling Node contract); the Windows service wrapper's log redirection, deferred to
 M8; the macOS installer's retention sentence, an acceptance item recorded in
-ADR126 and not implemented here; store-resident retention slices and the retention
+ADR129 and not implemented here; store-resident retention slices and the retention
 tick; terminal parity and full M7/M8 completion.

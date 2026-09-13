@@ -7,7 +7,7 @@ tags: [active, retention, maintenance, node]
 
 ## Intent
 
-Bind the retained half of ADR126. The retained product appends four jsonl files
+Bind the retained half of ADR129. The retained product appends four jsonl files
 with no rotation and leaves `MEDIA_FETCH_CACHE_DIR` unbounded
 (`backend-v2.js:2781-2784`; `lib/mcp-server-core.js:145-146`, `:568`). The native half of the same ADR
 is bound by the rust-tagged contract
@@ -90,7 +90,7 @@ Scenario: A failed delete is logged and never refuses a fetch
 
 ## Out of Scope
 
-The native half of ADR126 (bound by `specs/task-rust-artifact-retention.spec.md`);
+The native half of ADR129 (bound by `specs/task-rust-artifact-retention.spec.md`);
 the store-resident retention slices and the retention tick; the Windows service
-wrapper and the macOS `newsyslog` entry, both deferred by ADR126; and every
+wrapper and the macOS `newsyslog` entry, both deferred by ADR129; and every
 retained scenario in the design's §11a that this contract does not bind.
