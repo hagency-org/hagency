@@ -2660,6 +2660,30 @@ impl DomainStore {
         self.call(weight(&0u64)?, move |db| db.peer_retention_status())
             .await
     }
+    /// Phase 4, `engagements`, of the retention tick (ADR-095 Slice 6):
+    /// the ended-engagement record bound. Same split as the messages phase
+    /// above — the loop owns the cadence, the caller owns the policy.
+    pub async fn sweep_engagements(
+        &self,
+        now: u64,
+        ceiling: u64,
+        batch: u64,
+    ) -> Result<crate::EngagementPruneOutcome, Error> {
+        self.call(weight(&(&now, &ceiling, &batch))?, move |db| {
+            db.sweep_engagements(now, ceiling, batch)
+        })
+        .await
+    }
+    /// The one engagements-retention read (ADR-095 Slice 6, D-5).
+    pub async fn engagement_retention_status(
+        &self,
+        ceiling: u64,
+    ) -> Result<crate::EngagementRetentionStatus, Error> {
+        self.call(weight(&ceiling)?, move |db| {
+            db.engagement_retention_status(ceiling)
+        })
+        .await
+    }
     /// Open ceiling alerts for the operator read (ADR-124 slice b).
     pub async fn open_ceiling_alerts(&self, limit: u32) -> Result<Vec<CeilingAlert>, Error> {
         self.call(weight(&limit)?, move |db| db.open_ceiling_alerts(limit))

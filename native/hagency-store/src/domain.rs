@@ -18,6 +18,7 @@ use serde_json::{Value, json};
 use std::{fs::File, path::Path};
 pub(crate) mod accounts;
 mod approvals;
+mod engagement_retention;
 pub use approvals::card::PrivateApprovalCard;
 mod attachments;
 mod catalog_publication;
@@ -34,6 +35,7 @@ mod execution;
 mod graphs;
 mod matrix_routes;
 mod messages;
+pub use engagement_retention::{ENDED_LIMIT, EngagementPruneOutcome, EngagementRetentionStatus};
 pub use messages::{CorpusSweepOutcome, MESSAGE_RETENTION_FLOOR, RetentionStatus};
 mod notice_custody;
 mod owned_completion;
@@ -596,7 +598,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 29,
+                version: 30,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -635,12 +637,14 @@ impl DomainRepository {
                         29,
                         include_str!("migrations/029-account-logout-receipt.sql"),
                     ),
+                    (30, include_str!("migrations/030-engagement-retention.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
                     "SELECT sequence,engagement_id,source_key,scope_digest,digest,config,source_session_id,wake,pruned_at_ms FROM retained_message_archive LIMIT 0",
                     "SELECT source_key,digest,sequence,pruned_at_ms FROM retained_peer_index LIMIT 0",
-                    "SELECT sequence,phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms FROM retention_prune_receipts LIMIT 0",
+                    "SELECT sequence,phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms,payload FROM retention_prune_receipts LIMIT 0",
+                    "SELECT engagement_id,ended_at FROM engagement_ends LIMIT 0",
                     "SELECT id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome FROM account_login_observations LIMIT 0",
                     "SELECT account_id,attempt,started_at_ms,deadline_ms,state,receipt_id FROM account_login_attempts LIMIT 0",
                     "SELECT id,account_id,retired_at_ms,readiness,logout_detail FROM account_logout_receipts LIMIT 0",
@@ -1300,6 +1304,14 @@ impl DomainRepository {
             EngagementState::Rejected
         };
         write_engagement(&tx, &value)?;
+        // ADR-095 Slice 6: the ended-at instant is advisory metadata on the
+        // side table (never a column here), read by the engagements phase's
+        // receipt payload. First terminal transition wins.
+        tx.execute(
+            "INSERT INTO engagement_ends(engagement_id,ended_at) VALUES(?1,?2) \
+             ON CONFLICT(engagement_id) DO NOTHING",
+            params![value.id, graphs::now_ms()?],
+        )?;
         graphs::reconcile(&tx, graphs::now_ms()?)?;
         matrix_routes::reconcile(&tx, graphs::now_ms()?)?;
         record_decision(&tx, command_id, &digest, &value)?;
@@ -1380,6 +1392,13 @@ impl DomainRepository {
             EffectOutcome::NotApplied { .. } => {
                 if effect.kind == "provision" {
                     value.state = EngagementState::Failed;
+                    // ADR-095 Slice 6: first terminal transition records the
+                    // ended-at instant (advisory metadata, side table).
+                    tx.execute(
+                        "INSERT INTO engagement_ends(engagement_id,ended_at) VALUES(?1,?2) \
+                         ON CONFLICT(engagement_id) DO NOTHING",
+                        params![value.id, graphs::now_ms()?],
+                    )?;
                     "failed"
                 } else {
                     value.cleanup = CleanupState::Pending;
