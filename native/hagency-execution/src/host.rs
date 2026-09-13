@@ -286,6 +286,9 @@ impl Host {
             }
             settings = settings.with_task_mcp(helper);
         }
+        // ADR-139: argv is deliberately just "app-server" — sandbox and
+        // approval travel in the typed initialize request, and stdio is the
+        // pinned CLI's default transport (see adr-139-native-codex-launch-surface.md).
         let launch = Launch {
             executable: self.executable.clone(),
             arguments: vec!["app-server".into()],

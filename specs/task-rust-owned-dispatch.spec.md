@@ -45,6 +45,7 @@ one bounded operation, while keeping production workspace and sandbox qualificat
 - native/hagency-platform/src/lib.rs
 - native/hagency/src/runner.rs
 - knowledge/decisions/adr-053-native-owned-dispatch.md
+- knowledge/decisions/adr-139-native-codex-launch-surface.md
 - specs/task-rust-owned-dispatch.spec.md
 - docs/**
 
@@ -123,6 +124,23 @@ Scenario: Absolute operation deadline stops silent work
   Given a finite absolute host deadline and no terminal protocol response
   When the deadline expires
   Then retained process stop precedes negative fencing and no clean completion is inferred
+
+Scenario: The Codex argv is exactly the app-server subcommand
+  Test: native_codex_argv_is_app_server_only
+  Level: unit
+  Given a configured host with a validated executable and workspace
+  When the host prepares an owned launch
+  Then the spawn argv is exactly one argument app-server
+  And no sandbox approval or directory flag ever appears on argv because policy travels in the typed initialize request
+
+Scenario: The bare argv still yields stdio on the pinned Codex CLI
+  Test: native_codex_stdio_flag_matches_pinned_cli
+  Level: integration
+  Test Double: pinned codex app-server fixture probe with its help or version metadata captured
+  Given the pinned Codex CLI recorded for the host
+  When its app-server transport default or explicit --stdio equivalence is probed offline
+  Then stdio remains the default transport or an exact equivalent of the default
+  And a pinned CLI whose default transport is no longer stdio fails the probe and reopens ADR-139
 
 ## Out of Scope
 
