@@ -75,4 +75,4 @@ that must exist exactly when a row is live. **None crosses the wire.**
 `{version, deployment, namespace:<DirectoryIdentity>, source}`
 (accounts.rs:373-375), and `DirectoryIdentity` is `{platform, volume, object}`
 (directory_identity.rs:8-12) — no path field exists to leak. The wire carries
-the five-key `AccountRow` only: id, preset, role framework, state, revision.
+the five-key `AccountRow` only: id, ordinal, state, revision, profile.

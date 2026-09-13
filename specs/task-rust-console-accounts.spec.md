@@ -18,7 +18,7 @@ mirror_the_store`); this spec binds the console block's five selectors.
 ## Constraints
 
 ### Must
-- Serialize `AccountRow` — exactly the five declared keys (id, preset, role framework, state, revision) — on the list read, the single read and all three mutation responses; `AccountChoice` never reaches the wire.
+- Serialize `AccountRow` — exactly the five declared keys (id, ordinal, state, revision, profile) — on the list read, the single read and all three mutation responses; `AccountChoice` never reaches the wire.
 - Mount the three mutations under one finite scope (`Scope::Account`, `--manage-account-enrollment`), mutually exclusive with both existing management flags; reads stay scope-free.
 - Take `expected_revision` on the enrolment mutation only; reserve and retire take none.
 - Keep the unknown window honest: an interrupted or slow preparation stays inspectable, its state never invents an outcome, and the row is never dropped.
