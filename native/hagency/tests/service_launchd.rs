@@ -244,7 +244,7 @@ fn now_ms() -> u64 {
 /// references parent rows that do not exist. A queued dispatch is a pending
 /// row by the spec's own vocabulary, and nothing in `serve` resolves it.
 fn seed_pending_dispatch(state: &Path) {
-    let mut db = hagency_store::DomainRepository::open(&state).unwrap();
+    let mut db = hagency_store::DomainRepository::open(state).unwrap();
     db.register(&domain::registration()).unwrap();
     let pool = domain::resource("pool", "seat", 1000);
     db.put_resource(&pool).unwrap();
