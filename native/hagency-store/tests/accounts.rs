@@ -601,19 +601,6 @@ fn assert_no_credential_byte(sql: &rusqlite::Connection, table: &str) {
         "no /credential/-, /token/- or /session/-matching key on {table}"
     );
     for column in &columns {
-        // Only TEXT columns are scanned — the millisecond column is INTEGER
-        // by design, and reading it as a string is a type error, not a
-        // redaction gap (MA-S1's scan does the same).
-        let declared: String = sql
-            .query_row(
-                &format!("SELECT type FROM pragma_table_info('{table}') WHERE name=?1"),
-                [column],
-                |r| r.get(0),
-            )
-            .unwrap();
-        if declared != "TEXT" {
-            continue;
-        }
         let mut statement = sql
             .prepare(&format!("SELECT {column} FROM {table}"))
             .unwrap();
