@@ -144,6 +144,14 @@ Scenario: A scope-digest mismatch on the archived root refuses with RunnerAuthor
   When the same verified task request arrives
   Then the read-6 archive fallback refuses with RunnerAuthority and nothing is created
 
+Scenario: The archive re-archive is keyed, never a fatal abort
+  Test: native_retained_corpus_archive_rearchive_is_keyed_not_fatal
+  Given a stale archive row already carrying a live message's (engagement_id, source_key)
+  When the corpus sweep runs and prunes that message
+  Then the archive insert replaces the stale row instead of aborting the tick
+  And a write-only NULL-engagement row coexists (NULL never equals NULL in the unique key;
+  every archive read is engagement-scoped, so no read distinguishes it)
+
 Scenario: The archive is bounded in the same tick
   Test: native_retained_corpus_archive_is_bounded
   Given the corpus sweep has pruned rows past the ceiling
