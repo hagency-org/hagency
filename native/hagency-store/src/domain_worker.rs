@@ -1574,6 +1574,15 @@ impl DomainStore {
         self.call(weight(&id)?, move |db| db.approval_summary(&id))
             .await
     }
+    /// The PC-C3 by-task lookup (ADR-064 amendment): task → live dispatch →
+    /// context → newest approval at the live fence. Read-only, one row.
+    pub async fn approval_for_task(
+        &self,
+        task: String,
+    ) -> Result<Option<hagency_core::approvals::ApprovalSummary>, Error> {
+        self.call(weight(&task)?, move |db| db.approval_for_task(&task))
+            .await
+    }
     /// The C2a bounded read (ADR-138): one worker job per page, the same
     /// `after`/`limit` contract as `engagements`, with the 1..=100 cap
     /// enforced inside the store so no console caller can widen it.
