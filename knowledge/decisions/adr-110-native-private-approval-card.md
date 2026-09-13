@@ -65,3 +65,33 @@ leak owner room and operation details. None is used.
 public status notice are ADR-137's (`adr-137-private-approval-send-fail-closed.md`);
 this record's card boundary and no-packet-reconstruction rule govern that send
 unchanged.*
+
+---
+
+## Amendment (PC-C5): an undeliverable card is permanently uncertain
+
+**D-PC-C5 is decided: permanent-uncertain.** The operator chose the plan's
+(b) arm: an undeliverable private card is **never silently re-sent under the
+same request id** — the no-packet-reconstruction rule above already forbids
+rebuilding a packet, and D-PC-FC's deny transition (ADR-137) already records
+the send failure — and **no fresh card is minted** by any in-product path.
+The old request's fate is terminal and visible: `state = uncertain` is
+permanent for that request id, served by PC-C2's status projection exactly
+as any other undeliverable row, with the delivery observation as the
+operator's remedy. This records the status quo this ADR already decided
+rather than opening a new repair surface before the observation (PC-C2)
+that would justify one exists.
+
+**A re-issue, if one ever lands, is a NEW request id.** Nothing in this
+decision forbids a future visible re-issue: that follow-on mints a **new**
+request id under the same context (a fresh card, built from the frozen
+source, never reconstructed from the old packet), and its record **links the
+old id and states the old one's fate as permanent-uncertain** — the old row
+transitions to `invalidated` (a CHECK word already present at `013:34` and
+unused) only under that follow-on, never as a silent retry. Until then the
+operator's sole in-product signal is the permanent-uncertain status.
+
+**Nothing changes here.** `check_private_approval_card`'s same-target and
+complete-content refusal, the rule that a packet read never confers send
+authority, and the existing `state` CHECK all stand unchanged — this
+amendment records a decision, it does not widen the boundary.
