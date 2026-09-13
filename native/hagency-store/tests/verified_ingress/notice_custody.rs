@@ -291,7 +291,7 @@ fn native_notice_custody_migration() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            27
+            26
         );
         assert!(
             f.db.claim_verified_task_notice(1014, 1000)
