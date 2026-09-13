@@ -33,23 +33,27 @@ try {
   // derived columns render from the read, `families` is the MODEL family
   // (never the framework name), and the counts are the server's, not a
   // client recomputation: withdrawing the pool through the walk's own
-  // toggle drops the architect's fillable by exactly one.
+  // toggle drops the coding role's fillable by exactly one. The fixture's
+  // pools carry reasoning "medium" — the policy's MEDIUM row for
+  // gpt-5.6-sol — so coding (medium default) is the row they fill; the
+  // strong-default rows (architect, review) legitimately carry fillable 0
+  // and no family over these seeds.
   assert.equal(await page.locator('[data-role-row]').count(), 6, 'one row per policy role');
-  const architectFamilies = await page.locator('[data-role-row="architect"] [data-families]').innerText();
-  assert.match(architectFamilies, /gpt/, 'the model family renders');
+  const codingFamilies = await page.locator('[data-role-row="coding"] [data-families]').innerText();
+  assert.match(codingFamilies, /gpt/, 'the model family renders');
   const allFamilies = await page.locator('[data-families]').allInnerTexts();
   assert(allFamilies.every((f) => !/codex|octos/.test(f)), 'a framework name is never a family');
   for (const cell of await page.locator('[data-fillable], [data-over-tier]').allInnerTexts()) {
     assert(/^\d+$/.test(cell), 'derived counts are figures, not blanks');
   }
-  const fillableBefore = Number(await page.locator('[data-role-row="architect"] [data-fillable]').innerText());
+  const fillableBefore = Number(await page.locator('[data-role-row="coding"] [data-fillable]').innerText());
   assert.equal(new URL(page.url()).hash, '');
   await page.locator('#native-resource').selectOption(config.resource);
   await page.locator(`[data-resource-id="${config.resource}"]`).waitFor();
   assert.match(await page.locator('main').innerText(), /Delivery to Palpo has not been verified/);
   assert.equal(await row().getByRole('button').isEnabled(), true);
   await toggle(config.resource, false);
-  const fillableWithdrawn = Number(await page.locator('[data-role-row="architect"] [data-fillable]').innerText());
+  const fillableWithdrawn = Number(await page.locator('[data-role-row="coding"] [data-fillable]').innerText());
   assert.equal(fillableWithdrawn, fillableBefore - 1, 'withdrawal drops the derived count — no client-side caching');
   await toggle(config.resource, true);
   // Brief 18 — the headroom cells. The MEASURED arm: the fixture's usage

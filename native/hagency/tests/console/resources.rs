@@ -459,39 +459,45 @@ async fn native_console_catalogue_fillability_is_derived() {
     };
     let value = read().await;
     for (role, fillable, over_tier, families, available) in roles(&value) {
-        // The two gpt-strong pools qualify everywhere; kimi is
-        // non-provisionable and the mystery model has no tier, so NEITHER
-        // counts toward any role.
+        // The fixture's two gpt pools carry reasoning "medium" — the
+        // policy's MEDIUM row, NOT strong. They qualify exactly the
+        // medium/lightweight-default roles; the strong-default roles
+        // (architect, review) correctly report fillable 0 with no family.
+        // kimi is non-provisionable and the mystery model has no tier, so
+        // neither counts toward any role.
+        let (expect_fillable, expect_over) = match role.as_str() {
+            "architect" | "review" => (0, 0),
+            "documentation" => (2, 2),
+            _ => (2, 0), // coding/testing/integration: medium is not above medium
+        };
         assert_eq!(
-            fillable, 2,
-            "{role}: only the provisionable, tiered resources count"
+            fillable, expect_fillable,
+            "{role}: only the tiered, provisionable resources count"
         );
-        assert_eq!(
-            families,
-            ["gpt"],
-            "{role}: the MODEL family, never the framework"
-        );
+        if expect_fillable > 0 {
+            assert_eq!(
+                families,
+                ["gpt"],
+                "{role}: the MODEL family, never the framework"
+            );
+        } else {
+            assert!(
+                families.is_empty(),
+                "{role}: no qualifying resource, no family"
+            );
+        }
         assert!(
             !families.iter().any(|f| f == "codex" || f == "octos"),
             "{role}: a framework name is never a family"
         );
+        assert_eq!(over_tier, expect_over, "{role}: strictly stronger only");
         assert!(
             if role == "review" {
                 !available
             } else {
-                available
+                expect_fillable > 0
             },
-            "{role}: available agrees with the predicate — cross-family roles additionally need two families among active engagements, and these fixtures span only gpt"
-        );
-        // strong is not above strong; above medium/lightweight it is.
-        let over = matches!(
-            role.as_str(),
-            "coding" | "testing" | "integration" | "documentation"
-        );
-        assert_eq!(
-            over_tier,
-            u64::from(over) * 2,
-            "{role}: strictly stronger than the default tier"
+            "{role}: available agrees with the predicate — review additionally needs two families among active engagements, and these fixtures span only gpt"
         );
     }
     // The negative arm: withdraw BOTH gpt pools through the store and the

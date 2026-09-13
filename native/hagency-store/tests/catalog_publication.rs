@@ -192,6 +192,17 @@ fn catalogue_derived_keys_use_one_predicate_and_model_families() {
     let mut db = DomainRepository::open(&dir.path().join("state")).unwrap();
     db.put_resource(&resource("catalogue_gpt", "catalogue_seat", 1000))
         .unwrap();
+    // `resource()` seeds reasoning "medium", which the policy pins to the
+    // MEDIUM row for gpt-5.6-sol — NOT strong. One honest strong resource
+    // (reasoning "high") exercises the strong-default roles' arm; without
+    // it architect/review legitimately report fillable 0 over these seeds.
+    db.put_resource(
+        &serde_json::from_value(json!({
+            "presetId":"catalogue_strong","seatId":"catalogue_seat","framework":"codex",
+            "model":"gpt-5.6-sol","reasoning":"high","ceiling":{"tokens":1000,"period":"monthly"}}))
+        .unwrap(),
+    )
+    .unwrap();
     db.put_resource(
         &serde_json::from_value(json!({
             "presetId":"catalogue_kimi","seatId":"catalogue_seat","framework":"octos",
@@ -210,9 +221,21 @@ fn catalogue_derived_keys_use_one_predicate_and_model_families() {
     assert_eq!(roles.len(), 6, "one row per policy role");
     for row in &roles {
         let role = row["role"].as_str().unwrap();
+        // The seeds' ACTUAL tiers: catalogue_gpt is MEDIUM (reasoning
+        // "medium"), catalogue_strong is STRONG ("high"). Expected pairs
+        // (fillable, overTier) per default tier: strong-default roles count
+        // only the strong resource (1, nothing above strong);
+        // medium-default roles count both with one above (2, 1);
+        // lightweight counts both, both above (2, 2).
+        let (expect_fillable, expect_over) = match role {
+            "architect" | "review" => (1, 0),
+            "documentation" => (2, 2),
+            _ => (2, 1),
+        };
         assert_eq!(
-            row["fillable"], 1,
-            "{role}: only the tiered, provisionable preset counts"
+            row["fillable"],
+            json!(expect_fillable),
+            "{role}: only the tiered, provisionable presets count"
         );
         let families = row["families"].as_array().unwrap();
         assert_eq!(families.len(), 1, "{role}: one family");
@@ -230,12 +253,10 @@ fn catalogue_derived_keys_use_one_predicate_and_model_families() {
             },
             "{role}: available agrees with the predicate — cross-family roles additionally need two families among active engagements, and this store has none"
         );
-        // strong default: gpt-strong is not above; medium/lightweight: it is.
-        let over = matches!(role, "coding" | "testing" | "integration" | "documentation");
         assert_eq!(
             row["overTier"],
-            json!(u64::from(over)),
-            "{role}: strictly stronger only"
+            json!(expect_over),
+            "{role}: strictly stronger than the default tier only"
         );
     }
     // The key set is exactly eight — deny_unknown_fields downstream makes
