@@ -308,6 +308,35 @@ pub(super) fn now_ms() -> Result<u64, Error> {
     clock(now)?;
     Ok(now)
 }
+/// The paired graph-custody release (ADR-125 peer phase): clear a terminal node's
+/// `message_sequence` binding as ONE move — the column and the persisted
+/// `WorkflowNode` config together, through `save`, because `read`
+/// equality-checks the two and a column-only NULL would poison every later
+/// read with `Error::State`. Runs inside the sweep's transaction, before the
+/// parent delete (the `RESTRICT` FK would otherwise abort it). Never calls
+/// `current()`: moving is a release of custody, not an authorization, and
+/// `read`'s own validation still runs. `graph_nodes.message_sequence` is
+/// UNIQUE, so at most one node binds the sequence.
+pub(super) fn move_node_message(tx: &Transaction<'_>, sequence: u64) -> Result<bool, Error> {
+    let bound: Option<(String, String)> = tx
+        .query_row(
+            "SELECT graph_id,node_id FROM graph_nodes WHERE message_sequence=?1",
+            [sequence],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let Some((graph, node)) = bound else {
+        return Ok(false);
+    };
+    let mut value = read(tx, &graph)?;
+    value
+        .nodes
+        .get_mut(&node)
+        .ok_or(Error::State)?
+        .message_sequence = None;
+    save(tx, &value)?;
+    Ok(true)
+}
 pub(super) fn is_graph_task(db: &Connection, id: Option<&str>) -> Result<bool, Error> {
     Ok(db.query_row(
         "SELECT EXISTS(SELECT 1 FROM graph_nodes WHERE task_id=?1)",

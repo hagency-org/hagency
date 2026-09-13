@@ -2603,6 +2603,24 @@ impl DomainStore {
         self.call(weight(&ceiling)?, move |db| db.retention_status(ceiling))
             .await
     }
+    /// The `peer` phase of the retention tick (ADR-125): the peer corpus
+    /// bound, phase 2 after `messages`, the same caller-owns-policy split.
+    pub async fn sweep_peer_corpus(
+        &self,
+        now: u64,
+        ceiling: u64,
+        batch: u64,
+    ) -> Result<crate::PeerSweepOutcome, Error> {
+        self.call(weight(&(&now, &ceiling, &batch))?, move |db| {
+            db.sweep_peer_corpus(now, ceiling, batch)
+        })
+        .await
+    }
+    /// The one peer retention read (ADR-125 peer phase).
+    pub async fn peer_retention_status(&self) -> Result<crate::PeerRetentionStatus, Error> {
+        self.call(weight(&0u64)?, move |db| db.peer_retention_status())
+            .await
+    }
     /// Open ceiling alerts for the operator read (ADR-124 slice b).
     pub async fn open_ceiling_alerts(&self, limit: u32) -> Result<Vec<CeilingAlert>, Error> {
         self.call(weight(&limit)?, move |db| db.open_ceiling_alerts(limit))

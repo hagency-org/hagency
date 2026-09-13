@@ -42,6 +42,10 @@ pub use owned_completion::OwnedCompletion;
 pub use owned_dispatch::{
     OwnedClaimProfile, OwnedClaimRoom, OwnedDispatchScope, OwnedFailure, OwnedObservation,
 };
+pub use peers::{
+    PEER_RECEIPT_CEILING, PEER_RETENTION_CEILING, PEER_RETENTION_FLOOR, PeerRetentionStatus,
+    PeerSweepOutcome,
+};
 pub(crate) mod file_delivery;
 mod peers;
 pub(crate) mod received_files;
@@ -435,7 +439,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 26,
+                version: 27,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -465,10 +469,12 @@ impl DomainRepository {
                     (24, include_str!("migrations/024-ceiling-alerts.sql")),
                     (25, include_str!("migrations/025-alert-transitions.sql")),
                     (26, include_str!("migrations/026-corpus-retention.sql")),
+                    (27, include_str!("migrations/027-peer-corpus-retention.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
                     "SELECT sequence,engagement_id,source_key,scope_digest,digest,config,source_session_id,wake,pruned_at_ms FROM retained_message_archive LIMIT 0",
+                    "SELECT source_key,digest,sequence,pruned_at_ms FROM retained_peer_index LIMIT 0",
                     "SELECT sequence,phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms FROM retention_prune_receipts LIMIT 0",
                     "SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms,resolved_at_ms,resolved_by,status,note,transitioned_at_ms,transitioned_by FROM ceiling_alerts LIMIT 0",
                     "SELECT k.secret,k.deployment,k.root_identity,a.id,a.ordinal,a.generation,a.state,a.namespace_identity,a.identity_tuple,a.seat_id,r.preset_id,r.account_id,r.binding_generation FROM account_identity_key k CROSS JOIN managed_accounts a CROSS JOIN resource_accounts r LIMIT 0",

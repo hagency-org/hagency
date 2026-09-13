@@ -339,7 +339,10 @@ fn readiness(depot: &mut Depot, res: &mut Response, refuse: bool) {
         (None, _) => (ComponentState::Disabled, None),
         (Some(handle), Some(receiver)) => {
             let last = match &*receiver.borrow() {
-                bootstrap::RetentionSweepTick::Swept(_) => ComponentState::Tick(TickOutcome::Swept),
+                bootstrap::RetentionSweepTick::Swept(_)
+                | bootstrap::RetentionSweepTick::PeerSwept(_) => {
+                    ComponentState::Tick(TickOutcome::Swept)
+                }
                 bootstrap::RetentionSweepTick::Refused("unstarted") => ComponentState::Unstarted,
                 bootstrap::RetentionSweepTick::Refused("busy") => {
                     ComponentState::Tick(TickOutcome::RefusedBusy)

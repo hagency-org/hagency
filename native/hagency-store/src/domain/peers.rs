@@ -1,9 +1,56 @@
 //! Peer input custody shares dispatch transactions and never asserts Matrix origin.
-use super::{DomainRepository, bounded_row, conversations, execution};
+use super::{DomainRepository, bounded_row, conversations, execution, graphs, messages};
 use crate::Error;
-use hagency_core::{canonical, peers::*, tasks::*};
+use hagency_core::{JSON_SAFE_MAX, canonical, peers::*, tasks::*};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use serde::Serialize;
 use serde_json::json;
+
+/// Installed-corpus floor for peer messages (ADR-125): every configured
+/// ceiling is clamped up to this, mirroring the retained `Math.max(100, …)`
+/// guard (`backend-v2.js:236`). Native chooses its own floor — the retained
+/// product has no peer lane.
+pub const PEER_RETENTION_FLOOR: u64 = 100;
+/// Installed-corpus ceiling for peer messages (ADR-125 peer phase): the configured
+/// default the `Bootstrap` override replaces, clamped up to the floor.
+/// No retained counterpart exists for this lane — native chooses its own
+/// number.
+pub const PEER_RETENTION_CEILING: u64 = 5000;
+/// The identity store's own bound (ADR-125 peer phase) — in code AND in the
+/// sweep's prune statement, not a prose claim. Sized to hold the window in
+/// which a pruned key can still be re-presented: one ceiling of pruned rows
+/// plus slack.
+pub const PEER_RECEIPT_CEILING: u64 = 10_000;
+
+/// Counters one peer corpus sweep tick produced (ADR-125) — a sibling of
+/// `SweepOutcome` (`ceiling_alerts.rs`) and `CorpusSweepOutcome`
+/// (`messages.rs`); the per-phase report itself is the shared receipt row.
+/// `elapsed_ms` is the tick's own wall-clock duration, measured around its
+/// `Immediate` transaction (tick contract §2.5).
+#[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
+pub struct PeerSweepOutcome {
+    pub pruned: u64,
+    pub moved: u64,
+    pub remaining: u64,
+    pub elapsed_ms: u64,
+}
+
+/// The one console/CLI read for the peer bound (ADR-125 peer phase): size against
+/// the ceiling. No page work in this slice; `over_by > 0` is the standing
+/// over-ceiling report while the batch catches up.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct PeerRetentionStatus {
+    pub corpus_rows: u64,
+    pub ceiling: u64,
+    pub over_by: u64,
+}
+
+fn bounded(value: u64) -> Result<u64, Error> {
+    if value > JSON_SAFE_MAX {
+        return Err(Error::Capacity);
+    }
+    Ok(value)
+}
 
 fn read(db: &Connection, sequence: u64) -> Result<PeerMessage, Error> {
     let (key, conversation, config): (String, String, String) = db
@@ -170,6 +217,20 @@ pub(super) fn admit(
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .optional()?;
+    // Live miss → the identity index answers by the same key (ADR-125: a
+    // pruned key still owes its `Conflict`/`replayed` verdict; identity, not
+    // content). The digest and the old sequence are exactly the pair the
+    // replay answer needs.
+    let previous = match previous {
+        Some(row) => Some(row),
+        None => tx
+            .query_row(
+                "SELECT sequence,digest FROM retained_peer_index WHERE source_key=?1",
+                [&id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?,
+    };
     if let Some((sequence, old)) = previous {
         return if old == digest {
             Ok(PeerReceipt {
@@ -357,5 +418,172 @@ impl DomainRepository {
             .filter(|item| item.message.sequence > after)
             .take(limit)
             .collect())
+    }
+
+    /// The `peer` phase of the ONE retention tick (ADR-125 peer phase, tick
+    /// contract §1.3 phase 2). One `Immediate` transaction per phase,
+    /// skipped-or-committed never torn. The pin rule is design v3 §2's,
+    /// clause for clause: P1 recency, P2′ unread-and-visible (the
+    /// visibility conjunct is load-bearing — §2.4), P3′
+    /// claimed-but-unprocessed, P4/P5 the dispatch state pair on
+    /// `runner_dispatches.state` (tick contract D-1 — never the
+    /// `unresolved_dispatches` view), P6 the graph binding released by the
+    /// node's terminal state (the paired move, §6).
+    pub fn sweep_peer_corpus(
+        &mut self,
+        now: u64,
+        ceiling: u64,
+        batch: u64,
+    ) -> Result<PeerSweepOutcome, Error> {
+        let ceiling = bounded(ceiling.max(PEER_RETENTION_FLOOR))?;
+        let batch = bounded(batch)?;
+        let started = std::time::Instant::now();
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // P1 window: everything at or below (max - ceiling) is past the
+        // recency pin; the subquery re-derives the max per statement so the
+        // window stays correct while the batch catches up.
+        let candidates: Vec<u64> = {
+            let mut statement = tx.prepare(
+                "SELECT m.sequence FROM peer_messages m
+                 WHERE m.sequence <= (SELECT IFNULL(MAX(sequence),0) FROM peer_messages) - ?1
+                   AND NOT EXISTS(SELECT 1 FROM peer_session_inputs si
+                        WHERE si.message_sequence=m.sequence
+                          AND si.processed_at IS NULL AND si.dispatch_id IS NOT NULL)
+                   AND NOT EXISTS(SELECT 1 FROM peer_session_inputs si
+                        JOIN conversation_peer_inputs c
+                          ON c.session_id=si.session_id AND c.message_sequence=si.message_sequence
+                        WHERE si.message_sequence=m.sequence AND si.processed_at IS NULL)
+                   AND NOT EXISTS(SELECT 1 FROM peer_dispatch_inputs pi JOIN runner_dispatches d
+                        ON d.id=pi.dispatch_id WHERE pi.message_sequence=m.sequence
+                        AND d.state IN ('queued','leased','started','parked'))
+                   AND NOT EXISTS(SELECT 1 FROM peer_dispatch_inputs pi JOIN runner_dispatches d
+                        ON d.id=pi.dispatch_id WHERE pi.message_sequence=m.sequence
+                        AND d.state='outcome_unknown')
+                   AND NOT EXISTS(SELECT 1 FROM graph_nodes n
+                        WHERE n.message_sequence=m.sequence
+                          AND n.state NOT IN ('complete','failed','skipped','cancelled'))
+                 ORDER BY m.sequence LIMIT ?2",
+            )?;
+            let rows = statement
+                .query_map(params![ceiling, batch], |row| row.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(statement);
+            rows.into_iter()
+                .map(|v| u64::try_from(v).map_err(|_| Error::Schema))
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let mut pruned = 0u64;
+        let mut moved = 0u64;
+        let mut oldest: Option<u64> = None;
+        let mut newest: Option<u64> = None;
+        for sequence in &candidates {
+            bounded(*sequence)?;
+            let (source_key, digest): (String, String) = tx.query_row(
+                "SELECT source_key,digest FROM peer_messages WHERE sequence=?1",
+                [sequence],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            // The identity store answers the replay verdict for a pruned
+            // key (§4.2: identity, not content) — written before the row
+            // it succeeds, in the same transaction.
+            tx.execute(
+                "INSERT OR REPLACE INTO retained_peer_index(source_key,digest,sequence,pruned_at_ms) VALUES(?1,?2,?3,?4)",
+                params![source_key, digest, sequence, bounded(now)?],
+            )?;
+            // (1) the paired graph move, BEFORE the children: the binding
+            // is a custody release (§6.4) — column and persisted config
+            // together through `save`, because `read` equality-checks the
+            // two and a column-only NULL would poison every later read.
+            if graphs::move_node_message(&tx, *sequence)? {
+                moved += 1;
+            }
+            // (2)+(3) children first, in FK order — no ON DELETE exists
+            // anywhere, so every child of `peer_messages` must be gone
+            // before the parent or a RESTRICT FK aborts the tick.
+            tx.execute(
+                "DELETE FROM peer_dispatch_inputs WHERE message_sequence=?1",
+                [sequence],
+            )?;
+            tx.execute(
+                "DELETE FROM peer_session_inputs WHERE message_sequence=?1",
+                [sequence],
+            )?;
+            // (4) the parent.
+            tx.execute("DELETE FROM peer_messages WHERE sequence=?1", [sequence])?;
+            pruned += 1;
+            if oldest.is_none() {
+                oldest = Some(*sequence);
+            }
+            newest = Some(*sequence);
+        }
+        // (vi) the identity store's own bound — a DDL-adjacent statement,
+        // not a prose claim (F4): oldest-first, `PEER_RECEIPT_CEILING`.
+        let index_rows: u64 =
+            tx.query_row("SELECT COUNT(*) FROM retained_peer_index", [], |r| r.get(0))?;
+        let over = index_rows.saturating_sub(PEER_RECEIPT_CEILING.max(1));
+        if over > 0 {
+            tx.execute(
+                "DELETE FROM retained_peer_index WHERE source_key IN (\
+                 SELECT source_key FROM retained_peer_index \
+                 ORDER BY pruned_at_ms ASC, sequence ASC LIMIT ?1)",
+                [over],
+            )?;
+        }
+        let corpus: u64 = tx.query_row("SELECT COUNT(*) FROM peer_messages", [], |r| r.get(0))?;
+        let remaining = corpus.saturating_sub(ceiling);
+        // One receipt row per tick when the phase did work — INSIDE the
+        // phase's transaction (round-3 rule: a receipt exists iff the
+        // phase committed), `phase='peer'`, trimmed to the shared
+        // RETENTION_RECEIPT_LIMIT by the same writer. The receipt's
+        // `elapsed_ms` sample is taken immediately before the commit and
+        // EXCLUDES the commit's own cost; the OUTCOME's post-commit sample
+        // (below) is what the batch-reduction rule consumes.
+        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2);
+        if pruned > 0 || remaining > 0 {
+            tx.execute(
+                "INSERT INTO retention_prune_receipts\
+                 (phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms) \
+                 VALUES('peer',?1,?2,?3,?4,?5,?6)",
+                params![
+                    pruned,
+                    oldest.map(|v| v.to_string()).unwrap_or_default(),
+                    newest.map(|v| v.to_string()).unwrap_or_default(),
+                    remaining,
+                    elapsed_ms,
+                    bounded(now)?
+                ],
+            )?;
+            tx.execute(
+                "DELETE FROM retention_prune_receipts WHERE sequence NOT IN (\
+                 SELECT sequence FROM retention_prune_receipts \
+                 ORDER BY sequence DESC LIMIT ?1)",
+                [messages::RETENTION_RECEIPT_LIMIT],
+            )?;
+        }
+        tx.commit()?;
+        Ok(PeerSweepOutcome {
+            pruned,
+            moved,
+            remaining,
+            // The OUTCOME's sample is post-commit: commit and lock-wait
+            // cost included, the number the batch-reduction rule consumes.
+            elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2),
+        })
+    }
+
+    /// The ONE console/CLI read for the peer bound (ADR-125 peer phase): corpus
+    /// size against the clamped ceiling. No page work in this slice.
+    pub fn peer_retention_status(&self) -> Result<PeerRetentionStatus, Error> {
+        let ceiling = bounded(PEER_RETENTION_CEILING.max(PEER_RETENTION_FLOOR))?;
+        let corpus_rows: u64 =
+            self.db
+                .query_row("SELECT COUNT(*) FROM peer_messages", [], |r| r.get(0))?;
+        Ok(PeerRetentionStatus {
+            corpus_rows,
+            ceiling,
+            over_by: corpus_rows.saturating_sub(ceiling),
+        })
     }
 }

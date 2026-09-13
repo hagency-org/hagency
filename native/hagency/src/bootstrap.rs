@@ -5,7 +5,9 @@ mod driver;
 pub(crate) mod palpo;
 pub(crate) mod workspace;
 use hagency_matrix::{CancellationToken, Collector};
-use hagency_store::{DomainRepository, DomainStore, Repository, Store, private};
+use hagency_store::{
+    DomainRepository, DomainStore, PEER_RETENTION_CEILING, Repository, Store, private,
+};
 use salvo::prelude::*;
 use serde::Serialize;
 use std::{
@@ -437,6 +439,9 @@ pub const RETENTION_PHASE_BUDGET_MS: u64 = 600;
 /// The `messages` phase's initial batch (a hypothesis, not the bound — the
 /// deadline is what actually stops it, tick contract §2.3).
 const RETENTION_MESSAGES_BATCH: u64 = 512;
+/// The `peer` phase's initial batch (ADR-125 peer phase, tick contract §2.3): the
+/// same 512 hypothesis, its own deadline is the budget.
+const RETENTION_PEER_BATCH: u64 = 512;
 
 /// The ceiling-overrun sweep loop (ADR-124 slice b): hourly in production
 /// because the condition is standing — an agent past its ceiling at 09:00 is
@@ -503,6 +508,7 @@ pub fn start_ceiling_sweep(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RetentionSweepTick {
     Swept(hagency_store::CorpusSweepOutcome),
+    PeerSwept(hagency_store::PeerSweepOutcome),
     Refused(&'static str),
 }
 
@@ -514,12 +520,14 @@ pub enum RetentionSweepTick {
 #[derive(Debug, Clone, Copy)]
 struct RetentionBatches {
     messages: u64,
+    peer: u64,
 }
 
 impl Default for RetentionBatches {
     fn default() -> Self {
         Self {
             messages: RETENTION_MESSAGES_BATCH,
+            peer: RETENTION_PEER_BATCH,
         }
     }
 }
@@ -539,6 +547,7 @@ pub fn start_retention_sweep(
     shutdown: CancellationToken,
     period: Duration,
     ceiling: u64,
+    peer_ceiling: u64,
 ) -> (
     tokio::task::JoinHandle<()>,
     tokio::sync::watch::Receiver<RetentionSweepTick>,
@@ -607,6 +616,52 @@ pub fn start_retention_sweep(
                 }
             };
             let _ = sender.send(tick);
+            // Phase 2 of the tick: `peer` (ADR-125), the same submission
+            // shape as phase 1 — one sequential `Job::Run`, its own
+            // `Immediate` transaction in the store, its own per-phase
+            // batch hypothesis (wiring review c). The channel carries the
+            // LAST phase's outcome per tick; the readiness mirror maps
+            // both Swept variants to the same word.
+            let tick = match domain
+                .sweep_peer_corpus(now, peer_ceiling, batches.peer)
+                .await
+            {
+                Ok(outcome) => {
+                    if outcome.elapsed_ms > RETENTION_PHASE_BUDGET_MS {
+                        batches.peer = (batches.peer / 2).max(1);
+                    } else if batches.peer < RETENTION_PEER_BATCH {
+                        batches.peer = (batches.peer * 2).min(RETENTION_PEER_BATCH);
+                    }
+                    tracing::info!(
+                        "[retention] peer phase: pruned {} moved {} remaining {} elapsed_ms {} batch {}",
+                        outcome.pruned,
+                        outcome.moved,
+                        outcome.remaining,
+                        outcome.elapsed_ms,
+                        batches.peer
+                    );
+                    RetentionSweepTick::PeerSwept(outcome)
+                }
+                Err(hagency_store::Error::Busy) => {
+                    tracing::warn!(
+                        "[retention] peer phase refused: busy; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("busy")
+                }
+                Err(hagency_store::Error::OutcomeUnknown) => {
+                    tracing::warn!(
+                        "[retention] peer phase outcome unknown; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("outcome_unknown")
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "[retention] peer phase failed: {error}; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("failed")
+                }
+            };
+            let _ = sender.send(tick);
         }
     });
     (handle, observed)
@@ -632,6 +687,7 @@ pub struct Bootstrap {
     store_closed: bool,
     ceiling_sweep_period: Duration,
     message_retention_ceiling: u64,
+    peer_retention_ceiling: u64,
     retention_sweep_period: Duration,
     /// Shared with the readiness read in `App` (brief 19): bootstrap keeps
     /// this to abort at shutdown, `/health` observes liveness. Neither owns
@@ -771,6 +827,7 @@ impl Bootstrap {
             store_closed: false,
             ceiling_sweep_period: CEILING_SWEEP_PERIOD,
             message_retention_ceiling: MESSAGE_RETENTION_CEILING,
+            peer_retention_ceiling: PEER_RETENTION_CEILING,
             retention_sweep_period: RETENTION_SWEEP_PERIOD,
             ceiling_sweep: None,
             retention_sweep: None,
@@ -918,6 +975,7 @@ impl Bootstrap {
             shutdown.clone(),
             self.retention_sweep_period,
             self.message_retention_ceiling,
+            self.peer_retention_ceiling,
         );
         let retention = std::sync::Arc::new(retention_sweep);
         self.retention_sweep = Some(retention.clone());

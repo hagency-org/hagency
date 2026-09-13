@@ -9,8 +9,10 @@ use serde::Serialize;
 /// this, mirroring the retained `Math.max(100, …)` guard (`backend-v2.js:236`).
 pub const MESSAGE_RETENTION_FLOOR: u64 = 100;
 /// Receipt trim bound (tick contract §3.1): `RETENTION_RECEIPT_LIMIT = 100`,
-/// applied by the same writer that inserts a receipt row.
-const RETENTION_RECEIPT_LIMIT: u64 = 100;
+/// applied by the same writer that inserts a receipt row. Shared by every
+/// retention phase (the `peer` phase trims the same table by the same
+/// bound, in its own transaction).
+pub(super) const RETENTION_RECEIPT_LIMIT: u64 = 100;
 
 /// Counters one corpus sweep tick produced — a sibling of `SweepOutcome`
 /// (`ceiling_alerts.rs`). `elapsed_ms` is the tick's own wall-clock duration,

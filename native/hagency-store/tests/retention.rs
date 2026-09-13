@@ -968,7 +968,7 @@ async fn native_retained_corpus_schema_upgrade() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            26
+            27
         );
         let archive: u64 = sql
             .query_row("SELECT COUNT(*) FROM retained_message_archive", [], |r| {
