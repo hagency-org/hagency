@@ -60,7 +60,14 @@ outlive a message are answered live first and from the archive on a live
 miss, and the two whose callers need the `session_inputs` child reconstruct
 `wake`/`config` from the archive row and skip the re-insert, so an exact
 redelivery still dedupes and a divergent redelivery is still refused with the
-same word. As a consequence the `matrix_ingress_events` 100 000 stop stops
+same word. Read 6's caller is the exception the sibling reads set aside: it
+binds the resolved root as `task_intents.root_sequence` and a
+`task_inputs.message_sequence`, both RESTRICT children of
+`admitted_messages`, so its archive hit is not answered in place — the
+archived root is re-admitted live under its own pruned sequence with its
+provenance pair copied from the archive row, and the archive row is dropped
+in the same transaction, restoring the parent the intent's keys require. As a
+consequence the `matrix_ingress_events` 100 000 stop stops
 accumulating; it remains a backstop reachable only when the corpus cannot
 drain at all.
 
