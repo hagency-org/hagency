@@ -369,7 +369,8 @@ mod trace_tests {
     /// labels are stable and every phase transition is named.
     #[test]
     fn native_approval_trace_labels_every_phase() {
-        crate::approval::diagnostics::reset();
+        crate::approval::diagnostics::reset("dispatch-a");
+        crate::approval::diagnostics::reset("dispatch-b");
         // The full happy-path sequence one entry drives through the
         // coordinator: retained, then each transition in arrival order.
         let mut trace = PhaseTrace::new();
@@ -465,7 +466,7 @@ mod trace_tests {
             trace_text.contains("retained, acknowledged"),
             "{trace_text}"
         );
-        crate::approval::diagnostics::reset();
+        crate::approval::diagnostics::reset(dispatch);
         assert_eq!(
             crate::approval::diagnostics::phases_of(dispatch, &id),
             Vec::<&str>::new()
@@ -473,6 +474,12 @@ mod trace_tests {
         assert_eq!(
             crate::approval::diagnostics::last_cancellation_trace(dispatch),
             ""
+        );
+        // Per-dispatch reset pin: another operation's records survive — the
+        // whole point of keying (no test wipes another's in-flight journal).
+        assert!(
+            !crate::approval::diagnostics::dispatch_trace("dispatch-b").is_empty(),
+            "reset of one dispatch must not clear another's records"
         );
     }
 }

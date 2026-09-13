@@ -54,7 +54,7 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
     .unwrap()
     .with_approvals(ApprovalHost::new(2, 1, 20_000, 1500).unwrap())
     .unwrap();
-    crate::approval::diagnostics::reset();
+    crate::approval::diagnostics::reset("dispatch");
     host.approval_fault = Some(fault);
     host
 }
