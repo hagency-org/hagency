@@ -506,17 +506,24 @@ impl DomainRepository {
             {
                 return Err(Error::RunnerAuthority);
             }
-            // The P8' inverse (design v3 §8c(ii) note): an archive row is
-            // dropped when its pair is re-admitted live. Read 6's caller
-            // binds the root as `task_intents.root_sequence` and a
-            // `task_inputs.message_sequence` — both RESTRICT children of
-            // `admitted_messages` — so the archived root is re-admitted
-            // live (same sequence, provenance pair restored) in THIS
-            // transaction and the archive row is dropped; the intent then
-            // pins the live row exactly as a first-admission intent would.
-            // The FK is the guard: if the archived config's sequence ever
-            // diverged from the row's, the bind below fails loudly and the
-            // whole transaction rolls back.
+            // ADR-125 ("Provenance moves with the message") answers read 6
+            // live first and from the archive on a live miss — but this
+            // caller binds the resolved root as `task_intents.root_sequence`
+            // and a `task_inputs.message_sequence`, both RESTRICT children
+            // of `admitted_messages`, so the archived answer must be
+            // materialised: the root is re-admitted live (its own pruned
+            // sequence, provenance pair copied verbatim from the archive
+            // row) in THIS transaction and the archive row is dropped, and
+            // the intent then pins the live row. Unlike the sibling reads,
+            // which reconstruct `wake`/`config` and skip the re-insert,
+            // this restores ONLY `admitted_messages` and its provenance
+            // row — no `session_inputs` child and no live `wake`, neither
+            // of which read 6 needs. The guard that can actually abort is
+            // `admitted_messages.source_key`'s global UNIQUE (migration
+            // 004): a live row holding this key while its provenance row
+            // is absent or its route no longer current reaches this branch
+            // and refuses loudly; the sequence itself cannot collide — it
+            // is the pruned row's own AUTOINCREMENT key, never reused.
             if let Some((sequence, source_key, digest)) = archived {
                 tx.execute(
                     "INSERT INTO admitted_messages(sequence,source_key,digest,config) VALUES(?1,?2,?3,?4)",
