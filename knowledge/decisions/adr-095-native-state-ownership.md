@@ -391,10 +391,15 @@ owned completion and defer forever.
 
 **`task_outbox` scoping (one sentence, as the contract requires).** This cascade
 deletes `task_outbox` rows **only** whose owning `canonical_tasks` row is itself
-being deleted in the same transaction; the pager's next page (`execution.rs:1079`)
-then skips forward correctly, because the task the events described is gone. That is
-a different operation from the **bound** prune Slice 2 defers (D-6), and the scoping
-is what reconciles the two.
+being deleted in the same transaction — **tier 1**, honouring the `canonical_tasks`
+FK (`003:48`), which is why the child rows go before the task row; the pager's next
+page (`execution.rs:1079`) then skips forward correctly, because the task the events
+described is gone. That is a different operation from the **bound** prune Slice 2
+defers (D-6), and the scoping is what reconciles the two. The deferral's reason is
+that the pager has **no production consumer** — the cursor is caller-supplied and
+persisted nowhere — not that the pager is production: this cascade is the only delete
+`task_outbox` ever receives, and a real acknowledgement path stays a named
+retained-product gap.
 
 **The receipt.** One `retention_prune_receipts` row with `phase='engagements'`,
 `oldest_ref`/`newest_ref` = `engagements.rowid`, carrying `pruned`, `remaining` and
