@@ -107,8 +107,11 @@ fn gated_pulse(marker: &Path) -> io::Result<()> {
         .open(marker.with_extension("pulse"))?;
     file.write_all(b"xxx")?;
     file.flush()?;
-    // The gate keeps its derived bound (the test must release us); the
-    // LIFETIME after it is the host's close, like every terminal path.
+    // The gate keeps its derived bound — a fifth of the operation budget,
+    // the harness's `harness_wait() * 2` shape doubled: the TEST must
+    // release us, and a test that cannot observe our pulse within a fifth
+    // of the whole operation is itself broken — while the LIFETIME after
+    // it is the host's close, like every terminal path.
     let until = Instant::now() + harness_wait() * 2;
     while !marker.with_extension("release").is_file() {
         if Instant::now() >= until {
@@ -506,13 +509,15 @@ mod hold_tests {
         let started = Instant::now();
         // An empty reader IS a closed stream: its write end is gone.
         let closed_stream: &[u8] = &[];
-        let outcome = hold_until_closed(&marker, 10_000, closed_stream);
+        let budget_ms = 10_000u64;
+        let outcome = hold_until_closed(&marker, budget_ms, closed_stream);
         let _ = std::fs::remove_file(marker.with_extension("pulse"));
         outcome.expect("a closed stream must end the hold, not the ceiling");
-        // Derived, not a literal: half the budget passed above — a generous
-        // local slack for "an empty reader reports EOF immediately", far
-        // under the hold's own 1.5×-budget ceiling (F5).
-        let local_slack = Duration::from_millis(10_000 / 2);
+        // Derived from the budget passed above, not a literal: half the
+        // hold's own budget is the generous local slack for "an empty
+        // reader reports EOF immediately" (F5) — far under the hold's
+        // 1.5×-budget ceiling, and it scales if the test budget changes.
+        let local_slack = Duration::from_millis(budget_ms / 2);
         assert!(
             started.elapsed() < local_slack,
             "the hold ran toward its ceiling instead of observing the close"
