@@ -597,7 +597,9 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
             "an unproven cleanup must not assert an unobserved Done"
         );
     } else {
-        assert_eq!(report.settlement, Settlement::CanonicalReplyReady);
+        // No completion row exists in this fixture, so there is nothing to
+        // publish: the successful drive completes plainly.
+        assert_eq!(report.settlement, Settlement::Completed);
     }
     // One callback, one retained frame, one grant, one accepted write.
     assert_eq!(report.approval_custody(), (1, 1, 1, 1));

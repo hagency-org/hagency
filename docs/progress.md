@@ -8210,3 +8210,11 @@ client qualification and ongoing identity/key management remain separate.
   operation's unchanged 100 ms busy budget) and each scenario rebuilds
   itself a bounded number of times instead of judging it. No product bound
   changed.
+- 2026-09-13: the precedence rule gated the completion path on a successful
+  drive and moved the Done behind the cleanup gate, so the retained
+  helper-finish flows (no terminal Codex turn; completion through the held
+  row) lost their Done on every host. Now only the settlement verdict skips
+  the path (with cancel, deadline and unsupported approval as before), and a
+  held completion reference, the store's committed finish read back through
+  custody, sets Done at block entry as before. Execution-crate gates now
+  include the hagency workflow targets.

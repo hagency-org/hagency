@@ -143,6 +143,27 @@ impl SettlementCause {
         }
     }
 }
+/// One bounded fresh-clock read of the canonical task status. Observation
+/// only: never execution, release, retry or reply authority.
+async fn observed_canonical_status(
+    domain: &DomainStore,
+    cap: &RunnerCapability,
+    scope: &hagency_store::OwnedDispatchScope,
+) -> Option<TaskState> {
+    domain
+        .runner_command(
+            cap.clone(),
+            RunnerCommand::Task {
+                id: scope.task().id.clone(),
+            },
+        )
+        .await
+        .ok()
+        .and_then(|value| serde_json::from_value::<Task>(value).ok())
+        .filter(|task| task.id == scope.task().id && task.session_id == scope.task().session_id)
+        .map(|task| task.status)
+}
+
 /// Record the cause and preserve the existing terminal verdict exactly.
 ///
 /// The **first** cause on a path is the root cause and is never replaced. The
@@ -858,36 +879,38 @@ async fn execute(
         // This adds one bounded (2 s) fresh-clock writer read. Done changes the
         // epoch and still fails the exact renewal/settlement fingerprint. Never
         // use this status as execution, release, retry or reply authority.
-        report.canonical_status = domain
-            .runner_command(
-                cap.clone(),
-                RunnerCommand::Task {
-                    id: scope.task().id.clone(),
-                },
-            )
-            .await
-            .ok()
-            .and_then(|value| serde_json::from_value::<Task>(value).ok())
-            .filter(|task| task.id == scope.task().id && task.session_id == scope.task().session_id)
-            .map(|task| task.status);
+        report.canonical_status = observed_canonical_status(domain, cap, &scope).await;
     }
     checkpoint(cancel, until)?;
     // A matching explicit Done+body is completion custody, not a renewed task
     // epoch or permission to continue this process. The same runner was stopped
     // above. Scope is the opaque successful Start response, never admission data.
     //
-    // A settlement verdict outranks the completion path. Only a drive that
-    // actually succeeded may consult held completion custody; every other
-    // result is surfaced unchanged by `drive?` below. Otherwise
-    // `Err(SettlementUnknown)` — ADR-046's conclusive negative reconcile, or
-    // brief 19's in-flight `PeerUnavailable` — is replaced by `CleanupUnknown`
-    // on macOS and swallowed into a published completion on Linux.
-    if drive.is_ok()
-        && let Some(reference) = domain
-            .observe_owned_completion(cap.clone(), started.clone())
-            .await
-            .map_err(|error| settlement_failure(report, &error))?
+    // A settlement verdict outranks the completion path: a drive that ended
+    // in `SettlementUnknown` (ADR-046's conclusive negative reconcile) never
+    // consults held completion custody, so it is neither replaced by
+    // `CleanupUnknown` on macOS nor swallowed into a published completion on
+    // Linux; `drive?` below surfaces it unchanged. Every other drive end that
+    // is not a cancellation, a deadline or an unsupported approval keeps
+    // consulting custody: the retained helper-finish flows end without a
+    // terminal Codex turn and complete through the held row.
+    if !matches!(
+        drive,
+        Err(Failure::Cancelled
+            | Failure::Deadline
+            | Failure::UnsupportedApproval
+            | Failure::SettlementUnknown)
+    ) && let Some(reference) = domain
+        .observe_owned_completion(cap.clone(), started.clone())
+        .await
+        .map_err(|error| settlement_failure(report, &error))?
     {
+        // A held completion reference is the store's own committed finish for
+        // this dispatch, read back through custody: the canonical status it
+        // proves is Done. That is an observation of the row, not a promotion
+        // (ADR-053); a drive that ended in a settlement verdict never reaches
+        // this block, so no unknown-fate frame is ever reported as Done.
+        report.canonical_status = Some(TaskState::Done);
         checkpoint(cancel, until)?;
         if !stopped(report.cleanup) {
             // Cleanup uncertainty is reported BESIDE the held completion
@@ -900,7 +923,6 @@ async fn execute(
             // here survives it, so nothing is written here.
             return Err(Failure::CleanupUnknown);
         }
-        report.canonical_status = Some(TaskState::Done);
         // Keep the receipt future alive. The writer checks this original signal
         // and monotonic deadline after queue/lock before admitting final content;
         // cancellation after that eligibility decision cannot undo its commit.
