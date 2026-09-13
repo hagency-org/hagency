@@ -213,7 +213,16 @@ impl Drive<'_> {
                     // H3 totality: the pump sees a dead peer through the same
                     // classifier as the send path, so the verdict does not
                     // depend on which observer touched the transport first.
-                    Err(super::control::send_failure_with_termination(runner, error))
+                    // The armed fact (Q3) comes from the coordinator's entry
+                    // state — a frame is armed when an entry holds its
+                    // prepared frame or is in flight — never from the absence
+                    // of a write observation.
+                    let armed = callbacks.entries.values().any(|entry| {
+                        entry.prepared.is_some() || entry.in_flight || entry.write.is_some()
+                    });
+                    Err(super::control::send_failure_with_termination(
+                        runner, armed, error,
+                    ))
                 }
                 Err(failure) => Err(failure),
             };
