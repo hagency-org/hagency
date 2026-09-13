@@ -63,11 +63,7 @@ impl Fixture {
     fn configured_account(approvals: bool, managed: bool) -> Self {
         Self::configured_resource(approvals, managed, resource("pool", "seat", 1000))
     }
-    fn configured_resource(
-        approvals: bool,
-        managed: bool,
-        unmanaged_pool: Resource,
-    ) -> Self {
+    fn configured_resource(approvals: bool, managed: bool, unmanaged_pool: Resource) -> Self {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("固定 工作目录");
         hagency_store::private::directory(&work).unwrap();

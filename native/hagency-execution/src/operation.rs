@@ -52,7 +52,9 @@ pub enum Failure {
     SettlementUnknown,
     #[error("host worker failed")]
     Worker,
-    #[error("no native runner exists for framework {framework}; the dispatch is refused before any spawn")]
+    #[error(
+        "no native runner exists for framework {framework}; the dispatch is refused before any spawn"
+    )]
     UnsupportedRunner { framework: String },
 }
 impl Failure {
@@ -306,7 +308,9 @@ impl Report {
     pub async fn retry_reconcile(&mut self) -> Settlement {
         self.retry_stop();
         if let Some((domain, cap, failure)) = &self.reconciliation
-            && let Ok(value) = domain.observe_owned_failure(cap.clone(), failure.clone()).await
+            && let Ok(value) = domain
+                .observe_owned_failure(cap.clone(), failure.clone())
+                .await
         {
             self.settlement = Settlement::Negative(value);
             self.reconciliation = None;

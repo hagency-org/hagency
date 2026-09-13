@@ -176,7 +176,9 @@ pub enum OwnedFailure {
     /// A dispatch naming a framework with no native runner (ADR-142). The
     /// payload carries the framework so the refusal word an operator reads
     /// names the missing runner (`claude`), not a generic category.
-    UnsupportedRunner { framework: String },
+    UnsupportedRunner {
+        framework: String,
+    },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedObservation {
