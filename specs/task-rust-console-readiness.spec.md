@@ -17,7 +17,7 @@ stays frozen.
 
 ### Must
 - Read `GET /ready` from the page same-origin and consume the payload as-is — exactly `{"status","implementation","components[].{name,state}}`, no new wire keys.
-- Generate `status-constants.js` in the staged tree before `next build`, carrying `HAGENCY_NATIVE_VERSION` (parsed from the root Cargo.toml's `[workspace.package]`) and `HAGENCY_NATIVE_SCHEMA_HEAD` (a `--schema-head` argument copied from the migration registry).
+- Generate `status-constants.js` in the staged tree before `next build`, carrying `HAGENCY_NATIVE_VERSION` (parsed from the root Cargo.toml's `[workspace.package]`) and `HAGENCY_NATIVE_SCHEMA_HEAD` (a `--schema-head` argument copied from the migration registry). The staged tree is the build's `mkdtemp` workspace — **no repo path for the generated file is committed or expected in Allowed Changes**; if Next excludes an unbundled generated module, the constants are appended to an existing staged `.js` instead (same values, same test).
 - Render `status === "ok"` as ready; 503/`unavailable` as not ready with failing components' names and words — a failing component never renders ready; an unreachable `/ready` renders unknown, never ready.
 - Render the sweep-tick cell's raw word unstyled by outcome — `refused_*` is a ready word (`lib.rs:207-210`); only the sweep's liveness participates in the colour.
 - Render the strip as a `PageHead` child on every native console page.
@@ -41,6 +41,8 @@ stays frozen.
 - mockup/components/NativeEngagements.jsx
 - mockup/lib/native-api.js
 - mockup/scripts/build-native-console.mjs
+- native/hagency/tests/console/status_strip.rs
+- native/hagency/tests/console.rs
 - specs/task-rust-console-readiness.spec.md
 - knowledge/decisions/adr-145-console-readiness-version-strip.md
 - native/README.md
@@ -48,23 +50,23 @@ stays frozen.
 
 ### Forbidden
 - Live services, credentials, deployed state.
-- native/hagency/src/** (no Rust file); mockup/app/** page files; the manifest schema.
+- native/hagency/src/** (no Rust source file — the strip's own rule); mockup/app/** page files; the manifest schema.
 
 ## Acceptance Criteria
 
 Scenario: The strip renders not-ready on a 503 component
   Test: native_console_status_strip_503_renders_not_ready
   Level: integration
-  Test Double: the console fixture with a closed domain writer driving /ready to 503
-  Given a console page rendered while /ready answers 503 with a failing component
+  Test Double: the console fixture with a closed domain writer driving /ready to 503; browser-lane
+  Given the native-console-browser feature whose selector appears in cargo test --list under --all-features exactly as native_console_browser is bound by the usage console spec and a console page rendered while /ready answers 503 with a failing component
   When the strip renders
   Then it shows not ready with the failing component's name and state word and never the word ready
 
 Scenario: The strip renders unknown when /ready is unreachable
   Test: native_console_status_strip_unreachable_renders_unknown
   Level: integration
-  Test Double: the console fixture with the readiness route unreachable
-  Given a console page whose readiness fetch fails at the network level
+  Test Double: the console fixture with the readiness route unreachable; browser-lane
+  Given the native-console-browser feature whose selector appears in cargo test --list under --all-features exactly as native_console_browser is bound by the usage console spec and a console page whose readiness fetch fails at the network level
   When the strip renders
   Then it shows unknown with no component list and never ready
 
