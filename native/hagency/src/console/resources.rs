@@ -62,6 +62,13 @@ struct RoleRow {
     available: bool,
     cross_family: bool,
     default_tier: Option<Tier>,
+    /// G5: the three derived keys, one predicate with `available` — see
+    /// `role_publications`. `deny_unknown_fields` makes the server json!,
+    /// this struct and the client validator ONE commit (a schema-error
+    /// 503, never a silent widening).
+    families: Vec<String>,
+    fillable: usize,
+    over_tier: usize,
 }
 pub(super) fn bounded(res: &mut Response, value: &impl Serialize) {
     struct Bytes(Vec<u8>);

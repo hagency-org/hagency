@@ -153,6 +153,40 @@ async fn native_console_resource_observations() {
     }
     assert_eq!(rows["permissions"]["publishResource"], false);
     assert_eq!(rows["roles"].as_array().unwrap().len(), 6);
+    // G5: the roles table keeps the EIGHT-key set exactly (the client's
+    // exact-key conjunction at native-api.js:10-11 applied to roles) — the
+    // three derived keys are present on every row and no ninth key is.
+    let keys = [
+        "role",
+        "explicitPublication",
+        "available",
+        "crossFamily",
+        "defaultTier",
+        "families",
+        "fillable",
+        "overTier",
+    ];
+    for role in rows["roles"].as_array().unwrap() {
+        let object = role.as_object().unwrap();
+        assert_eq!(
+            object.len(),
+            keys.len(),
+            "exactly eight keys on the role row"
+        );
+        for key in keys {
+            assert!(object.contains_key(key), "the role row carries {key}");
+        }
+        assert!(
+            role["families"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| f.is_string()),
+            "families is an array of strings"
+        );
+        assert!(role["fillable"].as_u64().is_some());
+        assert!(role["overTier"].as_u64().is_some());
+    }
     let row = rows["resources"]
         .as_array()
         .unwrap()
@@ -368,5 +402,173 @@ async fn native_console_resource_observations() {
         waiting.await.status_code,
         Some(StatusCode::SERVICE_UNAVAILABLE)
     );
+    f.close().await;
+}
+
+/// G5: every catalogue value comes from ONE predicate and the model
+/// family. Three extra resources join the fixture's two gpt-strong pools:
+/// an octos/kimi-k3 resource (a REAL model family, but non-provisionable —
+/// `provisionable()` is claude|codex only), and a codex resource whose
+/// model matches no policy tier (`model() == (None, None)` — it cannot
+/// qualify at all, so it adds no family and is never over-tier). The
+/// derivations must ignore both, count families as MODEL families (never
+/// the framework), and change when a resource is withdrawn — a hardcoded
+/// or client-side recomputation cannot pass the second read.
+#[tokio::test]
+async fn native_console_catalogue_fillability_is_derived() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let kimi = serde_json::from_value::<hagency_core::project::Resource>(json!({
+        "presetId":"catalogue_kimi","seatId":"catalogue_kimi_seat","framework":"octos",
+        "model":"kimi-k3","ceiling":{"tokens":1000,"period":"monthly"}}))
+    .unwrap();
+    let mystery = serde_json::from_value::<hagency_core::project::Resource>(json!({
+        "presetId":"catalogue_mystery","seatId":"catalogue_mystery_seat","framework":"codex",
+        "model":"mystery_model_v9","ceiling":{"tokens":1000,"period":"monthly"}}))
+    .unwrap();
+    f.domain.put_resource(kimi).await.unwrap();
+    f.domain.put_resource(mystery).await.unwrap();
+    let service = f.service();
+    let cookie = session(&service).await;
+    let roles = |value: &Value| {
+        value["roles"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                (
+                    r["role"].as_str().unwrap().to_owned(),
+                    r["fillable"].as_u64().unwrap(),
+                    r["overTier"].as_u64().unwrap(),
+                    r["families"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|f| f.as_str().unwrap().to_owned())
+                        .collect::<Vec<_>>(),
+                    r["available"].as_bool().unwrap(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    let read = || async {
+        let mut response = get("/console/api/resources?limit=16", &cookie)
+            .send(&service)
+            .await;
+        assert_eq!(response.status_code, Some(StatusCode::OK));
+        response.take_json::<Value>().await.unwrap()
+    };
+    let value = read().await;
+    for (role, fillable, over_tier, families, available) in roles(&value) {
+        // The two gpt-strong pools qualify everywhere; kimi is
+        // non-provisionable and the mystery model has no tier, so NEITHER
+        // counts toward any role.
+        assert_eq!(
+            fillable, 2,
+            "{role}: only the provisionable, tiered resources count"
+        );
+        assert_eq!(
+            families,
+            ["gpt"],
+            "{role}: the MODEL family, never the framework"
+        );
+        assert!(
+            !families.iter().any(|f| f == "codex" || f == "octos"),
+            "{role}: a framework name is never a family"
+        );
+        assert!(
+            if role == "review" {
+                !available
+            } else {
+                available
+            },
+            "{role}: available agrees with the predicate — cross-family roles additionally need two families among active engagements, and these fixtures span only gpt"
+        );
+        // strong is not above strong; above medium/lightweight it is.
+        let over = matches!(
+            role.as_str(),
+            "coding" | "testing" | "integration" | "documentation"
+        );
+        assert_eq!(
+            over_tier,
+            u64::from(over) * 2,
+            "{role}: strictly stronger than the default tier"
+        );
+    }
+    // The negative arm: withdraw BOTH gpt pools through the store and the
+    // counts must fall — fillable 0 with the key still present, families
+    // empty, nothing over-tier, and available now false. No client-side
+    // or hardcoded value survives this read. Each withdrawal must carry
+    // the row's OWN seat and ceiling (prepare_resource_write treats
+    // seat/framework/model/provider changes specially).
+    for (preset, seat, tokens) in [
+        ("private_usage_pool", "private_usage_seat", 1000),
+        ("private_alert_pool", "private_alert_seat", 50),
+    ] {
+        f.domain
+            .edit_resource(common::resource(preset, seat, tokens), Some(false))
+            .await
+            .unwrap();
+    }
+    let value = read().await;
+    for (role, fillable, over_tier, families, available) in roles(&value) {
+        assert_eq!(fillable, 0, "{role}: zero is served, never an omitted key");
+        assert!(
+            families.is_empty(),
+            "{role}: no qualifying resource, no family"
+        );
+        assert_eq!(over_tier, 0);
+        assert!(!available, "{role}: fillable 0 exactly as available false");
+    }
+    f.close().await;
+}
+
+/// G5: the catalogue omits every profile field native does not persist.
+/// The five forbidden keys are asserted over the RAW body bytes, not only
+/// the parsed key set — and the forward guard proves fail-closed: a
+/// key-shaped value seeded straight into the stored config makes the read
+/// REFUSE (deny_unknown_fields → schema error → 503) rather than serve it.
+#[tokio::test]
+async fn native_console_catalogue_omits_unpersisted_profile_fields() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let cookie = session(&service).await;
+    let mut response = get("/console/api/resources?limit=16", &cookie)
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let body = response.take_string().await.unwrap();
+    for key in [
+        "\"name\"",
+        "rateCapPerDay",
+        "apiBaseUrl",
+        "apiKeySet",
+        "extraArgs",
+    ] {
+        assert!(!body.contains(key), "the raw body carries no {key} key");
+    }
+    // The forward guard: seed a stored key value where none may exist.
+    let secret = "sk_live_guard_7c1d3fa2e9b4";
+    let pool = common::resource("private_usage_pool", "private_usage_seat", 1000);
+    let raw = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    raw.execute(
+        "UPDATE resources SET config=json_set(config,'$.apiKeySet',?1) WHERE json_extract(config,'$.presetId')=?2",
+        rusqlite::params![secret, pool.preset_id],
+    )
+    .unwrap();
+    drop(raw);
+    let mut response = get("/console/api/resources?limit=16", &cookie)
+        .send(&service)
+        .await;
+    assert_eq!(
+        response.status_code,
+        Some(StatusCode::SERVICE_UNAVAILABLE),
+        "an unpersisted key is a schema fault, never a served column"
+    );
+    let refused = response.take_string().await.unwrap();
+    assert!(
+        !refused.contains(secret),
+        "the stored key value reaches no byte"
+    );
+    assert!(!refused.contains("apiKeySet"));
     f.close().await;
 }

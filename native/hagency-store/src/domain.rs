@@ -397,7 +397,34 @@ impl DomainRepository {
         qualification::roles().map(|role| {
             let explicit:Option<bool>=self.db.query_row("SELECT published FROM role_publications WHERE role=?1",[role],|r|r.get(0)).optional()?;
             let available=role_available(&self.db,role,None)? && resources.iter().any(|r|r.qualifies(role));
-            Ok(json!({"role":role,"explicitPublication":explicit,"available":available,"crossFamily":qualification::cross_family(role),"defaultTier":qualification::default_tier(role)}))
+            // G5 (ADR-108 amendment): three derived keys over the SAME set
+            // `available` samples — qualifying(role) = published resources
+            // passing Resource::qualifies (provisionable ∧ ceiling ∧ policy
+            // tier). `qualification::resources_for_role` is deliberately
+            // NOT used: it omits published and provisionable, so a resource
+            // could count toward fillable and not toward available — two
+            // answers for one question. `families` is the MODEL family
+            // (model().1), never the framework, matching the retained
+            // catalogue's cross-family count (derive.js:91,100); sorted for
+            // a stable wire. A model matching no policy tier yields
+            // (None,None) and cannot qualify at all, so it contributes
+            // nothing — unknown tier never reads as stronger.
+            let qualifying: Vec<&Resource> = resources.iter().filter(|r| r.qualifies(role)).collect();
+            let families: std::collections::BTreeSet<&str> =
+                qualifying.iter().filter_map(|r| qualification::model(&r.profile()).1).collect();
+            let fillable = qualifying.len();
+            let default = qualification::default_tier(role);
+            let over_tier = default.map_or(0, |needed| {
+                qualifying
+                    .iter()
+                    .filter(|r| {
+                        qualification::model(&r.profile())
+                            .0
+                            .is_some_and(|tier| tier > needed)
+                    })
+                    .count()
+            });
+            Ok(json!({"role":role,"explicitPublication":explicit,"available":available,"crossFamily":qualification::cross_family(role),"defaultTier":qualification::default_tier(role),"families":families.into_iter().collect::<Vec<&str>>(),"fillable":fillable,"overTier":over_tier}))
         }).collect()
     }
     pub fn open(directory: &Path) -> Result<Self, Error> {

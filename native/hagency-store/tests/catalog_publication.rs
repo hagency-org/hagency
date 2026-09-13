@@ -178,3 +178,72 @@ fn native_catalog_snapshot_capacity() {
         Err(Error::Capacity)
     ));
 }
+
+/// G5 (ADR-108 amendment): the three derived catalogue values — families,
+/// fillable, overTier — come from ONE predicate (`Resource::qualifies`,
+/// the same set that produces `available`), and `families` is the MODEL
+/// family from `qualification::model()`, never the framework. Seeded: the
+/// gpt-strong codex preset qualifies everywhere; an octos/kimi-k3 preset
+/// (real family, non-provisionable) counts nowhere; a codex model with no
+/// policy tier counts nowhere and is never over-tier.
+#[test]
+fn catalogue_derived_keys_use_one_predicate_and_model_families() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = DomainRepository::open(&dir.path().join("state")).unwrap();
+    db.put_resource(&resource("catalogue_gpt", "catalogue_seat", 1000))
+        .unwrap();
+    db.put_resource(
+        &serde_json::from_value(json!({
+            "presetId":"catalogue_kimi","seatId":"catalogue_seat","framework":"octos",
+            "model":"kimi-k3","ceiling":{"tokens":1000,"period":"monthly"}}))
+        .unwrap(),
+    )
+    .unwrap();
+    db.put_resource(
+        &serde_json::from_value(json!({
+            "presetId":"catalogue_mystery","seatId":"catalogue_seat","framework":"codex",
+            "model":"mystery_model_v9","ceiling":{"tokens":1000,"period":"monthly"}}))
+        .unwrap(),
+    )
+    .unwrap();
+    let roles = db.role_publications().unwrap();
+    assert_eq!(roles.len(), 6, "one row per policy role");
+    for row in &roles {
+        let role = row["role"].as_str().unwrap();
+        assert_eq!(
+            row["fillable"], 1,
+            "{role}: only the tiered, provisionable preset counts"
+        );
+        let families = row["families"].as_array().unwrap();
+        assert_eq!(families.len(), 1, "{role}: one family");
+        assert_eq!(
+            families[0], "gpt",
+            "{role}: the model family, never the framework"
+        );
+        assert_ne!(families[0], "codex");
+        assert_ne!(families[0], "octos");
+        assert!(
+            if row["crossFamily"].as_bool().unwrap() {
+                !row["available"].as_bool().unwrap()
+            } else {
+                row["available"].as_bool().unwrap()
+            },
+            "{role}: available agrees with the predicate — cross-family roles additionally need two families among active engagements, and this store has none"
+        );
+        // strong default: gpt-strong is not above; medium/lightweight: it is.
+        let over = matches!(role, "coding" | "testing" | "integration" | "documentation");
+        assert_eq!(
+            row["overTier"],
+            json!(u64::from(over)),
+            "{role}: strictly stronger only"
+        );
+    }
+    // The key set is exactly eight — deny_unknown_fields downstream makes
+    // any ninth key a schema fault, so pin the count at the source.
+    let keys = roles[0].as_object().unwrap();
+    assert_eq!(
+        keys.len(),
+        8,
+        "role, explicitPublication, available, crossFamily, defaultTier, families, fillable, overTier"
+    );
+}

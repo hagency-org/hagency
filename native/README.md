@@ -722,6 +722,15 @@ scope, consumed by the actual runtime. The existing Seat ledger or a browser mod
 selection cannot supply that missing binding. Complete M7 and production cutover
 remain open.
 
+The resources read also serves the six-role capability catalogue beside the
+preset list (ADR-108 amendment): each role row carries `families`,
+`fillable` and `overTier`, derived over the SAME predicate that produces
+`available` (`Resource::qualifies`: published, provisionable, ceiling,
+policy tier). `families` is the MODEL family from
+`qualification::model()`, never the framework. No profile fields native
+does not persist (name, rate cap, API base, key facts, extra args) are
+served — the read fails closed on an unpersisted key rather than serving it.
+
 New HTTP surfaces are bounded same-origin `/console/api/resources/{id}/configuration`
 GET/PATCH and `/console/api/resources` POST. The browser sends a public source/target
 ID, expected revision and closed change unions; no authority object, private preset

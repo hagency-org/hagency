@@ -29,12 +29,29 @@ try {
   }
   await page.goto(config.url);
   await ready();
+  // G5 (ADR-108 amendment): the catalogue section on THIS page — the three
+  // derived columns render from the read, `families` is the MODEL family
+  // (never the framework name), and the counts are the server's, not a
+  // client recomputation: withdrawing the pool through the walk's own
+  // toggle drops the architect's fillable by exactly one.
+  assert.equal(await page.locator('[data-role-row]').count(), 6, 'one row per policy role');
+  const architectFamilies = await page.locator('[data-role-row="architect"] [data-families]').innerText();
+  assert.match(architectFamilies, /gpt/, 'the model family renders');
+  const allFamilies = await page.locator('[data-families]').allInnerTexts();
+  assert(allFamilies.every((f) => !/codex|octos/.test(f)), 'a framework name is never a family');
+  for (const cell of await page.locator('[data-fillable], [data-over-tier]').allInnerTexts()) {
+    assert(/^\d+$/.test(cell), 'derived counts are figures, not blanks');
+  }
+  const fillableBefore = Number(await page.locator('[data-role-row="architect"] [data-fillable]').innerText());
   assert.equal(new URL(page.url()).hash, '');
   await page.locator('#native-resource').selectOption(config.resource);
   await page.locator(`[data-resource-id="${config.resource}"]`).waitFor();
   assert.match(await page.locator('main').innerText(), /Delivery to Palpo has not been verified/);
   assert.equal(await row().getByRole('button').isEnabled(), true);
-  await toggle(config.resource, false); await toggle(config.resource, true);
+  await toggle(config.resource, false);
+  const fillableWithdrawn = Number(await page.locator('[data-role-row="architect"] [data-fillable]').innerText());
+  assert.equal(fillableWithdrawn, fillableBefore - 1, 'withdrawal drops the derived count — no client-side caching');
+  await toggle(config.resource, true);
   // Brief 18 — the headroom cells. The MEASURED arm: the fixture's usage
   // pool (a bound usage source with real observations), where measured is a
   // figure, the binding draw is named, and remaining is a number. The

@@ -38,6 +38,8 @@ ADR-111's.
 - native/hagency/tests/console/resources.rs
 - mockup/components/NativeResources.jsx
 - mockup/lib/native-api.js
+- mockup/lib/i18n.js # nr.fillable/nr.families/nr.overTier in both dictionaries — the new columns render bare keys without them
+- mockup/scripts/native-console-resources-browser.mjs # the catalogue assertions in the resources browser walk — the browser scenario has no driver without it
 - specs/task-rust-console-presets.spec.md
 - knowledge/decisions/adr-108-native-console-resource-publication.md
 - native/README.md

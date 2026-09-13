@@ -115,7 +115,11 @@ fn project_sides_orders_projects_by_id_within_a_side() {
     let sides = db.project_sides().unwrap();
     assert_eq!(sides.len(), 1);
     let ids: Vec<&str> = sides[0].projects.iter().map(|p| p.id.as_str()).collect();
-    assert_eq!(ids, ["p00", "p01", "p02"], "the statement's ORDER BY id governs");
+    assert_eq!(
+        ids,
+        ["p00", "p01", "p02"],
+        "the statement's ORDER BY id governs"
+    );
 }
 
 /// The bounded read: `registered` is COMPUTED against the config's own

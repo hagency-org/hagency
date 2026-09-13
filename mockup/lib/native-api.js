@@ -259,9 +259,11 @@ export function validateResources(value) {
   if (!object(value, ['resources', 'roles', 'next_after', 'permissions']) || !Array.isArray(value.resources) || value.resources.length > 16
     || !(value.next_after === null || id(value.next_after)) || !object(value.permissions, ['publishResource', 'configureResource']) || typeof value.permissions.publishResource !== 'boolean' || typeof value.permissions.configureResource !== 'boolean'
     || value.resources.some((r) => !validResource(r))
-    || !Array.isArray(value.roles) || value.roles.length !== 6 || value.roles.some((r) => !object(r, ['role', 'explicitPublication', 'available', 'crossFamily', 'defaultTier'])
+    || !Array.isArray(value.roles) || value.roles.length !== 6 || value.roles.some((r) => !object(r, ['role', 'explicitPublication', 'available', 'crossFamily', 'defaultTier', 'families', 'fillable', 'overTier'])
       || !text(r.role, 64) || !(r.explicitPublication === null || typeof r.explicitPublication === 'boolean') || typeof r.available !== 'boolean' || typeof r.crossFamily !== 'boolean'
-      || !(r.defaultTier === null || ['lightweight', 'medium', 'strong'].includes(r.defaultTier)))) throw new Error('invalid_native_response');
+      || !(r.defaultTier === null || ['lightweight', 'medium', 'strong'].includes(r.defaultTier))
+      || !Array.isArray(r.families) || r.families.length > 8 || r.families.some((f) => !text(f, 64))
+      || !number(r.fillable) || r.fillable > 1024 || !number(r.overTier) || r.overTier > 1024)) throw new Error('invalid_native_response');
   return value;
 }
 export function validateBudget(v) {
