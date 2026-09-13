@@ -263,6 +263,39 @@ export async function transitionAlert(key, to, note) {
 }
 export async function logoutNative() { await request('/session', { method: 'DELETE' }); }
 
+/* The read-only approval observation (ADR-138, PC-C2b): the list and single
+ * routes serve rows with exactly seven camelCase keys and no nested object,
+ * so the exact-key helper (set + count) is what keeps a widened server
+ * projection from rendering half a row. `state` is one of the seven CHECK
+ * words, `choice` one of the four snake_case words or null. A row can never
+ * carry a card or a preview: there is no key for one. */
+const APPROVAL_STATES = ['pending', 'decided', 'applying', 'uncertain', 'applied', 'invalidated', 'not_applied'];
+const APPROVAL_CHOICES = ['once', 'task', 'always', 'deny'];
+const approvalRow = (a) => object(a, ['id', 'state', 'choice', 'reusableScope', 'expiresAt', 'engagementId', 'projectRoomId'])
+  && id(a.id) && APPROVAL_STATES.includes(a.state)
+  && (a.choice === null || APPROVAL_CHOICES.includes(a.choice))
+  && typeof a.reusableScope === 'boolean' && number(a.expiresAt)
+  && id(a.engagementId) && (a.projectRoomId === null || text(a.projectRoomId, 256));
+export function validateApprovals(v) {
+  if (!object(v, ['approvals', 'next_after']) || !Array.isArray(v.approvals) || v.approvals.length > 16
+    || !(v.next_after === null || id(v.next_after))
+    || v.approvals.some((a) => !approvalRow(a))) throw new Error('invalid_native_response');
+  return v;
+}
+export function validateApproval(v) {
+  if (!approvalRow(v)) throw new Error('invalid_native_response');
+  return v;
+}
+export async function fetchApprovals(after = '') {
+  if (after && !id(after)) throw new Error('invalid_selection');
+  return validateApprovals(await request(`/api/approvals?limit=16${after ? `&after=${after}` : ''}`));
+}
+export async function fetchApproval(key) {
+  if (!id(key)) throw new Error('invalid_selection');
+  return validateApproval(await request(`/api/approvals/${encodeURIComponent(key)}`));
+}
+export function approvalsView(location) { return /^\/console\/approvals\/?$/.test(location.pathname); }
+
 const revision = (v) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
 const text = (v, max) => typeof v === 'string' && v.length <= max;
 const optionalText = (v, max) => v === null || text(v, max);

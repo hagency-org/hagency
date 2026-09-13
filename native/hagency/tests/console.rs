@@ -4,6 +4,8 @@ mod accounts;
 mod agents;
 #[path = "console/alerts.rs"]
 mod alerts;
+#[path = "console/approvals.rs"]
+mod approvals;
 #[path = "console/browser.rs"]
 #[cfg(feature = "native-console-browser")]
 mod browser;

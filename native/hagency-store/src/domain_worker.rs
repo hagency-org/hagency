@@ -1585,6 +1585,11 @@ impl DomainStore {
         self.call(weight(&after)?, move |db| db.approvals(&after, limit))
             .await
     }
+    /// The single-row observation read (C2b): the same seven named columns,
+    /// keyed by the approval's own id.
+    pub async fn approval(&self, id: String) -> Result<serde_json::Value, Error> {
+        self.call(weight(&id)?, move |db| db.approval(&id)).await
+    }
     pub async fn private_approval(
         &self,
         id: String,

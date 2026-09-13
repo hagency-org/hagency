@@ -1,0 +1,94 @@
+//! Read-only approval observation (ADR-138, PC-C2b): the bounded list read
+//! and the single-id read, served under the existing `authenticate` hoop with
+//! no scope and no new `Scope`. A read-only ticket installs `mutation: None`
+//! (`authority.rs:151-159`), so no mutation is reachable; the routes are
+//! GET-only and no verdict/consume/detail route exists on this path.
+//!
+//! The row is exactly seven camelCase keys — `id`, `state`, `choice`,
+//! `reusableScope`, `expiresAt`, `engagementId`, `projectRoomId` — drawn from
+//! the store's named `SELECT` (`APPROVAL_SELECT`). No nested object, no
+//! `description`/`config`/`application`/`observation`, no owner or room
+//! column, no card byte, so an undelivered approval can show its `state` and
+//! `choice` words and never a card, a preview or a delivery stage.
+use super::{Error, failed, recheck, usage::query};
+use crate::{refusal, resources::domain};
+use hagency_core::project::identifier;
+use salvo::prelude::*;
+
+pub(super) fn router() -> Router {
+    Router::new()
+        .push(Router::with_path("approvals").get(list))
+        .push(Router::with_path("approvals/{id}").get(single))
+}
+
+fn store_error(res: &mut Response, error: hagency_store::Error) {
+    let (status, code) = match error {
+        hagency_store::Error::Invalid(_) => (StatusCode::BAD_REQUEST, "invalid_approvals_query"),
+        hagency_store::Error::NotFound => (StatusCode::NOT_FOUND, "not_found"),
+        hagency_store::Error::Busy => (StatusCode::SERVICE_UNAVAILABLE, "busy"),
+        hagency_store::Error::OutcomeUnknown => (StatusCode::GATEWAY_TIMEOUT, "outcome_unknown"),
+        _ => (StatusCode::SERVICE_UNAVAILABLE, "approvals_unavailable"),
+    };
+    refusal(res, status, code);
+}
+
+#[handler]
+async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if query(req, &["after", "limit"], 192).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let after = req.query::<String>("after").unwrap_or_default();
+    let limit = match req.query::<String>("limit") {
+        None => 16,
+        Some(v) if v.bytes().all(|c| c.is_ascii_digit()) => v.parse::<usize>().unwrap_or(0),
+        _ => 0,
+    };
+    if !(1..=16).contains(&limit) || (!after.is_empty() && identifier(&after, 128).is_err()) {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.approvals(after, limit + 1).await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    match result {
+        Ok(mut rows) => {
+            let next_after =
+                (rows.len() > limit).then(|| rows[limit - 1]["id"].as_str().unwrap().to_owned());
+            rows.truncate(limit);
+            res.render(Json(
+                serde_json::json!({"approvals": rows, "next_after": next_after}),
+            ));
+        }
+        Err(error) => store_error(res, error),
+    }
+}
+
+#[handler]
+async fn single(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if req.uri().query().is_some() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let Some(id) = req.param::<String>("id") else {
+        failed(res, Error::Invalid);
+        return;
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.approval(id).await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    match result {
+        Ok(row) => res.render(Json(row)),
+        Err(error) => store_error(res, error),
+    }
+}

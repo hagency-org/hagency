@@ -2,6 +2,7 @@
 mod accounts;
 mod agents;
 mod alerts;
+mod approvals;
 mod assets;
 mod authority;
 pub mod client;
@@ -72,6 +73,7 @@ pub(crate) fn router() -> Router {
                 .push(alerts::router())
                 .push(agents::router())
                 .push(project_sides::router())
+                .push(approvals::router())
                 .push(resources::router())
                 .push(accounts::router())
                 .push(resource_configuration::router()),

@@ -22,8 +22,9 @@ await mkdir(join(staged, 'app', 'engagements'), { recursive: true, mode: 0o700 }
 await mkdir(join(staged, 'app', 'accounts'), { recursive: true, mode: 0o700 });
 await mkdir(join(staged, 'app', 'agents'), { recursive: true, mode: 0o700 });
 await mkdir(join(staged, 'app', 'project-sides'), { recursive: true, mode: 0o700 });
+await mkdir(join(staged, 'app', 'approvals'), { recursive: true, mode: 0o700 });
 for (const name of ['components', 'lib', 'package.json', 'jsconfig.json', 'next.config.mjs']) await cp(join(source, name), join(staged, name), { recursive: true });
-for (const name of ['layout.jsx', 'globals.css', 'usage/page.jsx', 'resources/page.jsx', 'resources/new/page.jsx', 'alerts/page.jsx', 'engagements/page.jsx', 'accounts/page.jsx', 'agents/page.jsx', 'project-sides/page.jsx']) await cp(join(source, 'app', name), join(staged, 'app', name));
+for (const name of ['layout.jsx', 'globals.css', 'usage/page.jsx', 'resources/page.jsx', 'resources/new/page.jsx', 'alerts/page.jsx', 'engagements/page.jsx', 'accounts/page.jsx', 'agents/page.jsx', 'project-sides/page.jsx', 'approvals/page.jsx']) await cp(join(source, name), join(staged, 'app', name));
 /*
  * ADR-145 build-time constants, staged inside the mkdtemp tree before
  * `next build` — no repo path is generated and nothing enters
@@ -75,7 +76,7 @@ const child = spawn(process.execPath, [next, 'build', '--webpack'], { cwd: stage
 const code = await new Promise((done, reject) => { child.once('error', reject); child.once('exit', done); });
 if (code !== 0) throw new Error(`Next build failed (${code}); staging retained at ${work}`);
 const exported = join(staged, 'out');
-const files = ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html', 'agents/index.html', 'project-sides/index.html'];
+const files = ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html', 'agents/index.html', 'project-sides/index.html', 'approvals/index.html'];
 async function walk(dir, relative) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = `${relative}/${entry.name}`;
@@ -85,7 +86,7 @@ async function walk(dir, relative) {
   }
 }
 await walk(join(exported, '_next', 'static'), '_next/static');
-const mime = (path) => ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html', 'agents/index.html', 'project-sides/index.html'].includes(path) ? 'text/html; charset=utf-8'
+const mime = (path) => ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html', 'agents/index.html', 'project-sides/index.html', 'approvals/index.html'].includes(path) ? 'text/html; charset=utf-8'
   : path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.css') ? 'text/css; charset=utf-8'
     : path.endsWith('.woff2') ? 'font/woff2' : path.endsWith('.woff') ? 'font/woff' : null;
 let total = 0; let largest = 0; const assets = [];
