@@ -75,7 +75,7 @@ const child = spawn(process.execPath, [next, 'build', '--webpack'], { cwd: stage
 const code = await new Promise((done, reject) => { child.once('error', reject); child.once('exit', done); });
 if (code !== 0) throw new Error(`Next build failed (${code}); staging retained at ${work}`);
 const exported = join(staged, 'out');
-const files = ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html'];
+const files = ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html', 'agents/index.html', 'project-sides/index.html'];
 async function walk(dir, relative) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const path = `${relative}/${entry.name}`;
@@ -85,7 +85,7 @@ async function walk(dir, relative) {
   }
 }
 await walk(join(exported, '_next', 'static'), '_next/static');
-const mime = (path) => ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html'].includes(path) ? 'text/html; charset=utf-8'
+const mime = (path) => ['usage/index.html', 'resources/index.html', 'resources/new/index.html', 'alerts/index.html', 'engagements/index.html', 'accounts/index.html', 'agents/index.html', 'project-sides/index.html'].includes(path) ? 'text/html; charset=utf-8'
   : path.endsWith('.js') ? 'text/javascript; charset=utf-8' : path.endsWith('.css') ? 'text/css; charset=utf-8'
     : path.endsWith('.woff2') ? 'font/woff2' : path.endsWith('.woff') ? 'font/woff' : null;
 let total = 0; let largest = 0; const assets = [];
