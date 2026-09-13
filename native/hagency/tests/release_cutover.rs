@@ -9,11 +9,69 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+use hagency_core::tasks::{DispatchInput, SessionBinding};
+use hagency_store::EffectOutcome;
+use serde_json::json;
+
+#[path = "../../hagency-store/tests/common/mod.rs"]
+mod domain;
+
+/// The start gate's explicit budget, named like the stop budget: the same
+/// 20-second figure as the unit's TimeoutStopSec, but this one bounds the
+/// /ready poll after start, not the drain after SIGTERM.
+const START_GATE_BUDGET: Duration = Duration::from_secs(20);
 
 fn binary() -> PathBuf {
     env!("CARGO_BIN_EXE_hagency").into()
+}
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+/// Plant the pending custody row through the store's own API — an admitted
+/// and approved request, a registered session, a canonical task and an
+/// enqueued (queued, never-started) dispatch — never a bare INSERT that
+/// references parent rows that do not exist. A queued dispatch is a pending
+/// row by the runbook's own vocabulary, and nothing in `serve` resolves it.
+fn seed_pending_dispatch(state: &Path) {
+    let mut db = hagency_store::DomainRepository::open(&state).unwrap();
+    db.register(&domain::registration()).unwrap();
+    let pool = domain::resource("pool", "seat", 1000);
+    db.put_resource(&pool).unwrap();
+    let proof = domain::proof(&domain::request("dryrun", "Worker", &pool, 100));
+    let engagement = db.admit(&proof, 1000).unwrap();
+    db.approve("approve", &proof, 1000).unwrap();
+    let effect = db.claim_effect().unwrap().unwrap();
+    db.observe_effect(
+        &effect.id,
+        effect.fence,
+        &EffectOutcome::Applied {
+            receipt: "fixture account".into(),
+        },
+    )
+    .unwrap();
+    db.register_session(&SessionBinding {
+        id: "session".into(),
+        engagement_id: engagement.id,
+        room_id: "!room:example.test".into(),
+        thread_root: None,
+    })
+    .unwrap();
+    db.create_canonical_task("task", "session", "Pending across restart", now_ms())
+        .unwrap();
+    db.enqueue_dispatch(&DispatchInput {
+        id: "dispatch".into(),
+        session_id: "session".into(),
+        task_id: Some("task".into()),
+        resources: vec![],
+        payload: json!({"instruction":"pending across the stop-start pair"}),
+    })
+    .unwrap();
 }
 fn workspace_version() -> String {
     // The workspace [workspace.package] version is the ONE version source;
@@ -181,8 +239,10 @@ fn spawn_service(state: &Path) -> Running {
 }
 fn wait_ready(running: &Running) {
     // The runbook's gate polls /ready, never /health (health is 200-while-live
-    // and proves nothing at cutover).
-    let until = Instant::now() + Duration::from_secs(20);
+    // and proves nothing at cutover). The poll is bounded by the start gate's
+    // own named budget, the same 20-second figure as the stop budget but
+    // bounding the start, not the drain.
+    let until = Instant::now() + START_GATE_BUDGET;
     loop {
         if http_status(&running.addr, "/ready") == Some(200) {
             return;
@@ -278,20 +338,7 @@ fn native_cutover_dryrun_pending_preserved_across_restart() {
     // outcome-unknown row; nothing is resolved, dropped or marked done.
     let root = tempfile::tempdir().unwrap();
     let state = init_state(root.path());
-    {
-        let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
-        db.execute_batch(
-            "INSERT INTO projects(fleet_id,id,generation,room_id,owner_mxid,owner_room_id)
-             VALUES('fleet','project_one',1,'!room:example.test','@owner:example.test','!dm:example.test');
-             INSERT INTO engagements(id,fleet_id,generation,request_id,digest,context,evidence,project_id,name,resource_id,tokens,state,projection)
-             VALUES('eng','fleet',1,'req','digest','{}','{}','project_one','agent','res',100,'active','{}');
-             INSERT INTO runner_sessions(id,engagement_id,binding,quarantined)
-             VALUES('session','eng','{}',0);
-             INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence)
-             VALUES('dispatch','session',NULL,'{\"instruction\":\"pending\"}','digest','outcome_unknown',1);",
-        )
-        .unwrap();
-    }
+    seed_pending_dispatch(&state);
     let mut first = spawn_service(&state);
     wait_ready(&first);
     term_then_observe_exit(&mut first, Duration::from_secs(20));
@@ -299,6 +346,8 @@ fn native_cutover_dryrun_pending_preserved_across_restart() {
     wait_ready(&second);
     {
         let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+        // The seeded pending row survives the stop-start pair exactly as it
+        // was planted: still queued, fence 0, never resolved or dropped.
         let row: (String, i64) = db
             .query_row(
                 "SELECT state,fence FROM runner_dispatches WHERE id='dispatch'",
@@ -306,7 +355,7 @@ fn native_cutover_dryrun_pending_preserved_across_restart() {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!(row, ("outcome_unknown".into(), 1));
+        assert_eq!(row, ("queued".into(), 0));
         let resolved: i64 = db
             .query_row(
                 "SELECT COUNT(*) FROM runner_outputs WHERE dispatch_id='dispatch'",

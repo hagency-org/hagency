@@ -38,8 +38,12 @@
   <key>RunAtLoad</key>
   <true/>
 
-  <!-- true, not {SuccessfulExit: false}: a clean SIGTERM exit must NOT be
-       restarted. See the supervisor plist's comment block for the same rule. -->
+  <!-- KeepAlive true restarts on ANY exit — a crash and a clean exit-0 —
+       and on a pid-kill. The only stop that stays stopped is
+         launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.hagency.native.plist
+       which REMOVES the job, so no KeepAlive policy of any form applies.
+       {SuccessfulExit: false} is the trap the supervisor plist documents:
+       the condition is evaluated for a never-run job and never starts it. -->
   <key>KeepAlive</key>
   <true/>
 

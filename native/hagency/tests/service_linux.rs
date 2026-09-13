@@ -7,20 +7,58 @@
 //! CI has no init system — the harness is not systemd itself; it proves
 //! the start/stop/restart contract the unit and installer rely on.
 use std::{
+    collections::BTreeMap,
     fs,
     io::{Read, Write},
     net::TcpStream,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+use hagency_core::tasks::{DispatchInput, SessionBinding};
+use hagency_store::EffectOutcome;
+use serde_json::json;
+
+#[path = "../../hagency-store/tests/common/mod.rs"]
+mod domain;
+
+/// The start gate's explicit budget, named like the stop budget: the same
+/// 20-second figure as the unit's TimeoutStopSec, but this one bounds the
+/// /ready poll after start, not the drain after SIGTERM.
+const START_GATE_BUDGET: Duration = Duration::from_secs(20);
 
 fn binary() -> PathBuf {
     env!("CARGO_BIN_EXE_hagency").into()
 }
 fn deploy_unit() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy/hagency-native.service")
+}
+/// Parse the unit into per-section directive maps — real `Key=Value` lines
+/// only, comments and blanks excluded — so the negative pins assert on the
+/// unit's directives, never on a comment string that merely names one.
+fn unit_directives(unit: &str) -> BTreeMap<String, Vec<(String, String)>> {
+    let mut sections: BTreeMap<String, Vec<(String, String)>> = BTreeMap::new();
+    let mut section = String::new();
+    for line in unit.lines() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
+            continue;
+        }
+        if line.starts_with('[') && line.ends_with(']') {
+            section = line[1..line.len() - 1].to_string();
+            sections.entry(section.clone()).or_default();
+            continue;
+        }
+        if let Some((key, value)) = line.split_once('=') {
+            sections
+                .entry(section.clone())
+                .or_default()
+                .push((key.to_string(), value.to_string()));
+        }
+    }
+    sections
 }
 /// The named refusal the spec fixes for the other hosted OSes (ADR-127):
 /// never skip, never pretend a service leg ran where it cannot. The leg
@@ -29,16 +67,54 @@ fn deploy_unit() -> PathBuf {
 fn refuse_not_linux() {
     assert_ne!(std::env::consts::OS, "linux");
     let unit = fs::read_to_string(deploy_unit()).expect("unit present on every leg");
-    assert!(unit.contains("ExecStart="), "ExecStart rendered");
-    assert!(unit.contains("--state-dir"), "state placeholder present");
-    assert!(!unit.contains("ExecStop="), "no ExecStop (F2)");
-    assert!(!unit.contains("KillMode="), "no KillMode (F2)");
-    assert!(!unit.contains("KillSignal="), "no KillSignal (F2)");
-    assert!(unit.contains("TimeoutStopSec=20"), "retained stop budget");
-    assert!(unit.contains("127.0.0.1:13300"), "loopback listen is fixed");
-    assert!(unit.contains("Restart=on-failure"), "restart policy");
-    assert!(unit.contains("RestartSec=5"), "restart interval");
-    assert!(unit.contains("StateDirectory=hagency-native"), "state root");
+    let sections = unit_directives(&unit);
+    let directive = |key: &str| {
+        sections
+            .get("Service")
+            .unwrap()
+            .iter()
+            .filter(|(k, _)| k == key)
+            .map(|(_, v)| v.as_str())
+            .collect::<Vec<_>>()
+    };
+    let exec_start = directive("ExecStart").join(" ");
+    assert!(exec_start.contains("serve"), "ExecStart runs serve");
+    assert!(
+        exec_start.contains("--state-dir"),
+        "state placeholder rendered"
+    );
+    assert!(
+        exec_start.contains("127.0.0.1:13300"),
+        "loopback listen is fixed"
+    );
+    assert!(
+        directive("ExecStop").is_empty(),
+        "no ExecStop directive (F2)"
+    );
+    assert!(
+        directive("KillMode").is_empty(),
+        "no KillMode directive (F2)"
+    );
+    assert!(
+        directive("KillSignal").is_empty(),
+        "no KillSignal directive (F2)"
+    );
+    assert_eq!(
+        directive("TimeoutStopSec").join(""),
+        "20",
+        "retained stop budget"
+    );
+    assert_eq!(
+        directive("Restart").join(""),
+        "on-failure",
+        "restart policy"
+    );
+    assert_eq!(directive("RestartSec").join(""), "5", "restart interval");
+    assert_eq!(
+        directive("StateDirectory").join(""),
+        "hagency-native",
+        "state root"
+    );
 }
 struct ServeGuard(Child);
 impl Drop for ServeGuard {
@@ -110,8 +186,10 @@ fn start_service(root: &Path) -> Running {
 }
 fn wait_ready(running: &Running) {
     // The start gate is /ready, never /health: health is 200-while-live and
-    // proves nothing at cutover (ADR-127 F8).
-    let until = Instant::now() + Duration::from_secs(20);
+    // proves nothing at cutover (ADR-127 F8). The poll is bounded by the
+    // start gate's own named budget, the same 20-second figure as the unit's
+    // TimeoutStopSec but bounding the start, not the drain.
+    let until = Instant::now() + START_GATE_BUDGET;
     loop {
         if http_status(&running.addr, "/ready") == Some(200) {
             return;
@@ -119,6 +197,52 @@ fn wait_ready(running: &Running) {
         assert!(Instant::now() < until, "service never answered ready 200");
         thread::sleep(Duration::from_millis(100));
     }
+}
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+/// Plant the pending custody row through the store's own API — an admitted
+/// and approved request, a registered session, a canonical task and an
+/// enqueued (queued, never-started) dispatch — never a bare INSERT that
+/// references parent rows that do not exist. A queued dispatch is a pending
+/// row by the spec's own vocabulary, and nothing in `serve` resolves it.
+fn seed_pending_dispatch(state: &Path) {
+    let mut db = hagency_store::DomainRepository::open(&state).unwrap();
+    db.register(&domain::registration()).unwrap();
+    let pool = domain::resource("pool", "seat", 1000);
+    db.put_resource(&pool).unwrap();
+    let proof = domain::proof(&domain::request("restart", "Worker", &pool, 100));
+    let engagement = db.admit(&proof, 1000).unwrap();
+    db.approve("approve", &proof, 1000).unwrap();
+    let effect = db.claim_effect().unwrap().unwrap();
+    db.observe_effect(
+        &effect.id,
+        effect.fence,
+        &EffectOutcome::Applied {
+            receipt: "fixture account".into(),
+        },
+    )
+    .unwrap();
+    db.register_session(&SessionBinding {
+        id: "session".into(),
+        engagement_id: engagement.id,
+        room_id: "!room:example.test".into(),
+        thread_root: None,
+    })
+    .unwrap();
+    db.create_canonical_task("task", "session", "Pending across restart", now_ms())
+        .unwrap();
+    db.enqueue_dispatch(&DispatchInput {
+        id: "dispatch".into(),
+        session_id: "session".into(),
+        task_id: Some("task".into()),
+        resources: vec![],
+        payload: json!({"instruction":"pending across the restart pair"}),
+    })
+    .unwrap();
 }
 fn send_term(child: &Child) {
     let status = Command::new("kill")
@@ -193,22 +317,9 @@ fn native_service_unit_restart_preserves_pending_state() {
     }
     let root = tempfile::tempdir().unwrap();
     let state = init_state(root.path());
-    // Seed one outcome-unknown custody row while nothing holds the store
-    // (the store stays locked to every other process once running).
-    {
-        let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
-        db.execute_batch(
-            "INSERT INTO projects(fleet_id,id,generation,room_id,owner_mxid,owner_room_id)
-             VALUES('fleet','project_one',1,'!room:example.test','@owner:example.test','!dm:example.test');
-             INSERT INTO engagements(id,fleet_id,generation,request_id,digest,context,evidence,project_id,name,resource_id,tokens,state,projection)
-             VALUES('eng','fleet',1,'req','digest','{}','{}','project_one','agent','res',100,'active','{}');
-             INSERT INTO runner_sessions(id,engagement_id,binding,quarantined)
-             VALUES('session','eng','{}',0);
-             INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence)
-             VALUES('dispatch','session',NULL,'{\"instruction\":\"pending\"}','digest','outcome_unknown',1);",
-        )
-        .unwrap();
-    }
+    // Plant the pending custody row through the store's own API while
+    // nothing holds the store (it stays locked once the service runs).
+    seed_pending_dispatch(&state);
     let mut first = spawn_service(&state);
     wait_ready(&first);
     term_then_observe_exit(&mut first, Duration::from_secs(20));
@@ -223,7 +334,7 @@ fn native_service_unit_restart_preserves_pending_state() {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!(row, ("outcome_unknown".into(), 1));
+        assert_eq!(row, ("queued".into(), 0));
         // Never resolved or dropped by the stop-start pair.
         let resolved: i64 = db
             .query_row(

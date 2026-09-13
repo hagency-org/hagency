@@ -12,8 +12,15 @@ use std::{
     path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
-    time::{Duration, Instant},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
+
+use hagency_core::tasks::{DispatchInput, SessionBinding};
+use hagency_store::EffectOutcome;
+use serde_json::json;
+
+#[path = "../../hagency-store/tests/common/mod.rs"]
+mod domain;
 
 fn binary() -> PathBuf {
     env!("CARGO_BIN_EXE_hagency").into()
@@ -21,48 +28,106 @@ fn binary() -> PathBuf {
 fn plist_path() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy/io.hagency.native.plist")
 }
-/// The plist contract every leg pins (ADR-133): RunAtLoad, KeepAlive TRUE
-/// (not {SuccessfulExit: false} — a clean SIGTERM exit must not restart),
-/// ThrottleInterval, log paths under the install dir, the FIXED loopback
-/// listen (a refusal, not a default), and the foreground serve argv.
+/// The plist contract every leg pins (ADR-133): RunAtLoad; KeepAlive true —
+/// which restarts on ANY exit, a crash and a clean exit-0 alike, and on a
+/// pid-kill; the only stop that stays stopped is `launchctl bootout`, which
+/// removes the job so no KeepAlive policy applies; ThrottleInterval; log
+/// paths under the install dir; the FIXED loopback listen (a refusal, not a
+/// default); the foreground serve argv. Keys are PARSED from the XML, never
+/// matched as comment substrings.
 fn assert_plist_contract() {
     let plist = fs::read_to_string(plist_path()).expect("plist present on every leg");
-    assert!(plist.contains("<key>Label</key>"), "label present");
-    assert!(
-        plist.contains("<string>io.hagency.native</string>"),
-        "label is io.hagency.native"
+    let value = |key: &str| plist_value(&plist, key);
+    assert_eq!(value("Label").as_deref(), Some("io.hagency.native"));
+    assert_eq!(
+        value("RunAtLoad").as_deref(),
+        Some("true"),
+        "RunAtLoad true: boot recovery"
     );
-    assert!(plist.contains("<key>RunAtLoad</key>"), "RunAtLoad present");
-    assert!(plist.contains("<key>KeepAlive</key>"), "KeepAlive present");
-    assert!(
-        plist.contains("<key>KeepAlive</key>\n  <true/>"),
-        "KeepAlive is true, not SuccessfulExit-keyed: a clean SIGTERM exit must not restart"
+    assert_eq!(
+        value("KeepAlive").as_deref(),
+        Some("true"),
+        "KeepAlive true restarts on ANY exit — a crash and a clean exit-0 — and on a \
+         pid-kill; the only stop that stays stopped is launchctl bootout, which removes \
+         the job so no KeepAlive policy applies"
     );
-    assert!(
-        plist.contains("<key>ThrottleInterval</key>"),
-        "ThrottleInterval present"
-    );
-    assert!(
-        plist.contains("<key>StandardOutPath</key>")
-            && plist.contains("<key>StandardErrorPath</key>"),
-        "both log paths present (no journald on macOS)"
-    );
-    assert!(
-        plist.contains("<string>127.0.0.1:13300</string>"),
-        "loopback listen is FIXED in the plist — no knob can make it non-loopback"
+    assert_eq!(
+        value("ThrottleInterval").as_deref(),
+        Some("10"),
+        "ThrottleInterval replaces RestartSec"
     );
     assert!(
-        plist.contains("__STATE_DIR__") && plist.contains("__INSTALL_DIR__"),
-        "explicit placeholders, never guessed defaults"
+        value("StandardOutPath").is_some_and(|v| v.contains("/logs/")),
+        "stdout log path under the install dir's logs/ (no journald on macOS)"
+    );
+    assert!(value("StandardErrorPath").is_some_and(|v| v.contains("/logs/")));
+    let arguments = plist_array_strings(&plist, "ProgramArguments");
+    assert!(
+        arguments.iter().any(|v| v.ends_with("/hagency")),
+        "ProgramArguments execs the native binary"
+    );
+    assert!(arguments.contains(&"serve".to_string()));
+    assert!(arguments.contains(&"--state-dir".to_string()));
+    assert!(
+        arguments.contains(&"127.0.0.1:13300".to_string()),
+        "the loopback listen is FIXED in ProgramArguments — a refusal, not a default"
     );
     assert!(
-        plist.contains("<string>serve</string>") && plist.contains("<string>--state-dir</string>"),
-        "ProgramArguments is the foreground serve command"
+        arguments.iter().any(|v| v == "__STATE_DIR__"),
+        "explicit state placeholder, never a guessed default"
     );
-    assert!(
-        plist.contains("bootout"),
-        "the deliberate stop is documented as launchctl bootout, not kill-by-pid"
-    );
+}
+
+/// Read one scalar plist value by key from the rendered XML — a real
+/// `<key>`/value pair, never a comment substring.
+fn plist_value(plist: &str, key: &str) -> Option<String> {
+    let lines: Vec<&str> = plist.lines().map(str::trim).collect();
+    let mut i = 0;
+    while i < lines.len() {
+        if lines[i] == format!("<key>{key}</key>") {
+            return lines.get(i + 1).copied().and_then(plist_scalar);
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Parse one scalar plist element line: `<true/>` → "true",
+/// `<string>x</string>` → "x", `<integer>10</integer>` → "10".
+fn plist_scalar(line: &str) -> Option<String> {
+    let inner = line.strip_prefix('<')?;
+    let (tag, rest) = inner.split_once('>')?;
+    if let Some(close) = rest.rfind("</") {
+        return Some(rest[..close].to_string());
+    }
+    // Self-closing element: <true/> parses as tag "true/".
+    tag.strip_suffix('/').map(str::to_string)
+}
+
+/// Read the `<array>` of strings following a key (ProgramArguments).
+fn plist_array_strings(plist: &str, key: &str) -> Vec<String> {
+    let lines: Vec<&str> = plist.lines().map(str::trim).collect();
+    let Some(start) = lines
+        .iter()
+        .position(|l| *l == format!("<key>{key}</key>"))
+        .and_then(|k| lines.iter().skip(k + 1).position(|l| *l == "<array>"))
+        .map(|a| a + 1)
+    else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    for line in &lines[start..] {
+        if *line == "</array>" {
+            break;
+        }
+        if let Some(value) = line
+            .strip_prefix("<string>")
+            .and_then(|v| v.strip_suffix("</string>"))
+        {
+            values.push(value.to_string());
+        }
+    }
+    values
 }
 /// The named refusal for the non-macOS hosted legs: never skip, never
 /// pretend an agent leg ran where launchd does not exist.
@@ -167,6 +232,52 @@ fn term_then_observe_exit(running: &mut Running, budget: Duration) -> bool {
 fn macos_leg() -> bool {
     cfg!(target_os = "macos")
 }
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_millis() as u64
+}
+/// Plant the pending custody row through the store's own API — an admitted
+/// and approved request, a registered session, a canonical task and an
+/// enqueued (queued, never-started) dispatch — never a bare INSERT that
+/// references parent rows that do not exist. A queued dispatch is a pending
+/// row by the spec's own vocabulary, and nothing in `serve` resolves it.
+fn seed_pending_dispatch(state: &Path) {
+    let mut db = hagency_store::DomainRepository::open(&state).unwrap();
+    db.register(&domain::registration()).unwrap();
+    let pool = domain::resource("pool", "seat", 1000);
+    db.put_resource(&pool).unwrap();
+    let proof = domain::proof(&domain::request("restart", "Worker", &pool, 100));
+    let engagement = db.admit(&proof, 1000).unwrap();
+    db.approve("approve", &proof, 1000).unwrap();
+    let effect = db.claim_effect().unwrap().unwrap();
+    db.observe_effect(
+        &effect.id,
+        effect.fence,
+        &EffectOutcome::Applied {
+            receipt: "fixture account".into(),
+        },
+    )
+    .unwrap();
+    db.register_session(&SessionBinding {
+        id: "session".into(),
+        engagement_id: engagement.id,
+        room_id: "!room:example.test".into(),
+        thread_root: None,
+    })
+    .unwrap();
+    db.create_canonical_task("task", "session", "Pending across restart", now_ms())
+        .unwrap();
+    db.enqueue_dispatch(&DispatchInput {
+        id: "dispatch".into(),
+        session_id: "session".into(),
+        task_id: Some("task".into()),
+        resources: vec![],
+        payload: json!({"instruction":"pending across the restart pair"}),
+    })
+    .unwrap();
+}
 #[test]
 fn native_launchd_agent_starts_and_reports_ready() {
     assert_plist_contract();
@@ -205,20 +316,7 @@ fn native_launchd_restart_preserves_pending_state() {
     }
     let root = tempfile::tempdir().unwrap();
     let state = init_state(root.path());
-    {
-        let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
-        db.execute_batch(
-            "INSERT INTO projects(fleet_id,id,generation,room_id,owner_mxid,owner_room_id)
-             VALUES('fleet','project_one',1,'!room:example.test','@owner:example.test','!dm:example.test');
-             INSERT INTO engagements(id,fleet_id,generation,request_id,digest,context,evidence,project_id,name,resource_id,tokens,state,projection)
-             VALUES('eng','fleet',1,'req','digest','{}','{}','project_one','agent','res',100,'active','{}');
-             INSERT INTO runner_sessions(id,engagement_id,binding,quarantined)
-             VALUES('session','eng','{}',0);
-             INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence)
-             VALUES('dispatch','session',NULL,'{\"instruction\":\"pending\"}','digest','outcome_unknown',1);",
-        )
-        .unwrap();
-    }
+    seed_pending_dispatch(&state);
     let mut first = spawn_service(&state);
     wait_ready(&first);
     term_then_observe_exit(&mut first, Duration::from_secs(20));
@@ -226,6 +324,8 @@ fn native_launchd_restart_preserves_pending_state() {
     wait_ready(&second);
     {
         let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+        // The seeded pending row survives the stop-start pair exactly as it
+        // was planted: still queued, fence 0, never resolved or dropped.
         let row: (String, i64) = db
             .query_row(
                 "SELECT state,fence FROM runner_dispatches WHERE id='dispatch'",
@@ -233,7 +333,7 @@ fn native_launchd_restart_preserves_pending_state() {
                 |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .unwrap();
-        assert_eq!(row, ("outcome_unknown".into(), 1));
+        assert_eq!(row, ("queued".into(), 0));
         let resolved: i64 = db
             .query_row(
                 "SELECT COUNT(*) FROM runner_outputs WHERE dispatch_id='dispatch'",
