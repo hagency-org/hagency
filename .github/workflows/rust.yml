@@ -58,6 +58,10 @@ jobs:
       matrix:
         os: [ubuntu-24.04, macos-15, windows-2025]
     runs-on: ${{ matrix.os }}
+    # 2026-09-13 operator decision: Windows is not a release target for now (no
+    # coding agent runs on Windows). The lane keeps running for its diagnostics,
+    # but its verdict no longer blocks the run; Ubuntu and macOS are the gate.
+    continue-on-error: ${{ matrix.os == 'windows-2025' }}
     # Hosted Windows at c96f76c: clippy 2 min, spec-binding inventory 7 min,
     # full tests 17 min (720 passed), then the release build ran past the old
     # 40-minute limit. Budget the whole job; no test deadline changes.

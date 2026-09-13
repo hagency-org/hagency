@@ -8282,3 +8282,7 @@ client qualification and ongoing identity/key management remain separate.
   state, and expected a terminal notice for a resolved row that the open-alerts
   read no longer lists. The driver now waits for the pressed control to leave
   the DOM (bounded) and asserts the no-open-alerts state after resolve.
+- 2026-09-13: operator decision: Windows is not a release target for now (no
+  coding agent runs on Windows). The hosted windows-2025 lane keeps running for
+  its diagnostics but no longer blocks the run; the approval product lineage
+  lands on the Ubuntu and macOS verdicts, and the Windows VM work is paused.
