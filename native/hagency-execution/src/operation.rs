@@ -353,17 +353,39 @@ impl Report {
         {
             live.release();
         }
+        // F3 (macOS-reachable): the deferred approval entries are released as
+        // soon as the *leader* stopped on every OS — their fate is settled by
+        // the turn-end rule the moment the child is gone — even where the
+        // supervisor cannot prove `whole_tree_stopped` (macOS). The live
+        // reservation and the retained owner still wait on the full
+        // `whole_tree_stopped` proof: custody/settlement must not claim "no
+        // detached child remains" on a leader-only stop.
+        if leader_stopped(self.cleanup) {
+            if let Some(approvals) = &mut self.approvals {
+                approvals.stopped();
+            }
+        }
         if stopped(self.cleanup) {
             if let Some(live) = &mut self.live {
                 live.release();
-            }
-            if let Some(approvals) = &mut self.approvals {
-                approvals.stopped();
             }
             self.owner.take();
         }
         self.cleanup
     }
+}
+/// The release predicate (F3, macOS-reachable): the owned child's *leader* is
+/// gone and it accepted the stop signals, so the run is physically over even
+/// where the supervisor cannot prove the whole detached tree is gone
+/// (`whole_tree_stopped` is Linux-only; the macOS supervisor refuses the
+/// stronger report and the non-Linux scopes force it `false`). The deferred
+/// approval entries are released on this — not on the stricter
+/// `whole_tree_stopped` — because their fate is settled by the turn-end rule
+/// the moment the leader stops, on every OS. This must stay out of the
+/// custody/settlement paths, which still need the full `whole_tree_stopped`
+/// proof to claim "no detached child remains".
+fn leader_stopped(cleanup: Cleanup) -> bool {
+    matches!(cleanup, Cleanup::Observed(report) if report.scope.leader_exited && report.scope.signals_accepted)
 }
 fn stopped(cleanup: Cleanup) -> bool {
     matches!(cleanup, Cleanup::Observed(report) if report.scope.whole_tree_stopped && report.scope.leader_exited && report.scope.signals_accepted)
@@ -890,12 +912,17 @@ async fn execute(
         _ => Protocol::Unknown,
     };
     report.cleanup = runner.stop();
+    // F3 (macOS-reachable): release the deferred approval entries as soon as
+    // the leader stopped on every OS; the live reservation and owner release
+    // still wait on the full `whole_tree_stopped` proof below.
+    if leader_stopped(report.cleanup)
+        && let Some(approvals) = &mut report.approvals
+    {
+        approvals.stopped();
+    }
     if stopped(report.cleanup) {
         if let Some(live) = &mut report.live {
             live.release();
-        }
-        if let Some(approvals) = &mut report.approvals {
-            approvals.stopped();
         }
     }
     if host.task_helper_enabled() {
