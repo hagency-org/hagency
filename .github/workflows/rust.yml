@@ -121,7 +121,14 @@ jobs:
       - run: node native/scripts/approval-vectors.mjs --check
       - run: node native/scripts/check-rust-spec-bindings.mjs
       - id: native-tests
-        run: cargo test --workspace --all-targets --locked --no-fail-fast
+        # ADR-140's operator-run qualification tests fail (never skip inside a
+        # test) while the evidence record is a placeholder — by design. Hosted
+        # runners have no codex binary and will never have real evidence, so the
+        # suite here explicitly skips the two selectors BY NAME; the selectors
+        # stay present for the spec-binding gate's --list inventory, the skip is
+        # recorded in this workflow (never inside a test), and the operator runs
+        # them on a host with the binary per ADR-140.
+        run: cargo test --workspace --all-targets --locked --no-fail-fast -- --skip native_codex_real_app_server
       - name: Qualify default Windows media storage with fresh process restoration
         if: ${{ !cancelled() && runner.os == 'Windows' }}
         shell: pwsh

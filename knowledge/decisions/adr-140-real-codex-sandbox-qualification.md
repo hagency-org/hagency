@@ -51,6 +51,14 @@ When the pinned Codex version moves, the operator re-runs the example and
 the evidence file changes in the same commit; the CI tests pin that
 co-movement.
 
+**The hosted workflow skips the two selectors by name, never inside a test:**
+`rust.yml`'s `native-tests` step runs the suite with
+`-- --skip native_codex_real_app_server`, because hosted runners have no codex
+binary and will never hold real evidence — the skip lives in the workflow (the
+one honest place for "not run here"), the selectors stay present for the
+binding gate's `--list` inventory, and the operator runs them on a host with
+the binary, as this ADR defines.
+
 ## Consequences
 
 Good, because the gate fails closed on missing evidence, the selectors bind
