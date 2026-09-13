@@ -360,10 +360,10 @@ impl Report {
         // reservation and the retained owner still wait on the full
         // `whole_tree_stopped` proof: custody/settlement must not claim "no
         // detached child remains" on a leader-only stop.
-        if leader_stopped(self.cleanup) {
-            if let Some(approvals) = &mut self.approvals {
-                approvals.stopped();
-            }
+        if leader_stopped(self.cleanup)
+            && let Some(approvals) = &mut self.approvals
+        {
+            approvals.stopped();
         }
         if stopped(self.cleanup) {
             if let Some(live) = &mut self.live {
@@ -924,10 +924,10 @@ async fn execute(
     {
         approvals.stopped();
     }
-    if stopped(report.cleanup) {
-        if let Some(live) = &mut report.live {
-            live.release();
-        }
+    if stopped(report.cleanup)
+        && let Some(live) = &mut report.live
+    {
+        live.release();
     }
     if host.task_helper_enabled() {
         // Observation only, after actual owner stop and before negative fencing.
