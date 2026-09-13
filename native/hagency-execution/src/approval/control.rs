@@ -61,6 +61,21 @@ pub(super) fn send_failure_with_termination(
     armed: bool,
     error: hagency_runtime::codex::session::Error,
 ) -> Failure {
+    // The post-turn-end window (ADR-046's who-closed-first): after the peer
+    // ends its turn the session phase is `Ended`, so `send_prepared_approval`
+    // refuses with `Error::State` — NOT `Transport(HostClosed)` — while the
+    // termination snapshot carries the real cause. A non-transport session
+    // error with a termination present is therefore classified by the
+    // termination's own cause, or the verdict silently degrades to
+    // `Protocol` (the macOS failure shape). Host-side causes keep the
+    // ADR-046 rule below; genuine session errors without a termination
+    // stay `Protocol`.
+    let error = match (&error, runner.transport_termination()) {
+        (hagency_runtime::codex::session::Error::State, Some(termination)) => {
+            hagency_runtime::codex::session::Error::Transport(termination.cause)
+        }
+        _ => error,
+    };
     let zero_accepted = runner
         .transport_termination()
         .and_then(|termination| termination.unconfirmed_write.as_ref())
