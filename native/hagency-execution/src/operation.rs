@@ -375,17 +375,21 @@ impl Report {
     }
 }
 /// The release predicate (F3, macOS-reachable): the owned child's *leader* is
-/// gone and it accepted the stop signals, so the run is physically over even
-/// where the supervisor cannot prove the whole detached tree is gone
-/// (`whole_tree_stopped` is Linux-only; the macOS supervisor refuses the
-/// stronger report and the non-Linux scopes force it `false`). The deferred
-/// approval entries are released on this — not on the stricter
-/// `whole_tree_stopped` — because their fate is settled by the turn-end rule
-/// the moment the leader stops, on every OS. This must stay out of the
-/// custody/settlement paths, which still need the full `whole_tree_stopped`
-/// proof to claim "no detached child remains".
+/// gone, so the run is physically over even where the supervisor cannot prove
+/// the whole detached tree is gone (`whole_tree_stopped` is Linux-only; the
+/// macOS supervisor refuses the stronger report and the non-Linux scopes force
+/// it `false`). The deferred approval entries are released on this — not on the
+/// stricter `whole_tree_stopped` — because their fate is settled by the
+/// turn-end rule the moment the leader stops, on every OS. `signals_accepted`
+/// is deliberately NOT a conjunct: macOS can report it false for a leader that
+/// already exited before the stop was signalled (EPERM on a zombie-only group,
+/// `signalled = group_accepted && child_accepted` in `unix.rs`), and the child's
+/// exit — not signal delivery — is the physical fact that settles these
+/// never-transmitted frames. This must stay out of the custody/settlement
+/// paths, which still need the full `whole_tree_stopped` proof to claim "no
+/// detached child remains".
 fn leader_stopped(cleanup: Cleanup) -> bool {
-    matches!(cleanup, Cleanup::Observed(report) if report.scope.leader_exited && report.scope.signals_accepted)
+    matches!(cleanup, Cleanup::Observed(report) if report.scope.leader_exited)
 }
 fn stopped(cleanup: Cleanup) -> bool {
     matches!(cleanup, Cleanup::Observed(report) if report.scope.whole_tree_stopped && report.scope.leader_exited && report.scope.signals_accepted)
