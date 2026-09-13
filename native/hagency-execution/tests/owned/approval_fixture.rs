@@ -304,8 +304,7 @@ pub(super) fn unconfirmed(f: &Fixture) {
     );
     if !quietly_resolved {
         assert_eq!(
-            recorded,
-            expected,
+            recorded, expected,
             "no entry resolved before its byte, so every sent frame must be recorded; trace: {trace}"
         );
     }

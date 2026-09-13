@@ -1,0 +1,33 @@
+    Checking tokio v1.53.1
+    Checking tokio-util v0.7.19
+    Checking hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+    Checking hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+    Checking readlock-tokio v0.1.6
+    Checking eyeball-im v0.8.0
+    Checking matrix-sdk-common v0.18.0
+    Checking h2 v0.4.19
+    Checking tokio-stream v0.1.19
+    Checking eyeball v0.8.8
+    Checking tokio-rustls v0.26.4
+    Checking matrix-sdk-crypto v0.18.0
+    Checking tower v0.5.3
+    Checking hyper v1.11.1
+    Checking deadpool-runtime v0.3.1
+    Checking tower-http v0.6.11
+    Checking deadpool-sync v0.2.0
+    Checking deadpool v0.13.1
+    Checking rmcp v1.8.0
+    Checking hyper-util v0.1.20
+    Checking hyper-rustls v0.27.9
+    Checking reqwest v0.12.28
+    Checking salvo_core v0.96.0
+    Checking hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Checking hagency-palpo v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-palpo)
+    Checking salvo v0.96.0
+    Checking matrix-sdk-base v0.18.0
+    Checking hagency-media v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-media)
+    Checking hagency-media-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-media-store)
+    Checking matrix-sdk-sqlite v0.18.0
+    Checking hagency-matrix v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix)
+    Checking hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 20.44s

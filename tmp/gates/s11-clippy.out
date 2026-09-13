@@ -1,0 +1,16 @@
+    Checking tokio v1.53.1
+    Checking hagency-platform v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-platform)
+    Checking once_cell v1.21.4
+    Checking tempfile v3.27.0
+    Checking hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+error: unused variable: `init`
+   --> native/hagency-runtime/src/codex/transport.rs:607:17
+    |
+607 |             let init = read_byte_line(&mut peer_in).await;
+    |                 ^^^^ help: if this is intentional, prefix it with an underscore: `_init`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: could not compile `hagency-runtime` (lib test) due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

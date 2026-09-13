@@ -1,0 +1,22 @@
+   Compiling hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.25s
+     Running tests/owned.rs (target/debug/deps/owned-36d7108ec34d13ab)
+
+running 1 test
+test workspace::native_workspace_binding_bounds ... FAILED
+
+failures:
+
+---- workspace::native_workspace_binding_bounds stdout ----
+
+thread 'workspace::native_workspace_binding_bounds' (88085474) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    workspace::native_workspace_binding_bounds
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 30 filtered out; finished in 0.05s
+
+error: test failed, to rerun pass `-p hagency-execution --test owned`

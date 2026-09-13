@@ -1,0 +1,7 @@
+    Checking tokio v1.53.1
+   Compiling getrandom v0.4.3
+    Checking tempfile v3.27.0
+    Checking hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+    Checking hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+    Checking hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 4.27s

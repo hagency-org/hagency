@@ -1,0 +1,91 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/runner.rs (target/debug/deps/runner-1eda19a6b7c3ad32)
+
+running 11 tests
+test native_runner_http_conversation_lifecycle ... FAILED
+test verified_ingress::native_runner_http_verified_ingress ... FAILED
+test native_runner_http_inbox_and_limits ... FAILED
+test native_runner_http_replies ... FAILED
+test native_runner_http_authority ... FAILED
+test native_runner_http_conversations ... FAILED
+test native_runner_http_delegation ... FAILED
+test native_runner_http_peer_mailbox ... FAILED
+test native_runner_http_task_lifecycle ... FAILED
+test native_runner_receive_current_authority ... FAILED
+test native_runner_http_graphs ... FAILED
+
+failures:
+
+---- native_runner_http_conversation_lifecycle stdout ----
+
+thread 'native_runner_http_conversation_lifecycle' (94108285) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- verified_ingress::native_runner_http_verified_ingress stdout ----
+
+thread 'verified_ingress::native_runner_http_verified_ingress' (94108294) panicked at native/hagency/tests/runner/verified_ingress.rs:11:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_inbox_and_limits stdout ----
+
+thread 'native_runner_http_inbox_and_limits' (94108289) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_replies stdout ----
+
+thread 'native_runner_http_replies' (94108291) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_authority stdout ----
+
+thread 'native_runner_http_authority' (94108284) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_conversations stdout ----
+
+thread 'native_runner_http_conversations' (94108286) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_delegation stdout ----
+
+thread 'native_runner_http_delegation' (94108287) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_peer_mailbox stdout ----
+
+thread 'native_runner_http_peer_mailbox' (94108290) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_task_lifecycle stdout ----
+
+thread 'native_runner_http_task_lifecycle' (94108292) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_receive_current_authority stdout ----
+
+thread 'native_runner_receive_current_authority' (94108293) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_runner_http_graphs stdout ----
+
+thread 'native_runner_http_graphs' (94108288) panicked at native/hagency/tests/runner.rs:46:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    native_runner_http_authority
+    native_runner_http_conversation_lifecycle
+    native_runner_http_conversations
+    native_runner_http_delegation
+    native_runner_http_graphs
+    native_runner_http_inbox_and_limits
+    native_runner_http_peer_mailbox
+    native_runner_http_replies
+    native_runner_http_task_lifecycle
+    native_runner_receive_current_authority
+    verified_ingress::native_runner_http_verified_ingress
+
+test result: FAILED. 0 passed; 11 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.86s
+
+error: test failed, to rerun pass `-p hagency --test runner`
