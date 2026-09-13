@@ -8277,3 +8277,8 @@ client qualification and ongoing identity/key management remain separate.
   the store's existing convention for ADD COLUMN migrations), and the sweep
   test drove `suppressed` straight to `acknowledged`, which the map refuses;
   the operator reopens first.
+- 2026-09-13: the real-browser pass for the alert transitions asserted the
+  served map right after the click while the page was still in its ready
+  state, and expected a terminal notice for a resolved row that the open-alerts
+  read no longer lists. The driver now waits for the pressed control to leave
+  the DOM (bounded) and asserts the no-open-alerts state after resolve.
