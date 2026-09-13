@@ -160,7 +160,7 @@ impl OwnedDispatchScope {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize)]
+#[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OwnedFailure {
     Admission,
@@ -173,6 +173,10 @@ pub enum OwnedFailure {
     Deadline,
     CleanupUnknown,
     SettlementUnknown,
+    /// A dispatch naming a framework with no native runner (ADR-142). The
+    /// payload carries the framework so the refusal word an operator reads
+    /// names the missing runner (`claude`), not a generic category.
+    UnsupportedRunner { framework: String },
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedObservation {
@@ -472,6 +476,26 @@ impl DomainRepository {
         };
         tx.commit()?;
         Ok(result)
+    }
+}
+
+#[cfg(test)]
+mod unsupported_runner_word_tests {
+    use super::*;
+    #[test]
+    fn native_owned_failure_unsupported_runner_word_names_the_framework() {
+        // ADR-142 / RUN-E: the operator-facing refusal word is the framework
+        // itself. OwnedFailure is a closed snake_case Serialize enum, so the
+        // payload variant serializes as its tag carrying the framework — an
+        // operator reading the fenced output meets `claude`, not a generic
+        // category word. This pin is deliberately SQLite-free so the word
+        // survives even where the store-backed integration leg cannot run.
+        let word = serde_json::to_value(OwnedFailure::UnsupportedRunner {
+            framework: "claude".into(),
+        })
+        .unwrap();
+        assert_eq!(word["unsupported_runner"]["framework"], "claude");
+        assert_eq!(word.as_object().unwrap().len(), 1);
     }
 }
 

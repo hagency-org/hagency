@@ -1,6 +1,7 @@
 #[path = "../../hagency-store/tests/common/mod.rs"]
 mod common;
 use common::*;
+use hagency_core::project::Resource;
 use hagency_core::tasks::*;
 use hagency_execution::{Failure, Host, Limits, Operation, Protocol, Settlement};
 use hagency_runtime::owned::Cleanup;
@@ -60,6 +61,13 @@ impl Fixture {
         Self::configured_account(approvals, false)
     }
     fn configured_account(approvals: bool, managed: bool) -> Self {
+        Self::configured_resource(approvals, managed, resource("pool", "seat", 1000))
+    }
+    fn configured_resource(
+        approvals: bool,
+        managed: bool,
+        unmanaged_pool: Resource,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("固定 工作目录");
         hagency_store::private::directory(&work).unwrap();
@@ -102,9 +110,8 @@ impl Fixture {
             let result = db.enroll_account_resource(command).unwrap();
             db.resource_configuration(&result.resource_id).unwrap()
         } else {
-            let pool = resource("pool", "seat", 1000);
-            db.put_resource(&pool).unwrap();
-            pool
+            db.put_resource(&unmanaged_pool).unwrap();
+            unmanaged_pool
         };
         let proof = proof(&request("allocation", "Worker", &pool, 100));
         let e = db.admit(&proof, 1000).unwrap();
@@ -476,6 +483,61 @@ async fn native_owned_dispatch_admission_and_protocol_failure() {
         drop(report);
         f.domain.shutdown().await.unwrap();
     }
+}
+
+#[tokio::test]
+async fn native_claude_dispatch_refuses_without_runner() {
+    // ADR-142 / RUN-E: a dispatch naming claude is refused by name before
+    // any workspace is resolved, custody-checked or process spawned. The
+    // host below deliberately maps a wrong workspace id and a missing
+    // executable: before the hoist this dispatch died inside the workspace
+    // get as the generic Failure::Admission; only the hoisted named guard
+    // can answer this configuration with the framework itself.
+    let claude_pool: Resource = serde_json::from_value(json!({
+        "presetId":"pool","seatId":"seat","framework":"claude",
+        "model":"claude-opus-5","provider":"anthropic",
+        "ceiling":{"tokens":1000,"period":"monthly"}
+    }))
+    .unwrap();
+    let f = Fixture::configured_resource(false, false, claude_pool);
+    let mut operation = Operation::start(
+        f.domain.clone(),
+        f.cap.clone(),
+        f.host("usage-gate", "not-work", true),
+        limits(),
+    )
+    .unwrap();
+    let report = operation.wait().await.unwrap();
+    assert_eq!(
+        report.failure,
+        Some(Failure::UnsupportedRunner {
+            framework: "claude".into()
+        })
+    );
+    assert_eq!(
+        report.settlement,
+        Settlement::Negative(OwnedObservation::Unstarted)
+    );
+    assert!(!f.marker().exists()); // refused before any spawn
+    assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
+    // The operator-facing refusal word is the payload-carrying projection:
+    // the closed OwnedFailure enum serializes the framework name itself,
+    // not only the category, so the word an operator reads is claude.
+    let output: String = f
+        .sql()
+        .query_row(
+            "SELECT output FROM runner_outputs WHERE dispatch_id='dispatch'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let refusal: serde_json::Value = serde_json::from_str(&output).unwrap();
+    assert_eq!(
+        refusal["host_owned_failure"]["unsupported_runner"]["framework"],
+        "claude"
+    );
+    drop(report);
+    f.domain.shutdown().await.unwrap();
 }
 
 #[tokio::test]

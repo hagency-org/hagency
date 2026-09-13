@@ -212,6 +212,16 @@ impl Host {
         capability: &RunnerCapability,
         limits: Limits,
     ) -> Result<Prepared, super::Failure> {
+        // ADR-142: a dispatch naming a framework with no native runner is
+        // refused by name before any workspace is resolved, custody-checked
+        // or process spawned. Hoisted above the resource slice and the
+        // workspace get/check so "no process and no workspace work" is
+        // literal, and distinct from the generic Admission refusal below.
+        if scope.resource().framework == "claude" {
+            return Err(super::Failure::UnsupportedRunner {
+                framework: scope.resource().framework.clone(),
+            });
+        }
         let [workspace] = scope.input().resources.as_slice() else {
             return Err(super::Failure::Admission);
         };

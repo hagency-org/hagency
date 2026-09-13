@@ -65,7 +65,7 @@ mod custody_tests {
             let mut status = handle.0.lock().unwrap();
             status.runtime = Some(RuntimeStatus::from(&observation));
             status.owned_failure = Some(owned_failure_label(
-                hagency_execution::Failure::UnsupportedApproval,
+                &hagency_execution::Failure::UnsupportedApproval,
             ));
             status.protocol = Some("not_started");
             status.cleanup = Some("whole_tree_stopped");
@@ -184,7 +184,7 @@ struct RuntimeStatus {
     write_accepted_bytes: Option<usize>,
     write_total_bytes: Option<usize>,
 }
-fn owned_failure_label(error: hagency_execution::Failure) -> &'static str {
+fn owned_failure_label(error: &hagency_execution::Failure) -> &'static str {
     use hagency_execution::Failure::*;
     match error {
         Admission => "admission",
@@ -201,6 +201,10 @@ fn owned_failure_label(error: hagency_execution::Failure) -> &'static str {
         CleanupUnknown => "cleanup_unknown",
         SettlementUnknown => "settlement_unknown",
         Worker => "worker",
+        // ADR-142: the named refusal for a dispatch whose framework has no
+        // native runner. The framework itself stays out of this fixed label
+        // vocabulary; the operator-facing word is the failure variant's own.
+        UnsupportedRunner { .. } => "unsupported_runner",
     }
 }
 /// Bounded projection of which store refusal produced a settlement failure.
@@ -352,7 +356,7 @@ impl StatusHandle {
         use hagency_execution::{Protocol, Settlement};
         use hagency_runtime::owned::Cleanup;
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
-        status.owned_failure = report.failure.map(owned_failure_label);
+        status.owned_failure = report.failure.as_ref().map(owned_failure_label);
         status.settlement_cause = report.settlement_cause.map(settlement_cause_label);
         status.runtime = report.runtime_observation().map(RuntimeStatus::from);
         status.protocol = Some(match report.protocol {

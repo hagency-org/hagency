@@ -22,7 +22,7 @@ use tokio::{
     time::{Instant, MissedTickBehavior, interval},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Failure {
     #[error("host dispatch admission refused")]
     Admission,
@@ -52,9 +52,11 @@ pub enum Failure {
     SettlementUnknown,
     #[error("host worker failed")]
     Worker,
+    #[error("no native runner exists for framework {framework}; the dispatch is refused before any spawn")]
+    UnsupportedRunner { framework: String },
 }
 impl Failure {
-    fn observation(self) -> OwnedFailure {
+    fn observation(&self) -> OwnedFailure {
         match self {
             Self::Admission | Self::UsageBinding => OwnedFailure::Admission,
             Self::Cancelled => OwnedFailure::Cancelled,
@@ -68,6 +70,9 @@ impl Failure {
             Self::Deadline => OwnedFailure::Deadline,
             Self::CleanupUnknown => OwnedFailure::CleanupUnknown,
             Self::SettlementUnknown => OwnedFailure::SettlementUnknown,
+            Self::UnsupportedRunner { framework } => OwnedFailure::UnsupportedRunner {
+                framework: framework.clone(),
+            },
         }
     }
 }
@@ -301,7 +306,7 @@ impl Report {
     pub async fn retry_reconcile(&mut self) -> Settlement {
         self.retry_stop();
         if let Some((domain, cap, failure)) = &self.reconciliation
-            && let Ok(value) = domain.observe_owned_failure(cap.clone(), *failure).await
+            && let Ok(value) = domain.observe_owned_failure(cap.clone(), failure.clone()).await
         {
             self.settlement = Settlement::Negative(value);
             self.reconciliation = None;
@@ -452,11 +457,14 @@ impl Operation {
                             Some(RuntimeObservation::capture(report.runtime_stage, owner));
                     }
                     report.retry_stop();
+                    // The payload-carrying refusal (ADR-142) forces one owned
+                    // observation here; project it before the move into `failure`.
+                    let observation = failure.observation();
                     report.failure = Some(failure);
                     report.reconciliation =
-                        Some((domain.clone(), capability.clone(), failure.observation()));
+                        Some((domain.clone(), capability.clone(), observation.clone()));
                     report.settlement = match runtime
-                        .block_on(domain.observe_owned_failure(capability, failure.observation()))
+                        .block_on(domain.observe_owned_failure(capability, observation))
                     {
                         Ok(value) => {
                             report.reconciliation = None;
