@@ -485,7 +485,11 @@ async fn native_receive_workspace_authority_read_deadline() {
 #[tokio::test]
 async fn native_receive_partial_destination_survives_unknown_outcome() {
     let f = fixture();
-    let mut operation = f.operation("receive-unknown");
+    // Same probe mode as every other receive test: the child blocks in the
+    // usage-gate loop, which keeps the dispatch in `started` — the state
+    // `start_received_file_write` re-validates. The unknown outcome is
+    // produced by close() (cancel), not by a probe mode.
+    let mut operation = f.operation("usage-gate");
     let binding = started(&f, &mut operation).await;
     let bytes = vec![b'r'; 64 * 1024 + 5];
     let mut held = owner(&f, &binding, 0, &bytes).await;
