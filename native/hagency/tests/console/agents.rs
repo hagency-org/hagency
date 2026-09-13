@@ -210,3 +210,79 @@ fn engagement_id_shape(value: &str) -> bool {
         && value.starts_with("en_")
         && value[3..].bytes().all(|b| b.is_ascii_hexdigit())
 }
+
+/// CL-S2 commit 1 — the store surface (ADR-130): `stop_dispatch_for_agent`
+/// resolves the engagement's dispatch through the live set or the unsettled
+/// stop row, fences only that dispatch, and is at-most-once by construction:
+/// a second call resolves the SAME dispatch id and fence, writes no second
+/// stop row, and still reports `stop_pending` — `stopped` stays false
+/// because no production path settles (settlement is the host's, uncallable
+/// from runtime-facing commands). Driven against the real DomainStore
+/// writer, not the HTTP surface.
+#[tokio::test]
+async fn native_console_stop_dispatch_for_agent_is_at_most_once() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    // The fixture's engagement carries a STARTED dispatch (uncertain), so
+    // the fence writes a dispatch_stops row and quarantines the session —
+    // never the settled word.
+    let first = f
+        .domain
+        .stop_dispatch_for_agent(f.engagement.clone(), 2000)
+        .await
+        .unwrap();
+    let keys = ["stopped", "stop_pending", "dispatch_id", "fence", "state"];
+    assert_eq!(first.as_object().unwrap().len(), keys.len());
+    for key in keys {
+        assert!(
+            first.as_object().unwrap().contains_key(key),
+            "carries {key}"
+        );
+    }
+    assert_eq!(first["stopped"], false, "no production path settles");
+    assert_eq!(first["stop_pending"], true, "an honest stop is pending");
+    assert_eq!(
+        first["state"], "outcome_unknown",
+        "the uncertain fence word"
+    );
+    let dispatch = first["dispatch_id"].as_str().unwrap().to_owned();
+    let fence = first["fence"].as_u64().unwrap();
+    assert!(!dispatch.is_empty());
+    // At-most-once: the second call resolves the same row, writes nothing
+    // new, and reports the same five keys.
+    let second = f
+        .domain
+        .stop_dispatch_for_agent(f.engagement.clone(), 2001)
+        .await
+        .unwrap();
+    assert_eq!(second["dispatch_id"], first["dispatch_id"]);
+    assert_eq!(second["fence"], first["fence"]);
+    assert_eq!(second["stop_pending"], true);
+    assert_eq!(second["stopped"], false);
+    let raw = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    let count: i64 = raw
+        .query_row(
+            "SELECT COUNT(*) FROM dispatch_stops WHERE dispatch_id=?1",
+            [&dispatch],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(count, 1, "exactly one stop row — no second write");
+    let settled: Option<u64> = raw
+        .query_row(
+            "SELECT settled_at FROM dispatch_stops WHERE dispatch_id=?1",
+            [&dispatch],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(settled, None, "the store never settles");
+    drop(raw);
+    // An engagement with no live dispatch and no unsettled stop row refuses
+    // with the store's NotFound — nothing to resolve, nothing fenced.
+    let absent = format!("{}_absent", f.engagement);
+    assert!(matches!(
+        f.domain.stop_dispatch_for_agent(absent, 2002).await,
+        Err(hagency_store::Error::NotFound)
+    ));
+    let _ = fence;
+    f.close().await;
+}

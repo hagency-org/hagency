@@ -1884,6 +1884,20 @@ impl DomainStore {
         })
         .await
     }
+    /// CL-S2 (ADR-130): the agent-lifecycle stop behind one writer job —
+    /// resolve the engagement's dispatch and fence it; at-most-once by
+    /// construction (see the repository entry). `settle_conversation_stop`
+    /// remains host-only and uncallable from runtime-facing commands.
+    pub async fn stop_dispatch_for_agent(
+        &self,
+        engagement: String,
+        now: u64,
+    ) -> Result<serde_json::Value, Error> {
+        self.call(weight(&engagement)?, move |db| {
+            db.stop_dispatch_for_agent(&engagement, now)
+        })
+        .await
+    }
     /// The host supplies an already inspected result, never a runner assertion.
     pub async fn settle_conversation_stop(
         &self,

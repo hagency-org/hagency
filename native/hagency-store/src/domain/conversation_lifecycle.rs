@@ -149,6 +149,80 @@ pub(super) fn retire(
     Ok(())
 }
 impl DomainRepository {
+    /// CL-S2 (ADR-130, D-SCOPE): the operator's stop act as the one public
+    /// store surface this slice adds — resolve the named engagement's
+    /// dispatch (the live set `queued|leased|started|parked`, or an
+    /// unsettled `dispatch_stops` row, newest by id across both) and fence
+    /// ONLY that dispatch: never `retire`'s session cascade. Fence-and-
+    /// record, never settle — `settle_conversation_stop` stays the host's
+    /// and remains uncallable from runtime-facing commands. At-most-once
+    /// by construction: a second call resolves the SAME unsettled row and
+    /// `fence_dispatch`'s `INSERT OR IGNORE` writes no second row. The
+    /// five-key wire object is served verbatim (the route adds no second
+    /// projection); `stopped` is true only on a settled stop row, which no
+    /// production path produces today, so an honest stop reports
+    /// `stop_pending`.
+    pub fn stop_dispatch_for_agent(
+        &mut self,
+        engagement: &str,
+        now: u64,
+    ) -> Result<serde_json::Value, Error> {
+        identifier(engagement, 128)?;
+        clock(now)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let live: Option<String> = tx
+            .query_row(
+                "SELECT d.id FROM runner_dispatches d JOIN runner_sessions n ON n.id=d.session_id \
+                 WHERE n.engagement_id=?1 AND d.state IN ('queued','leased','started','parked') \
+                 ORDER BY d.id DESC LIMIT 1",
+                [engagement],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let pending: Option<String> = tx
+            .query_row(
+                "SELECT s.dispatch_id FROM dispatch_stops s \
+                 JOIN runner_dispatches d ON d.id=s.dispatch_id \
+                 JOIN runner_sessions n ON n.id=d.session_id \
+                 WHERE n.engagement_id=?1 AND s.settled_at IS NULL \
+                 ORDER BY s.dispatch_id DESC LIMIT 1",
+                [engagement],
+                |r| r.get(0),
+            )
+            .optional()?;
+        // Newest by id across both arms — a live dispatch newer than an old
+        // unsettled row is the one the operator means.
+        let resolved = match (&live, &pending) {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (Some(a), None) | (None, Some(a)) => Some(a),
+            (None, None) => None,
+        };
+        let Some(dispatch) = resolved else {
+            return Err(Error::NotFound);
+        };
+        fence_dispatch(&tx, dispatch, engagement, now)?;
+        let (fence, state): (u64, String) = tx.query_row(
+            "SELECT fence,state FROM runner_dispatches WHERE id=?1",
+            [&dispatch],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        let (settled, unsettled): (bool, bool) = tx.query_row(
+            "SELECT EXISTS(SELECT 1 FROM dispatch_stops WHERE dispatch_id=?1 AND settled_at IS NOT NULL), \
+             EXISTS(SELECT 1 FROM dispatch_stops WHERE dispatch_id=?1 AND settled_at IS NULL)",
+            [&dispatch],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        tx.commit()?;
+        Ok(serde_json::json!({
+            "stopped": settled && !unsettled,
+            "stop_pending": unsettled,
+            "dispatch_id": dispatch,
+            "fence": fence,
+            "state": state,
+        }))
+    }
     pub fn change_internal_conversation(
         &mut self,
         cap: &RunnerCapability,
