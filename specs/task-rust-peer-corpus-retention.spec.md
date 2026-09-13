@@ -213,8 +213,10 @@ mirroring cites the frozen files rather than editing them.
 
 **Naming.** The selectors carry the `native_retained_peer_corpus_` prefix
 (the design's own `peer_corpus_` names under the lane's
-`native_retained_…` family), mirroring the messages-phase set one-for-one
-plus the identity-store replay the archive exists for.
+`native_retained_…` family). The set is **sixteen selectors against the
+messages phase's fourteen** — not a one-for-one mirror: the peer phase adds
+the identity-store replay, the engagement-release arm, the graph-move pair
+and the head-pin-current test the messages phase has no counterpart for.
 
 ## Out of Scope
 

@@ -162,7 +162,8 @@ first of all — and its identity is recorded in
 `retained_peer_index(source_key PK, digest, sequence, pruned_at_ms)`, so a
 re-presented key still answers `replayed`/`Conflict` exactly as the live
 lookup did. **Bodies are not retained**: the only post-prune reader —
-`admit`'s idempotency lookup (`peers.rs:166-182`) — needs identity, not
+`admit`'s idempotency lookup (`peers.rs:177`, the identity-store consult at
+`:228`) — needs identity, not
 content. The identity store's own bound is `PEER_RECEIPT_CEILING = 10_000`,
 pruned oldest-first by the same tick — a code fact with a real statement,
 not a prose claim. **A pinned row is simply not a candidate, never a failed
@@ -174,7 +175,7 @@ move** — the column and the persisted `WorkflowNode.message_sequence` config
 together, through the store's own save path — because `read` equality-checks
 the two; a column-only NULL would poison every later read with
 `Error::State`. The move is a release of custody, not an authorization:
-`admit_recovery` (`graphs.rs:374`) accepts a `complete` node *as well as*
+`admit_recovery` (`graphs.rs:394`) accepts a `complete` node *as well as*
 live states, so a moved binding refusing there with `RunnerAuthority` is the
 **intended direction** — the message is gone, and the recovery must be
 re-driven from the identity store.
@@ -209,7 +210,7 @@ line:** if a reopen path, an engagement reactivation, or a participant
 re-insert appears on the base, P2′ must be revisited.
 
 **The refusal backstop.** With the graph release and the bound in place, the
-`bounded_row(peer_messages, …, 100_000)` refusal (`peers.rs:185`) becomes
+`bounded_row(peer_messages, …, 100_000)` refusal (`peers.rs:246`) becomes
 reachable only when the corpus cannot drain at all — the all-pinned
 condition, one property — so it remains a backstop, never a reclaiming
 mechanism.
@@ -265,8 +266,8 @@ foreground caller that arrived in between, so no caller waits for more than one
 phase plus its own queue position. Each phase owns one `Immediate` transaction (the
 `ceiling_alerts.rs:112-114` shape); a phase that fails mid-way rolls back whole, and
 a tick is skipped or committed, never torn. On `Busy` or `OutcomeUnknown` a phase
-logs its refusal with its slice prefix (`[corpus]`, `[peer]`, `[retention]`,
-`[engagement]`, `[decision]`) and waits for the next tick — never an in-line retry.
+logs its refusal with its slice prefix (`[corpus]`, `[retention] peer`,
+`[retention]`, `[engagement]`, `[decision]`) and waits for the next tick — never an in-line retry.
 
 ### Budget
 
@@ -309,16 +310,17 @@ CREATE TABLE IF NOT EXISTS retention_prune_receipts (
 CREATE INDEX IF NOT EXISTS preceipt_at ON retention_prune_receipts(at_ms);
 ```
 
-One row per phase per tick, written immediately after that phase's own `Immediate`
-transaction commits — the builder's R4 amendment, matching the landed `messages`
-phase, which commits its prune and then writes the receipt — carrying the count,
-the oldest and newest reference it removed, the phase name, the over-ceiling
-figure, the cost and the clock. Because the sample is taken after the commit, the
-`elapsed_ms` it carries includes the commit's own cost and any SQLite lock wait,
-not only the in-transaction work — the number the batch-reduction rule consumes. A
-phase writes its row when `pruned > 0` **or** `remaining > 0`; a zero-work phase
-writes nothing. A writer inserts the receipt and trims it **by this clause** in the
-same step:
+One row per phase per tick, written **inside** that phase's own `Immediate`
+transaction — the receipt exists iff the phase committed, exactly as the
+Decision section's receipt rule states — carrying the count, the oldest and
+newest reference it removed, the phase name, the over-ceiling figure, the
+cost and the clock. `elapsed_ms` is sampled immediately before the commit
+and therefore **excludes** the commit's own cost and any SQLite lock wait;
+the post-commit sample is what the batch-reduction rule consumes (the
+Decision section's receipt rule is the single statement of this; this
+clause defers to it). A phase writes its row when `pruned > 0` **or**
+`remaining > 0`; a zero-work phase writes nothing. A writer inserts the
+receipt and trims it **by this clause** in the same step:
 
 ```sql
 DELETE FROM retention_prune_receipts
@@ -375,6 +377,10 @@ separate transactions.
 | `decisions` | **Slice 3** — in-write, never a phase | **Slice 3 only** — no other slice may name `decisions` in a phase or a cascade |
 | `runner_outputs`, `task_operation_receipts`, `graph_commands`, `final_reply_calls`, `conversation_operations`, `usage_receipts` | **Slice 2** — the per-dispatch bound | **Slice 6** — cascade, tier 1 |
 | `retained_message_archive` | **Slice 1** — owns the pin and the window | **Slice 6** — cascade, tier 2 |
+| `peer_messages` | **Slice 7** — the bound, the pin rule and the identity-store insert | **Slice 6** — cascade, tier 1 |
+| `peer_session_inputs` | **Slice 7** — unread or claimed-but-unprocessed | **Slice 6** — cascade, tier 1 |
+| `peer_dispatch_inputs` | **Slice 7** — live or `outcome_unknown` dispatch | **Slice 6** — cascade, tier 1 |
+| `retained_peer_index` | **Slice 7** — owns the `PEER_RECEIPT_CEILING` bound | **Slice 7 only** — bound delete, no cascade |
 
 ### The named product decisions
 
@@ -483,7 +489,8 @@ answers the retained membership/dedupe read.
 
 Bad, because a second bounded surface (`retained_message_archive`) now exists
 and must be swept in the same tick; because the console must read a new
-status method; because the fourteen schema-head assertions move in the same
+status method; because the peer slice's schema-head move — fifteen test files'
+`26`→`27` pins plus the `domain.rs` registry literal — lands in the same
 commit, widening the diff; and because atomic parity is not claimed: native
 pins rows the retained product would prune (it has no dispatch, task,
 attachment or provenance notion), so native cannot match retained parity on
