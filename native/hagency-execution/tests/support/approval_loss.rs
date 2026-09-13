@@ -850,7 +850,19 @@ async fn native_owned_approval_in_flight_resolution_completes_write() {
         report.runtime_observation(),
         crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
-    assert!(report.failure.is_none());
+    // Self-describing on macOS (the brief-26 run could only report the bare
+    // variant): the phase trace names which `LostAuthority` source fired —
+    // a `checked` phase followed by a store refusal indicts the recheck
+    // pump's barriers guard; a clean `checked → write-started` followed by
+    // the failure indicts the grant/entry match or the acknowledge path.
+    assert!(
+        report.failure.is_none(),
+        "{:?} {:?}; trace: {}; cancelled: {}",
+        report.failure,
+        report.runtime_observation(),
+        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id),
+        hagency_execution::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
     assert_eq!(host_response_frames(&work).len(), 1);
     assert_eq!(probe_read_frames(&work).len(), 1);
     let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
@@ -1350,6 +1362,16 @@ async fn native_owned_approval_turn_end_untransmitted() {
     assert!(
         trace.contains("turn-ended-in-flight-untransmitted"),
         "untransmitted arm never stamped; trace: {trace}"
+    );
+    // F3 (no leak on cancel): the deferred armed callback is released on
+    // stop — the run's termination settled its fate via the turn-end rule,
+    // so no armed entry may survive into the delivered report.
+    assert_eq!(
+        report.approval_custody().0,
+        0,
+        "a deferred armed callback must be released on stop; {:?} {:?}",
+        report.failure,
+        report.runtime_observation()
     );
     // Never transmitted: no frame, no accepted row.
     assert!(host_response_frames(&work).is_empty());
