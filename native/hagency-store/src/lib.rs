@@ -44,6 +44,10 @@ pub enum Error {
     LocalAuthority,
     #[error("runner capability is missing, stale or outside the task scope")]
     RunnerAuthority,
+    #[error("approval was already consumed")]
+    AlreadyConsumed,
+    #[error("approval is not consumable in its settled state")]
+    NotConsumable,
     #[error("session or resource requires inspected recovery")]
     Quarantined,
     #[error("invalid input: {0}")]

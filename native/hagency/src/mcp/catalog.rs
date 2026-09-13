@@ -40,16 +40,29 @@ pub(super) fn list(file_tools: bool, receive_tools: bool) -> Value {
             json!({"heartbeat":{"type":"boolean"},"waiting_reason":{"type":["string","null"],"maxLength":1024},"waiting_until":{"type":["string","null"],"maxLength":64}}),
             vec![],
         ),
+        (
+            "get_approval",
+            "Read the approval derived from the assigned task (never an approval id)",
+            json!({}),
+            vec![],
+        ),
+        (
+            "consume_approval",
+            "Apply the owner's decision on the approval derived from the assigned task; at-most-once through the stable call_id",
+            json!({}),
+            vec![],
+        ),
     ] {
         let mut properties = extra.as_object().unwrap().clone();
         properties.insert("id".into(), id.clone());
         let mut fields = vec!["id"];
-        if name != "get_task" {
+        if name != "get_task" && name != "get_approval" {
             properties.insert("call_id".into(), call.clone());
             fields.push("call_id");
         }
         fields.extend(required);
-        tools.push(json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":fields,"additionalProperties":false},"annotations":{"readOnlyHint":name=="get_task","destructiveHint":name!="get_task","idempotentHint":true,"openWorldHint":false}}));
+        let read = name == "get_task" || name == "get_approval";
+        tools.push(json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":fields,"additionalProperties":false},"annotations":{"readOnlyHint":read,"destructiveHint":!read,"idempotentHint":true,"openWorldHint":false}}));
     }
     tools.extend(super::coordination_catalog::tools());
     if file_tools {

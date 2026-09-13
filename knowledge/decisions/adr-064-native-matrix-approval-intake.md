@@ -165,6 +165,24 @@ Cross-platform integrated CI and live deployment are not inferred from local tes
 
 The approval collector preserves exact encrypted source and durable action receipts. It settles domain decisions without implying that cards were delivered or runtime permissions applied.
 
+## Amendment (PC-C3): the task-bound MCP approval pair and the named refusals
+
+The runner helper's two catalog tools (`get_approval`, `consume_approval`) are
+bound to the assigned task by derivation, never by a caller-supplied approval
+id: task → live dispatch → `approval_contexts` at the live fence → the newest
+`owner_approvals` row at that fence. The read serves `ApprovalSummary`'s four
+keys only — no owner mxid, no private room, no tool name or request detail —
+so the wire carries exactly what the summary shape already permits. The
+consume refuses with a NAMED word instead of the generic authority refusal:
+`already_consumed` once the row has settled into `applying`/`applied`, and
+`not_consumable` for `invalidated`/`not_applied`/`uncertain`; an undecided
+`pending` keeps the generic refusal. The decision input remains the owner's
+alone (no `choice` key exists on either tool). The helper process reaches the
+store through the runner host API; that host leg's approval route is the
+deferred piece (recorded in the spec's Out of Scope), which is why the tools'
+dispatch arms enforce their gates and name the leg rather than fabricating a
+result.
+
 ## Alternatives Considered
 
 Using ordinary room messages, caller verification flags or another collector's cursor would merge distinct authority purposes. Reinterpreting rejected ciphertext after trust changes would abandon immutable source custody.

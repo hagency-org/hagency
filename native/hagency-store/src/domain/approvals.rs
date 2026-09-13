@@ -421,6 +421,31 @@ impl DomainRepository {
         identifier(id, 128)?;
         summary(&self.db, id)
     }
+    /// The by-task lookup (ADR-064 amendment, PC-C3): task → the live
+    /// dispatch → `approval_contexts(dispatch_id, fence)` →
+    /// `owner_approvals(context_id)`, pinned deterministically because
+    /// `approval_context_dispatch` is non-unique and `owner_approvals` has no
+    /// unique `context_id` (013:30,:32) — the LIVE dispatch's current fence
+    /// and the NEWEST approval at that fence. Read-only; bounded to one row.
+    pub fn approval_for_task(&self, task: &str) -> Result<Option<ApprovalSummary>, Error> {
+        identifier(task, 128)?;
+        let id: Option<String> = self
+            .db
+            .query_row(
+                "SELECT a.id FROM owner_approvals a \
+                 JOIN approval_contexts c ON c.id=a.context_id \
+                 JOIN runner_dispatches d ON d.id=c.dispatch_id AND d.fence=c.fence \
+                 WHERE d.task_id=?1 AND d.state IN ('started','parked') \
+                 ORDER BY a.id DESC LIMIT 1",
+                [task],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(match id {
+            Some(id) => Some(summary(&self.db, &id)?),
+            None => None,
+        })
+    }
     pub fn private_approval(&self, id: &str, now: u64) -> Result<PrivateApproval, Error> {
         clock(now)?;
         identifier(id, 128)?;
@@ -877,8 +902,18 @@ fn consume(
             [id],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
         )?;
-    if !["pending", "decided"].contains(&state.as_str()) || (state == "pending" && expires > now) {
-        return Err(Error::RunnerAuthority);
+    // The semantic at-most-once gate (ADR-064 amendment, PC-C3): a settled
+    // approval refuses with a NAMED word instead of the generic authority
+    // refusal, so the runner learns what happened rather than that it was
+    // disallowed. `applying`/`applied` → already consumed;
+    // `invalidated`/`not_applied`/`uncertain` → not consumable; an undecided
+    // `pending` keeps the generic refusal (the request is not yet decided).
+    match state.as_str() {
+        "applying" | "applied" => return Err(Error::AlreadyConsumed),
+        "invalidated" | "not_applied" | "uncertain" => return Err(Error::NotConsumable),
+        "pending" if expires > now => return Err(Error::RunnerAuthority),
+        "pending" | "decided" => {}
+        _ => return Err(Error::RunnerAuthority),
     }
     let choice: Option<ApprovalChoice> = choice.map(|s| serde_json::from_str(&s)).transpose()?;
     let valid_grant = if let Some(grant) = grant {

@@ -328,6 +328,33 @@ impl Session {
                 },
             );
         }
+        // The approval pair (PC-C3, ADR-064 amendment): both tools inherit the
+        // task-binding gate above (their `id` is the assigned task, never an
+        // approval id), and neither accepts any extra key — no `choice` (the
+        // decision is the owner's), no `action`, no approval id, owner or room.
+        // The helper process reaches the store only through the runner host
+        // API, whose approval leg is the deferred piece (the same boundary the
+        // readiness memo's surface list draws); the arms enforce every gate
+        // they own and name that leg rather than silently fabricating data.
+        if name == "get_approval" {
+            if call_id.is_some() || !args.is_empty() {
+                return Ok(tool_error("Read tools take the assigned task id only"));
+            }
+            return Ok(tool_error(
+                "Approval host leg is not wired; the read is catalogued and task-bound",
+            ));
+        }
+        if name == "consume_approval" {
+            let Some(_call_id) = call_id else {
+                return Ok(tool_error("Missing stable call_id"));
+            };
+            if !args.is_empty() {
+                return Ok(tool_error("Unsupported approval fields"));
+            }
+            return Ok(tool_error(
+                "Approval host leg is not wired; the consume is catalogued and task-bound",
+            ));
+        }
         let action = match name {
             "get_task" if args.is_empty() && call_id.is_none() => None,
             "accept_task" => Some("accept"),
@@ -401,6 +428,8 @@ fn valid_call(params: Option<&Value>, file_tools: bool, receive_tools: bool) -> 
                 | "comment_task"
                 | "update_task_execution"
                 | "complete_task_with_reply"
+                | "get_approval"
+                | "consume_approval"
         )
     )) && p
         .keys()

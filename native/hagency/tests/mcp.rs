@@ -48,7 +48,7 @@ async fn native_mcp_protocol() {
     )
     .await
     .unwrap();
-    assert_eq!(catalog["result"]["tools"].as_array().unwrap().len(), 20);
+    assert_eq!(catalog["result"]["tools"].as_array().unwrap().len(), 22);
     for tool in catalog["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["inputSchema"]["additionalProperties"], false);
         assert!(!tool.to_string().contains("secret"));
@@ -235,7 +235,7 @@ async fn native_mcp_receive_presentation() {
         let tools = replies[1]["result"]["tools"].as_array().unwrap();
         assert_eq!(
             tools.len(),
-            20 + 2 * usize::from(send) + 2 * usize::from(receive)
+            22 + 2 * usize::from(send) + 2 * usize::from(receive)
         );
         for name in ["list_received_files", "receive_file"] {
             let tool = tools.iter().find(|tool| tool["name"] == name);
@@ -417,7 +417,7 @@ async fn native_mcp_file_presentation() {
     assert_eq!(replies.len(), 2 + invalid_count);
     assert_eq!(replies[1]["id"], "catalog");
     let tools = replies[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 22);
+    assert_eq!(tools.len(), 24);
     let send = tools
         .iter()
         .find(|tool| tool["name"] == "send_file")
@@ -451,5 +451,151 @@ async fn native_mcp_file_presentation() {
                 .unwrap()
                 .contains("invalid native command")
         );
+    }
+}
+
+/// PC-C3 (ADR-064 amendment): the two approval tools are catalogued within
+/// their bounds — `get_approval` declares exactly `id` with the read
+/// annotations, `consume_approval` exactly `id`+`call_id` with the mutation
+/// ones, both closed by `additionalProperties:false`, and neither admits an
+/// approval id, owner, room, `choice` or `action` key (an extra key is a
+/// schema-level protocol error, not a silent ignore).
+#[tokio::test]
+async fn native_mcp_approval_tools_are_catalogued_and_bounded() {
+    let mut s = session();
+    request(&mut s, init(json!("1"))).await.unwrap();
+    // A notification takes no reply — assert it, do not unwrap it.
+    assert!(
+        request(
+            &mut s,
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        )
+        .await
+        .is_none()
+    );
+    let catalog = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+    )
+    .await
+    .unwrap();
+    let tools = catalog["result"]["tools"].as_array().unwrap();
+    let get = tools
+        .iter()
+        .find(|tool| tool["name"] == "get_approval")
+        .expect("get_approval is catalogued");
+    let consume = tools
+        .iter()
+        .find(|tool| tool["name"] == "consume_approval")
+        .expect("consume_approval is catalogued");
+    let properties = get["inputSchema"]["properties"].as_object().unwrap();
+    assert_eq!(properties.len(), 1, "get_approval declares id only");
+    assert!(properties.contains_key("id"));
+    assert!(!properties.contains_key("call_id"));
+    assert_eq!(get["inputSchema"]["required"].as_array().unwrap().len(), 1);
+    assert_eq!(get["inputSchema"]["additionalProperties"], false);
+    assert_eq!(get["annotations"]["readOnlyHint"], true);
+    assert_eq!(get["annotations"]["destructiveHint"], false);
+    assert_eq!(get["annotations"]["idempotentHint"], true);
+    assert_eq!(get["annotations"]["openWorldHint"], false);
+    let properties = consume["inputSchema"]["properties"].as_object().unwrap();
+    assert_eq!(
+        properties.len(),
+        2,
+        "consume_approval declares id and call_id"
+    );
+    assert!(properties.contains_key("call_id"));
+    assert_eq!(consume["inputSchema"]["additionalProperties"], false);
+    assert_eq!(consume["annotations"]["readOnlyHint"], false);
+    assert_eq!(consume["annotations"]["destructiveHint"], true);
+    assert_eq!(consume["annotations"]["idempotentHint"], true);
+    for tool in [get, consume] {
+        for key in [
+            "approval_id",
+            "owner_mxid",
+            "room_id",
+            "choice",
+            "action",
+            "tool_name",
+        ] {
+            assert!(
+                !tool["inputSchema"]["properties"]
+                    .as_object()
+                    .unwrap()
+                    .contains_key(key),
+                "{key} is not a declared property"
+            );
+        }
+    }
+    // A forbidden extra key is refused by the tool's closed schema: the
+    // argument check is the tool's own (additionalProperties:false), so the
+    // refusal is an isError result naming the bound, not a protocol error.
+    let refused = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"get_approval","arguments":{"id":"task","choice":"always"}}}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(refused["result"]["isError"], true);
+    assert!(
+        refused["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Read tools take the assigned task id only")
+    );
+    // A correctly-shaped read reaches dispatch and is answered, never guessed.
+    let call = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"get_approval","arguments":{"id":"task"}}}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(call["result"]["isError"], true);
+    assert!(call["result"].get("structuredContent").is_none());
+    // The mutation without its stable call_id is refused by name.
+    let bare = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"consume_approval","arguments":{"id":"task"}}}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(bare["result"]["isError"], true);
+    assert!(
+        bare["result"]["content"][0]["text"]
+            .as_str()
+            .unwrap()
+            .contains("Missing stable call_id")
+    );
+}
+
+/// PC-C3: both approval tools are bound to the session's assigned task — a
+/// call naming any other task is refused by the binding gate before the tool
+/// body runs, for the read and the mutation alike.
+#[tokio::test]
+async fn native_mcp_approval_is_bound_to_the_assigned_task() {
+    let mut s = session();
+    request(&mut s, init(json!("1"))).await.unwrap();
+    // A notification takes no reply — assert it, do not unwrap it.
+    assert!(
+        request(
+            &mut s,
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        )
+        .await
+        .is_none()
+    );
+    for (id, name) in [(json!(2), "get_approval"), (json!(3), "consume_approval")] {
+        let reply = request(
+            &mut s,
+            json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":name,"arguments":{"id":"another_task","call_id":"stable_call_one"}}}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(reply["result"]["isError"], true, "{name}");
+        assert_eq!(
+            reply["result"]["content"][0]["text"],
+            "Task ID differs from the assigned task"
+        );
+        assert!(reply["result"].get("structuredContent").is_none());
     }
 }

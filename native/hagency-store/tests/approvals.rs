@@ -10,7 +10,7 @@ mod responses;
 use common::*;
 use hagency_core::{approvals::*, replies::*, tasks::*};
 use hagency_store::{DomainRepository, DomainStore, EffectOutcome, Error};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::collections::BTreeSet;
 
 struct Fixture {
@@ -1117,3 +1117,111 @@ async fn native_console_approval_list_read_is_bounded() {
 
 #[path = "approvals/intake.rs"]
 mod intake;
+
+/// PC-C3 (ADR-064 amendment): the semantic at-most-once gate. The first
+/// consume moves the approval to `applying`; a second consume — the fresh
+/// attempt, distinct from a receipt replay — refuses with the NAMED word
+/// `already_consumed`, and a settled state that can never be applied refuses
+/// `not_consumable`. Neither refusal moves the row.
+#[test]
+fn native_mcp_approval_consume_is_at_most_once() {
+    let mut f = Fixture::new(true);
+    let a = f.admit(0, 1);
+    f.choose(&a.id, ApprovalChoice::Once);
+    let first =
+        f.db.consume_owner_approval(&f.caps[0], &a.id, 1014)
+            .unwrap();
+    assert_eq!(first.id, a.id);
+    assert_eq!(
+        f.sql()
+            .query_row(
+                "SELECT state FROM owner_approvals WHERE id=?1",
+                [&a.id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        "applying",
+        "the first consume applied the verdict"
+    );
+    assert!(matches!(
+        f.db.consume_owner_approval(&f.caps[0], &a.id, 1015),
+        Err(Error::AlreadyConsumed)
+    ));
+    f.sql()
+        .execute(
+            "UPDATE owner_approvals SET state='uncertain' WHERE id=?1",
+            [&a.id],
+        )
+        .unwrap();
+    assert!(matches!(
+        f.db.consume_owner_approval(&f.caps[0], &a.id, 1016),
+        Err(Error::NotConsumable)
+    ));
+    assert_eq!(
+        f.sql()
+            .query_row(
+                "SELECT state FROM owner_approvals WHERE id=?1",
+                [&a.id],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+        "uncertain",
+        "the refusals never re-applied or moved the row"
+    );
+}
+
+/// PC-C3: the by-task lookup serves exactly the four `ApprovalSummary` keys
+/// and omits the owner room, the owner mxid and the tool detail at the byte
+/// level — the escaped-prone pair (the request's command text and workspace)
+/// asserted over the DECODED string values, the metacharacter-free withheld
+/// names over the RAW serialized bytes, the two value classes the readiness
+/// memo states.
+#[test]
+fn native_mcp_approval_projection_omits_owner_room_and_tool_detail() {
+    let mut f = Fixture::new(true);
+    let a = f.admit(0, 1);
+    let view =
+        f.db.approval_for_task("task_a")
+            .unwrap()
+            .expect("the assigned task derives its approval");
+    assert_eq!(view.id, a.id);
+    assert_eq!(view.state, "pending");
+    assert!(f.db.approval_for_task("task_missing").unwrap().is_none());
+    let raw = serde_json::to_vec(&view).unwrap();
+    for withheld in [
+        b"@owner:example.test" as &[u8],
+        b"!private:example.test",
+        b"item/commandExecution/requestApproval",
+        b"description",
+        b"owner_mxid",
+        b"owner_dm_room_id",
+        b"tool_name",
+        b"input_preview",
+    ] {
+        assert!(
+            !raw.windows(withheld.len()).any(|w| w == withheld),
+            "the raw view leaked the withheld name {}",
+            String::from_utf8_lossy(withheld)
+        );
+    }
+    let value: serde_json::Value = serde_json::from_slice(&raw).unwrap();
+    let mut keys = value.as_object().unwrap().keys().collect::<Vec<_>>();
+    keys.sort_unstable();
+    assert_eq!(keys, vec!["choice", "id", "reusable_scope", "state"]);
+    fn decoded_strings(value: &Value, out: &mut String) {
+        match value {
+            Value::String(s) => out.push_str(s),
+            Value::Array(items) => items.iter().for_each(|v| decoded_strings(v, out)),
+            Value::Object(map) => map.values().for_each(|v| decoded_strings(v, out)),
+            _ => {}
+        }
+    }
+    let mut decoded = String::new();
+    decoded_strings(&value, &mut decoded);
+    for secret in ["echo approved", "/work/a"] {
+        assert!(
+            !decoded.contains(secret),
+            "the decoded view leaked the escaped-prone value {secret}"
+        );
+    }
+}
