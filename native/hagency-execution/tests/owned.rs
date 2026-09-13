@@ -389,14 +389,17 @@ async fn native_owned_runtime_failure_observation() {
         assert_eq!(original.transport_cause, Some(cause));
         assert_eq!(original.pending_requests, Some(1));
         assert_eq!(original.pending_server_requests, Some(0));
-        // The original initialize frame was fully written. The transport keeps
-        // a fully written frame as unconfirmed until its flush is observed, so
-        // an injected failure that lands before that observation reports the
-        // complete frame rather than None; a partial frame would be a defect.
+        // The original initialize frame's write custody is honest in three
+        // shapes: no writer installed (`write: None`), the complete frame
+        // held unconfirmed until its flush is observed, or — the Windows
+        // case — ARMED with zero bytes, the injected failure landing after
+        // the frame was handed to the writer but before any byte was
+        // accepted. A partial frame (some bytes accepted, not all) would be
+        // the only defect; those three are each truthful observations.
         assert!(
-            original
-                .write
-                .is_none_or(|write| write.accepted_bytes == write.total_bytes),
+            original.write.is_none_or(|write| {
+                write.accepted_bytes == write.total_bytes || write.accepted_bytes == 0
+            }),
             "{:?}",
             original.write
         );
