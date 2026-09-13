@@ -602,7 +602,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 31,
+                version: 32,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -643,6 +643,12 @@ impl DomainRepository {
                     ),
                     (30, include_str!("migrations/030-engagement-retention.sql")),
                     (31, include_str!("migrations/031-execution-retention.sql")),
+                    // The number follows landing order: base head 31 + 1.
+                    // Integration renumbers again if another slice lands first.
+                    (
+                        32,
+                        include_str!("migrations/032-approval-denial-reason.sql"),
+                    ),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[

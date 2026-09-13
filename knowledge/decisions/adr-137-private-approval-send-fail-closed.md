@@ -37,10 +37,10 @@ store wrapper, `deny_for_failed_delivery`** on `DomainRepository` with its
 (`decide_verdict` is private and takes an owner's
 `OwnerVerdictObservation`, which a delivery failure is not), **at most once
 per request**: a second call is idempotent on the receipt and differing
-content is refused. **The reason has a storage home**: migration **031**
+content is refused. **The reason has a storage home**: migration **029**
 adds one nullable `denial_reason TEXT` to `approval_verdict_receipts` via
-`ADD COLUMN` (029 stays MA-S4's, 030 MA-S2's; the schema-head pin moves to
-31 **in the tests that pin it**, in this slice's own commit — every
+`ADD COLUMN` (the number follows landing order — base head 28 + 1; the schema-head pin moves to
+29 **in the tests that pin it**, in this slice's own commit — every
 `assert_eq!(… user_version …)` site moves, every `pragma_update` rewind
 stays). The request never sits `pending` after a failed send, and the denial
 is recorded **where PC-C2's observation read and PC-C3's tools read it** —

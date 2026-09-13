@@ -1548,6 +1548,21 @@ impl DomainStore {
         })
         .await
     }
+    /// The fail-closed delivery denial (ADR-137, D-PC-FC): denies the pending
+    /// request and mints the kind-deny receipt carrying the named reason.
+    /// Distinct public entry point from the owner-verdict path; the receipt
+    /// at-most-once rule is shared (idempotent per request, differing reason
+    /// refused).
+    pub async fn deny_for_failed_delivery(
+        &self,
+        request_id: String,
+        reason: String,
+    ) -> Result<hagency_core::approvals::ApprovalSummary, Error> {
+        self.call(weight(&request_id)?, move |db| {
+            db.deny_for_failed_delivery_clock(&request_id, &reason, writer_time)
+        })
+        .await
+    }
     pub async fn consume_owner_approval(
         &self,
         cap: RunnerCapability,

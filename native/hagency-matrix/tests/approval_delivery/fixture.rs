@@ -294,6 +294,14 @@ pub async fn respond_with(
     } else if request.method == "PUT" && request.target.contains("/sendToDevice/") {
         peer.share(body).await;
         (200, json!({}))
+    } else if request.method == "PUT"
+        && request
+            .target
+            .contains("/send/com.agentchat.approval.status.v1/")
+    {
+        // The redacted public status notice is a plaintext project-room send,
+        // never an encrypted private-room event — its own branch, no decrypt.
+        (200, json!({"event_id":"$status_notice"}))
     } else if request.method == "PUT" && request.target.contains("/send/") {
         peer.decrypt(body, ROOM.try_into().unwrap()).await;
         (200, json!({"event_id":"$card_accepted"}))

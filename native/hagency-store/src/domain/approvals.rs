@@ -495,6 +495,86 @@ impl DomainRepository {
         tx.commit()?;
         Ok(result)
     }
+    /// The fail-closed delivery denial (ADR-137, D-PC-FC): a private send that
+    /// did not reach `Accepted` denies the pending request. Distinct from the
+    /// owner-verdict path on purpose — a delivery failure is not an owner's
+    /// `OwnerVerdictObservation` — but the receipt at-most-once rule is shared:
+    /// a second call for the same request is idempotent on the receipt, and a
+    /// differing reason is refused. Never grants, never retries, never
+    /// reconstructs a packet; if this write fails the row stays `pending` and
+    /// the failure surfaces to the caller.
+    pub fn deny_for_failed_delivery(
+        &mut self,
+        request_id: &str,
+        reason: &str,
+        now: u64,
+    ) -> Result<ApprovalSummary, Error> {
+        self.deny_for_failed_delivery_clock(request_id, reason, || Ok(now))
+    }
+    pub(crate) fn deny_for_failed_delivery_clock(
+        &mut self,
+        request_id: &str,
+        reason: &str,
+        sample: impl FnOnce() -> Result<u64, Error>,
+    ) -> Result<ApprovalSummary, Error> {
+        identifier(request_id, 128)?;
+        text(reason, 256)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let now = sample()?;
+        clock(now)?;
+        // This path's receipt identity is its own source: the delivery
+        // failure itself, never an owner event (which a failure is not).
+        let source = canonical::digest(&json!(["approval-delivery-failure", request_id]))?;
+        let digest = canonical::digest(&json!([request_id, reason]))?;
+        let old: Option<String> = tx
+            .query_row(
+                "SELECT digest FROM approval_verdict_receipts WHERE source_key=?1",
+                [&source],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(old) = old {
+            if old != digest {
+                return Err(Error::Conflict);
+            }
+            return summary(&tx, request_id);
+        }
+        let state: Option<String> = tx
+            .query_row(
+                "SELECT state FROM owner_approvals WHERE id=?1",
+                [request_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        match state.as_deref() {
+            None => return Err(Error::NotFound),
+            Some("pending") => {}
+            // Already decided by another path (an owner verdict or a prior
+            // denial under a different reason identity): never overwrite the
+            // recorded decision with a second one.
+            Some(_) => return Err(Error::State),
+        }
+        bounded_row(
+            &tx,
+            "approval_verdict_receipts",
+            "source_key",
+            &source,
+            100_000,
+        )?;
+        tx.execute(
+            "INSERT INTO approval_verdict_receipts(source_key,digest,request_id,denial_reason) VALUES(?1,?2,?3,?4)",
+            params![source, digest, request_id, reason],
+        )?;
+        tx.execute(
+            "UPDATE owner_approvals SET state='decided',choice=?2,grant_id=NULL WHERE id=?1",
+            params![request_id, serialize(&ApprovalChoice::Deny)?],
+        )?;
+        let result = summary(&tx, request_id)?;
+        tx.commit()?;
+        Ok(result)
+    }
     pub fn consume_owner_approval(
         &mut self,
         cap: &RunnerCapability,

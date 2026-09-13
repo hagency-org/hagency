@@ -1,6 +1,7 @@
 //! Approval-purpose card transmission. A packet is checked afresh, never a grant.
 mod enrollment;
 pub(crate) mod jobs;
+mod public;
 pub(crate) mod state;
 use crate::{
     ApprovalCollector, CancellationToken, Error,
@@ -95,13 +96,95 @@ impl ApprovalCollector {
         let cancel = cancel.child_token();
         let blocks_after_error = Arc::new(AtomicBool::new(true));
         let original_classification = blocks_after_error.clone();
+        let denial_request_id = card.target().request_id.clone();
         let job=self.jobs.start_classified(false,false,permit,blocks_after_error,async move{
             let work=inner.deliver_private_card(card,frozen,&cancel,deadline,&original_classification);tokio::pin!(work);
             let result=tokio::select!{r=&mut work=>r,_=tokio::time::sleep_until(deadline)=>{cancel.cancel();work.await}};
             result.map(Value::Delivery)
         })?;
+        match job.wait().await {
+            Ok(Value::Delivery(v)) => Ok(v),
+            Ok(_) => Err(Error::Storage),
+            Err(error) => {
+                // Fail-closed (ADR-137, D-PC-FC): a delivery attempt that did
+                // not reach `Accepted` denies the pending request with a named
+                // reason, at most once — no retry, no packet reconstruction.
+                // Errors before the attempt starts (config, busy, an invalid
+                // card) are wiring refusals, not send failures, and deny
+                // nothing. If the denial write itself fails, that failure is
+                // returned instead: the row stays `pending` and the caller
+                // sees one honest uncertainty, never a false `decided`.
+                let mut reason = format!("private approval card send failed: {error}");
+                let mut cut = reason.len().min(256);
+                while !reason.is_char_boundary(cut) {
+                    cut -= 1;
+                }
+                reason.truncate(cut);
+                match self
+                    .inner
+                    .domain
+                    .deny_for_failed_delivery(denial_request_id, reason)
+                    .await
+                {
+                    Ok(_) => Err(error),
+                    Err(denial) => Err(denial.into()),
+                }
+            }
+        }
+    }
+    /// The redacted public status notice (ADR-137): a content-free status
+    /// word in the project room through its own validator. It is not the
+    /// request, carries none of its material, and confers no grant and no
+    /// authority on anyone who reads it.
+    pub async fn send_private_approval_notice(
+        &self,
+        card: Arc<PrivateApprovalCard>,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        let permit = self.delivery_permit(false)?;
+        if self.inner.config.enrollment.is_none()
+            || !self
+                .engagements
+                .contains(&card.target().authority.engagement_id)
+        {
+            return Err(Error::Config);
+        }
+        let notice = public::PublicFrozen::new(&card)?;
+        let inner = self.inner.clone();
+        let engagement = card.target().authority.engagement_id.clone();
+        let cancel = cancel.child_token();
+        let job = self.jobs.start(false, false, permit, async move {
+            // Destination re-derivation from the live rows by the same
+            // room_authority path the private card uses: a notice addressed
+            // from stale or caller-influenced state is refused here, never
+            // repaired.
+            let authority = inner.domain.approval_room_authority(engagement).await?;
+            if !notice.matches(&authority) {
+                return Err(Error::Generation);
+            }
+            let content = notice.content()?;
+            inner
+                .http
+                .put(
+                    &[
+                        "_matrix",
+                        "client",
+                        "v3",
+                        "rooms",
+                        &authority.project_room_id,
+                        "send",
+                        notice.msgtype(),
+                        &notice.transaction(),
+                    ],
+                    content,
+                    &cancel,
+                )
+                .await?
+                .success()?;
+            Ok(Value::Unit)
+        })?;
         match job.wait().await? {
-            Value::Delivery(v) => Ok(v),
+            Value::Unit => Ok(()),
             _ => Err(Error::Storage),
         }
     }

@@ -9,5 +9,6 @@ mod custody;
 mod enrollment;
 mod fixture;
 mod journal;
+mod pc_c1;
 mod privacy;
 use fixture::*;
