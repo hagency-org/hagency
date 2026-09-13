@@ -660,11 +660,19 @@ mod send_failure_tests {
         }
         // A genuine protocol error is never re-labelled, at any offset.
         assert_eq!(
-            send_failure(session::Error::Transport(transport::Error::Capacity), true, true),
+            send_failure(
+                session::Error::Transport(transport::Error::Capacity),
+                true,
+                true
+            ),
             Failure::Protocol
         );
         assert_eq!(
-            send_failure(session::Error::Transport(transport::Error::Capacity), false, false),
+            send_failure(
+                session::Error::Transport(transport::Error::Capacity),
+                false,
+                false
+            ),
             Failure::Protocol
         );
     }
