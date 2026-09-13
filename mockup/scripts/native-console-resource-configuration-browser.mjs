@@ -99,13 +99,20 @@ try {
       assert.equal(await page.getByRole('button', { name: 'Create another configuration', exact: true }).isEnabled(), false);
       await page.getByRole('button', { name: 'Refresh', exact: true }).click(); await editor(config.resource); assert.equal(await page.locator('[data-configuration-action="unknown"]').count(), 1); assert.equal(posts, 1);
       await context.unroute(`${config.base}/console/api/resources`); console.log(`UNKNOWN_CREATED ${unknownId}`);
-      // Real held SQLite command makes server revocation explicitly Busy.
+      // A real held SQLite transaction: the configuration write is refused as
+      // native_unavailable inside the writer's 100 ms busy window and settles as
+      // an unknown outcome while the fixture holds the store. Revocation is
+      // Busy only while a command is outstanding (pinned by the authority and
+      // store unit tests); after the write has settled, ending access succeeds.
       await budget(created, true); await ceiling(77777); await fixture('HOLD_STORE');
       const finished = page.waitForResponse((r) => r.url() === configuration(created) && r.request().method() === 'PATCH');
-      await page.getByRole('button', { name: 'Save configuration', exact: true }).click(); await page.locator('[data-configuration-action="pending"]').waitFor();
-      await page.getByRole('button', { name: 'End access', exact: true }).click(); await expectLogoutState('busy');
-      await fixture('RELEASE_STORE'); await finished;
-      await page.getByRole('button', { name: 'Retry ending access', exact: true }).click(); await expectLogoutState('ended');
+      await page.getByRole('button', { name: 'Save configuration', exact: true }).click();
+      const refused = await finished;
+      assert.equal(refused.status(), 503, 'the held store refuses the configuration write inside the busy window');
+      assert.equal((await refused.json()).code, 'native_unavailable');
+      await page.locator('[data-configuration-action="unknown"]').waitFor();
+      await fixture('RELEASE_STORE');
+      await page.getByRole('button', { name: 'End access', exact: true }).click(); await expectLogoutState('ended');
       assert.equal(await page.locator('[data-native-configuration-id]').count(), 0);
     }
   }
