@@ -108,6 +108,12 @@ jobs:
       - run: node native/scripts/payload-vectors.mjs --check
       - run: node native/scripts/execution-vectors.mjs --check
       - run: node native/scripts/progress-vectors.mjs --check
+      # The console-origin oracle evaluates the retained Next proxy (no imports,
+      # so it loads on every OS) and slices two blocks out of backend-v2.js,
+      # which cannot be imported without node_modules. Pinned by sha256 inside
+      # the fixture, so a drifted retained rule fails here rather than silently
+      # re-blessing a different answer.
+      - run: node native/scripts/console-origin-vectors.mjs --check
       - run: node native/scripts/check-rust-spec-bindings.mjs
       - id: native-tests
         run: cargo test --workspace --all-targets --locked --no-fail-fast

@@ -153,3 +153,11 @@ Scenario: The console engagements document serves with a no-query rule
   Given the staged engagements document in the loader allowlist and key mapping
   When the document is fetched and then with any query parameter
   Then the document body serves without a query and any query is refused as an invalid console request while non-document assets keep the origin rule
+
+Scenario: The native origin hoops match the executed retained proxy rules
+  Test: native_console_origin_matches_retained_vectors
+  Level: integration
+  Test Double: regenerated oracle vectors computed by the retained proxy and backend
+  Given the regenerated console-origin vectors produced by executing the retained proxy and backend rules
+  When the native console origin, canonicalisation and one-origin CORS predicates replay each request row
+  Then allow, refuse and canonical verdicts agree with the retained result for every row, and the three named divergences where native is stricter are asserted rather than left implicit

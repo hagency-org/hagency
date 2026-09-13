@@ -130,3 +130,36 @@ module; every `main.rs` arm calls a lib module), and `main.rs` only wires the th
 invariant worth naming for a future contributor: `resources` shares its path with a mutating
 route (`put_resource`), so read-only-ness rests on the fixed `GET` verb — a constant no flag can
 reach.
+
+## Amendment: the console-origin oracle (CL-S4′)
+
+The origin rules this slice's hoops implement had no executable comparison against the retained
+product: the proxy's `sameOriginWrite`, its default-deny allowlist and canonicaliser, and the
+backend's one-origin CORS gate were read, never replayed. `native/scripts/console-origin-vectors.mjs`
+now EXECUTES them over a fixed request table and writes
+`native/hagency/tests/fixtures/console-origin-vectors.json`; `--check` re-derives and fails on
+drift. Both retained sources are pinned by sha256 in the fixture, so a changed allowlist or a
+changed origin rule fails the check rather than silently re-blessing a different answer. The Rust
+test `native_console_origin_matches_retained_vectors` replays each row against the native
+predicates `common_authority` (`console.rs:98-109`) and `same_origin` (`:110-123`).
+
+The oracle found no place where native is weaker. It names the **three** places where native is
+deliberately STRICTER, and these are asserted rather than left implicit:
+
+1. **Host.** The retained proxy never checks `Host`; a `Host` check was tried and rejected as
+   theatre, replaced by the loopback bind (`route.js:321-325`). Native requires exactly one `host`
+   header equal to the bound authority and refuses `forwarded`/`x-forwarded-*`/`authorization`
+   (`console.rs:98-109`).
+2. **`sec-fetch-site` scope.** The retained proxy checks it only for mutations (`route.js:423`) and
+   accepts `none` beside `same-origin` (`:381`). Native requires it exactly once, equal to
+   `same-origin`, on every console request including reads (`console.rs:110-123`).
+3. **Absent `Origin` on a mutation.** The retained proxy ALLOWS a mutation carrying neither
+   `sec-fetch-site` nor `Origin`, on the reasoning that a non-browser caller is bounded by the bind
+   (`route.js:374-383`). Native refuses: a mutation must carry `Origin` equal to
+   `http://<authority>` (`console.rs:119-122`).
+
+The third divergence is the one worth an operator's attention: the retained rule is defensible for
+a loopback-only dev proxy, but it is exactly the gap a browser-borne cross-site write would use if
+the bind were ever widened. Native closes it by requiring the header rather than inferring from the
+socket. This amendment records that as a decision, not as drift.
+
