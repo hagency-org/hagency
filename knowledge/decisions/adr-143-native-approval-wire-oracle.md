@@ -39,11 +39,7 @@ fixed table and writes `native/hagency-matrix/tests/fixtures/approval-vectors.js
   refused on violation.
 - **origin** — `sameOriginWrite` (:379-389) over the approval-relevant subset
   of request headers. The exhaustive console-origin table is ADR-107's
-  amendment (CL-S4′), not this one. The native counterpart's absent-origin
-  refusal on a mutation is part of request authentication, not a scope
-  denial: the console's session hoop answers **401 `console_access_required`**
-  (`console.rs` `current`/`same_origin`), while 403 remains reserved for a
-  missing resource scope.
+  amendment (CL-S4′), not this one.
 
 Both retained sources are pinned by sha256 inside the fixture. A changed
 allowlist, action list, verdict bound or origin rule fails the oracle check
