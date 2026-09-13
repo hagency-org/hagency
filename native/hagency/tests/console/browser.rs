@@ -627,3 +627,101 @@ async fn native_console_resource_configuration_executable() {
         drop(db);
     }
 }
+
+fn accounts_script() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../mockup/scripts/native-console-accounts-browser.mjs")
+}
+#[tokio::test]
+async fn native_console_accounts_browser() {
+    let address = address();
+    let f = Fixture::new(address, Some(&built()));
+    hagency_store::private::write_new(
+        &f.root.path().join("state/operator.token"),
+        TOKEN.as_bytes(),
+    )
+    .unwrap();
+    // Seed one enrolled account through the store's own wrappers, then read
+    // its identity values straight from the row the page must not reveal.
+    let reserved = f
+        .domain
+        .reserve_account(hagency_store::ACCOUNT_PROFILE.to_owned())
+        .await
+        .unwrap();
+    let choice = f
+        .domain
+        .materialize_account(reserved.id.clone())
+        .await
+        .unwrap();
+    let managed = f.domain.managed_account(choice.id.clone()).await.unwrap();
+    let access = hagency_store::AccountEnrollmentAccess::new(
+        std::time::Instant::now() + std::time::Duration::from_secs(30),
+        Default::default(),
+    );
+    let command = access
+        .prepare(
+            &managed,
+            choice.revision.clone(),
+            "gpt-5.6-sol".into(),
+            Some("medium".into()),
+            None,
+            std::time::Instant::now() + std::time::Duration::from_secs(5),
+        )
+        .unwrap();
+    f.domain.enroll_account_resource(command).await.unwrap();
+    let secrets = {
+        let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+        sql.query_row(
+            "SELECT a.seat_id,a.identity_tuple,json_extract(a.namespace_identity,'$.volume'),r.preset_id FROM managed_accounts a JOIN resource_accounts r ON r.account_id=a.id LIMIT 1",
+            [],
+            |row| {
+                Ok([
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                ])
+            },
+        )
+        .unwrap()
+    };
+    let server = Server::new(TcpListener::new(address).try_bind().await.unwrap());
+    let handle = server.handle();
+    let serving = tokio::spawn(server.try_serve(f.app.clone().router()));
+    let url = hagency::console::client::account_access(&f.root.path().join("state"), address)
+        .await
+        .unwrap();
+    assert!(url.contains("/console/accounts/#access="));
+    let mut child = Command::new(node())
+        .arg(accounts_script())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("actual browser tooling must exist");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            format!(
+                "{}\n",
+                json!({"base":format!("http://{address}"),"url":url,"account":choice.id,"secrets":secrets})
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(45), child.wait())
+            .await
+            .unwrap()
+            .unwrap()
+            .success(),
+        "real accounts browser assertions failed"
+    );
+    handle.stop_graceful(Some(Duration::from_secs(2)));
+    serving.await.unwrap().unwrap();
+    f.close().await;
+}

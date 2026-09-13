@@ -1,8 +1,10 @@
 //! Finite in-memory browser authority, distinct from the operator credential.
 use super::Error;
+use hagency_core::allocation::Ceiling;
 use hagency_store::{
-    ResourceConfigurationAccess, ResourceConfigurationCommand, ResourcePublicationAccess,
-    ResourcePublicationCommand, ResourcePublicationRetirement,
+    AccountEnrollmentAccess, AccountEnrollmentCommand, ManagedAccount, ResourceConfigurationAccess,
+    ResourceConfigurationCommand, ResourcePublicationAccess, ResourcePublicationCommand,
+    ResourcePublicationRetirement,
 };
 use sha2::{Digest, Sha256};
 use std::{
@@ -20,16 +22,19 @@ enum Scope {
     ReadOnly,
     Publication,
     Configuration,
+    Account,
 }
 enum MutationAccess {
     Publication(ResourcePublicationAccess),
     Configuration(ResourceConfigurationAccess),
+    Account(AccountEnrollmentAccess),
 }
 impl MutationAccess {
     fn revoke(&self) -> Result<(), hagency_store::Error> {
         match self {
             Self::Publication(access) => access.revoke(),
             Self::Configuration(access) => access.revoke(),
+            Self::Account(access) => access.revoke(),
         }
     }
 }
@@ -156,6 +161,10 @@ impl Authority {
             Scope::Configuration => Some(MutationAccess::Configuration(
                 ResourceConfigurationAccess::new(now + SESSION_LIFETIME, self.1.clone()),
             )),
+            Scope::Account => Some(MutationAccess::Account(AccountEnrollmentAccess::new(
+                now + SESSION_LIFETIME,
+                self.1.clone(),
+            ))),
         };
         state.sessions.push(Grant {
             hash: hash(&value)?,
@@ -243,6 +252,57 @@ impl Authority {
             .find(|s| matches(s, &session.0, now))
             .map(|s| matches!(&s.mutation, Some(MutationAccess::Configuration(_))))
             .ok_or(Error::Unauthorized)
+    }
+    pub(super) fn can_manage_accounts(&self, session: &Session) -> Result<bool, Error> {
+        let state = self.0.lock().map_err(|_| Error::Unavailable)?;
+        if state.retired {
+            return Err(Error::Unavailable);
+        }
+        let now = Instant::now();
+        state
+            .sessions
+            .iter()
+            .find(|s| matches(s, &session.0, now))
+            .map(|s| matches!(&s.mutation, Some(MutationAccess::Account(_))))
+            .ok_or(Error::Unauthorized)
+    }
+    pub(super) fn issue_account(&self) -> Result<String, Error> {
+        self.issue_scope(Instant::now, Scope::Account)
+    }
+    /// Enrolment authority: builds the consuming command from the SESSION's
+    /// bound access, never from the request. This stays the only console-side
+    /// constructor of `AccountEnrollmentCommand` (ADR-111 amendment).
+    pub(super) fn account(
+        &self,
+        session: &Session,
+        managed: &ManagedAccount,
+        revision: String,
+        model: String,
+        reasoning: Option<String>,
+        ceiling: Option<Ceiling>,
+        deadline: Instant,
+    ) -> Result<AccountEnrollmentCommand, Error> {
+        let state = self.0.lock().map_err(|_| Error::Unavailable)?;
+        if state.retired {
+            return Err(Error::Unavailable);
+        }
+        let now = Instant::now();
+        let grant = state
+            .sessions
+            .iter()
+            .find(|s| matches(s, &session.0, now))
+            .ok_or(Error::Unauthorized)?;
+        let Some(MutationAccess::Account(access)) = &grant.mutation else {
+            return Err(Error::AccountForbidden);
+        };
+        access
+            .prepare(managed, revision, model, reasoning, ceiling, deadline)
+            .map_err(|e| match e {
+                hagency_store::Error::Busy => Error::Busy,
+                hagency_store::Error::LocalAuthority => Error::Unauthorized,
+                hagency_store::Error::Invalid(_) => Error::Invalid,
+                _ => Error::Unavailable,
+            })
     }
     pub(super) fn configuration(
         &self,

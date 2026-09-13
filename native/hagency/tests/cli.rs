@@ -551,3 +551,43 @@ fn native_account_cli() {
         assert!(!output.contains(private));
     }
 }
+
+/// The three console-access management flags are pairwise mutually exclusive:
+/// each pair is refused before any ticket is issued (MA-S3a's CLI selector).
+#[test]
+fn native_console_account_grant_is_mutually_exclusive() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let refuse = |flags: &[&str]| {
+        let output = Command::new(env!("CARGO_BIN_EXE_hagency"))
+            .arg("console-access")
+            .args(flags)
+            .arg("--state-dir")
+            .arg(&state)
+            .env("PATH", "")
+            .env("HOME", "/untrusted-fixture-home")
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "combination {flags:?} must be refused"
+        );
+        let stderr = String::from_utf8_lossy(&output.stderr).to_lowercase();
+        assert!(
+            stderr.contains("cannot be used with"),
+            "refusal must name the conflict: {flags:?}"
+        );
+    };
+    refuse(&[
+        "--manage-account-enrollment",
+        "--manage-resource-publication",
+    ]);
+    refuse(&[
+        "--manage-account-enrollment",
+        "--manage-resource-configuration",
+    ]);
+    refuse(&[
+        "--manage-resource-publication",
+        "--manage-resource-configuration",
+    ]);
+}

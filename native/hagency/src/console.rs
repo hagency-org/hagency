@@ -1,4 +1,5 @@
 //! Read-only browser facade. Native operator/runner authentication is unchanged.
+mod accounts;
 mod alerts;
 mod assets;
 mod authority;
@@ -26,6 +27,8 @@ pub enum Error {
     Forbidden,
     #[error("resource configuration management scope is required")]
     ConfigurationForbidden,
+    #[error("account enrollment management scope is required")]
+    AccountForbidden,
     #[error("native console capacity is exhausted")]
     Busy,
     #[error("native console is unavailable")]
@@ -62,6 +65,7 @@ pub(crate) fn router() -> Router {
                 .push(usage::router())
                 .push(alerts::router())
                 .push(resources::router())
+                .push(accounts::router())
                 .push(resource_configuration::router()),
         )
         .push(Router::with_path("{**asset}").get(asset))
@@ -71,6 +75,7 @@ pub(crate) fn operator_router() -> Router {
         .push(Router::with_path("console/access").post(issue))
         .push(Router::with_path("console/resource-publication-access").post(issue_publication))
         .push(Router::with_path("console/resource-configuration-access").post(issue_configuration))
+        .push(Router::with_path("console/account-access").post(issue_account))
 }
 fn console(depot: &Depot) -> Result<&Console, Error> {
     depot
@@ -91,6 +96,7 @@ fn failed(res: &mut Response, error: Error) {
             StatusCode::FORBIDDEN,
             "resource_configuration_scope_required",
         ),
+        Error::AccountForbidden => (StatusCode::FORBIDDEN, "account_scope_required"),
         Error::Busy => (StatusCode::TOO_MANY_REQUESTS, "console_busy"),
     };
     refusal(res, status, code);
@@ -230,6 +236,27 @@ async fn issue_publication(req: &mut Request, depot: &mut Depot, res: &mut Respo
 #[handler]
 async fn issue_configuration(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     issue_scope(req, depot, res, false, true).await;
+}
+#[handler]
+async fn issue_account(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let result = async {
+        let c = console(depot)?;
+        let _permit =
+            c.0.requests
+                .clone()
+                .try_acquire_owned()
+                .map_err(|_| Error::Busy)?;
+        if req.uri().query().is_some() || !body(req, 1).await?.is_empty() {
+            return Err(Error::Invalid);
+        }
+        let value = c.0.authority.issue_account()?;
+        Ok(serde_json::json!({"ticket":value,"expires_in":120}))
+    }
+    .await;
+    match result {
+        Ok(value) => res.render(Json(value)),
+        Err(error) => failed(res, error),
+    }
 }
 async fn issue_scope(
     req: &mut Request,

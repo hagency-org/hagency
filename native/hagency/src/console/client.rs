@@ -14,19 +14,23 @@ struct Issued {
     expires_in: u64,
 }
 pub async fn access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, false, false).await
+    scoped_access(state, address, false, false, false).await
 }
 pub async fn publication_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, true, false).await
+    scoped_access(state, address, true, false, false).await
 }
 pub async fn configuration_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, false, true).await
+    scoped_access(state, address, false, true, false).await
+}
+pub async fn account_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
+    scoped_access(state, address, false, false, true).await
 }
 async fn scoped_access(
     state: &Path,
     address: SocketAddr,
     publication: bool,
     configuration: bool,
+    account: bool,
 ) -> Result<String, Error> {
     if !address.ip().is_loopback()
         || address.port() == 0
@@ -42,7 +46,7 @@ async fn scoped_access(
     }
     tokio::time::timeout(
         Duration::from_secs(5),
-        exchange(address, token, publication, configuration),
+        exchange(address, token, publication, configuration, account),
     )
     .await
     .map_err(|_| Error::Unavailable)?
@@ -52,6 +56,7 @@ async fn exchange(
     token: &str,
     publication: bool,
     configuration: bool,
+    account: bool,
 ) -> Result<String, Error> {
     let stream = TcpStream::connect(address)
         .await
@@ -71,6 +76,8 @@ async fn exchange(
             "/api/native/v1/console/resource-configuration-access"
         } else if publication {
             "/api/native/v1/console/resource-publication-access"
+        } else if account {
+            "/api/native/v1/console/account-access"
         } else {
             "/api/native/v1/console/access"
         })
@@ -117,7 +124,9 @@ async fn exchange(
         }
         Ok(format!(
             "http://{address}/console/{}/#access={}",
-            if publication || configuration {
+            if account {
+                "accounts"
+            } else if publication || configuration {
                 "resources"
             } else {
                 "usage"

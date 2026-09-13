@@ -56,6 +56,15 @@ enum Command {
         /// Grant finite additional resource configuration creation and editing.
         #[arg(long)]
         manage_resource_configuration: bool,
+        /// Grant finite managed-account preparation, retirement and enrolment.
+        #[arg(
+            long,
+            conflicts_with_all = [
+                "manage_resource_publication",
+                "manage_resource_configuration"
+            ]
+        )]
+        manage_account_enrollment: bool,
     },
     /// Read-only inspection: open ceiling overrun alerts from the running service.
     Alerts {
@@ -236,6 +245,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             listen,
             manage_resource_publication,
             manage_resource_configuration,
+            manage_account_enrollment,
         } => {
             println!(
                 "{}",
@@ -243,6 +253,8 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                     hagency::console::client::configuration_access(&state_dir, listen).await?
                 } else if manage_resource_publication {
                     hagency::console::client::publication_access(&state_dir, listen).await?
+                } else if manage_account_enrollment {
+                    hagency::console::client::account_access(&state_dir, listen).await?
                 } else {
                     hagency::console::client::access(&state_dir, listen).await?
                 }

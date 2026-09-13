@@ -1,3 +1,5 @@
+#[path = "console/accounts.rs"]
+mod accounts;
 #[path = "console/alerts.rs"]
 mod alerts;
 #[path = "console/browser.rs"]

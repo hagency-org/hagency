@@ -70,15 +70,15 @@ async function request(path, options = {}) {
     const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
     if (!response.ok) {
       if (value?.code === 'console_busy' && response.status === 429) throw new Error('busy');
-      const known = { busy: 503, outcome_unknown: 504, resource_revision_conflict: 409, resource_publication_scope_required: 403, resource_configuration_scope_required: 403, resource_in_use: 409, invalid_resource_command: 400 };
+      const known = { busy: 503, outcome_unknown: 504, resource_revision_conflict: 409, resource_publication_scope_required: 403, resource_configuration_scope_required: 403, resource_in_use: 409, invalid_resource_command: 400, account_scope_required: 403, account_state_conflict: 409, account_revision_conflict: 409, invalid_account_command: 400 };
       if (known[value?.code] === response.status) throw new Error(value.code);
       throw new Error(response.status === 401 ? 'console_access_required' : (response.status === 404 ? 'not_found' : 'native_unavailable'));
     }
     return value;
   } catch (error) {
-    if (['console_access_required', 'not_found', 'invalid_native_response', 'invalid_selection', 'busy', 'outcome_unknown', 'resource_revision_conflict', 'resource_publication_scope_required', 'resource_configuration_scope_required', 'resource_in_use', 'invalid_resource_command'].includes(error.message)) throw error;
+    if (['console_access_required', 'not_found', 'invalid_native_response', 'invalid_selection', 'busy', 'outcome_unknown', 'resource_revision_conflict', 'resource_publication_scope_required', 'resource_configuration_scope_required', 'resource_in_use', 'invalid_resource_command', 'account_scope_required', 'account_state_conflict', 'account_revision_conflict', 'invalid_account_command'].includes(error.message)) throw error;
     if (options.method === 'DELETE') throw new Error('logout_unknown');
-    if (['POST', 'PATCH'].includes(options.method) && path.startsWith('/api/resources')) throw new Error('outcome_unknown');
+    if (['POST', 'PATCH'].includes(options.method) && (path.startsWith('/api/resources') || path.startsWith('/api/accounts'))) throw new Error('outcome_unknown');
     throw new Error('native_unavailable');
   } finally { clearTimeout(timer); }
 }
@@ -254,4 +254,48 @@ export async function configureResource(resource, create, changes) {
   const value = await request(create ? '/api/resources' : `/api/resources/${resource.id}/configuration`, { method: create ? 'POST' : 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
   if (!object(value, ['resourceId', 'revision', 'published']) || !/^resource_[a-f0-9]{24}$/.test(value.resourceId) || !revision(value.revision) || typeof value.published !== 'boolean' || (!create && value.resourceId !== resource.id) || (create && (!value.published || value.resourceId === resource.id))) throw new Error('outcome_unknown');
   return value;
+}
+
+/* The console account surface (MA-S3a). Exactly five keys per row — the
+ * server's AccountRow — and no readiness, login or identity value; the
+ * validator's exact-key list is the same one-way contract every other read
+ * carries. States are the store's four public words. */
+const ACCOUNT_STATES = ['preparing', 'active', 'uncertain', 'retired'];
+const validAccount = (a) => !(!object(a, ['id', 'ordinal', 'state', 'revision', 'profile'])
+  || !id(a.id) || !Number.isSafeInteger(a.ordinal) || a.ordinal < 1 || a.ordinal > 16
+  || !ACCOUNT_STATES.includes(a.state) || !revision(a.revision)
+  || a.profile !== 'codex-default-namespace-v1');
+export function validateAccounts(v) {
+  if (!object(v, ['at_ms', 'accounts', 'next_after']) || !number(v.at_ms) || !Array.isArray(v.accounts)
+    || v.accounts.length > 16 || !(v.next_after === null || id(v.next_after))
+    || v.accounts.some((a) => !validAccount(a))) throw new Error('invalid_native_response');
+  return v;
+}
+export function accountsView(location) { return /^\/console\/accounts\/?$/.test(location.pathname); }
+export async function fetchAccounts() {
+  return validateAccounts(await request('/api/accounts'));
+}
+/* Every mutation reply is the SAME one-row envelope as the single read, so
+ * the same validator governs it — the page never re-derives a row. */
+export async function fetchAccount(id) {
+  const v = await request(`/api/accounts/${encodeURIComponent(id)}`);
+  if (!object(v, ['account']) || !validAccount(v.account)) throw new Error('invalid_native_response');
+  return v.account;
+}
+export async function prepareAccount() {
+  const v = await request('/api/accounts', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile: 'codex-default-namespace-v1' }) });
+  if (!object(v, ['account']) || !validAccount(v.account)) throw new Error('invalid_native_response');
+  return v.account;
+}
+export async function retireAccount(id) {
+  const v = await request(`/api/accounts/${encodeURIComponent(id)}/retire`, { method: 'POST' });
+  if (!object(v, ['account']) || !validAccount(v.account)) throw new Error('invalid_native_response');
+  return v.account;
+}
+export async function enrollAccountResource(id, model, reasoning, expectedRevision) {
+  const payload = { model, expectedRevision };
+  if (reasoning) payload.reasoning = reasoning;
+  const v = await request(`/api/accounts/${encodeURIComponent(id)}/enrollment`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  if (!object(v, ['account']) || !validAccount(v.account)) throw new Error('invalid_native_response');
+  return v.account;
 }
