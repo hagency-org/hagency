@@ -895,7 +895,9 @@ async fn execute(
             // reconciliation and is not published, and the host does not assert
             // an unobserved Done (ADR-053 "observed, never promoted"; ADR-060
             // "a negative/unknown cleanup path never publishes").
-            report.settlement = Settlement::Unknown;
+            // The worker's failure finalization records the store's own
+            // observation of this failure as the settlement; nothing written
+            // here survives it, so nothing is written here.
             return Err(Failure::CleanupUnknown);
         }
         report.canonical_status = Some(TaskState::Done);

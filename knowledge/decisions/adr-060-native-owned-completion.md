@@ -264,3 +264,10 @@ scenario no longer races the host with a 600 ms sleep: the test holds the
 passing by waiting longer). In WAL mode the reconcile read answers while the
 lock is still held, so the refused acceptance and the conclusive negative read
 are both deterministic for either ordering of the probe's `turn/completed`.
+
+The worker's failure finalization is the single writer of the report's
+`failure` and `settlement` for a failed drive: it records the store's own
+observation of that failure (a fenced lease, never a publication). A value
+written to `settlement` earlier on the failure path does not survive it, so
+the completion path writes none; only `settlement_cause` keeps its first
+value. (2026-09-13, after the precedence review.)

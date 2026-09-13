@@ -572,7 +572,14 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
     // settlement uncertainty is recorded BESIDE the verdict (not instead of a
     // published completion) and the host asserts no unobserved Done.
     if cfg!(target_os = "macos") {
-        assert_eq!(report.settlement, Settlement::Unknown);
+        // The worker's failure finalization records the store's observation
+        // of the cleanup failure as the settlement: the lease is fenced for
+        // reconciliation, never published.
+        assert_eq!(report.failure, Some(Failure::CleanupUnknown));
+        assert_eq!(
+            report.settlement,
+            Settlement::Negative(hagency_store::OwnedObservation::Fenced)
+        );
         assert_ne!(
             report.canonical_status,
             Some(TaskState::Done),
