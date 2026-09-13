@@ -6,7 +6,13 @@
 //! room per engagement.
 use super::*;
 
-pub const SHARED_ROOM: &str = "!shared:example.test";
+/// The shared DELIVERY room is the project's own room (`!project:example.test`,
+/// the engagement's `c.project_room`, matching the fixture `targetRoomId` at
+/// `hagency-store/tests/common/mod.rs:26`): a group room the store's
+/// first-publish authority check (`matrix_routes.rs:390`) admits. An invented
+/// third id (the old `!shared:example.test`) is a Group room that is not the
+/// project's room and is refused — the probe's bare `Error::Domain`.
+pub const SHARED_ROOM: &str = "!project:example.test";
 pub const DM_A: &str = "!dm-a:example.test";
 pub const DM_B: &str = "!dm-b:example.test";
 pub const OWNER: &str = "@owner:example.test";
@@ -104,7 +110,10 @@ impl PairFixture {
         }
     }
     /// One host configuration per agent: the shared delivery room plus that
-    /// agent's own direct room, on its own SDK store path.
+    /// agent's own direct room, on its own SDK store path. The shared room is
+    /// the PROJECT's room (`!project:example.test`, the engagement's
+    /// `c.project_room`) — never an invented third id, so the store's
+    /// first-publish Group authority check (`matrix_routes.rs:390`) admits it.
     pub fn config(&self, agent: &HostIdentity, direct_room: &str, endpoint: &str) -> HostConfig {
         HostConfig::new(
             agent.clone(),

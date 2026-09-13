@@ -37,9 +37,15 @@ async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity, encrypte
         } else if request.target.contains("/sync") {
             request.json(200, common::sync("boot"));
         } else if request.target.ends_with("/state") {
+            // A DIRECT room must always be invite-only AND encrypted (ADR-144;
+            // the store's invalid_direct clause). The plain variant is for the
+            // shared Group room only — serving a DM unencrypted is the exact
+            // observation the store refuses (RunnerAuthority at
+            // matrix_routes.rs:123 via the first-observation invalidate).
+            let is_dm = request.target.contains("dm-");
             request.json(
                 200,
-                if encrypted {
+                if is_dm || encrypted {
                     state_for(agent)
                 } else {
                     state_plain_for(agent)
