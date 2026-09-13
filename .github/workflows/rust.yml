@@ -1,7 +1,9 @@
 name: Native Rust
 on:
   push:
-    branches: [master, stable, feat/native-windows-directory-sync-20260911]
+    # 2026-09-13: probe/** are the integration scratch branches for the Rust port;
+    # hosted Ubuntu and macOS verdicts on them run alongside the operator's local gates.
+    branches: [master, stable, feat/native-windows-directory-sync-20260911, 'probe/**']
   pull_request:
     branches: [master, stable]
 concurrency:
