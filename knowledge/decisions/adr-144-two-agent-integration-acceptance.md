@@ -49,8 +49,11 @@ private root is refused with no send, and an ambiguous sender is refused;
 (2) a DM reaches only its own engagement's direct room and no request carries the
 shared room id — **in each direction**: the agent→owner DM is addressed to that
 engagement's direct room only, and the owner→agent DM reaches its own
-engagement's inbox only, never the other engagement's rows and never the shared
-room; (3) a task handed across the room settles on its own engagement
+engagement's inbox only, never the other engagement's rows — the shared-room
+half is not asserted here, because property (5) already pins that no DM body
+is visible in the shared room's ciphertexts, so the per-direction clause
+asserts only per-engagement DM isolation; (3) a task handed across the room
+settles on its own engagement
 with the usage ledger observing the spend there and not on the other; (4) a
 message for one engagement is never readable from the other; (5) no DM body is
 visible in the shared room's ciphertexts. The shared room is a **delivery** room,
