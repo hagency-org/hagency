@@ -29,27 +29,41 @@ impl PairFixture {
         let pool_b = domain::resource("pool-b", "seat-b", 1000);
         db.put_resource(&pool_a).unwrap();
         db.put_resource(&pool_b).unwrap();
-        let proof_a = domain::proof(&domain::request("worker", "Worker", &pool_a, 100));
-        let proof_b = domain::proof(&domain::request("helper", "Worker", &pool_b, 100));
+        let proof_a = domain::proof(&domain::request("worker", "Worker A", &pool_a, 100));
+        let proof_b = domain::proof(&domain::request("helper", "Worker B", &pool_b, 100));
+        // The two admissions must be distinct under the fleet: `admit`
+        // refuses a collision on (fleet_id, project_id, name), so a shared
+        // name with the same fleet/project returns Conflict on the second
+        // admit. Distinct names + distinct request ids are the pair's own
+        // identity requirement; assert the resulting engagement ids differ
+        // before any further setup.
         let e_a = db.admit(&proof_a, 1000).unwrap();
         let e_b = db.admit(&proof_b, 1000).unwrap();
+        assert_ne!(
+            e_a.id, e_b.id,
+            "the two engagements must resolve to distinct ids"
+        );
         db.approve("approve_a", &proof_a, 1000).unwrap();
         db.approve("approve_b", &proof_b, 1000).unwrap();
-        // Drive each engagement's provision effect explicitly — claim it,
-        // assert the state we just drove (Started), bind it to its own
-        // engagement, then settle it — instead of assuming the claim loop's
-        // shape. The hosted evidence (probe/lane-c run 34761248905) showed a
-        // blind "claim twice" loop asserting a state the leg never reached;
-        // here every state is asserted only after being driven, and a leg
-        // that cannot produce an effect for its OWN engagement fails by
-        // name instead of by order.
-        for engagement in [e_a.id.as_str(), e_b.id.as_str()] {
-            let effect = db.claim_effect().unwrap().unwrap_or_else(|| {
-                panic!("no pending provision effect for engagement {engagement}")
-            });
-            assert_eq!(
-                effect.engagement_id, engagement,
-                "the claimed effect must belong to its own engagement"
+        // Drive each engagement's provision effect explicitly — claim, assert
+        // the state we just drove (Started) and that it belongs to one of
+        // our two engagements, then settle it by its own id. `claim_effect`
+        // returns effects in HASH order (`ORDER BY f.id`), never admit order,
+        // so the identity check is by membership + set coverage, not loop
+        // position. The hosted evidence (probe/lane-c run 34761248905)
+        // showed a blind loop asserting a state the leg never reached; here
+        // every state is asserted only after being driven, and a leg that
+        // cannot produce an effect for both engagements fails by name, not
+        // by order.
+        let mut settled = std::collections::BTreeSet::new();
+        for _ in 0..2 {
+            let effect = db
+                .claim_effect()
+                .unwrap()
+                .unwrap_or_else(|| panic!("no pending provision effect remains"));
+            assert!(
+                effect.engagement_id == e_a.id || effect.engagement_id == e_b.id,
+                "the claimed effect must belong to one of the two engagements"
             );
             assert_eq!(effect.state, EffectState::Started);
             db.observe_effect(
@@ -60,7 +74,12 @@ impl PairFixture {
                 },
             )
             .unwrap();
+            assert!(
+                settled.insert(effect.engagement_id.clone()),
+                "each engagement must contribute exactly one provision effect"
+            );
         }
+        assert_eq!(settled.len(), 2, "both engagements' effects must settle");
         let identity = |engagement: String, mxid: &str, device: &str| HostIdentity {
             server_name: "example.test".into(),
             registration_fingerprint: "a".repeat(64),
