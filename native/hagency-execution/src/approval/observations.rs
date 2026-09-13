@@ -39,7 +39,7 @@ impl Drive<'_> {
         // usage or request receipt can await or unwind.
         let (request, terminal) = match update {
             Update::Approval(request) => (
-                Some(callbacks.retain(runner, request, self.until)?),
+                Some(callbacks.retain(runner, request, self.until, &self.cap.dispatch_id)?),
                 Ok(false),
             ),
             Update::ApprovalResolved { id } => {
@@ -48,6 +48,7 @@ impl Drive<'_> {
                 #[cfg(any(test, feature = "test-diagnostics"))]
                 if terminal.is_err() {
                     super::diagnostics::cancellation(
+                        &self.cap.dispatch_id,
                         "resolved-before-write",
                         &format!("{:?}", entry.request.id()),
                         entry.trace.as_slice(),
@@ -58,14 +59,25 @@ impl Drive<'_> {
             Update::TurnEnded => {
                 #[cfg(any(test, feature = "test-diagnostics"))]
                 for entry in callbacks.entries.values_mut() {
-                    if entry.write.is_none() {
-                        entry.mark("turn-ended-unwritten");
-                        super::diagnostics::cancellation(
-                            "turn-ended-unwritten",
-                            &format!("{:?}", entry.request.id()),
-                            entry.trace.as_slice(),
-                        );
+                    if entry.write.is_some() {
+                        // Arm label (field-independent half of e3dd70c3): a
+                        // written entry is retired by its receipt path, not by
+                        // the turn end. The `in_flight`-dependent arms stay on
+                        // the product branch — upstream has no such field.
+                        entry.mark("turn-ended-ignored-written");
+                        continue;
                     }
+                    // Upstream's rule: every unwritten entry cancels at the
+                    // turn end. The arm label names that rule — one label per
+                    // outcome, stable in the trace vocabulary.
+                    entry.mark("turn-ended-unwritten");
+                    entry.mark("turn-ended-cancels");
+                    super::diagnostics::cancellation(
+                        &self.cap.dispatch_id,
+                        "turn-ended-unwritten",
+                        &format!("{:?}", entry.request.id()),
+                        entry.trace.as_slice(),
+                    );
                 }
                 (
                     None,

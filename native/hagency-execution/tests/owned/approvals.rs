@@ -48,7 +48,7 @@ async fn native_owned_approval_resume() {
             "{:?} {:?}; {}",
             report.failure,
             report.runtime_observation(),
-            cancellation_trace()
+            cancellation_trace(&f)
         );
         marker(&f, "approval-continued").await;
         let responses = responses(&f);
@@ -73,7 +73,7 @@ async fn native_owned_approval_resume() {
         Protocol::Completed,
         "{:?}; {}",
         report.failure,
-        cancellation_trace()
+        cancellation_trace(&f)
     );
     assert!(
         notices.recv().await.is_none(),
@@ -106,7 +106,7 @@ async fn native_owned_approval_barriers() {
         "{:?} {:?}; {}",
         report.failure,
         report.runtime_observation(),
-        cancellation_trace()
+        cancellation_trace(&f)
     );
     assert_eq!(responses(&f).len(), 3);
     unconfirmed(&f);
@@ -249,7 +249,7 @@ async fn native_owned_approval_usage() {
         "{:?} {:?}; {}",
         report.failure,
         report.runtime_observation(),
-        cancellation_trace()
+        cancellation_trace(&f)
     );
     let usage = report.usage_status();
     assert_eq!(usage.observed, 3);
