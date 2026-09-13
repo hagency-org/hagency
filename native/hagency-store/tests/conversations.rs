@@ -343,7 +343,7 @@ fn native_internal_matrix_separation() {
         sql(&root)
             .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
             .unwrap(),
-        27
+        26
     );
     db.enqueue_dispatch(&dispatch("closed", &internal.id, None))
         .unwrap();
