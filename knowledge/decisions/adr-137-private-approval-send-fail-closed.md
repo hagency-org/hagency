@@ -27,19 +27,31 @@ cross-referenced only.
 `send_private_approval_card` does not reach its `Accepted` outcome —
 transport failure, refusal, timeout — the approval is **denied**: a recorded
 transition in the existing `owner_approvals` state machine (`state='decided'`,
-`choice='deny'`), carrying a **named denial reason** that says the send
-failed. The request never sits `pending` after a failed send, and the
-denial is recorded **where PC-C2's observation read and PC-C3's tools read
-it** — the same `owner_approvals` row every other surface serves, so the
-operator and the runner see one fact, not two. Two things the denial never
-does: it **never retries silently** (no re-send, no re-queue — D-PC-C5's
-permanent-uncertain posture applies to the delivery, so the send is not
-re-attempted behind anyone's back), and it **never reconstructs a packet**
-(the frozen card bytes are validated, never rebuilt from parts to make a
-retry possible). The denial's own failure is the retained caveat, stated
-here as in the code: if the denial write itself fails, the request stays
-`pending` and the failure is loud — one honest uncertainty, never a false
-`denied`.
+`choice='deny'` — the deserialized values; the stored `choice` text is the
+JSON-encoded `"deny"`), carrying a **named denial reason** that says the send
+failed. **The reason has a storage home**: migration **031** adds one
+nullable `denial_reason TEXT` to `approval_verdict_receipts` — the receipts
+table PC-C3's at-most-once gate already reads — via `ADD COLUMN` (029 stays
+MA-S4's, 030 MA-S2's; the schema-head pin moves to 31 in the same commit).
+The denial is entered through a **new public store wrapper,
+`deny_for_failed_delivery`** — distinct from `decide_verdict`, which is
+private and takes an owner's `OwnerVerdictObservation`; a delivery failure
+is not an owner event, and the wrapper **mints no verdict receipt** — the
+reason column is the failure's own record. The request never sits `pending`
+after a failed send, and the denial is recorded **where PC-C2's observation
+read and PC-C3's tools read it** — the same `owner_approvals` row every
+other surface serves, so the operator and the runner see one fact, not two:
+**the delivery-status word the operator sees is the row's own
+`state`/`choice`** (after a denial: `decided`/`deny`), not the stage enum's
+intermediate word — the stage stays a transport fact, the row stays the
+decision fact. Two things the denial never does: it **never retries
+silently** (no re-send, no re-queue — D-PC-C5's permanent-uncertain posture
+applies to the delivery, so the send is not re-attempted behind anyone's
+back), and it **never reconstructs a packet** (the frozen card bytes are
+validated, never rebuilt from parts to make a retry possible). The denial's
+own failure is the retained caveat, stated here as in the code: if the
+denial write itself fails, the request stays `pending` and the failure is
+loud — one honest uncertainty, never a false `decided`.
 
 **The public status notice is redacted and non-actionable.** The same
 collector gains `send_private_approval_notice`, posting the status body
