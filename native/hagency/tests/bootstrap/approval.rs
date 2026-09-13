@@ -6,6 +6,7 @@
 //! development-driver configuration the bootstrap fixture already writes.
 use super::*;
 use serde_json::Value;
+use std::io::{Seek, Write};
 
 /// Inject the approval bot's own credential set (config.rs `approval`): a
 /// SECOND identity/token/device/SDK root and a DM room, never the pooled
@@ -32,7 +33,15 @@ async fn with_approval(f: &Fixture, anchors: bool) {
             json!([])
         }
     });
-    hagency_store::private::write_new(&path, &serde_json::to_vec(&config).unwrap()).unwrap();
+    // The fixture's own `write_new` created this file already; rewrite it in
+    // place (the `scope.rs` shape) instead of re-creating it, and let the
+    // write itself fail loudly rather than swallowing `AlreadyExists`.
+    let mut file = hagency_store::private::open(&path, false).unwrap();
+    file.set_len(0).unwrap();
+    file.rewind().unwrap();
+    file.write_all(&serde_json::to_vec(&config).unwrap())
+        .unwrap();
+    drop(file);
     hagency_store::private::write_new(
         &f.state_dir.join("approval.access_token"),
         common::TOKEN.as_bytes(),
@@ -95,9 +104,12 @@ async fn native_private_approval_delivery_wiring_refuses_without_enrollment() {
         "the composition accepted an approval section without enrollment anchors"
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
+    // The named refusal (r1 item 4), not the shared `invalid or unavailable`
+    // config label every `Failure::Config` emits: the enrollment leg of the
+    // approval construction is what this scenario refuses.
     assert!(
-        stderr.contains("invalid or unavailable"),
-        "refusal was not the named configuration failure: {stderr}"
+        stderr.contains("approval enrollment refused"),
+        "refusal was not the named enrollment failure: {stderr}"
     );
     f.fake.no_request().await;
 }

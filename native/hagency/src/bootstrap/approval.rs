@@ -50,13 +50,25 @@ pub(crate) fn collector(
     anchors: Vec<(String, String)>,
     domain: DomainStore,
 ) -> Result<Arc<ApprovalCollector>, Failure> {
-    let approval = HostApprovalConfig::new(config, vec![engagement_id])
-        .map_err(|_| Failure::Config)?
+    let approval = HostApprovalConfig::new(config, vec![engagement_id]).map_err(|_| {
+        tracing::error!("approval collector refused: host approval config invalid");
+        Failure::Config
+    })?;
+    // The named refusal the `refuses_without_enrollment` selector binds: an
+    // approval section whose fresh-account enrollment anchors are absent or
+    // invalid never yields a collector, and no card can be sent.
+    let approval = approval
         .with_fresh_account_enrollment(anchors)
-        .map_err(|_| Failure::Config)?;
-    Ok(Arc::new(
-        ApprovalCollector::new(approval, domain).map_err(|_| Failure::Config)?,
-    ))
+        .map_err(|_| {
+            tracing::error!("approval enrollment refused: fresh-account anchors absent or invalid");
+            Failure::Config
+        })?;
+    Ok(Arc::new(ApprovalCollector::new(approval, domain).map_err(
+        |_| {
+            tracing::error!("approval collector refused: collector construction failed");
+            Failure::Config
+        },
+    )?))
 }
 
 impl Pump {
