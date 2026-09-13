@@ -42,12 +42,12 @@ fn seed_decisions(sql: &Connection, n: usize) {
 }
 
 fn seed_receipts(sql: &Connection, n: usize) {
-    for i in 0..n {
+    for _ in 0..n {
         sql.execute(
             "INSERT INTO retention_prune_receipts\
              (phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms) \
              VALUES('messages',0,'0','0',0,0,0)",
-            [i],
+            [],
         )
         .unwrap();
     }
@@ -115,7 +115,7 @@ fn native_decision_prune_keeps_the_newest_and_never_the_live_effect() {
     let mut f = Fixture::new();
     let sql = f.sql();
     seed_decisions(&sql, 501);
-    f.decide("trim_trigger", "trigger agent");
+    f.decide("trim_trigger", "trigger_agent");
     assert_eq!(count_decisions(&sql), 500);
     // The two oldest rows (rowid 1,2) are pruned; the high-water mark is kept.
     let kept: i64 = sql
@@ -156,7 +156,7 @@ fn native_decision_prune_keeps_the_newest_and_never_the_live_effect() {
 fn native_decision_prune_never_refuses_a_legitimate_first_retry() {
     let mut f = Fixture::new();
     let sql = f.sql();
-    let id = f.revoked_with_failed_retire("retry_src", "retry agent");
+    let id = f.revoked_with_failed_retire("retry_src", "retry_agent");
     // First retry (fresh command id) resets the failed retire to pending and
     // records the retry_cleanup decision as the lowest rowid.
     let retried = f.db.retry_cleanup("first_retry", &id).unwrap();
@@ -165,7 +165,7 @@ fn native_decision_prune_never_refuses_a_legitimate_first_retry() {
     seed_decisions(&sql, 500);
     // One more decide drives the trim: the retry_cleanup row (rowid 1) is the
     // oldest candidate but must be excluded; cmd_0 (rowid 2) is pruned.
-    f.decide("trim_trigger", "trigger agent");
+    f.decide("trim_trigger", "trigger_agent");
     let retry_kept: i64 = sql
         .query_row(
             "SELECT COUNT(*) FROM decisions WHERE id='first_retry'",
@@ -188,7 +188,7 @@ fn native_decision_prune_never_refuses_a_legitimate_first_retry() {
 #[test]
 fn native_decision_replay_window_is_bounded() {
     let mut f = Fixture::new();
-    let id = f.revoked_with_failed_retire("replay_src", "replay agent");
+    let id = f.revoked_with_failed_retire("replay_src", "replay_agent");
     // First retry resets the retire effect to pending and records its decision.
     f.db.retry_cleanup("retry_cmd", &id).unwrap();
     // Drive the retire effect back to `failed`: claim it (started) and observe
@@ -232,7 +232,7 @@ fn native_decision_prune_rolls_back_with_the_failing_command() {
     .unwrap();
     let engagement =
         f.db.admit(
-            &proof(&request("rollback", "rollback agent", &f.pool, 100)),
+            &proof(&request("rollback", "rollback_agent", &f.pool, 100)),
             1000,
         )
         .unwrap();
@@ -266,7 +266,7 @@ fn native_decision_prune_receipt_records_what_left() {
     let sql = f.sql();
     seed_receipts(&sql, 101);
     seed_decisions(&sql, 501);
-    f.decide("trim_trigger", "trigger agent");
+    f.decide("trim_trigger", "trigger_agent");
     assert!(
         count_receipts(&sql) <= 100,
         "the receipt table holds at most 100 rows"
