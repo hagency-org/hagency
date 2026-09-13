@@ -297,13 +297,15 @@ async fn native_console_alert_transition() {
     let mut response = response;
     let body = response.take_json::<serde_json::Value>().await.unwrap();
     assert_eq!(body["code"], "bad_transition", "named the refusal");
-    // An unknown key is a named 404, never a silent shape.
+    // An unknown key is a named 404, never a silent shape. The scope check
+    // runs before any store read, so the named 404 is what a SCOPED caller
+    // sees; an unscoped one is refused first (the `requires_scope` test).
     let response = TestClient::post(format!(
         "{BASE}/console/api/alerts/agent_ceiling_overrun:missing/transition"
     ))
     .add_header("host", "127.0.0.1:13300", true)
     .add_header("sec-fetch-site", "same-origin", true)
-    .add_header("cookie", &cookie, true)
+    .add_header("cookie", &manager, true)
     .add_header("origin", BASE, true)
     .json(&serde_json::json!({"to": "acknowledged"}))
     .send(&service)
