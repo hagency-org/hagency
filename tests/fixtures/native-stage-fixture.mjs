@@ -213,10 +213,10 @@ function registerPin(registry, name, get, set, json = true) {
   registry.set(name, { get, set, json });
 }
 
-export function stageFixture(stage = 'interrupt03', { controlPlacement = 'external' } = {}) {
+export function stageFixture(stage = 'interrupt03', { controlPlacement = 'external', instanceSystemAlias = false } = {}) {
   if (!['interrupt03', 'restart04'].includes(stage)) throw new Error('invalid fixture stage');
   if (!['external', 'same', 'inside'].includes(controlPlacement)) throw new Error('invalid control placement');
-  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'native-stage-fixture-')));
+  const root = realpathSync(mkdtempSync(path.join(instanceSystemAlias ? '/private/tmp' : tmpdir(), 'native-stage-fixture-')));
   const project = path.join(root, 'business project');
   const control = controlPlacement === 'same' ? project
     : controlPlacement === 'inside' ? path.join(project, 'private control') : path.join(root, 'private control');
@@ -231,7 +231,7 @@ export function stageFixture(stage = 'interrupt03', { controlPlacement = 'extern
   const calls = path.join(root, 'native calls.jsonl');
   const events = path.join(root, 'stage-events.jsonl');
   const tools = path.join(root, 'tools');
-  const instance = path.join(root, 'instance data');
+  const instance = path.join(instanceSystemAlias ? root.replace(/^\/private\/tmp\//, '/tmp/') : root, 'instance data');
   const backendState = path.join(root, 'backend state');
   const backendConfig = path.join(root, 'backend config.json');
   const middleWorkdir = path.join(root, 'middle workdir');

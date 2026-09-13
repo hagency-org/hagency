@@ -24,3 +24,13 @@ prerequisite records must already have their real traces/experiments accepted
 before the plan is constructed and authorized. Their hashes protect reviewed
 inputs; they do not prove natural execution or erase failed attempts. Every
 original interruption/restart/watch/approval/receipt/Matrix gate remains.
+
+The first live stage validation exposed a mismatch with the frozen Python
+observer: macOS instance paths may legitimately retain the system `/tmp`
+alias in the actual backend argv. Stage validation permits that instance-only
+spelling after verifying the root-owned direct alias to `/private/tmp` and a
+canonical descendant with no additional symlink. It checks the alias identity
+before and after resolution and repeats validation before controls. It preserves
+the original instance and argument bytes; other input paths remain canonical.
+These separate filesystem checks do not claim atomicity against a concurrent
+writer. Existing frozen bundles and consumed observer attempts are not rewritten.

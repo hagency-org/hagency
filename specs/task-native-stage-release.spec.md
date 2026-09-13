@@ -37,6 +37,7 @@ original natural-turn, watch, approval, fault and final acceptance gate.
 - Activation and child operation IDs use lowercase canonical UUIDv4 strings, distinct and fixed by the plan. Validate each derived child plan against the pinned controller's input constraints before claiming the stage. The same attempt/stage claim cannot be bypassed with a new activation or child ID.
 - Predecessor readonly files must retain their actual pins; prepared and manifest identify the same attempt and trace. Preparation establishes lineage, not live readiness.
 - Frozen helper pins identify observer and adapter in the same directory. Observer argv must identify that exact script, binding and stage; actual argv/cwd are queried, never split from ps or inferred from a launch string.
+- [platform-specific: macOS] Preserve an instance descendant spelled through the root-owned /tmp system symlink only when it resolves to /private/tmp and the corresponding descendant is canonical with no further symlink. Preserve the original instance string and exact process argv; all other evidence paths retain strict canonical validation. Reject unrelated aliases, descendant symlinks and lexical traversal, including during later evidence rechecks.
 - Protected sets contain checkpoint, source snapshot, test-output capture, red-green record and its red/green captures for every prior increment:01/02 for03,01/02/03 for04. The frozen observer binding covers its exact checkpoint/source/test-output subset.
 - Stage03 requires no live loop;04 requires the sole original fixed60second loop paused. The current native observations establish eligibility independently of older files.
 - Prerequisite pins retain the middle's already reviewed evidence inputs.04 requires named pins for natural03, pre_restart_audits, prerequisite_waits, blocked_terminal_order, tiny_timeout and same_backend_readonly_recovery. This coordinator checks readability/digests/binding, not the semantics of those historical experiments; the original independent acceptance remains mandatory before constructing/authorizing a04 plan and at final audit.
@@ -67,6 +68,45 @@ original natural-turn, watch, approval, fault and final acceptance gate.
 - Frozen Python, old attempts, business implementation and live runtime state during source preparation
 
 ## Acceptance Criteria
+
+Scenario: Preserve the macOS system instance alias
+  Test: accepts the macOS system instance alias without rewriting native argv
+  Given an owned instance descendant uses the verified macOS system temporary alias
+  When the stage plan is validated and rechecked
+  Then the original instance spelling and complete argv remain unchanged
+  And no stage release or native control is sent by validation
+
+Scenario: Reject other instance aliases and traversal
+  Test: rejects other instance aliases and lexical traversal
+  Test: rejects an unsafe descendant inside the macOS instance alias
+  Given an instance uses an unrelated alias a descendant symlink or lexical traversal
+  When the stage plan is validated
+  Then validation fails before a stage claim or release
+
+Scenario: Recheck the macOS instance alias target
+  Test: rejects a replaced macOS instance descendant during evidence recheck
+  Given a validated macOS alias descendant is replaced by another symlink
+  When stage evidence is rechecked
+  Then validation fails before any native mutation
+
+Scenario: Reject unsafe system alias metadata
+  Test: rejects unsafe macOS system alias metadata
+  Given the system alias has a wrong owner type indirect target or changed identity
+  When the instance alias is validated
+  Then validation fails without creating a stage claim or release
+
+Scenario: Keep the alias exception platform scoped
+  Test: does not enable the system alias exception outside macOS
+  Given an instance spelling traverses the system temporary symlink
+  When validation runs with a non macOS platform
+  Then the canonical path rule rejects the symlink
+
+Scenario: Preserve exact arguments and canonical evidence paths
+  Test: does not rewrite native argv when accepting the macOS instance alias
+  Given the native instance argument or a canonical evidence path is changed
+  When the stage plan is validated
+  Then the unchanged identity and path rules reject the plan
+  Test: does not extend the macOS instance alias exception to evidence paths
 
 Scenario: Release03 only after actual observer readiness
   Test: releases03 after ready live identity and protected checks before one goal resume

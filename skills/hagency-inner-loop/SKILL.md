@@ -410,6 +410,12 @@ frozen observer binding carries the stage, attempt control directory, instance,
 trace prefix, goal/loop hashes and protected subset. Shared identities must
 match; do not add these observer-only fields to the controller binding.
 
+On macOS, the frozen observer's instance may retain `/tmp/` in the actual
+backend argv. Only this field permits the verified root-owned system symlink
+directly to `/private/tmp`, with no additional symlink in the descendant.
+Keep the original spelling and exact argv; do not rewrite a claimed binding
+to make it canonical. Other plan, tool and evidence paths remain canonical.
+
 `child_operations` fixes distinct lowercase canonical UUIDv4s for `initial_inspect`, `goal_resume`
 and `final_inspect`. Restart04 also fixes `loop_resume` and an ordered array
 of 1–128 `settlement_inspects`. All IDs must differ from one another and from

@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, test, vi } from 'vitest';
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, lstatSync, mkdirSync, readFileSync, realpathSync, renameSync, symlinkSync, writeFileSync } from 'node:fs';
 import { performance } from 'node:perf_hooks';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -13,9 +13,24 @@ import {
 } from '../skills/hagency-inner-loop/scripts/native-stage-evidence.mjs';
 
 const ioFault = vi.hoisted(() => ({ target: null, mode: null }));
+const aliasFault = vi.hoisted(() => ({ mode: null, reads: 0 }));
 vi.mock('node:fs', async importOriginal => {
   const actual = await importOriginal();
-  return { ...actual, readFileSync(file, ...args) {
+  return { ...actual, lstatSync(file, ...args) {
+    const information = actual.lstatSync(file, ...args);
+    if (file !== '/tmp' || aliasFault.mode === null) return information;
+    aliasFault.reads += 1;
+    const modified = Object.create(information);
+    if (aliasFault.mode === 'wrong type') modified.isSymbolicLink = () => false;
+    if (aliasFault.mode === 'wrong owner') modified.uid = 1;
+    if (aliasFault.mode === 'replaced alias' && aliasFault.reads >= 2) {
+      modified.ino = information.ino + (typeof information.ino === 'bigint' ? 1n : 1);
+    }
+    return modified;
+  }, readlinkSync(file, ...args) {
+    if (file === '/tmp' && aliasFault.mode === 'indirect target') return '/private/another-alias';
+    return actual.readlinkSync(file, ...args);
+  }, readFileSync(file, ...args) {
     const raw = actual.readFileSync(file, ...args);
     if (typeof file === 'number' && ioFault.target !== null) {
       const opened = actual.fstatSync(file);
@@ -35,6 +50,9 @@ const fixtures = [];
 afterEach(async () => {
   ioFault.target = null;
   ioFault.mode = null;
+  aliasFault.mode = null;
+  aliasFault.reads = 0;
+  vi.unstubAllGlobals();
   await Promise.all(fixtures.splice(0).map(fixture => fixture.dispose()));
 });
 
@@ -122,6 +140,132 @@ function rewriteObserverBinding(fixture, mutate) {
 }
 
 describe('native stage evidence validation', () => {
+  for (const stage of ['interrupt03', 'restart04']) test(`accepts the macOS system instance alias without rewriting native argv: ${stage}`, ({ skip }) => {
+    if (process.platform !== 'darwin') { skip(); return; }
+    const fixture = stageFixture(stage, { instanceSystemAlias: true });
+    fixtures.push(fixture);
+    const original = structuredClone(fixture.plan);
+    const binding = JSON.parse(readFileSync(fixture.plan.observer_binding.path));
+    expect(binding.instance).toMatch(/^\/tmp\/.+/);
+    expect(realpathSync(binding.instance)).toBe(binding.instance.replace(/^\/tmp\//, '/private/tmp/'));
+    const context = validateStagePlan(fixture.plan);
+    expect(() => verifyStageEvidence(context)).not.toThrow();
+    expect(context.plan).toEqual(original);
+    expect(fixture.plan).toEqual(original);
+    expect(JSON.parse(readFileSync(fixture.plan.observer_binding.path))).toEqual(binding);
+    expect(existsSync(fixture.activation)).toBe(false);
+    expect(existsSync(fixture.release)).toBe(false);
+    expect(fixture.sent()).toEqual([]);
+  });
+
+  test.each(['unrelated alias', 'descendant symlink', 'lexical traversal'])(
+    'rejects other instance aliases and lexical traversal: %s', variant => {
+      const fixture = make('interrupt03');
+      const original = JSON.parse(readFileSync(fixture.plan.observer_binding.path)).instance;
+      let instance;
+      if (variant === 'lexical traversal') instance = `${original}/../${path.basename(original)}`;
+      else {
+        instance = variant === 'unrelated alias' ? path.join(fixture.root, 'instance alias') : path.join(original, 'link');
+        symlinkSync(variant === 'unrelated alias' ? original : fixture.root, instance);
+      }
+      const argv = fixture.plan.binding.backend.argv;
+      argv[argv.indexOf('--instance-data-dir') + 1] = instance;
+      rewriteObserverBinding(fixture, binding => {
+        binding.instance = instance;
+        binding.backend = structuredClone(fixture.plan.binding.backend);
+      });
+      expect(() => validateStagePlan(fixture.plan)).toThrow('observer_binding_changed');
+      expect(existsSync(fixture.activation)).toBe(false);
+      expect(existsSync(fixture.release)).toBe(false);
+      expect(fixture.sent()).toEqual([]);
+    },
+  );
+
+  for (const variant of ['descendant symlink', 'lexical traversal']) test(
+    `rejects an unsafe descendant inside the macOS instance alias: ${variant}`, ({ skip }) => {
+      if (process.platform !== 'darwin') { skip(); return; }
+      const fixture = stageFixture('interrupt03', { instanceSystemAlias: true });
+      fixtures.push(fixture);
+      expect(() => validateStagePlan(fixture.plan)).not.toThrow();
+      const original = JSON.parse(readFileSync(fixture.plan.observer_binding.path)).instance;
+      const instance = variant === 'lexical traversal'
+        ? `${original}/../${path.basename(original)}`
+        : path.join(original, 'link');
+      if (variant === 'descendant symlink') symlinkSync(fixture.root, instance);
+      expect(instance).toMatch(/^\/tmp\/.+/);
+      const argv = fixture.plan.binding.backend.argv;
+      argv[argv.indexOf('--instance-data-dir') + 1] = instance;
+      rewriteObserverBinding(fixture, binding => {
+        binding.instance = instance;
+        binding.backend = structuredClone(fixture.plan.binding.backend);
+      });
+      expect(() => validateStagePlan(fixture.plan)).toThrow('observer_binding_changed');
+      expect(existsSync(fixture.activation)).toBe(false);
+      expect(existsSync(fixture.release)).toBe(false);
+      expect(fixture.sent()).toEqual([]);
+    },
+  );
+
+  test('rejects a replaced macOS instance descendant during evidence recheck', ({ skip }) => {
+    if (process.platform !== 'darwin') { skip(); return; }
+    const fixture = stageFixture('interrupt03', { instanceSystemAlias: true });
+    fixtures.push(fixture);
+    const context = validateStagePlan(fixture.plan);
+    const instance = JSON.parse(readFileSync(fixture.plan.observer_binding.path)).instance;
+    renameSync(instance, `${instance}.retained`);
+    symlinkSync(`${instance}.retained`, instance);
+    expect(() => verifyStageEvidence(context)).toThrow('stage_ancestry_changed');
+    expect(existsSync(fixture.release)).toBe(false);
+    expect(fixture.sent()).toEqual([]);
+  });
+
+  for (const fault of ['wrong type', 'wrong owner', 'indirect target', 'replaced alias']) test(
+    `rejects unsafe macOS system alias metadata: ${fault}`, ({ skip }) => {
+      if (process.platform !== 'darwin') { skip(); return; }
+      const fixture = stageFixture('interrupt03', { instanceSystemAlias: true });
+      fixtures.push(fixture);
+      aliasFault.mode = fault;
+      expect(() => validateStagePlan(fixture.plan)).toThrow('observer_binding_changed');
+      expect(existsSync(fixture.activation)).toBe(false);
+      expect(existsSync(fixture.release)).toBe(false);
+    },
+  );
+
+  test('does not enable the system alias exception outside macOS', ({ skip }) => {
+    if (process.platform !== 'darwin') { skip(); return; }
+    const fixture = stageFixture('interrupt03', { instanceSystemAlias: true });
+    fixtures.push(fixture);
+    vi.stubGlobal('process', new Proxy(process, {
+      get(target, key) { return key === 'platform' ? 'linux' : Reflect.get(target, key); },
+    }));
+    expect(() => validateStagePlan(fixture.plan)).toThrow('observer_binding_changed');
+    expect(existsSync(fixture.release)).toBe(false);
+  });
+
+  test('does not rewrite native argv when accepting the macOS instance alias', ({ skip }) => {
+    if (process.platform !== 'darwin') { skip(); return; }
+    const fixture = stageFixture('interrupt03', { instanceSystemAlias: true });
+    fixtures.push(fixture);
+    const argv = fixture.plan.binding.backend.argv;
+    argv[argv.indexOf('--instance-data-dir') + 1] = realpathSync(argv[argv.indexOf('--instance-data-dir') + 1]);
+    rewriteObserverBinding(fixture, binding => { binding.backend = structuredClone(fixture.plan.binding.backend); });
+    expect(() => validateStagePlan(fixture.plan)).toThrow('observer_binding_changed');
+    expect(existsSync(fixture.activation)).toBe(false);
+    expect(fixture.sent()).toEqual([]);
+  });
+
+  test('does not extend the macOS instance alias exception to evidence paths', ({ skip }) => {
+    if (process.platform !== 'darwin') { skip(); return; }
+    const fixture = stageFixture('interrupt03', { instanceSystemAlias: true });
+    fixtures.push(fixture);
+    expect(() => validateStagePlan(fixture.plan)).not.toThrow();
+    fixture.plan.binding.trace = fixture.plan.binding.trace.replace(/^\/private\/tmp\//, '/tmp/');
+    expect(() => validateStagePlan(fixture.plan)).toThrow('invalid_native_binding');
+    expect(existsSync(fixture.activation)).toBe(false);
+    expect(existsSync(fixture.release)).toBe(false);
+    expect(fixture.sent()).toEqual([]);
+  });
+
   test('accepts an alphanumeric native window and pane identity', () => {
     const fixture = make('interrupt03');
     chmodSync(fixture.plan.binding.frontend_binary.path, 0o555);

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { execFile } from 'node:child_process';
 import {
-  closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readSync, realpathSync,
+  closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readlinkSync, readSync, realpathSync,
 } from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
@@ -109,6 +109,32 @@ function absent(candidate, category = 'stage_already_consumed') {
     throw new EvidenceError(category);
   }
   throw new EvidenceError(category);
+}
+
+function observerInstancePath(candidate) {
+  const category = 'observer_binding_changed';
+  if (process.platform !== 'darwin' || typeof candidate !== 'string' || !candidate.startsWith('/tmp/')) {
+    canonical(candidate, 'directory', category);
+    return candidate;
+  }
+  requireEvidence(publicText(candidate) && path.normalize(candidate) === candidate, category);
+  try {
+    const before = lstatSync('/tmp', { bigint: true });
+    const target = readlinkSync('/tmp');
+    requireEvidence(before.isSymbolicLink() && before.uid === 0n
+      && path.resolve('/', target) === '/private/tmp'
+      && realpathSync('/tmp') === '/private/tmp', category);
+    const mapped = `/private${candidate}`;
+    canonical(mapped, 'directory', category);
+    requireEvidence(realpathSync(candidate) === mapped, category);
+    const retained = lstatSync('/tmp', { bigint: true });
+    requireEvidence(retained.isSymbolicLink() && retained.uid === 0n
+      && sameFile(before, retained) && readlinkSync('/tmp') === target, category);
+    return mapped;
+  } catch (error) {
+    if (error instanceof EvidenceError) throw error;
+    throw new EvidenceError(category);
+  }
 }
 
 function validatePin(pin) {
@@ -441,7 +467,7 @@ function validateObserverFiles(plan, observerRoot) {
     && exactKeys(frozen, frozenKeys) && isDeepStrictEqual(launch, frozen)
     && frozen.version === 1 && frozen.stage === plan.stage && frozen.control === path.dirname(plan.attempt_manifest.path)
     && frozen.project === plan.binding.project && frozen.trace === plan.binding.trace
-    && canonical(frozen.instance, 'directory', 'observer_binding_changed')
+    && observerInstancePath(frozen.instance)
     && frozen.profile === plan.binding.profile && frozen.lower_agent === plan.binding.lower_agent
     && frozen.herdr_session === plan.binding.herdr_session && frozen.native_session === plan.binding.native_session
     && frozen.pane_id === plan.binding.pane_id && frozen.shell_pid === plan.binding.shell_pid
@@ -568,7 +594,7 @@ function retainDirectories(plan, attemptPath, observerRoot, manifest) {
   for (const candidate of [baseControl, recoveryRoot, attemptPath, observerRoot]) privateDirectory(candidate);
   const roots = [...new Set([
     plan.binding.project, baseControl, recoveryRoot, attemptPath,
-    observerParent, observerRoot, frozen.instance, plan.observer.cwd,
+    observerParent, observerRoot, observerInstancePath(frozen.instance), plan.observer.cwd,
   ])];
   const retained = new Map();
   for (const root of roots) {
