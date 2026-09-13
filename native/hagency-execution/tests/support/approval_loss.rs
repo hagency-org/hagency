@@ -223,7 +223,10 @@ async fn native_owned_approval_caller_loss() {
             assert_eq!(
                 writes,
                 usize::from(matches!(fault, Fault::WriteAck | Fault::WritePanic)),
-                "{fault:?}"
+                "{fault:?}: expected an accepted write on the wire; host wrote {} frame(s), probe read {}, probe markers present: {}",
+                host_response_frames(&work).len(),
+                probe_read_frames(&work).len(),
+                markers_present(&work),
             );
         }
         let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
