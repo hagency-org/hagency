@@ -548,9 +548,11 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
     assert_eq!(
         report.protocol,
         Protocol::Completed,
-        "{:?} {:?}",
+        "{:?} {:?}; host wrote {} frame(s), probe read {}",
         report.failure,
-        report.runtime_observation()
+        report.runtime_observation(),
+        host_response_frames(&work).len(),
+        probe_read_frames(&work).len()
     );
     // The retained owner process cleanup reports unknown on macOS, as in
     // tests/owned/usage.rs; the reconcile itself adds no failure anywhere.
@@ -662,7 +664,8 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     while !gate.entered.load(Ordering::Acquire) {
         assert!(
             tokio::time::Instant::now() < end,
-            "the receipt did not reach the recheck gate"
+            "the receipt did not reach the recheck gate; probe markers present: {}",
+            markers_present(&work)
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
@@ -734,4 +737,52 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
 /// every wait scales with the budget the fixture actually runs.
 const fn harness_wait() -> Duration {
     Duration::from_millis(crate::approval::Gate::OPERATION_BUDGET_MS / 10)
+}
+
+/// Response frames the HOST actually wrote (from the probe parent's wire
+/// record): lines with an `approval-*` id and a `result` field.
+fn host_response_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(work.join("owned-dispatch.requests"))
+        .unwrap()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .filter(|value| {
+            value["id"]
+                .as_str()
+                .is_some_and(|id| id.starts_with("approval-"))
+                && value.get("result").is_some()
+        })
+        .collect()
+}
+
+/// Frames the PROBE actually read (its `approval-bytes` append log) — the
+/// read-side counterpart of [`host_response_frames`], so a mismatch names
+/// which side lost the frame.
+fn probe_read_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(work.join("owned-dispatch.approval-bytes"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .collect()
+}
+
+/// Every `owned-dispatch.*` marker file currently present under `work`, so an
+/// expired wait reports what the probe DID emit: a timing miss (the marker
+/// arrives late) is distinguishable from a logic miss (it never comes).
+fn markers_present(work: &std::path::Path) -> String {
+    std::fs::read_dir(work)
+        .map(|entries| {
+            let mut names: Vec<String> = entries
+                .filter_map(std::result::Result::ok)
+                .map(|entry| entry.file_name().to_string_lossy().into_owned())
+                .filter(|name| name.starts_with("owned-dispatch."))
+                .collect();
+            names.sort();
+            if names.is_empty() {
+                "<none>".to_owned()
+            } else {
+                names.join(", ")
+            }
+        })
+        .unwrap_or_else(|_| "<unreadable>".to_owned())
 }
