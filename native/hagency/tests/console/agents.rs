@@ -302,6 +302,12 @@ async fn native_console_agent_lifecycle_is_scoped() {
     let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
     let service = f.service();
     let readonly = session(&service).await;
+    // The console's issuance budget is one per second ACROSS scopes
+    // (authority.rs `issue_scope`): the read-only issue above and the
+    // lifecycle issue below cannot land in the same second without the
+    // second answering busy (429). Drive them one at a time — the house
+    // pattern the resources authority test uses — never a retry loop.
+    tokio::time::sleep(std::time::Duration::from_millis(1010)).await;
     let lifecycle = lifecycle_session(&service).await;
     let id = &f.engagement;
     // Read-only: all three acts refused before any store work.
