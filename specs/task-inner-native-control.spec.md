@@ -35,7 +35,7 @@ response association without replaying an uncertain control.
 - [macOS-only] The first live process adapter uses the existing pinned Darwin birth collector plus Herdr's tokenized foreground process metadata. Other operating systems require an explicit adapter and are not reported as verified.
 - The library separates evidence/process primitives from native request correlation and the bounded CLI.
 - CLI plans are readonly files pinned by a required SHA256 argument. Supported operations are inspect, goal-pause and goal-resume; shell commands and arbitrary native prompts are not accepted.
-- Goal resume requires the exact goal to be paused or blocked, a complete terminal-only turn array and Herdr idle. Goal pause may stop future work while an existing turn settles; its response never claims session idle.
+- Goal resume requires the exact goal to be paused or blocked, a complete terminal-only turn array and Herdr's detected idle state, displayed as idle when seen or done when unseen. Loop creation, resume and deletion use the same idle display check. Neither display value proves task completion. Goal pause may stop future work while an existing turn settles; its response never claims session idle.
 - Each mutation uses a fresh operation ID and an exclusive evidence directory. Missing or conflicting responses after intent publication yield outcome_unknown and retain evidence.
 - CLI stdout is one bounded JSON result without raw goal objectives, nonces, argv or subprocess stderr. Failures return nonzero and full_acceptance remains false.
 
@@ -109,6 +109,24 @@ Scenario: Resume rejects unknown or active work
   Given a missing or different goal malformed turns or an active native turn
   When resume is requested
   Then no resume command is delivered
+
+Scenario: Unseen idle panes support existing goal and loop controls
+  Test: accepts unseen Herdr done only with terminal native turns
+  Given the exact paused goal and complete terminal-only turns with Herdr done
+  When goal resume or loop creation resume or deletion is requested
+  Then exactly one bound mutation is delivered and full acceptance remains false
+
+Scenario: An unseen display cannot hide an active native turn
+  Test: rejects active native turns even when Herdr reports done
+  Given Herdr done and a fresh active native turn
+  When goal resume or loop creation resume or deletion is requested
+  Then no mutation is delivered
+
+Scenario: Other display states do not establish idle
+  Test: rejects non-idle Herdr display states before native controls
+  Given terminal native turns with a working blocked unknown or missing Herdr state
+  When goal resume is requested
+  Then no mutation is delivered
 
 Scenario: An uncertain mutation is never replayed
   Test: preserves mutation intent and rejects reuse after delivery timeout

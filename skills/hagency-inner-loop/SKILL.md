@@ -245,7 +245,12 @@ replacement, prefix rewriting, duplicates, RPC errors and missing responses
 fail; a successful Herdr delivery by itself never proves native success.
 
 Resume requires the original paused/blocked goal, a nonempty complete array
-of terminal turns and a fresh Herdr idle observation. Pause allows an active
+of terminal turns and a fresh Herdr idle observation. For these native goal
+and loop controls, Herdr `idle` and `done` both represent detected Idle: `done`
+means the pane has not been seen. Neither label proves native inactivity or
+task completion; the complete terminal-only turn check remains mandatory.
+Working, blocked, unknown or missing display states do not permit resume.
+Pause allows an active
 turn to settle and never reports session idle. The underlying TUI control is
 get→set without an atomic expected-goal-ID condition. The helper checks both
 real responses against the original goal ID, creation time and objective

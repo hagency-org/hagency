@@ -24,6 +24,16 @@ claims a unique operation and records intent before dispatch; uncertainty never
 causes an automatic replay. A successful query or control is not whole-task
 acceptance, and this helper does not write business implementation or task state.
 
+Herdr's detected Idle state has two API display values: `idle` when the pane
+has been seen, and `done` when unseen. Accept either at the goal-resume and
+loop-control idle gates, including the fresh pre-send display check. Retain
+the separate complete terminal-only native turn check and exact goal/loop
+and process identity checks. Neither display value establishes acceptance;
+working, blocked, unknown and missing display states remain ineligible.
+This follows Herdr's `pane_agent_status` and client-shell `projected_status`
+mapping, also observed after the U readonly preflight. Tests use local fixtures;
+the failed U business execution and frozen resources remain unchanged.
+
 Use the existing Darwin collector for birth metadata and Herdr's actual argv
 arrays for foreground processes. Do not invent argv by splitting ps output or
 turn a missing observation into permission. Unsupported platforms remain

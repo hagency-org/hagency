@@ -242,6 +242,41 @@ function configureLoop(f, operation) {
 }
 const loopMutations = f => f.sent().filter(c => /^\/loop (every|pause|resume|delete) /.test(c));
 
+const idleOperations = ['goal-resume', 'loop-create', 'loop-resume', 'loop-delete'];
+function idleControlFixture(operation) {
+  const f = fixture();
+  if (operation.startsWith('loop-')) configureLoop(f, operation);
+  else f.plan.operation = operation;
+  return f;
+}
+const idleMutations = f => f.sent().filter(c => c === '/goal resume' || /^\/loop (every|resume|delete) /.test(c));
+
+it.each(idleOperations)('accepts unseen Herdr done only with terminal native turns: %s', async operation => {
+  const { runControlPlan } = await controller(); const f = idleControlFixture(operation);
+  f.update(s => { s.agentInfo.agent_status = 'done'; });
+  const report = await runControlPlan(f.plan);
+  expect(report, JSON.stringify(report)).toMatchObject({ status: 'applied', operation, full_acceptance: false });
+  expect(idleMutations(f)).toHaveLength(1);
+  const evidence = JSON.parse(readFileSync(report.evidence_path, 'utf8'));
+  const hydrated = evidence.observations.find(o => o.request.frame.method === 'session/hydrate');
+  expect(hydrated.response.frame.result.turns).toEqual(f.state.turns);
+  expect(report).not.toHaveProperty('session_idle', true);
+});
+
+it.each(idleOperations)('rejects active native turns even when Herdr reports done: %s', async operation => {
+  const { runControlPlan } = await controller(); const f = idleControlFixture(operation);
+  f.update(s => { s.agentInfo.agent_status = 'done'; s.turns[0].state = 'active'; });
+  expect(await runControlPlan(f.plan)).toMatchObject({ status: 'failed', full_acceptance: false });
+  expect(idleMutations(f)).toEqual([]);
+});
+
+it.each(['working', 'blocked', 'unknown', undefined])('rejects non-idle Herdr display states before native controls: %s', async status => {
+  const { runControlPlan } = await controller(); const f = idleControlFixture('goal-resume');
+  f.update(s => { s.agentInfo.agent_status = status; });
+  expect(await runControlPlan(f.plan)).toMatchObject({ status: 'failed', full_acceptance: false });
+  expect(idleMutations(f)).toEqual([]);
+});
+
 it('creates one fixed interval loop and verifies the fresh scoped list', async () => {
   const { runControlPlan } = await controller(); const f = configureLoop(fixture(), 'loop-create');
   const report = await runControlPlan(f.plan);

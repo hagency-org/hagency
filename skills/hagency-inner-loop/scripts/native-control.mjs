@@ -16,6 +16,8 @@ const OPERATION_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0
 const GOAL_STATES = new Set(['active', 'paused', 'blocked', 'budget_limited', 'complete']);
 const TURN_STATES = new Set(['active', 'interrupting', 'completed', 'errored', 'interrupted']);
 const TERMINAL = new Set(['completed', 'errored', 'interrupted']);
+// Herdr displays detected Idle as done until the pane is seen.
+const HERDR_IDLE = new Set(['idle', 'done']);
 const OPERATIONS = new Set(['inspect', 'goal-pause', 'goal-resume', 'loop-create', 'loop-pause', 'loop-resume', 'loop-delete']);
 const LOOP_ID = /^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$/;
 const MAX_FILE_BYTES = 128 * 1024 * 1024;
@@ -351,7 +353,7 @@ export async function runControlPlan(input) {
     };
     const read = async method => retain(await queryNative(plan.binding, method, { timeout_ms: plan.query_timeout_ms }));
     const act = async (description, needsIdle, details = {}) => exchange(plan.binding, description, plan.query_timeout_ms, (fence, before) => {
-      if (needsIdle) requireProof(before.agent_status === 'idle', isLoopOperation ? 'loop_not_ready' : 'resume_not_ready');
+      if (needsIdle) requireProof(HERDR_IDLE.has(before.agent_status), isLoopOperation ? 'loop_not_ready' : 'resume_not_ready');
       // Set before publication: an fsync/read-back error may leave a durable intent.
       mutationIntent = true;
       publishExclusiveJson(path.join(directory, 'intent.json'), { version: 1, operation_id: operationId,
@@ -370,7 +372,7 @@ export async function runControlPlan(input) {
       if (needsIdle) {
         requireProof(['paused', 'blocked'].includes(current.status) && currentTurns.length > 0
           && currentTurns.every(turn => TERMINAL.has(turn.state))
-          && processObservations.at(-1).after.agent_status === 'idle', 'loop_not_ready');
+          && HERDR_IDLE.has(processObservations.at(-1).after.agent_status), 'loop_not_ready');
       } else requireProof(current.status !== 'complete', 'loop_not_ready');
       if (action === 'resume') requireProof(originalLoop.status === 'paused', 'loop_not_ready');
       const template = plan.loop_template, scope = { session_id: b.native_session, profile_id: b.profile };
@@ -410,7 +412,7 @@ export async function runControlPlan(input) {
     if (resuming) {
       requireProof(['paused', 'blocked'].includes(current.status) && currentTurns.length > 0
         && currentTurns.every(turn => TERMINAL.has(turn.state))
-        && processObservations.at(-1).after.agent_status === 'idle', 'resume_not_ready');
+        && HERDR_IDLE.has(processObservations.at(-1).after.agent_status), 'resume_not_ready');
     } else requireProof(['active', 'paused', 'blocked', 'budget_limited'].includes(current.status), 'pause_not_ready');
     const b = plan.binding, status = resuming ? 'active' : 'paused';
     const scope = { session_id: b.native_session, profile_id: b.profile };
