@@ -178,3 +178,30 @@ The bounded collector retains sync and storage uncertainty without implying even
 ## Alternatives Considered
 
 Trusting caller-supplied verification flags or silently adopting another SDK device would bypass authenticated identity. Dropping pending sync history at capacity would erase the custody required for recovery.
+
+---
+
+## Amendment: a first unsafe room snapshot is a named safety refusal, not an authority one
+
+**The observed behaviour.** A room observation whose snapshot fails the safety
+predicate (`invalid_members` or `invalid_direct`, `matrix_routes.rs:327-336` —
+e.g. a Direct room that is not invite-only or not encrypted) is routed to
+`invalidate(...)` (`:341`), which records an invalidation against the room's
+**prior** `matrix_room_scopes` row. When the unsafe snapshot is the room's
+**first** observation there is no prior row, so `invalidate` returns
+`Error::RunnerAuthority` (`:123`), which `hagency-matrix` maps to its bare
+catch-all `Error::Domain` (`lib.rs:86`).
+
+**Why it is wrong.** The operator sees an **authority** refusal for what is a
+**privacy/safety** refusal — a misattribution that misleads triage — and the
+store keeps **no record** of the unsafe first observation, so the unsafe room
+is invisible to every later audit and the same snapshot would be re-processed
+silently.
+
+**The intended rule.** A first unsafe observation is refused with a **named
+safety reason** (the safety predicate's own word, bound to the snapshot as the
+reason digest already is), and — consistent with the existing initial-failure
+rule above ("initial failure may record unavailable gen 1") — **recorded as an
+invalidated scope at generation 1**, so the unsafe observation is durable.
+`RunnerAuthority` stays reserved for authority; it is never the word a safety
+refusal surfaces as.
