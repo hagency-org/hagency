@@ -251,7 +251,14 @@ re-over behavior (`alert-store.js:245-248`: a suppressed row reopens on a new oc
 NEVER reopens a suppressed row — occurrences ride, the operator releases. A second re-raise divergence:
 the retained store reopens a resolved row only inside `ALERT_REOPEN_WINDOW_MS` (5 min,
 `lib/alert-store.js:258-265`) and otherwise files a new alert, while native always reopens the same
-dedupe row as a fresh episode. An acknowledged (or
+dedupe row as a fresh episode. A third bound divergence, unnamed until now: the retained store enforces
+`MAX_ACTIVE_ALERTS` = 1000 by auto-resolving the oldest **info**-severity alert with an
+`auto-pruned: cap exceeded` note and dropping it from the dedupe index (`lib/alert-store.js:27`,
+enforced `:282-297`), while native carries no active-count cap and no auto-prune at all — its table is
+`PRIMARY KEY(dedupe_key)` (`024-ceiling-alerts.sql:7`), so it is bounded structurally by the resource
+count and by the 7-day resolved retention, never by a count-triggered resolve. Native adopts neither: no
+alert is resolved except by the sweep's own recovery rule or an operator transition, because a cap that
+silently resolves an alert would flip a diagnostic state nobody asked for. An acknowledged (or
 suppressed) row that recovers auto-resolves exactly like an open one (`resolved_by='system'`), matching
 the retained `autoResolve` (`alert-store.js:341`: any non-resolved status). The client validator
 (`mockup/lib/native-api.js`) keeps its own `ALERT_STATUSES` — it must refuse an unknown state rather
