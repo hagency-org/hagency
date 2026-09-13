@@ -2551,6 +2551,12 @@ impl DomainStore {
         self.call(weight(&after)?, move |db| db.engagements(&after, limit))
             .await
     }
+    /// The read-only agent roster (ADR-126): one writer job, one bounded
+    /// read — the projection is computed at the store, so the console route
+    /// adds no second arithmetic path.
+    pub async fn agent_roster(&self) -> Result<Vec<crate::AgentRosterRow>, Error> {
+        self.call(64, |db| db.agent_roster()).await
+    }
     pub async fn resource_budget(&self, id: String) -> Result<Budget, Error> {
         self.call(weight(&id)?, move |db| db.resource_budget(&id))
             .await

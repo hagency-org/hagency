@@ -161,6 +161,24 @@ fn read_resource(db: &Connection, id: &str) -> Result<Resource, Error> {
         .ok_or(Error::NotFound)?;
     Ok(serde_json::from_str(&value)?)
 }
+/// One row of the read-only agent roster (ADR-126): the engagement
+/// projection joined to the resource's framework and the newest
+/// dispatch-attempt clock. Exactly these seven keys — the console route
+/// serves them verbatim and the client validator refuses an eighth — so
+/// no credential home, workspace path or tmux target can travel inside
+/// one. `last_activity_ms` is "last dispatch activity", NOT last seen:
+/// native has no heartbeat model, and a dispatch with no attempt row
+/// reports `None`, never zero.
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentRosterRow {
+    pub name: String,
+    pub framework: String,
+    pub role: String,
+    pub state: EngagementState,
+    pub engagement_id: String,
+    pub requested_tokens: u64,
+    pub last_activity_ms: Option<u64>,
+}
 fn role_available(db: &Connection, role: &str, fleet: Option<&str>) -> Result<bool, Error> {
     qualification::check_role(role)?;
     let publication: Option<bool> = db
@@ -618,6 +636,46 @@ impl DomainRepository {
     }
     pub fn get(&self, id: &str) -> Result<Engagement, Error> {
         read_engagement(&self.db, id)
+    }
+    /// The read-only agent roster (ADR-126): one row per engagement — the
+    /// derivation is engagement-keyed, so an agent with no engagement row is
+    /// invisible (named in the ADR's consequences). The framework comes from
+    /// the engagement's resource config; `last_activity_ms` is the NEWEST
+    /// `runner_attempts.created_at` among the engagement's sessions'
+    /// dispatches — last dispatch activity, not last seen — and a dispatch
+    /// with no attempt row contributes nothing, so an engagement with no
+    /// attempt at all reports `None`, never zero. Bounded to one read of at
+    /// most 100 rows, ordered by engagement id like every other list read.
+    pub fn agent_roster(&self) -> Result<Vec<AgentRosterRow>, Error> {
+        let mut query = self.db.prepare(
+            "SELECT e.projection,r.config,(SELECT MAX(a.created_at) FROM runner_sessions s \
+             JOIN runner_dispatches d ON d.session_id=s.id \
+             JOIN runner_attempts a ON a.dispatch_id=d.id WHERE s.engagement_id=e.id) \
+             FROM engagements e JOIN resources r ON r.id=e.resource_id ORDER BY e.id LIMIT 100",
+        )?;
+        query
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<i64>>(2)?,
+                ))
+            })?
+            .map(|row| {
+                let (projection, config, last) = row?;
+                let engagement: Engagement = serde_json::from_str(&projection)?;
+                let resource: Resource = serde_json::from_str(&config)?;
+                Ok(AgentRosterRow {
+                    name: engagement.agent_name.as_str().to_owned(),
+                    framework: resource.framework,
+                    role: engagement.role,
+                    state: engagement.state,
+                    engagement_id: engagement.id,
+                    requested_tokens: u64::from(engagement.requested_tokens),
+                    last_activity_ms: last.and_then(|v| u64::try_from(v).ok()),
+                })
+            })
+            .collect()
     }
     pub fn resource_budget(&self, id: &str) -> Result<Budget, Error> {
         budget(&self.db, &read_resource(&self.db, id)?, None, false)

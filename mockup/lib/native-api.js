@@ -181,6 +181,32 @@ export async function fetchAlerts() {
   return validateAlerts(await request('/api/alerts?limit=100'));
 }
 export function alertsView(location) { return /^\/console\/alerts\/?$/.test(location.pathname); }
+
+/* The agent roster (ADR-126): one row per engagement, EXACTLY seven
+ * scalar keys — the server's RosterItem set — with the same exact-key
+ * contract every other native read carries: an added server key (a
+ * tmux target, a workspace path) fails the whole read rather than
+ * rendering. No nested object exists on a roster item, so nothing can
+ * hide inside one. `last_activity_ms` is "last dispatch activity", not
+ * last seen; `null` (not zero) when the engagement has no attempt row.
+ * `unavailable` is SERVER-OWNED: whatever columns the server names are
+ * rendered as unknown, so a future source turns a column on by removing
+ * its name server-side, never by a client edit. */
+const ROSTER_KEYS = ['name', 'framework', 'role', 'state', 'engagement_id', 'requested_tokens', 'last_activity_ms'];
+export function validateAgents(v) {
+  if (!object(v, ['at_ms', 'unavailable', 'agents']) || !number(v.at_ms)
+    || !Array.isArray(v.unavailable) || v.unavailable.length > 32 || v.unavailable.some((n) => !text(n, 64))
+    || !Array.isArray(v.agents) || v.agents.length > 100
+    || v.agents.some((a) => !object(a, ROSTER_KEYS)
+      || !text(a.name, 128) || !text(a.framework, 64) || !text(a.role, 128)
+      || !STATES.includes(a.state) || !id(a.engagement_id)
+      || !number(a.requested_tokens) || !(a.last_activity_ms === null || number(a.last_activity_ms)))) throw new Error('invalid_native_response');
+  return v;
+}
+export async function fetchAgents() {
+  return validateAgents(await request('/api/agents'));
+}
+export function agentsView(location) { return /^\/console\/agents\/?$/.test(location.pathname); }
 export async function transitionAlert(key, to, note) {
   /* One display-state transition through the console session. The reply is
    * the SAME envelope the list read serves (one row), so the same validator

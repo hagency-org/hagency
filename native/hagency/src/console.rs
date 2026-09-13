@@ -1,5 +1,6 @@
 //! Read-only browser facade. Native operator/runner authentication is unchanged.
 mod accounts;
+mod agents;
 mod alerts;
 mod assets;
 mod authority;
@@ -64,6 +65,7 @@ pub(crate) fn router() -> Router {
                 .hoop(authenticate)
                 .push(usage::router())
                 .push(alerts::router())
+                .push(agents::router())
                 .push(resources::router())
                 .push(accounts::router())
                 .push(resource_configuration::router()),

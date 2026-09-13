@@ -86,6 +86,7 @@ fn mime(path: &str) -> Option<&'static str> {
             | "alerts/index.html"
             | "engagements/index.html"
             | "accounts/index.html"
+            | "agents/index.html"
     ) {
         return Some("text/html; charset=utf-8");
     }
@@ -145,6 +146,8 @@ impl Assets {
                 "/console/engagements/".into()
             } else if entry.path == "accounts/index.html" {
                 "/console/accounts/".into()
+            } else if entry.path == "agents/index.html" {
+                "/console/agents/".into()
             } else {
                 format!("/console/{}", entry.path)
             };
@@ -178,6 +181,8 @@ impl Assets {
             "/console/engagements/"
         } else if path == "/console/accounts" {
             "/console/accounts/"
+        } else if path == "/console/agents" {
+            "/console/agents/"
         } else {
             path
         })

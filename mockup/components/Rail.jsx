@@ -88,7 +88,7 @@ function NativeRail() {
     <div className="rail-fleet">{SECTIONS.map((sec) => <div key={sec.head}>
       <h2 className="rail-sec">{t(sec.head)}</h2>
       <ul className="rail-list">{sec.rows.map((row) => <li key={row.key}>
-        {['usage', 'resources', 'alerts', 'engagements'].includes(row.key) ? <a className="fleet-row" href={`/console/${row.key}/`} aria-current={pathname.endsWith(`/${row.key}`) || pathname.endsWith(`/${row.key}/`) || pathname.startsWith(`/console/${row.key}/`) ? 'page' : undefined}><span className="ico">{row.icon}</span><span className="grow">{t(`nav.${row.key}`)}</span></a>
+        {['usage', 'resources', 'alerts', 'engagements', 'workforce'].includes(row.key) ? <a className="fleet-row" href={row.key === 'workforce' ? '/console/agents/' : `/console/${row.key}/`} aria-current={pathname.endsWith(`/${row.key}`) || pathname.endsWith(`/${row.key}/`) || (row.key === 'workforce' ? /^\/console\/agents\/?$/.test(pathname) : pathname.startsWith(`/console/${row.key}/`)) ? 'page' : undefined}><span className="ico">{row.icon}</span><span className="grow">{t(`nav.${row.key}`)}</span></a>
           : <span className="fleet-row" aria-disabled="true" title={t('nu.unavailableRoute')}><span className="ico">{row.icon}</span><span className="grow">{t(`nav.${row.key}`)}</span><span>—</span></span>}
       </li>)}</ul>
     </div>)}</div>

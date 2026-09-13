@@ -6,8 +6,57 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 const config = JSON.parse((await lines.next()).value);
+
+/* The agent roster walk (ADR-126), shared by the full console walk and the
+ * roster-only lane: the page renders the seven-column projection, the
+ * SERVER-OWNED unavailable list verbatim, the null-not-zero activity arms,
+ * and no lifecycle control — and no private value reaches the screen. */
+async function rosterWalk(page) {
+  await page.goto(`${config.base}/console/agents/`);
+  await page.locator('[data-native-state="ready"]').waitFor();
+  assert((await page.locator('tbody tr').count()) >= 3, 'one roster row per seeded engagement');
+  const text = await page.locator('main').innerText();
+  assert.match(text, /UsageWorker/);
+  assert.match(text, /read-only — derived from the engagement projections|只读 —— 由接洽投影派生/);
+  // The server's own gap list, rendered verbatim: the page never decides
+  // which columns are unknown.
+  assert.match(text, /tmux/);
+  assert.match(text, /workspace_path/);
+  // The null-not-zero arms: the active engagement carries its dispatch
+  // clock; a pending one renders the unknown word — never a zero.
+  const cells = await page.locator('tbody tr td:last-child').allInnerTexts();
+  assert(cells.some((c) => /^\d{4}-\d{2}-\d{2}T/.test(c)), 'the active engagement carries its dispatch clock');
+  assert(cells.some((c) => c === 'Unknown' || c === '未知'), 'an engagement with no attempt row renders unknown');
+  assert(cells.every((c) => c !== '0'), 'unknown is never rendered as zero');
+  assert(!/private_|\/Users\/|tmux attach/.test(text), 'no private path, home or target renders');
+  assert((await page.locator('main button').count()) === 1, 'Refresh is the only control — no lifecycle, no mutation');
+}
+
 const browser = await chromium.launch({ executablePath: process.env.HAGENCY_BROWSER_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true,
-  args: ['--disable-background-networking', '--disable-component-update', '--no-default-browser-check'] });
+  args: ['--disable-background-networking', '--disable-component-update', '--no-default-browser-checking'] });
+if (config.roster) {
+  // The roster-only lane (ADR-126 browser scenario): same read-only ticket
+  // the usage walk exchanges, one page, no operator token in the browser.
+  try {
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const page = await context.newPage();
+    const failures = []; const urls = [];
+    page.on('pageerror', (error) => failures.push(error.message));
+    await context.route('**/*', async (route) => {
+      const url = new URL(route.request().url()); urls.push(url.toString());
+      if (url.origin !== config.base) { failures.push('unexpected external request'); await route.abort(); }
+      else await route.continue();
+    });
+    await page.goto(config.url);
+    await page.locator('[data-native-state="ready"]').waitFor();
+    await rosterWalk(page);
+    assert(urls.every((url) => !url.includes('access=')), 'no ticket value in a request URL');
+    assert(!/private_|operator\.token/.test(await page.locator('main').innerText()), 'no credential value on screen');
+    assert.deepEqual(failures, []);
+    console.log('PASS native agent roster browser');
+  } finally { await browser.close(); }
+  process.exit(0);
+}
 try {
   const context = await browser.newContext({ serviceWorkers: 'block' });
   const page = await context.newPage();
@@ -198,6 +247,9 @@ try {
   assert(pages >= 1 && pages <= 7, `walked ${pages} pages`);
   await page.locator('button', { hasText: config.executable ? '第一页' : 'First page' }).click();
   await page.locator('[data-native-state="ready"]').waitFor();
+  // The roster page in the full walk too: the same seven-column projection
+  // under the same session, bilingually asserted by rosterWalk.
+  await rosterWalk(page);
   await page.goto(`${config.base}/console/usage/?engagement_id=${config.engagement}`);
   await page.locator('[data-native-state="ready"]').waitFor();
   const storage = await page.evaluate(() => ({ local: Object.fromEntries(Object.entries(localStorage)), session: Object.fromEntries(Object.entries(sessionStorage)) }));

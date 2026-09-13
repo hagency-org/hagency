@@ -5,7 +5,7 @@ import DataStatus from '@/components/DataStatus';
 import { makeDerive } from '@/lib/derive';
 import { fetchLive, CONTRACT_SLICES } from '@/lib/api';
 import * as fixture from '@/lib/mock-data';
-import { NATIVE_MODE, exchangeAccess, fetchNative, fetchResources, resourceView, publishResource, configurationView, configurationSelection, fetchConfiguration, configureResource, logoutNative, selection, alertsView, fetchAlerts, transitionAlert } from '@/lib/native-api';
+import { NATIVE_MODE, exchangeAccess, fetchNative, fetchResources, resourceView, publishResource, configurationView, configurationSelection, fetchConfiguration, configureResource, logoutNative, selection, alertsView, fetchAlerts, agentsView, fetchAgents, transitionAlert } from '@/lib/native-api';
 
 /*
  * One data context for the console, with provenance attached.
@@ -107,7 +107,7 @@ export function useData() {
 export const DataProvider = NATIVE_MODE ? NativeDataProvider : LegacyDataProvider;
 
 function NativeDataProvider({ children }) {
-  const initial = { nativeConsole: true, resourceConsole: false, configurationConsole: false, editor: null, editing: false, phase: 'loading', refreshing: false, requestKey: null, engagements: [], resources: [], roles: [], permissions: { publishResource: false, configureResource: false }, selected: null, report: null, budget: null, next_after: null, error: null };
+  const initial = { nativeConsole: true, resourceConsole: false, configurationConsole: false, editor: null, editing: false, phase: 'loading', refreshing: false, requestKey: null, engagements: [], resources: [], roles: [], permissions: { publishResource: false, configureResource: false }, selected: null, report: null, budget: null, next_after: null, agents: [], unavailable: [], error: null };
   const [state, setState] = useState(initial);
   const [logoutStatus, setLogoutStatus] = useState(null);
   const [action, setAction] = useState(null);
@@ -127,13 +127,14 @@ function NativeDataProvider({ children }) {
     try {
       const entry = configurationView(window.location) ? configurationSelection(window.location) : null;
       const alerts = alertsView(window.location);
-      const resources = !alerts && (entry !== null || resourceView(window.location));
-      const requested = entry ? entry.id : alerts ? null : selection(window.location, resources ? 'resource_id' : 'engagement_id');
-      requestKey = JSON.stringify([entry ? `configuration:${entry.mode}` : alerts ? 'alerts' : resources, requested, after]);
+      const roster = !alerts && agentsView(window.location);
+      const resources = !alerts && !roster && (entry !== null || resourceView(window.location));
+      const requested = entry ? entry.id : alerts || roster ? null : selection(window.location, resources ? 'resource_id' : 'engagement_id');
+      requestKey = JSON.stringify([entry ? `configuration:${entry.mode}` : alerts ? 'alerts' : roster ? 'agents' : resources, requested, after]);
       setState((s) => s.requestKey === requestKey && ['ready', 'stale'].includes(s.phase)
         ? { ...s, refreshing: true, error: null }
         : { ...initial });
-      const value = await (entry ? fetchConfiguration(entry, after) : alerts ? fetchAlerts() : resources ? fetchResources(requested, after) : fetchNative(requested, after));
+      const value = await (entry ? fetchConfiguration(entry, after) : alerts ? fetchAlerts() : roster ? fetchAgents() : resources ? fetchResources(requested, after) : fetchNative(requested, after));
       if (mine !== generation.current || !admitted.current) return;
       cursor.current = after;
       setState({ ...initial, ...value, phase: 'ready', requestKey });

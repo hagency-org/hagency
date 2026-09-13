@@ -15,7 +15,7 @@ pub use domain::resource_publication::{
 };
 pub use domain::uploads::UploadSettlement;
 pub use domain::{
-    ALERT_STATUSES, AlertTransition, AttachmentTicket, CeilingAlert, CeilingReport,
+    ALERT_STATUSES, AgentRosterRow, AlertTransition, AttachmentTicket, CeilingAlert, CeilingReport,
     DomainRepository, Effect, EffectOutcome, EffectState, KnownTokens,
     MAX_ENGAGEMENT_USAGE_PERIODS, MAX_ENGAGEMENT_USAGE_SOURCES, MAX_OPEN_CEILING_ALERTS,
     MAX_SOURCE_USAGE_RECEIPTS, MAX_USAGE_PERIODS, MAX_USAGE_RECEIPTS, MAX_USAGE_SOURCES,
