@@ -88,9 +88,13 @@ reduction rule. On `Busy`/`OutcomeUnknown` the phase logs and waits for the
 next tick. A retention failure is never a work refusal.
 
 **The receipt.** One shared table `retention_prune_receipts`, one row per
-phase per tick written inside that phase's own transaction (`phase`,
-`pruned`, `oldest_ref`/`newest_ref`, `remaining`, `elapsed_ms`, `at_ms`),
-trimmed to 100 rows by the same writer; a zero-work tick writes nothing.
+phase per tick written immediately after that phase's `Immediate`
+transaction commits (`phase`, `pruned`, `oldest_ref`/`newest_ref`,
+`remaining`, `elapsed_ms`, `at_ms`), trimmed to 100 rows by the same writer;
+a zero-work tick writes nothing. The `elapsed_ms` sample is taken after the
+commit, so the number the batch-reduction rule consumes includes the
+commit's own cost and any SQLite lock wait, not only the in-transaction
+work.
 
 **The archive window — a named product decision.** The retained product's
 `messages-archive.jsonl` is unbounded; native bounds its archive to the same
@@ -101,6 +105,13 @@ archive's own prune runs in the same sweep tick.
 only (recency vs inbox membership, and archive membership); the retained
 predicate has no counterpart for P2..P10, so native-only pairs are pinned by
 the store tests.
+
+**The test set is larger than the backlog's four names.** The retention
+backlog names four selectors; the landed set carries six —
+`native_retained_corpus_processed_dispatch_does_not_pin` (the P3' release
+arm) and `native_retained_corpus_closed_task_input_does_not_pin` (the P6'/
+P7' release arm) are the design's own release-arm tests and are part of the
+set, not additions beyond it.
 
 ## Consequences
 

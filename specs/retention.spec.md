@@ -59,13 +59,15 @@ not lose" property inside a named window.
 - `native/hagency-store/src/migrations/026-corpus-retention.sql`
 - `native/hagency-store/src/domain.rs`, `domain/messages.rs`,
   `domain/verified_ingress.rs`, `domain_worker.rs`, `lib.rs`
-- `native/hagency/src/bootstrap.rs`
+- `native/hagency/src/bootstrap.rs`, `native/hagency/src/lib.rs`
+  (the retention sweep's readiness mirror, the ceiling sweep's shape)
 - `native/hagency-store/tests/retention.rs`,
   `native/hagency-store/tests/fixtures/corpus-retention-vectors.json`
 - `native/scripts/corpus-retention-vectors.mjs`, `backend-v2.js`
   (`__backendV2TestInternals` export only), the fourteen schema-head
   assertions, `specs/retention.spec.md`, `knowledge/decisions/adr-125-*`,
   `docs/progress.md`
+- `.github/workflows/rust.yml` (the oracle `--check` step only)
 
 ### Forbidden
 - The pin-rule tables' schemas (004, 005, 012, 018 — indexes only, in 026)
@@ -75,7 +77,7 @@ not lose" property inside a named window.
 
 ## Acceptance Criteria
 
-Scenario: The admitted corpus keeps its bound without a longer timeout or a silent refusal
+Scenario: The sweep prunes only past-window rows that no pin clause holds
   Test: native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference
   Given an admitted corpus over the ceiling, the oldest row processed and unreferenced
   When the corpus sweep runs
@@ -84,12 +86,14 @@ Scenario: The admitted corpus keeps its bound without a longer timeout or a sile
   task root or input, or an attachment projection is touched
   And the receipt row records the messages phase, the batch and the over-ceiling figure
 
+Scenario: A pinned corpus reports over-ceiling instead of refusing admission
   Test: native_retained_corpus_pending_pin_exceeds_ceiling
   Given every row is pinned by an unprocessed session input
   When the corpus sweep runs
   Then the corpus stays over the ceiling
   And the sweep reports the over-ceiling count instead of refusing admission
 
+Scenario: A completed dispatch does not pin its message
   Test: native_retained_corpus_processed_dispatch_does_not_pin
   Given a message whose dispatch completed and whose session input carries
   processed_at and a stale non-null dispatch_id
@@ -97,18 +101,21 @@ Scenario: The admitted corpus keeps its bound without a longer timeout or a sile
   Then the message is a prune candidate (P3' does not pin it)
   And its session input and the admitted row are removed together
 
+Scenario: A done canonical task releases its input
   Test: native_retained_corpus_closed_task_input_does_not_pin
   Given a message attached to a canonical task whose config status is done
   When the corpus sweep runs
   Then the message is a prune candidate (P7' released by the terminal state)
   And the mirror holds: an open task's root and input pin the message
 
+Scenario: Unknown fate is retained indefinitely
   Test: native_retained_corpus_unknown_fate_is_retained
   Given a message whose dispatch outcome is unknown and whose session input is processed
   When the corpus sweep runs
   Then the message survives indefinitely, reported in the over-ceiling figure
   And the pin is read from runner_dispatches.state, never the unresolved view
 
+Scenario: Provenance moves with the pruned message
   Test: native_retained_corpus_provenance_moves_with_the_message
   Given a pruned verified-ingress message
   When the archive row is inspected and an exact redelivery arrives
@@ -117,12 +124,34 @@ Scenario: The admitted corpus keeps its bound without a longer timeout or a sile
   And the redelivery is recognised as admitted with the same sequence and wake
   And a divergent redelivery under the same event id is refused with Conflict
 
+Scenario: An attachment projection pins its message
+  Test: native_retained_corpus_attachment_projection_pins_the_message
+  Given a past-window, processed message carrying a `matrix_attachments` row
+  When the corpus sweep runs
+  Then the message is never a prune candidate (P9/P10 attachment custody)
+  And the attachment row and its parent survive with every child intact
+
+Scenario: A pruned threaded root resolves from the archive by scope digest
+  Test: native_retained_corpus_threaded_root_resolves_from_archive_by_scope_digest
+  Given a thread root pruned into the archive while its session route survives
+  When a verified task request arrives whose source replies inside that thread
+  Then the read-6 root lookup misses live, hits the archive on the matching
+  scope_digest, and the intent is created against the archived root
+
+Scenario: A scope-digest mismatch on the archived root refuses with RunnerAuthority
+  Test: native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch
+  Given a thread root pruned into the archive with a divergent scope_digest
+  When the same verified task request arrives
+  Then the read-6 archive fallback refuses with RunnerAuthority and nothing is created
+
+Scenario: The archive is bounded in the same tick
   Test: native_retained_corpus_archive_is_bounded
   Given the corpus sweep has pruned rows past the ceiling
   When further sweeps run
   Then the pruned content is present in retained_message_archive
   And retained_message_archive is itself bounded and pruned oldest-first in the same tick
 
+Scenario: Parity with the retained planner on the shared subset
   Test: native_retained_corpus_parity_with_javascript
   Given the retained planMessagePrune and the native prune see the same row sequence
   When each partitions it
@@ -130,12 +159,15 @@ Scenario: The admitted corpus keeps its bound without a longer timeout or a sile
   And the retained archivedMessageExists and the native archive membership read agree
   on whether a message is already durably recorded
   And the native-only clauses (P2, P3', P6', P7') are pinned by the store tests, not this vector
+  And the fixture's backendSha256 pin matches the current backend-v2.js
 
+Scenario: The floor clamps every configured ceiling
   Test: native_retained_corpus_floor_is_hundred
   Given a ceiling below the floor is configured
   When the store clamps it
   Then the effective ceiling is 100
 
+Scenario: The migration replays over a rewound live head
   Test: native_retained_corpus_schema_upgrade
   Given a live database rewound to the previous schema head over populated rows
   When the store reopens

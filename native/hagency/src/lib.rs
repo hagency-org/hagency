@@ -38,6 +38,12 @@ pub struct App {
     /// when the loop was never started (unit wiring without `Bootstrap`).
     ceiling_sweep: Option<Arc<tokio::task::JoinHandle<()>>>,
     sweep_tick: Option<tokio::sync::watch::Receiver<bootstrap::CeilingSweepTick>>,
+    /// The retention sweep's handle and tick channel — exactly the ceiling
+    /// sweep's shape (wiring review b): bootstrap keeps the handle to abort
+    /// at shutdown, readiness observes liveness and the last tick's word.
+    /// Both None when the loop was never started.
+    retention_sweep: Option<Arc<tokio::task::JoinHandle<()>>>,
+    retention_tick: Option<tokio::sync::watch::Receiver<bootstrap::RetentionSweepTick>>,
 }
 
 impl App {
@@ -65,6 +71,8 @@ impl App {
             console: None,
             ceiling_sweep: None,
             sweep_tick: None,
+            retention_sweep: None,
+            retention_tick: None,
         })
     }
 
@@ -86,6 +94,21 @@ impl App {
     ) -> Self {
         self.ceiling_sweep = Some(sweep);
         self.sweep_tick = Some(tick);
+        self
+    }
+
+    /// Attach the retention sweep loop the same way (wiring review b): the
+    /// handle is shared so bootstrap aborts it at shutdown and readiness
+    /// observes liveness; the tick channel is the liveness/observation hook
+    /// the retention loop's own `let _ = …` drop removed. Readiness is
+    /// diagnostic only — an outcome word never fails it.
+    pub fn with_retention_sweep(
+        mut self,
+        sweep: std::sync::Arc<tokio::task::JoinHandle<()>>,
+        tick: tokio::sync::watch::Receiver<bootstrap::RetentionSweepTick>,
+    ) -> Self {
+        self.retention_sweep = Some(sweep);
+        self.retention_tick = Some(tick);
         self
     }
 
@@ -305,6 +328,46 @@ fn readiness(depot: &mut Depot, res: &mut Response, refuse: bool) {
     components.push((
         "ceiling_sweep_last_tick",
         last_tick.unwrap_or(ComponentState::Disabled),
+    ));
+    // The retention sweep, the ceiling sweep's exact mirror (wiring review
+    // b): liveness from the shared handle, the last tick's outcome word as
+    // its own diagnostic component — and the outcome NEVER fails readiness
+    // (F1's rule holds for both sweeps).
+    let retention = app.as_ref().and_then(|a| a.retention_sweep.as_ref());
+    let retention_tick = app.as_ref().and_then(|a| a.retention_tick.as_ref());
+    let (retention_state, retention_last_tick) = match (retention, retention_tick) {
+        (None, _) => (ComponentState::Disabled, None),
+        (Some(handle), Some(receiver)) => {
+            let last = match &*receiver.borrow() {
+                bootstrap::RetentionSweepTick::Swept(_) => ComponentState::Tick(TickOutcome::Swept),
+                bootstrap::RetentionSweepTick::Refused("unstarted") => ComponentState::Unstarted,
+                bootstrap::RetentionSweepTick::Refused("busy") => {
+                    ComponentState::Tick(TickOutcome::RefusedBusy)
+                }
+                bootstrap::RetentionSweepTick::Refused("outcome_unknown") => {
+                    ComponentState::Tick(TickOutcome::RefusedOutcomeUnknown)
+                }
+                bootstrap::RetentionSweepTick::Refused(_) => {
+                    ComponentState::Tick(TickOutcome::Refused)
+                }
+            };
+            (
+                if handle.is_finished() {
+                    ComponentState::Stopped
+                } else {
+                    ComponentState::Alive
+                },
+                Some(last),
+            )
+        }
+        // F3's rule, the same shape: a handle without its tick channel is a
+        // wiring bug — honest word `not_started`, never ready.
+        (Some(_), None) => (ComponentState::NotStarted, None),
+    };
+    components.push(("retention_sweep", retention_state));
+    components.push((
+        "retention_sweep_last_tick",
+        retention_last_tick.unwrap_or(ComponentState::Disabled),
     ));
     // Optional owners report their own state words; only the settled
     // failure words fail readiness. `stopped` fails too: a finished owner

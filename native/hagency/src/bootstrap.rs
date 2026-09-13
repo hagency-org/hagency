@@ -506,6 +506,24 @@ pub enum RetentionSweepTick {
     Refused(&'static str),
 }
 
+/// The per-phase batch hypotheses (tick contract §2.3, wiring review c):
+/// one scalar capped by the `messages` const cannot carry the contract's
+/// per-phase state — each phase owns its own, so one phase's over-budget
+/// halving never disturbs another's hypothesis. Slice 1 lands `messages`;
+/// later phases append their field here.
+#[derive(Debug, Clone, Copy)]
+struct RetentionBatches {
+    messages: u64,
+}
+
+impl Default for RetentionBatches {
+    fn default() -> Self {
+        Self {
+            messages: RETENTION_MESSAGES_BATCH,
+        }
+    }
+}
+
 /// The ONE retention sweep task (tick contract §1.5/§2.2): one period for
 /// every phase, one sequential `Job::Run` submission per phase per tick.
 /// Slice 1 lands the `messages` phase only (ADR-125); later slices append
@@ -526,7 +544,7 @@ pub fn start_retention_sweep(
     tokio::sync::watch::Receiver<RetentionSweepTick>,
 ) {
     let (sender, observed) = tokio::sync::watch::channel(RetentionSweepTick::Refused("unstarted"));
-    let mut batch = RETENTION_MESSAGES_BATCH;
+    let mut batches = RetentionBatches::default();
     let handle = tokio::spawn(async move {
         let mut interval = tokio::time::interval(period);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
@@ -543,22 +561,29 @@ pub fn start_retention_sweep(
             // Phase 1 of the tick: `messages` (ADR-125). Phases land in the
             // contract's fixed order; between submissions the writer's FIFO
             // channel drains any foreground caller that arrived in between.
-            let tick = match domain.sweep_admitted_corpus(now, ceiling, batch).await {
+            let tick = match domain
+                .sweep_admitted_corpus(now, ceiling, batches.messages)
+                .await
+            {
                 Ok(outcome) => {
                     // The contract's measured budget rule (§2.3/§2.4): over
                     // budget halves the batch next tick; floor 1. Under
-                    // budget restores the hypothesis upward one step.
+                    // budget restores the hypothesis upward one step. The
+                    // hypothesis is PER PHASE (wiring review c): one scalar
+                    // capped by the `messages` const cannot carry the
+                    // contract's later phases, so each phase's halving
+                    // never disturbs another's.
                     if outcome.elapsed_ms > RETENTION_PHASE_BUDGET_MS {
-                        batch = (batch / 2).max(1);
-                    } else if batch < RETENTION_MESSAGES_BATCH {
-                        batch = (batch * 2).min(RETENTION_MESSAGES_BATCH);
+                        batches.messages = (batches.messages / 2).max(1);
+                    } else if batches.messages < RETENTION_MESSAGES_BATCH {
+                        batches.messages = (batches.messages * 2).min(RETENTION_MESSAGES_BATCH);
                     }
                     tracing::info!(
                         "[retention] messages phase: pruned {} remaining {} elapsed_ms {} batch {}",
                         outcome.pruned,
                         outcome.remaining,
                         outcome.elapsed_ms,
-                        batch
+                        batches.messages
                     );
                     RetentionSweepTick::Swept(outcome)
                 }
@@ -795,6 +820,12 @@ impl Bootstrap {
         if let Some(sweep) = &mut self.ceiling_sweep {
             sweep.abort();
         }
+        // Wiring review a: the retention task's handle is read here — the
+        // abort-on-shutdown its doc comment promises, the ceiling sweep's
+        // shape.
+        if let Some(sweep) = &mut self.retention_sweep {
+            sweep.abort();
+        }
         if let Some(palpo) = &self.palpo {
             palpo.cancel();
         }
@@ -888,8 +919,15 @@ impl Bootstrap {
             self.retention_sweep_period,
             self.message_retention_ceiling,
         );
-        self.retention_sweep = Some(std::sync::Arc::new(retention_sweep));
-        let _ = retention_tick;
+        let retention = std::sync::Arc::new(retention_sweep);
+        self.retention_sweep = Some(retention.clone());
+        // Wiring review a/b: the handle IS read — aborted at shutdown — and
+        // the tick channel is kept, not dropped, so the loop has the same
+        // liveness/observation hook the ceiling sweep has.
+        self.app = self
+            .app
+            .clone()
+            .with_retention_sweep(retention, retention_tick);
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: server_poll_entered");
         let server = Server::new(acceptor).max_connections(64);
         let handle = server.handle();
