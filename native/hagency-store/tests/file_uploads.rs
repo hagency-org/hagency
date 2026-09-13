@@ -676,7 +676,7 @@ fn native_upload_schema_migration() {
     assert_eq!(
         sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
             .unwrap(),
-        26
+        27
     );
     assert_eq!(
         sql.query_row("SELECT COUNT(*) FROM file_uploads", [], |r| r

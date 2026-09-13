@@ -213,7 +213,7 @@ impl DomainRepository {
             None => self
                 .db
                 .query_row(
-                    "SELECT scope_digest,digest,config,source_session_id,message_sequence FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
+                    "SELECT scope_digest,digest,config,source_session_id,sequence FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
                     params![route.engagement_id,source],
                     |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
                 )
