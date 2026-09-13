@@ -296,3 +296,22 @@ route KEEPS its bounded optional `actor` per this ADR's operator-close-path amen
 now serves `permissions.configureResource` (the same key the resources read serves), and the page
 hides the triage buttons without it — matching the resources page's notice pattern for a missing
 `can_configure`.
+
+**Note: the operator bearer route's transition authority asymmetry.** The
+review of the console alert-transition authority fix (the session-scoped,
+session-authored console route landed on the integration branch) flagged one
+deliberate asymmetry that this amendment's own rationale does not cover: the
+operator bearer route (`native/hagency/src/alerts.rs`) reaches the same store
+transition (`transition_ceiling_alert`) with **token-only authority** — the
+`authorize` hoop's bearer-token check, no `Session`, no configure scope — and
+a **client-supplied `actor`** string, length-bounded to 128 at the store with
+empty mapped to `"operator"` (`ceiling_alerts.rs:404-409`), while the console
+route requires the configure scope and its actor is server-fixed to the
+session. Two authorities, one mutation: a bearer-token holder can do what a
+read-only console session cannot, and can self-attribute. This is recorded as
+a **known, deliberate asymmetry**, not a change: the operator route is a
+management authority the console is not, and its actor is length-bounded
+identity, not authority-bounded identity — acceptable because the bearer
+holder already holds full store authority and the bounded actor is a
+provenance label, not a grant. The console route's stricter posture is the
+fix; the operator route's posture is unchanged and intentional.
