@@ -87,7 +87,7 @@ is a `#[test] fn` on the integration base `review/retention-1`, so binding it as
 `Test:` line would bind a name that does not exist and the spec-binding gate would
 fail. Each scenario above therefore stands **unbound** — its name, its given, its
 when and its then are kept — and the selector it will carry once its slice's code
-lands on `<head-of-slice-1>` is parked here. Integration moves a line back to a
+lands on `288a9c5c` is parked here. Integration moves a line back to a
 `Test:` under its scenario when that selector exists.
 
 - owed `native_decision_prune_keeps_the_newest_and_never_the_live_effect` — scenario "The decision window is bounded oldest-first by rowid"
