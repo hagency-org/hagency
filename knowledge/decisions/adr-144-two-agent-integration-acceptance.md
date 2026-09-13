@@ -4,7 +4,6 @@ id: ADR-144
 title: "Two-agent integration acceptance: one shared room and separate DMs"
 status: Proposed
 requirements: [REQ-RUST-MIGRATION-EXECUTION]
-liveness: auto
 tags: [rust, matrix, fixtures, acceptance, acceptance-evidence]
 ---
 
@@ -48,7 +47,10 @@ properties plus its two refusals: (1) both agents deliver into the shared room,
 each charged to its own engagement, and a threaded reply to the other engagement's
 private root is refused with no send, and an ambiguous sender is refused;
 (2) a DM reaches only its own engagement's direct room and no request carries the
-shared room id; (3) a task handed across the room settles on its own engagement
+shared room id — **in each direction**: the agent→owner DM is addressed to that
+engagement's direct room only, and the owner→agent DM reaches its own
+engagement's inbox only, never the other engagement's rows and never the shared
+room; (3) a task handed across the room settles on its own engagement
 with the usage ledger observing the spend there and not on the other; (4) a
 message for one engagement is never readable from the other; (5) no DM body is
 visible in the shared room's ciphertexts. The shared room is a **delivery** room,
@@ -63,7 +65,9 @@ against a real Palpo homeserver and a real owner client, asserting the three
 claims in-process fixtures cannot carry: a foreign homeserver's membership/PL
 admission, E2EE against a second real device with real key upload/claim, and the
 approval round-trip through a real owner client. The evidence record lives
-**crate-side, exactly as ADR-140's precedent**: `native/hagency/qualification/
+**crate-side** — the class `adr-140-real-codex-sandbox-qualification.md`
+defines on this branch (an always-present test validating a tracked record;
+note ADR-075 keeps its own evidence inline in prose): `native/hagency/qualification/
 two-agent.json` — a tracked file naming the pinned artifact and version, the
 environment, the three verdicts and what remains unproven, in the ADR-075 record
 shape (the run id, the exact failures, the verdict). The always-present test
@@ -73,7 +77,7 @@ exists, names the artifact and version, carries a verdict per claim — and
 a red gate, not an untested cell.
 
 **What this does not claim.** Not Windows or macOS coverage (the plan's item 2;
-Windows is paused per ADR-136), not item 4's outage/recovery classes, not item 5's
+Windows is paused per `adr-136-windows-paused-release-target.md`), not item 4's outage/recovery classes, not item 5's
 on-hardware budgets — separate M8 items, named so this record is not read as
 M8's completion.
 

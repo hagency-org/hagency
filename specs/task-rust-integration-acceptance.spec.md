@@ -67,6 +67,8 @@ Scenario: A DM from one agent never reaches the other engagement or the room
   Then the ciphertext is addressed to the direct room only
   And no request carries the shared room id
   And the other engagement's rows are unchanged
+  And the owner's DM back to that agent reaches its own engagement's inbox only
+  And the owner's DM to the other agent never appears in the first engagement's rows or in the shared room
 
 Scenario: A task handed across the room settles and attributes usage to one engagement
   Test: native_two_agent_task_handoff_observes_usage_on_the_right_engagement
