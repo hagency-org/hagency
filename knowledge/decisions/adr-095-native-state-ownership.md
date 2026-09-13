@@ -208,3 +208,104 @@ Domain invariants remain under one bounded transactional writer. Cross-owner ack
 ## Alternatives Considered
 
 Splitting canonical tasks and allocation invariants across separate databases would lose their atomic boundary. Treating transport receipt as domain admission or adopting legacy stores would also bypass the distinct ownership and recovery checks recorded here.
+
+## Amendment 2026-09-13 — the decision-receipt bound (retention Slice 3)
+
+This ADR already names "Completed audit retention/compaction" as an M8 gate. This
+amendment bounds the *command-half* of it — `decisions`, the command receipt — and
+nothing else. `decisions` is `(id TEXT PRIMARY KEY, digest TEXT NOT NULL, result
+TEXT NOT NULL)` (`domain.sql:45-49`): one row per verdict, no time column, no
+engagement link, written once by `record_decision` (`domain.rs:273-281`) inside that
+verdict's own transaction, and read only by `replay_decision` (`:254`). Native keeps
+no event log and this amendment does not create one.
+
+**Placement — in-write, not a phase.** The trim runs inside the deciding command's
+own transaction, after `record_decision`. It is **not** a retention phase and has no
+period, bootstrap constant or shutdown token; the tick contract (ADR-125's "Retention
+sweep tick" section) records that refusal, and because the tick is a sequence of
+separate `Job::Run` transactions the trim shares no transaction with any phase. The
+receipt it writes lives in that table, with `phase='decisions'`.
+
+**1. The bound (D-3).** Count-only, cap `DECISION_RETENTION_LIMIT = 500`, ordered by
+**`rowid`** — store-assigned and monotonic — with `DECISION_PRUNE_BATCH = 512` as the
+per-command catch-up bound. `created_at` is not the key and is not added: a
+caller-supplied clock sorting below older survivors is exactly the failure the
+`rowid` key removes. The newest 500 verdicts by `rowid` replay idempotently; outside
+it a command is refused `NotFound` for `approve`/`reject`/`revoke`, whose replay
+check precedes every mutation. The tick contract's D-3, quoted: *"The newest
+`DECISION_RETENTION_LIMIT = 500` verdicts by `rowid` replay idempotently; outside it
+a command is refused …"* The retained `AUDIT_LIMIT = 2000` audit log has no native
+analogue and this amendment does not create one; the retained record cap
+(`ENDED_LIMIT = 500`) is the number ported.
+
+**2. `retry_cleanup` is excluded from the bound, and the exclusion is computed in
+Rust.** `retry_cleanup` (`domain.rs:819`) mutates at `:831` **before** it records at
+`:835`, and on a fresh `command_id` its replay lookup at `:824` finds no row *by
+design*. Absence therefore cannot distinguish "pruned" from "never seen", and any
+rule that reads a pruned receipt as `NotFound` refuses a legitimate **first** retry —
+a command-defeating clause. So every `retry_cleanup` decision is excluded from the
+candidate set and survives indefinitely.
+
+*How, exactly.* `decisions` has **no kind column**, and `digest =
+sha256(canonical([kind, engagement]))` (`domain.rs:251-253`) is a non-invertible
+64-hex hash. SQLite registers no `sha256`, so no SQL predicate can recognise a
+`retry_cleanup` row by its digest — the form "the exclusion is by the command's own
+digest form" is **struck as unimplementable**, and with it the tick contract's §6.1
+fragment, which additionally writes `SELECT command_id FROM decisions` where
+`command_id` is not a column (it is `id`). The implementable form is a two-step
+candidate scan, inside the same transaction:
+
+1. `SELECT id, rowid, digest, result FROM decisions WHERE rowid <= ?1 AND rowid <
+   (SELECT MAX(rowid) FROM decisions) ORDER BY rowid` — the over-window rows, never
+   the high-water mark.
+2. For each candidate, parse `result` as the stored `Engagement` and recompute
+   `decision_digest("retry_cleanup", engagement.id)`; a candidate whose stored
+   `digest` equals that value **is** a `retry_cleanup` decision and is pinned. The
+   comparison is exact — the digest is over the kind word and the engagement id, so
+   an `approve` row for the same engagement recomputes to a different value — and it
+   needs no schema change.
+
+`DECISION_PRUNE_RETRY_KIND = "retry_cleanup"` is the named constant the recomputation
+uses: the kind **word**, not a digest prefix. At most `DECISION_PRUNE_BATCH` rows are
+removed per command, and the maximum-`rowid` row is never removed, so the high-water
+mark stays monotonic (SQLite reuses `max(rowid)+1` after a delete).
+
+*Cost, named.* The scan is O(candidates) per deciding command — bounded by the
+window, not by the corpus — and its wall clock is an obligation to measure. A `kind`
+column written by `record_decision` would make it O(1) and is **rejected**: `decisions`
+is created in the base schema (`domain.sql:45`), no fixture and no `remove_*_schema`
+helper drops it, so an `ADD COLUMN` migration would fail the store's replay rule (the
+comment at `025-alert-transitions.sql:1-12`) at every rewind site unless each were
+taught to drop the table — a strictly worse diff than the scan.
+
+*Consequence, stated.* `decisions` is not strictly bounded: the `retry_cleanup`
+residue grows at most one row per distinct command id (`decisions.id` is the primary
+key) and never expires. That is a bounded-size residue, named rather than hidden.
+
+**3. Never a refusal of new work (D-12).** The tick contract's D-12 reads, quoted:
+*"Log and retry next tick; the store's caps (`100 000`, `10 000`, `30 000`) refuse at
+a bound, and retention must not repeat that shape."* An over-window corpus is a
+standing condition, reported by the receipt; it never refuses a verdict.
+
+**4. Rollback.** The trim is inside the verdict's own transaction, after the insert,
+so it rolls back with a failed command: the decision count and the previously oldest
+surviving command id are what they were, and no receipt records a prune that did not
+happen.
+
+**5. The receipt.** One `retention_prune_receipts` row with `phase='decisions'`,
+`oldest_ref`/`newest_ref` = `decisions.rowid`, carrying `pruned`, `remaining` and
+`elapsed_ms`, written inside the same transaction as the trim and trimmed by the
+shared clause with `RETENTION_RECEIPT_LIMIT = 100`. Pruning the record does not erase
+the fact that it happened. The tick contract's D-5, quoted: *"One read per slice, no
+page work: `retention_status` ({corpus_rows, ceiling, over_by}),
+`execution_retention_status`, `engagement_retention_status`, plus the peer phase's
+`remaining` and the shared receipt row. `remaining > 0` is the standing over-ceiling
+report."*
+
+**6. What an operator loses.** The per-command engagement snapshot beyond 500
+verdicts — the only per-command history native keeps. A receipt does not restore it;
+recovering it would be a new event-log surface, which this amendment does not create.
+
+**7. `effects` is out of scope.** Bounded to ≤2 rows per engagement by
+`UNIQUE(engagement_id,kind)`, never deleted, and anchored on the engagement rather
+than the command.
