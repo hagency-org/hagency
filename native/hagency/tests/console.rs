@@ -13,6 +13,9 @@ mod engagements;
 mod fixture;
 #[path = "console/resources.rs"]
 mod resources;
+#[path = "console/status_strip.rs"]
+#[cfg(feature = "native-console-browser")]
+mod status_strip;
 use fixture::*;
 use salvo::{
     prelude::*,

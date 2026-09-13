@@ -2,6 +2,14 @@
  * and HttpOnly cookie; usage facts never enter local/session storage. */
 export const NATIVE_MODE = process.env.NEXT_PUBLIC_HAGENCY_NATIVE_CONSOLE === '1';
 const ROOT = '/console';
+
+/* Build-time constants (ADR-145): the workspace version and the binary's
+ * EXPECTED schema head. build-native-console.mjs appends reassignments to
+ * the staged copy of this module inside the build's mkdtemp tree — no repo
+ * path is generated and nothing enters manifest.json. The repo copy keeps
+ * these neutral defaults; the strip renders them verbatim, never invents. */
+export let HAGENCY_NATIVE_VERSION = 'unknown';
+export let HAGENCY_NATIVE_SCHEMA_HEAD = 0;
 const KINDS = ['input', 'output', 'cacheWrite', 'cacheRead'];
 const STATES = ['pending', 'reserved', 'active', 'rejected', 'revoked', 'failed'];
 const CLEANUP = ['not_required', 'pending', 'uncertain', 'complete'];

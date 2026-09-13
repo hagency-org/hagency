@@ -33,6 +33,10 @@ stays frozen.
 ## Boundaries
 
 ### Allowed Changes
+<!-- Two paths beyond the original fourteen: mockup/lib/i18n.js carries the
+strip's en/zh words (the console renders every visible word through t()),
+and mockup/app/resources/new/page.jsx mounts the strip at the fifth native
+page's own PageHead sites — the one page-file exception to Forbidden. -->
 - mockup/components/NativeStatusStrip.jsx
 - mockup/components/PageHead.jsx
 - mockup/components/NativeUsage.jsx
@@ -40,12 +44,13 @@ stays frozen.
 - mockup/components/NativeAlerts.jsx
 - mockup/components/NativeEngagements.jsx
 - mockup/lib/native-api.js
+- mockup/lib/i18n.js
+- mockup/app/resources/new/page.jsx
 - mockup/scripts/build-native-console.mjs
 - native/hagency/tests/console/status_strip.rs
 - native/hagency/tests/console.rs
 - specs/task-rust-console-readiness.spec.md
 - knowledge/decisions/adr-145-console-readiness-version-strip.md
-- native/README.md
 - docs/progress.md
 
 ### Forbidden
@@ -74,7 +79,7 @@ Scenario: The built assets carry the workspace version after a rebuild
   Test: native_console_status_strip_version_matches_workspace
   Level: integration
   Test Double: the real asset bundle located through HAGENCY_NATIVE_CONSOLE_ASSETS; never the synthetic console fixture
-  Given console assets built by build-native-console.mjs with the generated status-constants module
+  Given console assets built by build-native-console.mjs with the staged constants appended to lib/native-api.js
   When the bundled HAGENCY_NATIVE_VERSION value is compared with the workspace [workspace.package] version
   Then the values are equal and the assertion is on the value never a chunk hash or size
   And a missing bundle or a missing constant fails the test never skips

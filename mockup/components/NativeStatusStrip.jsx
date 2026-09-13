@@ -5,58 +5,51 @@
  * facts the console already has. The readiness cell reads the existing
  * unauthenticated `GET /ready` same-origin and consumes the payload
  * as-is — never `/health` (200-while-live is the wrong boundary), never a
- * console route, never proxied. The version and store-head cells are
- * build-time constants from the generated status-constants module, so the
- * store head is the binary's EXPECTED schema head, never a live query.
+ * console route, never proxied. The overall word derives from the
+ * payload's own `status` rollup and nothing else: there is NO second
+ * state-word vocabulary in the client. When the rollup says not ready,
+ * every component's raw `name=state` pair is listed verbatim — which
+ * necessarily includes each failing component's own name and word, and
+ * keeps tick outcome words (`refused_busy` &c) as the ready words they
+ * are, rendered without outcome styling. An unreachable `/ready` renders
+ * unknown, never ready, with no component list.
  *
- * No state-word enumeration lives here — one vocabulary, the server's:
- * every state word renders as text, and only the sweep component's own
- * liveness words participate in colouring, mirroring the server's single
- * ready predicate. The strip has no controls: restart/stop is the service
- * wrapper's slice, not this one.
+ * The version and store-head cells are build-time constants re-assigned
+ * by build-native-console.mjs in the staged tree: the store head is the
+ * binary's EXPECTED schema head, never a live query. No controls live
+ * here — restart/stop is the service wrapper's slice, not this one.
  */
 import { useEffect, useState } from 'react';
 import { useT } from '@/components/Prefs';
-import { fetchReadiness } from '@/lib/native-api';
-import { HAGENCY_NATIVE_VERSION, HAGENCY_NATIVE_SCHEMA_HEAD } from '@/lib/generated/status-constants';
-
-/* The settled not-serving words of ADR-145's render rules; refused tick
- * words are READY words and must never colour a cell not-ready. */
-const NOT_READY_STATES = ['closed', 'stopped', 'unavailable', 'outcome_unknown', 'not_started'];
+import { fetchReadiness, HAGENCY_NATIVE_SCHEMA_HEAD, HAGENCY_NATIVE_VERSION } from '@/lib/native-api';
 
 export default function NativeStatusStrip() {
   const t = useT();
-  const [readiness, setReadiness] = useState(null);
+  // null until the fetch settles; the string marks a network-level failure.
+  const [answer, setAnswer] = useState(null);
+  const [unreachable, setUnreachable] = useState(false);
   useEffect(() => {
     const controller = new AbortController();
     fetchReadiness(controller.signal)
-      .then((v) => setReadiness({ kind: 'answer', value: v }))
-      .catch((e) => { if (e?.name !== 'AbortError') setReadiness({ kind: 'unreachable' }); });
+      .then((value) => setAnswer(value))
+      .catch((error) => { if (error?.name !== 'AbortError') setUnreachable(true); });
     return () => controller.abort();
   }, []);
-  let state = 'unknown';
-  let failing = [];
-  if (readiness?.kind === 'answer') {
-    const value = readiness.value;
-    failing = value.components.filter((c) => NOT_READY_STATES.includes(c.state));
-    state = value.status === 'ok' && failing.length === 0 ? 'ready' : 'not-ready';
-  }
-  return <section
-    className="panel"
-    style={{ marginTop: 0, padding: '8px 14px' }}
-    data-native-status={state}
-    aria-label={t('ns.title')}
-  >
-    <div className="page-head" style={{ alignItems: 'baseline', gap: 14 }}>
-      <span data-native-status-cell="readiness" className={state === 'ready' ? '' : ' warn'}>
-        {t('ns.title')}: {t(state === 'ready' ? 'ns.ready' : state === 'not-ready' ? 'ns.notReady' : 'ns.unknown')}
-      </span>
-      {state === 'not-ready' && failing.length > 0 && <span data-native-status-cell="components" className="note">
-        {failing.map((c) => `${c.name}=${c.state}`).join(' ')}
-      </span>}
-      <span className="spacer" />
-      <span data-native-status-cell="version" className="note">{t('ns.version')}: {HAGENCY_NATIVE_VERSION}</span>
-      <span data-native-status-cell="schema-head" className="note">{t('ns.schemaHead')}: {HAGENCY_NATIVE_SCHEMA_HEAD}</span>
-    </div>
-  </section>;
+  const state = unreachable || (answer !== null && answer.status !== 'ok')
+    ? (unreachable ? 'unknown' : 'not-ready')
+    : answer === null ? 'checking' : 'ready';
+  const word = state === 'ready' ? t('ns.ready') : state === 'not-ready' ? t('ns.notReady')
+    : state === 'unknown' ? t('ns.unknown') : t('ns.checking');
+  return <>
+    <span
+      data-native-status={state}
+      data-native-status-cell="readiness"
+      style={{ color: state === 'ready' ? 'var(--ok)' : state === 'not-ready' ? 'var(--warn)' : 'var(--ink-dim)' }}
+    >{t('ns.title')}: {word}</span>
+    {state === 'not-ready' && answer !== null && <span data-native-status-cell="components" className="note">
+      {answer.components.map((c) => `${c.name}=${c.state}`).join(' ')}
+    </span>}
+    <span data-native-status-cell="version" className="note">{t('ns.version')}: {HAGENCY_NATIVE_VERSION}</span>
+    <span data-native-status-cell="schema-head" className="note">{t('ns.schemaHead')}: {HAGENCY_NATIVE_SCHEMA_HEAD}</span>
+  </>;
 }
