@@ -139,54 +139,6 @@ fn state_name(state: &EngagementState) -> &'static str {
         EngagementState::Failed => "failed",
     }
 }
-
-/// The seven named observation columns (ADR-138), shared by the list and
-/// single reads so neither can drift from the other. No `SELECT *`, no
-/// `description`/`config`/`application`/`observation`, no owner or room.
-const APPROVAL_SELECT: &str = "SELECT a.id,a.state,a.choice,a.scope_key IS NOT NULL,a.expires_at,c.engagement_id,p.room_id \
-             FROM owner_approvals a \
-             JOIN approval_contexts c ON c.id=a.context_id \
-             JOIN engagements e ON e.id=c.engagement_id \
-             LEFT JOIN projects p ON p.fleet_id=e.fleet_id AND p.id=e.project_id \
-             AND p.generation=e.generation";
-
-type ApprovalTuple = (
-    String,
-    String,
-    Option<String>,
-    bool,
-    i64,
-    String,
-    Option<String>,
-);
-
-fn approval_tuple(r: &rusqlite::Row<'_>) -> rusqlite::Result<ApprovalTuple> {
-    Ok((
-        r.get::<_, String>(0)?,
-        r.get::<_, String>(1)?,
-        r.get::<_, Option<String>>(2)?,
-        r.get::<_, bool>(3)?,
-        r.get::<_, i64>(4)?,
-        r.get::<_, String>(5)?,
-        r.get::<_, Option<String>>(6)?,
-    ))
-}
-
-fn approval_row(
-    (id, state, choice, reusable_scope, expires_at, engagement_id, project_room_id): ApprovalTuple,
-) -> Result<Value, Error> {
-    Ok(json!({
-        "id": id,
-        "state": state,
-        "choice": choice
-            .map(|c| serde_json::from_str::<String>(&c))
-            .transpose()?,
-        "reusableScope": reusable_scope,
-        "expiresAt": expires_at,
-        "engagementId": engagement_id,
-        "projectRoomId": project_room_id,
-    }))
-}
 fn read_engagement(db: &Connection, id: &str) -> Result<Engagement, Error> {
     let value: String = db
         .query_row(
@@ -878,28 +830,53 @@ impl DomainRepository {
         if limit == 0 || limit > 100 {
             return Err(InvalidInput("page limit must be 1..100").into());
         }
-        let mut query = self.db.prepare(&format!(
-            "{APPROVAL_SELECT} WHERE a.id>?1 ORDER BY a.id LIMIT ?2"
-        ))?;
+        let mut query = self.db.prepare(
+            "SELECT a.id,a.state,a.choice,a.scope_key IS NOT NULL,a.expires_at,c.engagement_id,p.room_id \
+             FROM owner_approvals a \
+             JOIN approval_contexts c ON c.id=a.context_id \
+             JOIN engagements e ON e.id=c.engagement_id \
+             LEFT JOIN projects p ON p.fleet_id=e.fleet_id AND p.id=e.project_id \
+             AND p.generation=e.generation \
+             WHERE a.id>?1 ORDER BY a.id LIMIT ?2",
+        )?;
         let rows = query
-            .query_map(params![after, limit as i64], approval_tuple)?
+            .query_map(params![after, limit as i64], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, bool>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                ))
+            })?
             .collect::<Result<Vec<_>, rusqlite::Error>>()?;
-        rows.into_iter().map(approval_row).collect()
-    }
-    /// The single-row half of the observation read: the same seven named
-    /// columns as the list, keyed by the approval's own opaque id. Read-only.
-    pub fn approval(&self, id: &str) -> Result<Value, Error> {
-        project::identifier(id, 128)?;
-        let row = self
-            .db
-            .query_row(
-                &format!("{APPROVAL_SELECT} WHERE a.id=?1"),
-                [id],
-                approval_tuple,
+        rows.into_iter()
+            .map(
+                |(
+                    id,
+                    state,
+                    choice,
+                    reusable_scope,
+                    expires_at,
+                    engagement_id,
+                    project_room_id,
+                )| {
+                    Ok(json!({
+                        "id": id,
+                        "state": state,
+                        "choice": choice
+                            .map(|c| serde_json::from_str::<String>(&c))
+                            .transpose()?,
+                        "reusableScope": reusable_scope,
+                        "expiresAt": expires_at,
+                        "engagementId": engagement_id,
+                        "projectRoomId": project_room_id,
+                    }))
+                },
             )
-            .optional()?
-            .ok_or(Error::NotFound)?;
-        approval_row(row)
+            .collect()
     }
     pub fn get(&self, id: &str) -> Result<Engagement, Error> {
         read_engagement(&self.db, id)
