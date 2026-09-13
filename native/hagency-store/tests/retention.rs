@@ -771,6 +771,100 @@ async fn native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch()
     assert_eq!(f.count("task_intents"), 0, "the refusal creates nothing");
 }
 
+/// S4 (store review) + round 3: the archive insert is a keyed overwrite,
+/// never a fatal uniqueness abort — and the one exception is stated, not
+/// hidden. The stale same-pair row (the "earlier partial path" shape S4
+/// names) is replaced by the live row's archive entry, while a write-only
+/// NULL-engagement row coexists, because NULL never equals NULL in the
+/// unique key and no archive read is scoped to a NULL engagement.
+#[tokio::test]
+async fn native_retained_corpus_archive_rearchive_is_keyed_not_fatal() {
+    let mut f = Fixture::new("rekey");
+    // The write-only row FIRST, so its low sequence falls inside the P1
+    // window: a non-ingress admission with no provenance and no children.
+    f.sql()
+        .execute(
+            "INSERT INTO admitted_messages(sequence,source_key,digest,config) VALUES(1,?1,?2,?3)",
+            params![
+                "raw_non_ingress",
+                "raw",
+                serde_json::json!({"id":"raw"}).to_string()
+            ],
+        )
+        .unwrap();
+    let live = f.admit("rekey", 2000);
+    for i in 0..100 {
+        f.admit(&format!("fill{i}"), 2001 + i);
+    }
+    processed(&f, live, 2500);
+    // The live pair, captured BEFORE the sweep: the provenance row moves
+    // with the message, so it cannot be joined after.
+    let (pair_engagement, pair_source): (String, String) = {
+        let sql = f.sql();
+        sql.query_row(
+            "SELECT engagement_id,source_key FROM matrix_ingress_events WHERE message_sequence=?1",
+            [live],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap()
+    };
+    // The stale archive row carrying the live message's own
+    // (engagement_id, source_key) pair — the hazard INSERT OR REPLACE
+    // defuses: without it this shape aborts the whole tick on the UNIQUE.
+    f.sql()
+        .execute(
+            "INSERT INTO retained_message_archive(sequence,engagement_id,source_key,scope_digest,digest,config,source_session_id,wake,pruned_at_ms) VALUES(999999,?1,?2,'stale_scope','stale','{}',NULL,0,1)",
+            params![pair_engagement, pair_source],
+        )
+        .unwrap();
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
+    assert_eq!(outcome.pruned, 2, "the raw row and the live row both prune");
+    // The keyed overwrite: exactly ONE row carries the live pair, and it is
+    // the live row's archive entry — the stale digest is gone, the tick
+    // never aborted.
+    let (pair_rows, fresh_rows): (u64, u64) = {
+        let sql = f.sql();
+        let pair_rows = sql
+            .query_row(
+                "SELECT COUNT(*) FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
+                params![pair_engagement, pair_source],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let fresh_rows = sql
+            .query_row(
+                "SELECT COUNT(*) FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2 AND digest<>'stale'",
+                params![pair_engagement, pair_source],
+                |r| r.get(0),
+            )
+            .unwrap();
+        (pair_rows, fresh_rows)
+    };
+    assert_eq!(
+        pair_rows, 1,
+        "the stale same-pair row was replaced, not joined"
+    );
+    assert_eq!(fresh_rows, 1, "the surviving row is the live row's entry");
+    // The NULL-engagement exception, observed: the write-only row coexists.
+    let null_rows: u64 = f
+        .sql()
+        .query_row(
+            "SELECT COUNT(*) FROM retained_message_archive WHERE engagement_id IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        null_rows, 1,
+        "NULL never equals NULL: no collision, no replace"
+    );
+    let total: u64 = f.count("retained_message_archive");
+    assert_eq!(
+        total, 2,
+        "two archive rows: the keyed pair and the write-only one"
+    );
+}
+
 /// Migration 026 over populated rows, in the `native_usage_migration` shape:
 /// rewind a live head-26 database to 25 and reopen — 026 replays over a
 /// database that already carries its objects, and every statement is
