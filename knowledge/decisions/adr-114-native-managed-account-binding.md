@@ -77,10 +77,6 @@ that must exist exactly when a row is live. **None crosses the wire.**
 (directory_identity.rs:8-12) — no path field exists to leak. The wire carries
 the five-key `AccountRow` only: id, ordinal, state, revision, profile.
 
-The store half was folded into this slice because no sibling MA-S3a-store slice
-exists: no lane owns it and the backlog row licenses only the console and
-main.rs, which was the gap.
-
 ---
 
 ## Amendment (MA-S1): the observed provider-login readiness fact
@@ -126,3 +122,42 @@ dispatch **parks** with the named reason `account_readiness_unknown`.
 **The console DTO is not this amendment's.** `AccountRow` stays five keys;
 the readiness field is MA-S3b's, landing in its own commit when the fact
 exists to serve.
+
+**Cross-reference (MA-S2).** The consumption half of this amendment is
+ADR-053's: a dispatch over a bound account requires the fact recorded here to
+be observed and unexpired, else it parks with the named reason
+`account_readiness_unknown` and is re-evaluated at read time when a new fact
+settles — never retried in a loop. See ADR-053's "Account readiness gate
+amendment" and `specs/task-rust-dispatch-readiness-gate.spec.md`.
+
+---
+
+## Amendment (MA-S4): retirement logs out and audits the transition
+
+**Retirement is a host-observed logout, never a native-driven one.** The
+existing `retire_account` (`accounts.rs:665-686`) fences the binding and
+transitions `active → retired`, but it does not end the provider session
+the namespace holds. Under D-ADR114 (observe, in force) the logout is
+**observed at the host**, exactly as the login is: the operator runs the
+provider's own logout inside the namespace, native records the derived
+outcome and never drives the logout itself.
+
+**The transition is audited.** Migration **029** adds the logout receipt
+row — the transition's audit record: which account, when, and the derived
+readiness state the namespace reached. `active → retired` is the store's
+transition; the audit row is the proof of what the logout observed.
+
+**A logout failure leaves readiness unknown, never ready, never
+retired-as-clean.** If the logout cannot be observed (failure, refusal,
+unclassifiable), the account's readiness fact degrades to `unknown` — the
+MA-S1 `usable` predicate already returns unknown for an absent or expired
+fact — and the retirement transition records the **unknown** outcome in the
+audit row. The account is never read as `ready` from a failed logout, and
+never recorded as a clean retirement it did not observe: one honest
+uncertainty, no false ready and no false clean.
+
+**Consumption.** A retired account with an unknown logout is simply
+unusable — the readiness gate (MA-S2, ADR-053's amendment) parks any
+dispatch over it with `account_readiness_unknown`, and the DTO (MA-S3b)
+serves `unknown`. Nothing here changes the retire wrapper's own
+`active → retired` state transition or the MA-S3a retire route.
