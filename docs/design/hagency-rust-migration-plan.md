@@ -626,3 +626,94 @@ Document checks completed on 2026-09-09: 86 relative links resolved, all ten pha
 headings and the 43–73 engineer-week sum checked, required platform/Salvo coverage
 checked, code fences balanced, and `git diff --check` passed. Application code and
 runtime services were not changed by this documentation task.
+
+## 14. Status 2026-09-13, gate by gate
+
+A dated snapshot for a reader who wants, per remaining gate, what has been
+inventoried, decided and designed on this branch — and what is actually
+implemented. Six gates, as the consolidated backlog
+(`.peer/evidence/context-migration-gates-backlog.md`) names them. ADR numbers
+and titles are as they exist on this branch; several are amendments to earlier
+records. Nothing here claims completion of a milestone.
+
+**Runner / real-runner evidence.** Decided: ADR-139 "Native Codex launch
+surface: app-server argv and opt-in driver" (the argv is `app-server` alone
+with policy in the typed request, the driver is opt-in, both deliberate; the
+stdio equivalence pinned by a recorded fixture,
+`native/fixtures/codex-cli/app-server-help-0.153.4.excerpt.txt`); ADR-140
+"Qualify the real Codex sandbox behind a compiled-out feature" (amended to the
+evidence-file class: an operator-run example writes a tracked record the CI
+test validates and fails on when missing — never a skip). Designed and ready:
+the real-binary qualification (RUN-A's companion, spec in
+`specs/task-rust-owned-dispatch.spec.md`). The runner inventory's named
+divergences are recorded; RUN-A's tests and RUN-B's two tests are owed to a
+builder lane. Open decision: D-ACP (the ACP `--sandbox` semantics, RUN-D).
+
+**Managed account / login.** Decided: ADR-114's part-B amendment (the console
+and CLI account surface with no readiness — opacity unchanged; the identity
+triple is path-free), ADR-111's amendment (first-resource enrolment reaches a
+production path), ADR-108's account amendment (the third management grant,
+`--manage-account-enrollment`; 4-way dispatch; `AccountRow` on all five
+routes). Designed and ready: the MA-S3a console surface
+(`specs/task-rust-console-accounts.spec.md`, five selectors plus the store
+sibling's one). Open decision: D-ADR114 (the readiness enum, MA-S3b) and
+D-SCOPE (the scope literal, resolved against it in the design v3). Implemented
+today: the offline `account` verb and migration 023's three tables — the
+production console surface is spec'd, not built.
+
+**Private card / client origin.** Decided: ADR-110 and ADR-112 mandate the
+delivery wiring (PC-C0's two amendments are written into the ADRs; the Q1
+ownership trace — the pump owns the single-consumer receiver taken once via
+one driver value parameter — is the design's core and is recorded in the
+plan). Designed and ready: PC-C0 (the wiring spec,
+`specs/task-rust-private-approval-wiring.spec.md`) and PC-C1's `PublicFrozen`
+validator (six conjuncts, destination re-derivation load-bearing). Open
+decisions: D-PC-FC (the fail-closed denial policy), D-PC-WHO (resolved in the
+design: the approval bot posts, via an ADR-112 amendment to exactly one
+re-derived room), D-PC-C5 (card re-issue: permanent-uncertain recommended).
+Implemented today: the store's alert close path and the delivery custody
+types; no route wires the pump yet.
+
+**Console and CLI parity.** Decided: ADR-126 "Bounded native agent roster
+observation" (seven keys, no nesting, server-owned `unavailable`), ADR-132
+"Bounded native project-side observation" (six keys, the store list read owned
+first), ADR-145 "Console readiness and version strip" (`/ready` as-is, the
+generated-constants mechanism, no Rust change), ADR-108's catalogue amendment
+(`families`/`fillable`/`overTier` over one predicate), ADR-124's alarm
+amendment (the transition route, scope-gating owed as CL-S3′). Designed and
+ready: the roster, project-sides, presets/catalogue, accounts and
+readiness-strip specs, plus the agent-lifecycle stop design (v2 owed after the
+B1 review: resolve via the unsettled `dispatch_stops` row; fence never settle).
+Open decision: none for the reads; the stop route's cascade scope is a v2
+choice. Implemented today: the five native pages, nine console API routes,
+ten CLI verbs, `/ready` beside `/health`, and the alert transition route —
+whose **scope gap is the live CL-S3′ fix on a builder lane**.
+
+**Retention.** Decided: the retention ADR exists on the designer's branch as
+ADR-126-to-be-129 (renumbered per the backlog; on integration it takes 129):
+rotation is not a tick phase, the filesystem owners are the platform
+primitives, and the logging posture is stderr with the service manager owning
+rotation — agreeing with this plan's ADR-127/133 units. Designed and ready:
+the rust and node spec pair (the node-tagged split is required by the
+spec-binding checkers). Open decisions: the retention product decisions the
+backlog names (archive bounds per class, the media-cache TTL). Implemented
+today: nothing retained rotates; native's structural bounds (the media store,
+`MAX_CARD`) are the only limits.
+
+**Service and release.** Decided: ADR-127 "Native Linux systemd unit and
+installer" (start gate `/ready` never `/health`; the installer provisions
+state and runs `hagency init` first), ADR-133 "Native macOS launchd unit"
+(`KeepAlive true` — the never-starts trap documented; `bootout`-before-unlink),
+ADR-134 "Versioned native release" (one workspace version, `nv` tags, the
+residual-Node scan, `hagency --version` as cutover identity; no `/ready`
+field), ADR-135 "Two-host cutover and rollback runbook" (nine steps with
+commands, checks, refusals, the rollback refusal point named at end of step
+5), ADR-136 "Windows is paused as a native release target" (the §5
+platform-scope note above records it in this plan), ADR-144 "Two-agent
+integration acceptance" (MA-M8a in process + MA-M8b as the operator-run
+evidence record at `native/hagency/qualification/two-agent.json`). Designed
+and ready: the release workflow draft (`.github/workflows/release-native.yml`,
+dispatch-only by design until M9) and the six Lane C spec companions.
+Implemented today: the readiness routes, the SIGTERM→drain→ADR-120-close
+sequence, the parked unknown close, and the spec-bound harness selectors owed
+to the builder lane — no unit, installer, artifact or runbook code is built.
