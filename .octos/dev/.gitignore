@@ -1,7 +1,0 @@
-# Managed by octos (appui.sessions_in_cwd): per-project session store.
-# Chat transcripts and runtime state must not be committed to the repo.
-sessions/
-users/
-tasks/
-context_ledgers/
-*.redb
