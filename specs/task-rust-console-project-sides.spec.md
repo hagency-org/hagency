@@ -50,6 +50,9 @@ listed by `cargo test --list` under `--all-features` exactly as
 - mockup/app/project-sides/page.jsx
 - mockup/components/NativeProjectSides.jsx
 - mockup/lib/native-api.js
+- mockup/components/Data.jsx # the load path must route /console/project-sides/ to fetchProjectSides — without it the page never fetches
+- mockup/lib/i18n.js # np.* strings in both dictionaries — without them the page renders bare keys
+- mockup/scripts/native-console-browser.mjs # the sides lane and full-walk visit — without them the browser scenario has no driver
 - mockup/scripts/build-native-console.mjs
 - specs/task-rust-console-project-sides.spec.md
 - knowledge/decisions/adr-132-native-project-side-observation.md

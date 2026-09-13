@@ -676,54 +676,97 @@ impl DomainRepository {
     /// against the config's own generation field — true by construction
     /// today, computed rather than assumed.
     pub fn project_sides(&self) -> Result<Vec<ProjectSide>, Error> {
+        // ONE statement, one snapshot (F3): the LEFT JOIN is evaluated
+        // inside a single implicit transaction, so a project written
+        // between two reads cannot tear the view — the way `agent_roster`
+        // joins in one statement. The ordering guarantee is this
+        // statement's ORDER BY. The per-side cap (F2) is INSIDE the
+        // statement as a ROW_NUMBER window — never a truncation of an
+        // unbounded fetch in Rust. Bound arithmetic: `register()` bounds
+        // `registrations` at 1024 rows and the window bounds projects at
+        // 64 per side, so the joined statement yields at most 65,536 rows.
         let mut query = self.db.prepare(
-            "SELECT r.fleet_id, json_extract(r.config,'$.serverName'), \
+            "SELECT r.fleet_id, \
+             json_extract(r.config,'$.serverName'), \
              json_extract(r.config,'$.representativeMxid'), \
              json_extract(r.config,'$.receptionRoomId'), \
-             json_extract(r.config,'$.generation'), r.generation \
-             FROM registrations r ORDER BY r.fleet_id LIMIT 1024",
+             json_extract(r.config,'$.generation'), r.generation, \
+             p.id, p.room_id \
+             FROM registrations r \
+             LEFT JOIN (SELECT fleet_id,id,room_id, \
+             ROW_NUMBER() OVER (PARTITION BY fleet_id ORDER BY id) AS rn \
+             FROM projects) p ON p.fleet_id=r.fleet_id AND p.rn<=64 \
+             ORDER BY r.fleet_id,p.id",
         )?;
-        let heads: Vec<(String, String, String, String, u64, u64)> = query
-            .query_map([], |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                    row.get(5)?,
-                ))
-            })?
-            .collect::<Result<_, _>>()?;
-        let mut projects = self.db.prepare(
-            "SELECT p.fleet_id,p.id,p.room_id FROM projects p ORDER BY p.fleet_id,p.id LIMIT 65536",
-        )?;
-        let rooms: Vec<(String, String, String)> = projects
-            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
-            .collect::<Result<_, _>>()?;
-        let mut by_fleet: std::collections::BTreeMap<String, Vec<SideProject>> =
-            std::collections::BTreeMap::new();
-        for (fleet, id, room) in rooms {
-            by_fleet
-                .entry(fleet)
-                .or_default()
-                .push(SideProject { id, room_id: room });
+        let rows = query.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, rusqlite::types::Value>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, Option<String>>(6)?,
+                row.get::<_, Option<String>>(7)?,
+            ))
+        })?;
+        let mut sides: Vec<ProjectSide> = Vec::new();
+        let mut current_fleet: Option<String> = None;
+        for row in rows {
+            let (
+                fleet,
+                id,
+                representative,
+                reception,
+                config_generation,
+                row_generation,
+                project,
+                room,
+            ) = row?;
+            let generation = u64::try_from(row_generation).map_err(|_| Error::Schema)?;
+            // F4: a config whose `$.generation` is not a JSON integer is
+            // corrupt store state, not a value to coerce — the conversion
+            // failure is mapped to Error::Schema AT THE READ (a named
+            // corrupt-state failure) instead of surfacing as the raw
+            // FromSqlConversionFailure/Sqlite variant.
+            let config_generation = match config_generation {
+                rusqlite::types::Value::Integer(value) => {
+                    u64::try_from(value).map_err(|_| Error::Schema)?
+                }
+                _ => return Err(Error::Schema),
+            };
+            if current_fleet.as_deref() == Some(fleet.as_str()) {
+                // LEFT JOIN NULL arm (a side with no project) contributes
+                // nothing to the fold.
+                if let (Some(project), Some(room)) = (project, room) {
+                    sides
+                        .last_mut()
+                        .expect("the fold key implies a pushed side")
+                        .projects
+                        .push(SideProject {
+                            id: project,
+                            room_id: room,
+                        });
+                }
+            } else {
+                current_fleet = Some(fleet);
+                sides.push(ProjectSide {
+                    id,
+                    representative,
+                    generation,
+                    reception_room_id: reception,
+                    registered: generation == config_generation,
+                    projects: match (project, room) {
+                        (Some(project), Some(room)) => vec![SideProject {
+                            id: project,
+                            room_id: room,
+                        }],
+                        _ => Vec::new(),
+                    },
+                });
+            }
         }
-        Ok(heads
-            .into_iter()
-            .map(
-                |(fleet, id, representative, reception, config_generation, row_generation)| {
-                    ProjectSide {
-                        id,
-                        representative,
-                        generation: row_generation,
-                        reception_room_id: reception,
-                        registered: row_generation == config_generation,
-                        projects: by_fleet.remove(&fleet).unwrap_or_default(),
-                    }
-                },
-            )
-            .collect())
+        Ok(sides)
     }
     /// The read-only agent roster (ADR-126): one row per engagement — the
     /// derivation is engagement-keyed, so an agent with no engagement row is

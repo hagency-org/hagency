@@ -45,8 +45,10 @@ two commits of work (store read first, route second), not one.
 `generation`, `reception_room_id`, `registered`, `projects` — with
 `projects[]` exactly `{id, room_id}`, bounded to 64 per side (the store
 bounds `registrations` at 1024, `domain.rs:467-472`). `registered` is the
-honest form of retained's `active`: *this registration row exists at the
-fleet's current generation* — not a credential claim, not an access verdict.
+honest form of retained's `active`: *the row's generation column agrees with
+the generation its own config carries* — the two stored copies of the same
+fact, checked rather than assumed (drift is visible, not assumed away) — not
+a credential claim, not an access verdict.
 `owner_mxid`/`owner_room_id` are **withheld**: the owner's DM room is
 non-public (ADR-112), and the retained projection does not serve them
 either. Room-id-class data that *is* operator-facing (`reception_room_id`,

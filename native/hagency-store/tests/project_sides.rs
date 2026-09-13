@@ -93,6 +93,31 @@ fn project_sides_projection_omits_credential_bytes() {
     ));
 }
 
+/// F5 (review r1): the within-side project order gets its OWN assertion,
+/// in a test that passes independent of the cap test — the guarantee comes
+/// from the one statement's ORDER BY (r.fleet_id, p.id), and this pins it
+/// with rows inserted out of order.
+#[test]
+fn project_sides_orders_projects_by_id_within_a_side() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut db = DomainRepository::open(&dir.path().join("state")).unwrap();
+    db.register(&registration()).unwrap();
+    let raw = open_raw(&dir);
+    for id in ["p02", "p00", "p01"] {
+        raw.execute(
+            "INSERT INTO projects(fleet_id,id,generation,room_id,owner_mxid,owner_room_id) \
+             VALUES(?1,?2,1,?3,'@owner:example.test','!private:example.test')",
+            rusqlite::params![registration().fleet_id, id, format!("!{id}:example.test")],
+        )
+        .unwrap();
+    }
+    drop(raw);
+    let sides = db.project_sides().unwrap();
+    assert_eq!(sides.len(), 1);
+    let ids: Vec<&str> = sides[0].projects.iter().map(|p| p.id.as_str()).collect();
+    assert_eq!(ids, ["p00", "p01", "p02"], "the statement's ORDER BY id governs");
+}
+
 /// The bounded read: `registered` is COMPUTED against the config's own
 /// generation field (drift is visible, not assumed away), the project
 /// list is capped at 64 per side, and the fleet cap mirrors the 1024-row
