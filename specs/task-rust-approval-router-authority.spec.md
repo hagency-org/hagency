@@ -118,8 +118,14 @@ Scenario: The reconcile continues on a record the reply-loss seam hid
 Scenario: The reconcile reports a conclusive absence of the record
   Test: native_owned_approval_acceptance_reconcile_unrecorded
   Given a written response frame whose acceptance write is refused by a held writer
-  When the single ordered read answers that no accepted row exists
-  Then SettlementUnknown carries the AcceptanceUnrecorded cause with no re-send and no record
+  When the single ordered read answers that no accepted row exists while the write lock is still held
+  Then SettlementUnknown carries the AcceptanceUnrecorded cause with no re-send and no record and the failed drive asserts no canonical Done and no published completion
+
+Scenario: A successful drive still publishes while an unproven cleanup reports beside the verdict
+  Test: native_owned_approval_acceptance_reconcile_accepted
+  Given a written response frame whose acceptance call succeeded but whose reply the seam converted to an unknown
+  When the ordered read reports the committed accepted row on that successful drive
+  Then the held completion publishes on proven cleanup and, where cleanup stays unproven, settlement uncertainty is recorded beside CleanupUnknown with no asserted Done
 
 ## Out of Scope
 

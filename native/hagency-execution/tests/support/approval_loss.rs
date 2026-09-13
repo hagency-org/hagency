@@ -565,6 +565,22 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
         report.runtime_observation()
     );
     assert_eq!(report.settlement_cause, None);
+    // Negative control: a drive that actually succeeded still publishes. On
+    // Linux cleanup is proven, so the held completion is published
+    // (`CanonicalReplyReady`). On macOS cleanup stays unproven, so the held row
+    // is retained and the operation reports `CleanupUnknown` — and there the
+    // settlement uncertainty is recorded BESIDE the verdict (not instead of a
+    // published completion) and the host asserts no unobserved Done.
+    if cfg!(target_os = "macos") {
+        assert_eq!(report.settlement, Settlement::Unknown);
+        assert_ne!(
+            report.canonical_status,
+            Some(TaskState::Done),
+            "an unproven cleanup must not assert an unobserved Done"
+        );
+    } else {
+        assert_eq!(report.settlement, Settlement::CanonicalReplyReady);
+    }
     // One callback, one retained frame, one grant, one accepted write.
     assert_eq!(report.approval_custody(), (1, 1, 1, 1));
     let requests =
@@ -646,16 +662,35 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
     sql.execute_batch("BEGIN IMMEDIATE").unwrap();
     gate.release.store(true, Ordering::Release);
-    // Bounded and generous against the writer's 100 ms busy timeout: the
-    // acceptance write refuses, the ordered read then answers "unrecorded".
-    tokio::time::sleep(Duration::from_millis(600)).await;
+    // Hold the write lock until the operation has produced its verdict. The
+    // acceptance write is refused by the 100 ms busy timeout; the reconcile read
+    // is a WAL read and answers while the lock is still held, so the scenario no
+    // longer races the host's scheduling. Bounded, not widened: a premise that
+    // no longer holds must fail as a timeout, never pass by waiting longer.
+    let report = tokio::time::timeout(Duration::from_secs(6), op.wait())
+        .await
+        .expect("the acceptance verdict must arrive while the lock is held")
+        .unwrap();
     sql.execute_batch("COMMIT").unwrap();
-    let report = op.wait().await.unwrap();
     assert_eq!(report.failure, Some(Failure::SettlementUnknown));
     assert_eq!(
         report.settlement_cause,
         Some(crate::SettlementCause::AcceptanceUnrecorded),
         "a conclusive negative read names the missing record"
+    );
+    // The precedence rule: a settlement verdict is never replaced by the
+    // completion path. This drive did not succeed, so no completion custody was
+    // consulted and `canonical_status` keeps the last value the drive actually
+    // observed (never an asserted Done), and nothing was published.
+    assert_ne!(
+        report.canonical_status,
+        Some(TaskState::Done),
+        "a failed drive must not assert an unobserved Done"
+    );
+    assert_ne!(
+        report.settlement,
+        Settlement::CanonicalReplyReady,
+        "a settlement verdict must not be converted into a published completion"
     );
     // The transport receipt was recorded (`entry.write = Some`) before the
     // acceptance pump, and the write itself is a transport event unaffected by

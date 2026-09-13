@@ -875,19 +875,30 @@ async fn execute(
     // A matching explicit Done+body is completion custody, not a renewed task
     // epoch or permission to continue this process. The same runner was stopped
     // above. Scope is the opaque successful Start response, never admission data.
-    if !matches!(
-        drive,
-        Err(Failure::Cancelled | Failure::Deadline | Failure::UnsupportedApproval)
-    ) && let Some(reference) = domain
-        .observe_owned_completion(cap.clone(), started.clone())
-        .await
-        .map_err(|error| settlement_failure(report, &error))?
+    //
+    // A settlement verdict outranks the completion path. Only a drive that
+    // actually succeeded may consult held completion custody; every other
+    // result is surfaced unchanged by `drive?` below. Otherwise
+    // `Err(SettlementUnknown)` — ADR-046's conclusive negative reconcile, or
+    // brief 19's in-flight `PeerUnavailable` — is replaced by `CleanupUnknown`
+    // on macOS and swallowed into a published completion on Linux.
+    if drive.is_ok()
+        && let Some(reference) = domain
+            .observe_owned_completion(cap.clone(), started.clone())
+            .await
+            .map_err(|error| settlement_failure(report, &error))?
     {
-        report.canonical_status = Some(TaskState::Done);
         checkpoint(cancel, until)?;
         if !stopped(report.cleanup) {
+            // Cleanup uncertainty is reported BESIDE the held completion
+            // custody, never instead of it: the row is retained for
+            // reconciliation and is not published, and the host does not assert
+            // an unobserved Done (ADR-053 "observed, never promoted"; ADR-060
+            // "a negative/unknown cleanup path never publishes").
+            report.settlement = Settlement::Unknown;
             return Err(Failure::CleanupUnknown);
         }
+        report.canonical_status = Some(TaskState::Done);
         // Keep the receipt future alive. The writer checks this original signal
         // and monotonic deadline after queue/lock before admitting final content;
         // cancellation after that eligibility decision cannot undo its commit.

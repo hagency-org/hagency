@@ -217,3 +217,50 @@ store's error text, path, payload or capability material, and is never
 authority, retry, reply or lease input. It changes no verdict: every
 `assert_eq!(report.failure, Some(Failure::SettlementUnknown))` still holds,
 `Failure` stays `Copy`, and a clean completion records `None`.
+
+## Amendment 2026-09-12 — Precedence of a settlement verdict over the completion path
+
+The completion block in `hagency-execution`'s `execute` was entered for every
+drive result except `Err(Cancelled | Deadline | UnsupportedApproval)` — a set
+that includes `Err(SettlementUnknown)`. When a held completion reference
+existed it first asserted `canonical_status = Some(TaskState::Done)` and then
+either returned `Err(Failure::CleanupUnknown)` on the macOS retained-owner
+case, **replacing** the settlement verdict, or published the completion and
+returned `Ok(())` on Linux, **swallowing** it into a published reply and an
+operator-invisible success.
+
+That inverts this ADR's own rule: "a negative/unknown cleanup path never
+publishes", and ADR-053's "canonical status is observed, never promoted to
+Done". A verdict the host actually reached must never be decided by something
+other than the failure that occurred.
+
+**Resolution.** A settlement verdict is a verdict:
+
+1. `observe_owned_completion` is consulted **only** when `drive.is_ok()`.
+   Every non-success drive result is surfaced unchanged by `drive?`, with no
+   completion custody consulted.
+2. When a completion reference is held and cleanup is unproven, the held row
+   is **retained for reconciliation and not published**, and the operation
+   reports `CleanupUnknown`.
+3. Cleanup uncertainty is recorded **beside** the verdict — `Report.settlement`
+   carries `Settlement::Unknown` alongside `Report.cleanup` and
+   `settlement_cause` — never instead of it.
+4. `canonical_status` is **not** asserted `Some(TaskState::Done)` on any path
+   that is not a successful drive; it keeps the last value the drive actually
+   observed. The store's row truth is the store's; the host echoes only what
+   it observed.
+
+The rule is independent of the candidate in-flight/quiet-path lineage: it
+touches only the completion block's entry condition and the ordering of
+`canonical_status`, neither of which that reshape changes. It lands on
+upstream `feat/rust-migration` as the correctness half of the acceptance
+reconcile slice: the reconcile introduced `AcceptanceUnrecorded`, and this
+block already existed to replace it.
+
+Paired with it, the `native_owned_approval_acceptance_reconcile_unrecorded`
+scenario no longer races the host with a 600 ms sleep: the test holds the
+`BEGIN IMMEDIATE` write lock until the operation has produced its verdict
+(bounded by a 6 s timeout, so a premise that no longer holds fails rather than
+passing by waiting longer). In WAL mode the reconcile read answers while the
+lock is still held, so the refused acceptance and the conclusive negative read
+are both deterministic for either ordering of the probe's `turn/completed`.

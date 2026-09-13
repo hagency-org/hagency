@@ -163,6 +163,42 @@
   console-consumer amendment — the "publish headroom" follow-through its
   closing paragraph deferred to exactly this slice.
 
+## 2026-09-12 — Settlement precedence: a verdict outranks the completion path (ADR-060 amendment)
+
+`hagency-execution`'s completion block in `operation.rs` ran for every drive
+result except `Err(Cancelled | Deadline | UnsupportedApproval)` — a set that
+included `Err(SettlementUnknown)`. With a held completion reference it first
+asserted `canonical_status = Some(TaskState::Done)` and then either returned
+`Err(Failure::CleanupUnknown)` on the macOS retained-owner case (replacing the
+settlement verdict) or published the completion and returned `Ok(())` on Linux
+(swallowing `SettlementUnknown` into a published reply and an
+operator-invisible success). Both inverted ADR-060's "a negative/unknown
+cleanup path never publishes" and ADR-053's "canonical status is observed,
+never promoted to Done".
+
+The guard is now `drive.is_ok()`: completion custody is consulted only when
+the drive actually succeeded, and every other result is surfaced unchanged by
+`drive?`. `canonical_status = Some(TaskState::Done)` moved **after** the
+cleanup gate, and the macOS retained-owner bail records
+`report.settlement = Settlement::Unknown` **beside** the verdict (with
+`Report.cleanup` and `settlement_cause`) rather than instead of it. The rule is
+independent of the candidate in-flight/quiet-path lineage and lands on
+upstream `feat/rust-migration`.
+
+Paired change: `native_owned_approval_acceptance_reconcile_unrecorded` no
+longer races the host with a 600 ms sleep. The test now holds the
+`BEGIN IMMEDIATE` write lock until the operation has produced its verdict,
+bounded by a 6 s `tokio::time::timeout` so a premise that no longer holds
+fails as a timeout instead of passing by waiting longer; in WAL mode the
+ordered reconcile read answers while the lock is still held, making the
+refused acceptance and the conclusive negative read deterministic for either
+ordering of the probe's `turn/completed`. The two existing scenarios now also
+pin the rule directly: `..._reconcile_unrecorded` asserts the failed drive
+neither asserts an unobserved Done nor converts the verdict into
+`CanonicalReplyReady`, and `..._reconcile_accepted` (the negative control) pins
+platform-aware outcomes — `CanonicalReplyReady` on Linux, `Unknown` beside
+`CleanupUnknown` with no asserted Done on macOS.
+
 ## 2026-09-12 — Engagements review edits E3/E4 (review of 0077cb08)
 
 - E3 (pagination untested): the console fixture now seeds THREE engagements
