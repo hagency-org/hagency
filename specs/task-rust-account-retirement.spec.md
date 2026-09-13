@@ -39,7 +39,6 @@ or reads a credential.
 - native/hagency-store/src/lib.rs
 - native/hagency-store/tests/accounts.rs
 - native/hagency-store/tests/
-- native/hagency/src/bootstrap/accounts.rs (the offline CLI retire path: the stores retire_account now takes the host-observed logout outcome, so this arm threads it)
 - specs/task-rust-account-retirement.spec.md
 - knowledge/decisions/adr-114-native-managed-account-binding.md
 - docs/progress.md
