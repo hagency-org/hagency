@@ -24,7 +24,10 @@ mod catalog_publication;
 pub use attachments::AttachmentTicket;
 pub use catalog_publication::PublishedCatalog;
 mod ceiling_alerts;
-pub use ceiling_alerts::{CeilingAlert, MAX_OPEN_CEILING_ALERTS, SweepOutcome};
+pub use ceiling_alerts::{
+    ALERT_STATUSES, AlertTransition, CeilingAlert, MAX_OPEN_CEILING_ALERTS, SweepOutcome,
+    allowed_transitions,
+};
 mod conversation_lifecycle;
 mod conversations;
 mod execution;
@@ -358,7 +361,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 24,
+                version: 25,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -386,10 +389,11 @@ impl DomainRepository {
                     (22, include_str!("migrations/022-approval-responses.sql")),
                     (23, include_str!("migrations/023-managed-accounts.sql")),
                     (24, include_str!("migrations/024-ceiling-alerts.sql")),
+                    (25, include_str!("migrations/025-alert-transitions.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
-                    "SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms,resolved_at_ms,resolved_by FROM ceiling_alerts LIMIT 0",
+                    "SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms,resolved_at_ms,resolved_by,status,note,transitioned_at_ms,transitioned_by FROM ceiling_alerts LIMIT 0",
                     "SELECT k.secret,k.deployment,k.root_identity,a.id,a.ordinal,a.generation,a.state,a.namespace_identity,a.identity_tuple,a.seat_id,r.preset_id,r.account_id,r.binding_generation FROM account_identity_key k CROSS JOIN managed_accounts a CROSS JOIN resource_accounts r LIMIT 0",
                     "SELECT request_id,context_id,capability_digest,decision_digest,state,write_accepted,authorized_at,response_started_at FROM approval_responses LIMIT 0",
                     "SELECT id,capability_digest,event_id,workspace_id,binding,binding_digest,byte_limit,facts,state,failure FROM received_files LIMIT 0",

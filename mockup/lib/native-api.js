@@ -114,15 +114,18 @@ export async function fetchNative(selected, after = '') {
  * any string and the page renders it as text — the same pass-through the
  * retained mapAlert does (mockup/lib/api.js:203).
  *
- * `severity === 'warning'` and `status === 'open'` are hard equality checks,
- * so a future non-warning or non-open alert makes the WHOLE READ throw
- * invalid_native_response rather than misrender — refuse, never silently
- * relabel. That matters because the server DERIVES both fields and the store
- * has no severity/status column: exactly one alert type exists natively
- * (agent_ceiling_overrun). A second type must extend the migration, the
- * route and this validator in the SAME slice (ADR-124's known cliff). */
+ * `severity === 'warning'` stays a hard equality check, so a future
+ * non-warning alert makes the WHOLE READ throw invalid_native_response
+ * rather than misrender — refuse, never silently relabel. `status` is the
+ * STORE's real display-state column (ADR-124 amendment): one of the four
+ * states from the one server-owned map, and every row carries `next`, the
+ * transitions the SERVER allows from that state — the page renders buttons
+ * ONLY from `next`, so a route the server does not serve can never appear
+ * as a control and a client-side map can never disagree with the server's
+ * (the retained console's own NEXT_STATUS drift is not ported). */
 const DETAIL_KEYS = ['agent', 'presetId', 'ceilingTokens', 'committedTokens', 'measuredTokens', 'drawnTokens', 'overByTokens'];
-const ALERT_KEYS = ['dedupe_key', 'resource_id', 'summary', 'detail', 'runbook', 'impact', 'recovery_condition', 'occurrences', 'first_seen_ms', 'last_seen_ms', 'resolved', 'severity', 'status'];
+const ALERT_KEYS = ['dedupe_key', 'resource_id', 'summary', 'detail', 'runbook', 'impact', 'recovery_condition', 'occurrences', 'first_seen_ms', 'last_seen_ms', 'resolved', 'severity', 'status', 'next', 'note'];
+const ALERT_STATUSES = ['open', 'acknowledged', 'resolved', 'suppressed'];
 const validDetail = (v) => (v !== null && typeof v === 'object' && !Array.isArray(v)
   && Object.keys(v).length === DETAIL_KEYS.length && DETAIL_KEYS.every((k) => Object.hasOwn(v, k))
   && DETAIL_KEYS.every((k) => k === 'measuredTokens' ? (v[k] === null || number(v[k])) : (k === 'agent' || k === 'presetId' ? text(v[k], 256) : number(v[k]))))
@@ -133,13 +136,26 @@ export function validateAlerts(v) {
       || !text(a.dedupe_key, 256) || !id(a.resource_id) || !text(a.summary, 2048)
       || !validDetail(a.detail) || !text(a.runbook, 2048) || !text(a.impact, 2048) || !text(a.recovery_condition, 2048)
       || !number(a.occurrences) || !number(a.first_seen_ms) || !number(a.last_seen_ms)
-      || typeof a.resolved !== 'boolean' || a.severity !== 'warning' || a.status !== 'open' || a.resolved !== false)) throw new Error('invalid_native_response');
+      || typeof a.resolved !== 'boolean' || a.severity !== 'warning'
+      || !ALERT_STATUSES.includes(a.status)
+      || !Array.isArray(a.next) || a.next.length > 4 || a.next.some((s) => !ALERT_STATUSES.includes(s))
+      || (a.note !== null && !text(a.note, 2048)))) throw new Error('invalid_native_response');
   return v;
 }
 export async function fetchAlerts() {
   return validateAlerts(await request('/api/alerts?limit=100'));
 }
 export function alertsView(location) { return /^\/console\/alerts\/?$/.test(location.pathname); }
+export async function transitionAlert(key, to, note) {
+  /* One display-state transition through the console session. The reply is
+   * the SAME envelope the list read serves (one row), so the same validator
+   * governs it — `next` arrives from the server, never re-derived here. */
+  return validateAlerts(await request(`/api/alerts/${encodeURIComponent(key)}/transition`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ to, ...(note ? { note } : {}) }),
+  }));
+}
 export async function logoutNative() { await request('/session', { method: 'DELETE' }); }
 
 const revision = (v) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);

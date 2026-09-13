@@ -329,6 +329,65 @@ const rolloverVector = (() => {
 })();
 sweepVectors.push(rolloverVector);
 
+// Operator transitions (ADR-124 amendment): the RETAINED transition table
+// replayed through the real store, over the four-state subset native
+// carries. Executed, not transcribed: each case drives createAlertStore to
+// one open alert, walks `from` (ingest → open; open→acknowledged;
+ // open→suppressed), then applies `to` and records what the store did.
+// The named divergences (native map vs retained store, both documented in
+// the ADR amendment): native ADDS acknowledged→suppressed and
+// suppressed→resolved (the retained console's own NEXT_STATUS offers
+// acknowledged→suppressed — drift not ported), and DROPS the assigned
+// state entirely (no agent-token authority natively). Only the pairs legal
+// in BOTH models are encoded here; native's full four-state table is
+// pinned by its own store test.
+const TRANSITION_ACTOR = 'operator';
+const transitionPairs = [
+  ['open', 'acknowledged'],
+  ['open', 'resolved'],
+  ['open', 'suppressed'],
+  ['acknowledged', 'resolved'],
+  ['suppressed', 'open'],
+];
+function openAlertStore(name, ceiling, reserved, drawn) {
+  let clock = 1_000_000;
+  const store = createAlertStore({ now: () => clock, save: () => {} });
+  const over = drawn - ceiling;
+  const { created } = ingestOverrun(store, name, ceiling, reserved, null, drawn, over);
+  if (!created) throw new Error('transition oracle seed did not create');
+  return store;
+}
+const transitionVectors = transitionPairs.map(([from, to]) => {
+  const name = `transition_${from}_${to}`;
+  const store = openAlertStore(name, 1_000_000, 1_500_000, 1_500_000);
+  const [seeded] = store.listAlerts();
+  const id = seeded.id;
+  if (from === 'acknowledged') store.transition(id, 'acknowledged', { actor: TRANSITION_ACTOR });
+  if (from === 'suppressed') store.transition(id, 'suppressed', { actor: TRANSITION_ACTOR });
+  const alert = store.transition(id, to, { actor: TRANSITION_ACTOR });
+  return {
+    from, to,
+    expected: {
+      status: alert.status,
+      resolvedBy: alert.status === 'resolved' ? alert.resolvedBy : null,
+      // The retained store keeps occurrences/lastSeen untouched by a
+      // transition; native's UPDATE does the same (display columns only).
+      occurrences: alert.occurrences,
+    },
+  };
+});
+// The terminal refusal both models share: resolved allows nothing.
+transitionVectors.push((() => {
+  const name = 'transition_resolved_refused';
+  const store = openAlertStore(name, 1_000_000, 1_500_000, 1_500_000);
+  const [seeded] = store.listAlerts();
+  store.transition(seeded.id, 'resolved', { actor: TRANSITION_ACTOR });
+  let refused = null;
+  try { store.transition(seeded.id, 'open', { actor: TRANSITION_ACTOR }); }
+  catch (error) { refused = error.code; }
+  return { from: 'resolved', to: 'open', expected: { refusal: refused } };
+})());
+
 const output = JSON.stringify({
   source: 'lib/metering/ledger.js + backend-v2.js remainingFor drawn rule',
   ledgerSha256,
@@ -339,6 +398,7 @@ const output = JSON.stringify({
   messages: messageVectors,
   admission: admissionVectors,
   sweeps: sweepVectors,
+  transitions: transitionVectors,
 }, null, 2) + '\n';
 const path = new URL('../hagency-store/tests/fixtures/ceiling-vectors.json', import.meta.url);if (process.argv.includes('--check')) {
   if (readFileSync(path, 'utf8').replaceAll('\r\n', '\n') !== output) throw new Error('Ceiling vectors differ from retained JavaScript');

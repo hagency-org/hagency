@@ -23,7 +23,49 @@
   → 6, each named). Spec scenarios with both `Test:` names appended beside
   `native_account_cli`'s; ADR-107 gains the inspection amendment.
 
-## 2026-09-12 — CLI inspection review edits E1–E4 (review of 315ab663)
+## 2026-09-12 — The operator alert close path (brief 25, ADR-124 amendment)
+
+- Ceiling alerts gain operator display-state transitions over the
+  four-state subset (open, acknowledged, resolved-terminal, suppressed —
+  `assigned` dropped: no agent-token authority natively), from ONE
+  server-owned map (`ALERT_STATUSES` + `allowed_transitions` in
+  `hagency-store`) that every consumer derives from: the store write, the
+  operator route `POST /api/native/v1/alerts/{key}/transition` (the read's
+  own bearer+local authority and refusal words), the console route (which
+  SERVES each row's legal set as `next` through the shared `console_alert`
+  builder), and the page — buttons render only from the served `next`, so
+  a client map can never disagree and a refused transition is never a
+  button. The retained console's own `NEXT_STATUS` drift (it offers pairs
+  its store refuses) is NOT ported.
+- Migration 025 (`status`/`note`/`transitioned_*`, head 24→25) with every
+  schema-enumerating assertion moved in the same commit; the write is one
+  `Immediate` transaction behind the single writer (`bad_transition`,
+  `not_found`, bounds; `resolved_by` carries the actor like the retained
+  `meta.actor || 'operator'`). Display state only — nothing enforces on it.
+- Sweep interaction (brief decision, citation in code): a suppressed row
+  rides occurrences and is NEVER reopened by the sweep — the retained store
+  reopens only once `suppressUntil` passed (`alert-store.js:245-248`);
+  native carries no window (operator release only, the named divergence).
+  An acknowledged row auto-resolves on recovery exactly like an open one
+  (`resolved_by='system'`, note preserved); a resolved row re-raised
+  reopens as a fresh episode with display state reset.
+- Client: the validator grows `status` (four-value), `next`, `note`
+  (import-tested; `assigned` rejected in both status and `next`);
+  `transitionAlert`; the `Data.jsx` transition mutator; `data-transition`
+  buttons with the acknowledged→resolved walk and the terminal row's empty
+  set; the read-only notice retitled (display-state · never enforcement).
+- Oracle: `ceiling-vectors.mjs` now EXECUTES the retained
+  `lib/alert-store.js` `transition()` (fake clock, sha256-pinned) over the
+  five pairs both models share plus the terminal refusal — 6 fixture
+  vectors — with a Rust replay test; native's extra pairs are pinned by the
+  map test. Driver: the browser pass presses the REAL buttons in both lanes
+  (open→acknowledged→resolved, terminal offers nothing), zh assertion
+  matched to the actual dictionary string.
+- Spec: five scenarios (store map table, sweep interaction, operator route
+  authority, console served map, oracle replay). ADR-124 gains the
+  close-path amendment.
+
+
 
 - E1 (a sensitive bearer): the operator credential header is built exactly
   like `console::client`'s — a `HeaderValue` marked

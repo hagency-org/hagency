@@ -139,19 +139,29 @@ export default function NativeAlerts() {
                 <dt>{t('al.recovery')}</dt><dd>{selected.recovery_condition}</dd>
               </dl>
 
-              <div className="notice" style={{ marginTop: 12 }}>
-                <div>{t('al.noActionsNote')}</div>
+              {/* The buttons come ONLY from the served `next` array (the
+                * one server-owned map) — a transition the server refuses is
+                * never offered as a control, and a terminal row offers
+                * none. Display state only: nothing here enforces. */}
+              <div className="btn-row" style={{ marginTop: 14 }}>
+                {selected.next.length === 0 && (
+                  <span className="dim" style={{ fontSize: 12 }}>{t('al.noTransitions', { s: selected.status })}</span>
+                )}
+                {selected.next.map((to) => (
+                  <button
+                    key={to}
+                    className="btn"
+                    data-transition={to}
+                    disabled={data.action?.kind === 'pending'}
+                    onClick={() => data.transition(selected.dedupe_key, to)}
+                  >
+                    {t(to === 'open' ? 'act.reopen' : `act.${to === 'acknowledged' ? 'acknowledge' : to === 'resolved' ? 'resolve' : 'suppress'}`)}
+                  </button>
+                ))}
               </div>
 
               <div className="btn-row" style={{ marginTop: 14 }}>
                 <button className="btn" onClick={data.refresh}>{t('nu.refresh')}</button>
-              </div>
-
-              <div className="danger-zone">
-                <span className="lbl">{t('al.actions')}</span>
-                <button className="btn danger" disabled title={t('al.nativeReadonly')}>
-                  {t('act.delete')}
-                </button>
               </div>
             </div>
           )}

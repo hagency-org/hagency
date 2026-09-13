@@ -182,13 +182,29 @@ impl DomainRepository {
                     }
                     Some(was_resolved) => {
                         let changed = tx.execute(
-                    if was_resolved {
-                        "UPDATE ceiling_alerts SET resource_id=?2,summary=?3,detail=?4,occurrences=occurrences+1,last_seen_ms=?5,resolved_at_ms=NULL,resolved_by=NULL WHERE dedupe_key=?1"
-                    } else {
-                        "UPDATE ceiling_alerts SET resource_id=?2,summary=?3,detail=?4,occurrences=occurrences+1,last_seen_ms=?5 WHERE dedupe_key=?1"
-                    },
-                    params![key, resource.id(), summary, detail, now],
-                )?;
+                            if was_resolved {
+                                // A resolved row re-raised reopens as a FRESH
+                                // episode: display state reset beside the
+                                // resolved columns the sweep always cleared.
+                                "UPDATE ceiling_alerts SET resource_id=?2,summary=?3,detail=?4,occurrences=occurrences+1,last_seen_ms=?5,resolved_at_ms=NULL,resolved_by=NULL,status='open',note=NULL,transitioned_at_ms=NULL,transitioned_by=NULL WHERE dedupe_key=?1"
+                            } else {
+                                // An unresolved row rides occurrences and
+                                // KEEPS its operator status. What the
+                                // retained store does: a SUPPRESSED row
+                                // reopens on a new occurrence only once its
+                                // `suppressUntil` has passed, and stays
+                                // suppressed inside the window (the Bug-1
+                                // fix, `lib/alert-store.js:245-248`; pinned
+                                // by `tests/alert-store.test.js:28-78`).
+                                // Native carries NO window (brief-24 §2.6:
+                                // suppression is operator-released only), so
+                                // the expiry half has no counterpart here —
+                                // suppressed stays suppressed until an
+                                // operator reopens it.
+                                "UPDATE ceiling_alerts SET resource_id=?2,summary=?3,detail=?4,occurrences=occurrences+1,last_seen_ms=?5 WHERE dedupe_key=?1"
+                            },
+                            params![key, resource.id(), summary, detail, now],
+                        )?;
                         if was_resolved {
                             outcome.raised += 1;
                         } else {
@@ -204,7 +220,7 @@ impl DomainRepository {
                 // (`lib/alert-store.js:337-355`). Exactly-on is not over,
                 // which is also why the raise side is strictly greater.
                 let changed = tx.execute(
-                    "UPDATE ceiling_alerts SET resolved_at_ms=?2,resolved_by='system' WHERE dedupe_key=?1 AND resolved_at_ms IS NULL",
+                    "UPDATE ceiling_alerts SET status='resolved',resolved_at_ms=?2,resolved_by='system' WHERE dedupe_key=?1 AND resolved_at_ms IS NULL",
                     params![key, now],
                 )?;
                 outcome.resolved += u64::try_from(changed).unwrap_or_default();
@@ -238,7 +254,7 @@ impl DomainRepository {
             )));
         }
         let mut statement =
-            self.db.prepare("SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms FROM ceiling_alerts WHERE resolved_at_ms IS NULL ORDER BY last_seen_ms DESC LIMIT ?1")?;
+            self.db.prepare("SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms,status,note,transitioned_at_ms,transitioned_by FROM ceiling_alerts WHERE resolved_at_ms IS NULL ORDER BY last_seen_ms DESC LIMIT ?1")?;
         let rows = statement
             .query_map(params![limit], |row| {
                 Ok((
@@ -252,6 +268,10 @@ impl DomainRepository {
                     row.get::<_, i64>(7)?,
                     row.get::<_, u64>(8)?,
                     row.get::<_, u64>(9)?,
+                    row.get::<_, String>(10)?,
+                    row.get::<_, Option<String>>(11)?,
+                    row.get::<_, Option<u64>>(12)?,
+                    row.get::<_, Option<String>>(13)?,
                 ))
             })?
             .collect::<Result<Vec<_>, _>>()?;
@@ -268,6 +288,10 @@ impl DomainRepository {
                     occurrences,
                     first_seen_ms,
                     last_seen_ms,
+                    status,
+                    note,
+                    transitioned_at_ms,
+                    transitioned_by,
                 )| {
                     Ok(CeilingAlert {
                         resolved: false,
@@ -281,6 +305,10 @@ impl DomainRepository {
                         recovery_condition,
                         first_seen_ms,
                         last_seen_ms,
+                        status,
+                        note,
+                        transitioned_at_ms,
+                        transitioned_by,
                     })
                 },
             )
@@ -290,7 +318,8 @@ impl DomainRepository {
 
 /// One open overrun alert with every retained field (`backend-v2.js:9422-9447`):
 /// `detail` is the parsed object, not the stored string; the resolved state is
-/// carried so the projection can state it without a second column.
+/// carried so the projection can state it without a second column. The
+/// display-state columns (ADR-124 amendment, migration 025) ride along.
 #[derive(Debug, Serialize, Deserialize, PartialEq)]
 pub struct CeilingAlert {
     pub dedupe_key: String,
@@ -304,6 +333,174 @@ pub struct CeilingAlert {
     pub first_seen_ms: u64,
     pub last_seen_ms: u64,
     pub resolved: bool,
+    #[serde(default = "default_status")]
+    pub status: String,
+    #[serde(default)]
+    pub note: Option<String>,
+    #[serde(default)]
+    pub transitioned_at_ms: Option<u64>,
+    #[serde(default)]
+    pub transitioned_by: Option<String>,
+}
+fn default_status() -> String {
+    "open".into()
+}
+
+/// The ONE legal-transition map (ADR-124 amendment): server-owned, served to
+/// every consumer — the store, both routes and the page's buttons all derive
+/// from this single definition. The retained console's `NEXT_STATUS`
+/// (mockup/app/alerts/page.jsx:31-37) DIVERGES from the retained store's
+/// `TRANSITIONS` (lib/alert-store.js:8-14: it offers `acknowledged→suppressed`
+/// and `assigned→suppressed`, which the store refuses, and hides
+/// `suppressed→assigned`, which it allows); that drift is NOT ported — this
+/// map matches the retained STORE exactly, `resolved` terminal.
+pub const ALERT_STATUSES: [&str; 4] = ["open", "acknowledged", "resolved", "suppressed"];
+/// The four-state subset the ceiling alert honestly carries (brief-24 §2):
+/// `assigned` is dropped — it would need an assignee column and the retained
+/// agent-token authority (`backend-v2.js:16104-16113`), which the native
+/// boundary does not have — and `acknowledged→suppressed` is legal here: the
+/// retained STORE refuses it while its own console offers it
+/// (`mockup/app/alerts/page.jsx:31-37` vs `lib/alert-store.js:8-14`); that
+/// drift is not ported, and this one map is what every consumer serves.
+/// `resolved` is terminal.
+pub fn allowed_transitions(from: &str) -> &'static [&'static str] {
+    match from {
+        "open" => &["acknowledged", "resolved", "suppressed"],
+        "acknowledged" => &["resolved", "suppressed"],
+        "suppressed" => &["open", "resolved"],
+        _ => &[],
+    }
+}
+/// A transition is DISPLAY STATE ONLY: it mutates how the alert renders and
+/// nothing else — no admission, lease, engagement or retry consults it.
+#[derive(serde::Serialize)]
+pub struct AlertTransition {
+    pub key: String,
+    pub to: &'static str,
+    pub actor: String,
+    pub note: Option<String>,
+    pub now: u64,
+}
+impl DomainRepository {
+    /// Apply one operator display-state transition (`lib/alert-store.js:415-439`
+    /// parity): legal pairs only (`bad_transition` otherwise), `resolved` sets
+    /// `resolved_by` to the actor like the retained `meta.actor || 'operator'`.
+    /// Suppression carries NO window natively — it is operator-released only
+    /// (`suppressed→open` on the map); the retained 24h expiry
+    /// (`ALERT_SUPPRESS_DEFAULT_MS`, alert-store.js:24) is the named
+    /// divergence (brief-24 §2.6). One `Immediate` transaction, same as the
+    /// sweep — a refused transition writes nothing.
+    pub fn transition_ceiling_alert(
+        &mut self,
+        command: AlertTransition,
+    ) -> Result<CeilingAlert, Error> {
+        let AlertTransition {
+            key,
+            to,
+            actor,
+            note,
+            now,
+        } = command;
+        let actor = if actor.is_empty() {
+            "operator".to_owned()
+        } else {
+            actor
+        };
+        if actor.len() > 128 || note.as_deref().is_some_and(|n| n.len() > 2048) {
+            return Err(hagency_core::InvalidInput("invalid alert transition").into());
+        }
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let status: Option<String> = tx
+            .query_row(
+                "SELECT status FROM ceiling_alerts WHERE dedupe_key=?1",
+                [&key],
+                |r| r.get(0),
+            )
+            .optional()?;
+        let Some(status) = status else {
+            return Err(Error::NotFound);
+        };
+        if !allowed_transitions(&status).contains(&to) {
+            return Err(hagency_core::InvalidInput("bad_transition").into());
+        }
+        let resolved_at = (to == "resolved").then_some(now);
+        let changed = tx.execute(
+            "UPDATE ceiling_alerts SET status=?2,note=?3,transitioned_at_ms=?4,transitioned_by=?5,resolved_at_ms=COALESCE(?6,resolved_at_ms),resolved_by=CASE WHEN ?6 IS NOT NULL THEN ?7 ELSE resolved_by END WHERE dedupe_key=?1",
+            rusqlite::params![key, to, note, now, actor, resolved_at, actor],
+        )?;
+        debug_assert_eq!(changed, 1);
+        let alert = read_alert(&tx, &key)?;
+        tx.commit()?;
+        Ok(alert)
+    }
+}
+
+/// One alert row by dedupe key, through the read's own row type.
+fn read_alert(db: &rusqlite::Connection, key: &str) -> Result<CeilingAlert, Error> {
+    let row = db
+        .query_row(
+            "SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms,resolved_at_ms,status,note,transitioned_at_ms,transitioned_by FROM ceiling_alerts WHERE dedupe_key=?1",
+            [key],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, i64>(7)?,
+                    row.get::<_, u64>(8)?,
+                    row.get::<_, u64>(9)?,
+                    row.get::<_, Option<u64>>(10)?,
+                    row.get::<_, String>(11)?,
+                    row.get::<_, Option<String>>(12)?,
+                    row.get::<_, Option<u64>>(13)?,
+                    row.get::<_, Option<String>>(14)?,
+                ))
+            },
+        )
+        .map_err(|error| match error {
+            rusqlite::Error::QueryReturnedNoRows => Error::NotFound,
+            other => other.into(),
+        })?;
+    let (
+        dedupe_key,
+        resource_id,
+        summary,
+        detail,
+        runbook,
+        impact,
+        recovery_condition,
+        occurrences,
+        first_seen_ms,
+        last_seen_ms,
+        resolved_at_ms,
+        status,
+        note,
+        transitioned_at_ms,
+        transitioned_by,
+    ) = row;
+    Ok(CeilingAlert {
+        resolved: resolved_at_ms.is_some(),
+        detail: serde_json::from_str(&detail).unwrap_or(serde_json::Value::String(detail)),
+        occurrences: u64::try_from(occurrences).map_err(|_| Error::Schema)?,
+        dedupe_key,
+        resource_id,
+        summary,
+        runbook,
+        impact,
+        recovery_condition,
+        first_seen_ms,
+        last_seen_ms,
+        status,
+        note,
+        transitioned_at_ms,
+        transitioned_by,
+    })
 }
 
 #[cfg(test)]

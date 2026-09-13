@@ -505,3 +505,104 @@ async fn native_alert_sweep_runs_hourly_and_survives_busy() {
     handle.await.unwrap();
     f.close().await;
 }
+
+/// The operator transition route (ADR-124 amendment): the read's own
+/// authority matrix, its refusal words, and the success shape — the bare
+/// row the store returns, one legal walk to terminal, and every refusal
+/// named. Bearer plus local authority exactly as the read.
+#[tokio::test]
+async fn native_ceiling_alert_transition_route_authority() {
+    let f = Fixture::new(false);
+    let swept = f.domain.sweep_ceiling_overruns(now_ms()).await.unwrap();
+    assert_eq!(swept.raised, 1);
+    let transition = format!("{}/{{}}/transition", f.url());
+    let post = |path: &str, token: Option<&str>, body: Value| {
+        let request = TestClient::post(path)
+            .add_header("host", "127.0.0.1:13300", true)
+            .add_header("content-type", "application/json", true);
+        let request = match token {
+            Some(token) => request.bearer_auth(token),
+            None => request,
+        };
+        request.json(&body)
+    };
+    // The authority matrix: anonymous and forged are 401 before any store
+    // read; a foreign header is 403 — the boundary is the read's, not the
+    // route's invention.
+    for token in [None, Some("incorrect")] {
+        let response = post(&transition, token, json!({"to": "acknowledged"}))
+            .send(&f.service)
+            .await;
+        assert_eq!(response.status_code, Some(StatusCode::UNAUTHORIZED));
+    }
+    let response = TestClient::post(&transition)
+        .add_header("host", "127.0.0.1:13300", true)
+        .add_header("x-forwarded-for", "127.0.0.1", true)
+        .bearer_auth(TOKEN)
+        .json(&json!({"to": "acknowledged"}))
+        .send(&f.service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::FORBIDDEN));
+    // An unknown key is a named 404.
+    let response = post(
+        &format!("{}/agent_ceiling_overrun:missing/transition", f.url()),
+        Some(TOKEN),
+        json!({"to": "acknowledged"}),
+    )
+    .send(&f.service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND));
+    // The seeded key, from the read the operator uses.
+    let mut response = TestClient::get(f.url())
+        .add_header("host", "127.0.0.1:13300", true)
+        .bearer_auth(TOKEN)
+        .send(&f.service)
+        .await;
+    let value = response.take_json::<Value>().await.unwrap();
+    let key = value["alerts"][0]["dedupe_key"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let seeded = format!("{}/{key}/transition", f.url());
+    // A malformed body and an unknown state word are invalid.
+    for body in [json!({}), json!({"to": "assigned"}), json!({"to": ""})] {
+        let response = post(&seeded, Some(TOKEN), body).send(&f.service).await;
+        assert_eq!(response.status_code, Some(StatusCode::BAD_REQUEST));
+    }
+    // One legal walk to terminal: acknowledge, suppress, resolve — the row
+    // itself comes back, display state and provenance asserted per hop.
+    for (to, note) in [
+        ("acknowledged", Some("seen")),
+        ("suppressed", None),
+        ("resolved", Some("closed by operator")),
+    ] {
+        let body = match note {
+            Some(note) => json!({"to": to, "note": note, "actor": "operator"}),
+            None => json!({"to": to}),
+        };
+        let mut response = post(&seeded, Some(TOKEN), body).send(&f.service).await;
+        assert_eq!(response.status_code, Some(StatusCode::OK));
+        let alert = response.take_json::<Value>().await.unwrap();
+        assert_eq!(alert["status"], to);
+        assert_eq!(alert["note"].as_str(), note);
+        assert_eq!(alert["transitioned_by"], "operator");
+        assert_eq!(alert["dedupe_key"], key);
+    }
+    // Terminal: every further pair is the store's own bad_transition word.
+    let response = post(&seeded, Some(TOKEN), json!({"to": "open"}))
+        .send(&f.service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::BAD_REQUEST));
+    let mut response = response;
+    let body = response.take_json::<Value>().await.unwrap();
+    assert_eq!(body["code"], "bad_transition");
+    // A note over the bound never reaches the store's UPDATE.
+    let response = post(
+        &seeded,
+        Some(TOKEN),
+        json!({"to": "acknowledged", "note": "x".repeat(2049)}),
+    )
+    .send(&f.service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::BAD_REQUEST));
+}

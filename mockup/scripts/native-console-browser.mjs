@@ -115,18 +115,33 @@ try {
     await page.goto(`${config.base}/console/usage/?engagement_id=${config.engagement}`);
     await page.locator('[data-native-state="ready"]').waitFor();
   }
-  // The alerts page (the console consumer slice, 63ef17cf) — read-only triage over the fixture's seeded
-  // overrun (100 committed, ceiling lowered to 50, swept in seed()). Runs in
-  // both lanes; the seed is shared. Returns to the usage page afterwards so
-  // the logout assertions below run against the page they were written for.
+  // The alerts page — the operator close path (ADR-124 amendment): the
+  // seeded overrun (100 committed, ceiling lowered to 50, swept in seed())
+  // transitions through the REAL buttons, which render only from the served
+  // `next` array. Both lanes; the seed is shared. Returns to the usage page
+  // afterwards so the logout assertions below run against the page they
+  // were written for.
   await page.goto(`${config.base}/console/alerts/`);
   await page.locator('[data-native-state="ready"]').waitFor();
   assert.match(await page.locator('main').innerText(), /has drawn 100 against a ceiling of 50/);
   assert.match(await page.locator('main').innerText(), /raise the ceiling on preset private_alert_pool/);
-  assert.match(await page.locator('main').innerText(), /transitions arrive with the operator close path|随操作员关闭路径一并提供/);
-  assert((await page.locator('.notice').first().innerText()).length > 10, 'the read-only notice must render');
-  assert(await page.locator('button.danger').first().isDisabled(), 'delete stays refused');
   assert((await page.locator('tbody tr[aria-selected]').count()) >= 1, 'the seeded alert row renders and is selectable');
+  // The open row offers exactly the served map: acknowledge, resolve, suppress.
+  const buttons = page.locator('[data-transition]');
+  assert(await buttons.count() === 3, 'the open row serves exactly three transitions');
+  assert((await page.locator('[data-transition="acknowledged"]').count()) === 1);
+  assert((await page.locator('[data-transition="resolved"]').count()) === 1);
+  assert((await page.locator('[data-transition="suppressed"]').count()) === 1);
+  // A REAL press: acknowledge, then the served map narrows to resolve/suppress.
+  await page.locator('[data-transition="acknowledged"]').click();
+  await page.locator('[data-native-state="ready"]').waitFor();
+  assert((await page.locator('[data-transition="acknowledged"]').count()) === 0, 'acknowledged is no longer offered');
+  assert((await buttons.count()) === 2, 'the acknowledged row serves resolve and suppress');
+  // To terminal: resolve, and the terminal row serves nothing.
+  await page.locator('[data-transition="resolved"]').click();
+  await page.locator('[data-native-state="ready"]').waitFor();
+  assert((await buttons.count()) === 0, 'resolved is terminal');
+  assert.match(await page.locator('main').innerText(), /No transitions available from “resolved”|“resolved”状态没有可执行的流转/);
   // The engagements page (the console consumer slice, read-only): the list
   // read the usage flow already carries, rendered as triage. Ready state,
   // the seeded engagement's row, the read-only note, no mutating buttons.

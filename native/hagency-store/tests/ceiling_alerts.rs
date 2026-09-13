@@ -3,7 +3,7 @@ use common::*;
 use hagency_core::project::Resource;
 use hagency_core::tasks::*;
 use hagency_metering::{Framework, observation::UsageObservation};
-use hagency_store::{DomainRepository, EffectOutcome, Error, SweepOutcome};
+use hagency_store::{AlertTransition, DomainRepository, EffectOutcome, Error, SweepOutcome};
 use rusqlite::{Connection, OptionalExtension};
 use serde_json::json;
 use std::path::PathBuf;
@@ -462,4 +462,232 @@ fn native_ceiling_alerts_match_javascript() {
         )
         .unwrap();
     assert_eq!((count, occurrences, resolved), (1, 2, 1));
+}
+
+/// The display-state columns (migration 025) for the transition tests.
+fn dedupe_key_of(alarm: &Alarm) -> String {
+    let sql = Connection::open(state_path(alarm)).unwrap();
+    sql.query_row("SELECT dedupe_key FROM ceiling_alerts", [], |r| r.get(0))
+        .unwrap()
+}
+
+fn display_row(alarm: &Alarm) -> (String, Option<u64>, Option<u64>, Option<String>) {
+    let sql = Connection::open(state_path(alarm)).unwrap();
+    sql.query_row(
+        "SELECT status,transitioned_at_ms,resolved_at_ms,transitioned_by FROM ceiling_alerts",
+        [],
+        |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, Option<u64>>(1)?,
+                r.get::<_, Option<u64>>(2)?,
+                r.get::<_, Option<String>>(3)?,
+            ))
+        },
+    )
+    .unwrap()
+}
+
+fn transition(
+    alarm: &mut Alarm,
+    to: &'static str,
+    note: Option<&str>,
+) -> Result<hagency_store::CeilingAlert, Error> {
+    alarm.db.transition_ceiling_alert(AlertTransition {
+        key: dedupe_key_of(alarm),
+        to,
+        actor: "operator".into(),
+        note: note.map(str::to_owned),
+        now: 2_000_000,
+    })
+}
+
+/// One seeded overrun row (the sweep is the only honest way to open one).
+fn seeded_overrun() -> Alarm {
+    let mut alarm = open(Framework::Codex, GENEROUS);
+    engaged(&mut alarm, "transition_pool", 1_500_000, 1000);
+    set_ceiling(&mut alarm, Framework::Codex, 1_000_000);
+    let outcome = alarm.db.sweep_ceiling_overruns(1_000_000).unwrap();
+    assert_eq!(outcome.raised, 1);
+    alarm
+}
+
+/// The one map's full table: every (from,to) pair over the four states.
+/// Legal pairs apply (each display column asserted, `resolved_by` the actor,
+/// `resolved_at` exactly on resolved); illegal pairs refuse `Invalid` and
+/// write nothing. `resolved` is terminal.
+#[test]
+fn native_ceiling_alert_transitions_follow_one_legal_map() {
+    let legal = [
+        ("open", "acknowledged"),
+        ("open", "resolved"),
+        ("open", "suppressed"),
+        ("acknowledged", "resolved"),
+        ("acknowledged", "suppressed"),
+        ("suppressed", "open"),
+        ("suppressed", "resolved"),
+    ];
+    let states = ["open", "acknowledged", "resolved", "suppressed"];
+    for from in states {
+        for to in states {
+            let mut alarm = seeded_overrun();
+            let sql = Connection::open(state_path(&alarm)).unwrap();
+            if from != "open" {
+                sql.execute("UPDATE ceiling_alerts SET status=?1", [from])
+                    .unwrap();
+            }
+            let result = transition(&mut alarm, to, Some("operator note"));
+            if legal.contains(&(from, to)) {
+                let alert = result.unwrap_or_else(|e| panic!("{from}->{to} must be legal: {e}"));
+                assert_eq!(alert.status, to);
+                assert_eq!(alert.note.as_deref(), Some("operator note"));
+                assert_eq!(alert.transitioned_by.as_deref(), Some("operator"));
+                assert_eq!(alert.transitioned_at_ms, Some(2_000_000));
+                let (status, _, resolved_at, by) = display_row(&alarm);
+                assert_eq!(status, to);
+                assert_eq!(by.as_deref(), Some("operator"));
+                if to == "resolved" {
+                    assert!(resolved_at.is_some(), "resolved sets resolved_at");
+                } else {
+                    assert!(resolved_at.is_none(), "only resolved sets resolved_at");
+                }
+            } else {
+                assert!(
+                    matches!(result, Err(Error::Invalid(_))),
+                    "{from}->{to} must refuse bad_transition"
+                );
+                let (status, transitioned_at, _, by) = display_row(&alarm);
+                assert_eq!(status, from, "a refused transition writes nothing");
+                assert!(transitioned_at.is_none() && by.is_none());
+            }
+        }
+    }
+    // Unknown key and the bounds: the store's own refusals.
+    let mut alarm = seeded_overrun();
+    assert!(matches!(
+        alarm.db.transition_ceiling_alert(AlertTransition {
+            key: "agent_ceiling_overrun:missing".into(),
+            to: "acknowledged",
+            actor: "operator".into(),
+            note: None,
+            now: 1,
+        }),
+        Err(Error::NotFound)
+    ));
+    assert!(matches!(
+        alarm.db.transition_ceiling_alert(AlertTransition {
+            key: dedupe_key_of(&alarm),
+            to: "acknowledged",
+            actor: "a".repeat(129),
+            note: None,
+            now: 1,
+        }),
+        Err(Error::Invalid(_))
+    ));
+}
+
+/// The sweep versus operator status: a suppressed row rides occurrences and
+/// is NOT reopened (no window natively — operator release only); any
+/// non-resolved row auto-resolves when the figure recovers, `resolved_by`
+/// becoming 'system' with the note preserved; a resolved row re-raised
+/// reopens as a fresh episode (display state reset).
+#[test]
+fn native_ceiling_sweep_respects_operator_status() {
+    // Suppressed stays suppressed across a re-over.
+    let mut alarm = seeded_overrun();
+    transition(&mut alarm, "suppressed", Some("known overrun")).unwrap();
+    let outcome = alarm.db.sweep_ceiling_overruns(2_000_000).unwrap();
+    assert_eq!(outcome.updated, 1, "occurrences still ride");
+    let alert = alarm.db.open_ceiling_alerts(100).unwrap().remove(0);
+    assert_eq!(alert.status, "suppressed", "the sweep never reopens it");
+    assert_eq!(alert.note.as_deref(), Some("known overrun"));
+    assert_eq!(alert.occurrences, 2);
+    // Acknowledged auto-resolves on recovery like an open row.
+    transition(&mut alarm, "acknowledged", None).unwrap();
+    set_ceiling(&mut alarm, Framework::Codex, GENEROUS);
+    let outcome = alarm.db.sweep_ceiling_overruns(3_000_000).unwrap();
+    assert_eq!(outcome.resolved, 1);
+    let sql = Connection::open(state_path(&alarm)).unwrap();
+    let (status, resolved_by, resolved_at): (String, Option<String>, Option<u64>) = sql
+        .query_row(
+            "SELECT status,resolved_by,resolved_at_ms FROM ceiling_alerts",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(status, "resolved");
+    assert_eq!(resolved_by.as_deref(), Some("system"));
+    assert!(resolved_at.is_some());
+    // A re-over after resolution reopens as a fresh episode.
+    set_ceiling(&mut alarm, Framework::Codex, 1_000_000);
+    let outcome = alarm.db.sweep_ceiling_overruns(4_000_000).unwrap();
+    assert_eq!(outcome.raised, 1);
+    let (status, resolved_at, note, by) = display_row(&alarm);
+    assert_eq!(status, "open", "the episode resets to open");
+    assert!(resolved_at.is_none());
+    assert!(
+        note.is_none(),
+        "the operator note does not leak into the new episode"
+    );
+    assert!(by.is_none());
+}
+
+/// Oracle replay for the operator transitions: the fixture's transition
+/// vectors (computed by EXECUTING the retained `lib/alert-store.js`,
+/// `createAlertStore` with a fake clock, pinned by sha256) against the
+/// native store over the four-state subset. Every shared-legal pair drives
+/// the native store through the same walk (sweep to raise, transition to
+/// `from`, then to `to`), and the terminal refusal is the shared
+/// `bad_transition`. Native's additional pairs (acknowledged→suppressed,
+/// suppressed→resolved) are pinned by the map test above, not the oracle.
+#[test]
+fn native_ceiling_alert_transitions_match_javascript() {
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/ceiling-vectors.json")).unwrap();
+    let stat = |word: &str| -> &'static str {
+        hagency_store::ALERT_STATUSES
+            .into_iter()
+            .find(|state| *state == word)
+            .unwrap_or_else(|| panic!("unknown state {word}"))
+    };
+    for vector in fixture["transitions"].as_array().unwrap() {
+        let from = vector["from"].as_str().unwrap();
+        let to = vector["to"].as_str().unwrap();
+        let expected = &vector["expected"];
+        let mut alarm = seeded_overrun();
+        if from != "open" {
+            transition(&mut alarm, stat(from), None)
+                .unwrap_or_else(|e| panic!("seeding {from} failed: {e}"));
+        }
+        let result = transition(&mut alarm, stat(to), None);
+        if let Some(refusal) = expected["refusal"].as_str() {
+            assert!(
+                matches!(result, Err(Error::Invalid(_))),
+                "{from}->{to} must refuse like the retained store ({refusal})"
+            );
+        } else {
+            let alert = result.unwrap_or_else(|e| panic!("{from}->{to} must be legal: {e}"));
+            assert_eq!(
+                alert.status,
+                expected["status"].as_str().unwrap(),
+                "{from}->{to}"
+            );
+            match expected["resolvedBy"].as_str() {
+                Some(actor) => {
+                    assert!(alert.resolved, "{from}->{to} resolves");
+                    let sql = Connection::open(state_path(&alarm)).unwrap();
+                    let resolved_by: Option<String> = sql
+                        .query_row("SELECT resolved_by FROM ceiling_alerts", [], |r| r.get(0))
+                        .unwrap();
+                    assert_eq!(resolved_by.as_deref(), Some(actor), "{from}->{to}");
+                }
+                None => assert!(!alert.resolved, "{from}->{to} does not resolve"),
+            }
+            assert_eq!(
+                alert.occurrences,
+                expected["occurrences"].as_u64().unwrap_or(1),
+                "a transition never touches occurrences"
+            );
+        }
+    }
 }

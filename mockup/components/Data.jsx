@@ -5,7 +5,7 @@ import DataStatus from '@/components/DataStatus';
 import { makeDerive } from '@/lib/derive';
 import { fetchLive, CONTRACT_SLICES } from '@/lib/api';
 import * as fixture from '@/lib/mock-data';
-import { NATIVE_MODE, exchangeAccess, fetchNative, fetchResources, resourceView, publishResource, configurationView, configurationSelection, fetchConfiguration, configureResource, logoutNative, selection, alertsView, fetchAlerts } from '@/lib/native-api';
+import { NATIVE_MODE, exchangeAccess, fetchNative, fetchResources, resourceView, publishResource, configurationView, configurationSelection, fetchConfiguration, configureResource, logoutNative, selection, alertsView, fetchAlerts, transitionAlert } from '@/lib/native-api';
 
 /*
  * One data context for the console, with provenance attached.
@@ -231,7 +231,28 @@ function NativeDataProvider({ children }) {
       if (error.message === 'console_access_required') { admitted.current = false; generation.current += 1; setState({ ...initial, phase: 'access', error: error.message }); }
     } finally { mutation.current = false; }
   };
-  return <DataContext.Provider value={{ ...state, action, publish, configure, logoutStatus, choose, refresh: () => load(), nextPage: () => load(state.next_after), firstPage: () => load(''), logout }}>{children}</DataContext.Provider>;
+  /* One display-state transition on an alert (ADR-124 amendment). The
+   * buttons come ONLY from the served `next` array, so this mutator can
+   * never fire a route the server does not offer. */
+  const transition = async (key, to) => {
+    if (!admitted.current || mutation.current) return;
+    mutation.current = true;
+    const epoch = admissionEpoch.current;
+    const identity = { id: key, label: to };
+    setAction({ ...identity, kind: 'pending' });
+    try {
+      await transitionAlert(key, to);
+      if (epoch !== admissionEpoch.current) return;
+      setAction({ ...identity, kind: 'saved' });
+      await load();
+    } catch (error) {
+      if (epoch !== admissionEpoch.current) return;
+      const kind = error.message === 'bad_transition' ? 'refused' : error.message === 'busy' ? 'busy' : ['outcome_unknown', 'native_unavailable', 'invalid_native_response'].includes(error.message) ? 'unknown' : 'refused';
+      setAction({ ...identity, kind, error: error.message });
+      if (error.message === 'console_access_required') { admitted.current = false; generation.current += 1; setState({ ...initial, phase: 'access', error: error.message }); }
+    } finally { mutation.current = false; }
+  };
+  return <DataContext.Provider value={{ ...state, action, publish, configure, transition, logoutStatus, choose, refresh: () => load(), nextPage: () => load(state.next_after), firstPage: () => load(''), logout }}>{children}</DataContext.Provider>;
 }
 
 function LegacyDataProvider({ children }) {

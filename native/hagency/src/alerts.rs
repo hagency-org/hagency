@@ -1,12 +1,90 @@
 //! Open ceiling overrun alerts behind the existing operator authentication
 //! boundary (ADR-124 slice b). Publication only: an alert is diagnostic and
 //! never confers authority; the sweep that writes the rows is in the store.
-use crate::{refusal, resources::domain};
-use hagency_store::{Error, MAX_OPEN_CEILING_ALERTS};
+//! The transition route (ADR-124 amendment) mutates DISPLAY STATE only.
+use crate::{
+    refusal,
+    resources::{body, domain},
+};
+use hagency_store::{ALERT_STATUSES, AlertTransition, Error, MAX_OPEN_CEILING_ALERTS};
 use salvo::prelude::*;
+use serde::Deserialize;
 
 pub(crate) fn router() -> Router {
-    Router::with_path("alerts").get(list)
+    Router::with_path("alerts")
+        .get(list)
+        .push(Router::with_path("{key}/transition").post(transition))
+}
+
+/// The operator transition body: `to` plus optional display provenance.
+/// Notes carry operator text only, bounded at the store.
+#[derive(Deserialize)]
+struct TransitionBody {
+    to: String,
+    actor: Option<String>,
+    note: Option<String>,
+}
+
+/// One operator display-state transition (ADR-124 amendment): the SAME
+/// boundary and authority as the read (this router mounts under the
+/// `authorize` hoop). A transition never enforces anything — display state
+/// only; the refusal words match the list route's vocabulary.
+#[handler]
+async fn transition(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let Some(key) = req.param::<String>("key") else {
+        refusal(res, StatusCode::BAD_REQUEST, "invalid_alert_transition");
+        return;
+    };
+    if key.is_empty() || key.len() > 256 {
+        refusal(res, StatusCode::BAD_REQUEST, "invalid_alert_transition");
+        return;
+    }
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let Some(value) = body::<serde_json::Value>(req, depot, res).await else {
+        return;
+    };
+    let input = match serde_json::from_value::<TransitionBody>(value) {
+        Ok(input) => input,
+        Err(_) => {
+            refusal(res, StatusCode::BAD_REQUEST, "invalid_alert_transition");
+            return;
+        }
+    };
+    // `to` must be one of the four states; legality of the PAIR is the
+    // store's to refuse (bad_transition) — one map, one owner.
+    let Some(to) = ALERT_STATUSES.iter().find(|state| **state == input.to) else {
+        refusal(res, StatusCode::BAD_REQUEST, "invalid_alert_transition");
+        return;
+    };
+    // Statement time; a clock fault is the service's own unavailability,
+    // never `busy` (the brief-20 E2 rule).
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok());
+    let Some(now) = now else {
+        refusal(res, StatusCode::SERVICE_UNAVAILABLE, "alerts_unavailable");
+        return;
+    };
+    let command = AlertTransition {
+        key,
+        to,
+        actor: input.actor.unwrap_or_default(),
+        note: input.note,
+        now,
+    };
+    match store.transition_ceiling_alert(command).await {
+        Ok(alert) => res.render(Json(alert)),
+        Err(error) => match error {
+            Error::Invalid(_) => refusal(res, StatusCode::BAD_REQUEST, "bad_transition"),
+            Error::NotFound => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+            Error::Busy => refusal(res, StatusCode::SERVICE_UNAVAILABLE, "busy"),
+            Error::OutcomeUnknown => refusal(res, StatusCode::GATEWAY_TIMEOUT, "outcome_unknown"),
+            _ => refusal(res, StatusCode::SERVICE_UNAVAILABLE, "alerts_unavailable"),
+        },
+    }
 }
 
 fn limit_query(req: &Request) -> Result<u32, ()> {

@@ -154,3 +154,33 @@ Scenario: A truncated detail publishes as text instead of failing the read
   Given an open alert row whose detail was sliced to the cap under the retained truncatePayload rule and is no longer valid JSON
   When the store read and the console route publish it
   Then the detail appears as the raw string on the wire with the derived severity and status, never Error::Schema, so one truncated row cannot blind the operator to every good one
+
+Scenario: Operator transitions follow one server-owned map
+  Test: native_ceiling_alert_transitions_follow_one_legal_map
+  Given one open overrun alert seeded by the sweep over the four display states open acknowledged resolved and suppressed
+  When every from-to pair is applied through the store
+  Then the seven legal pairs of the one map apply with the actor note and transitioned provenance asserted resolved only on resolve and every illegal pair refuses bad_transition writing nothing
+
+Scenario: The sweep respects operator display state
+  Test: native_ceiling_sweep_respects_operator_status
+  Given a suppressed row and an acknowledged row under the ceiling rules
+  When the sweep re-overruns and then recovers
+  Then a suppressed row rides occurrences and is never reopened by the sweep and an acknowledged row auto-resolves like an open one with the operator note preserved and a resolved row re-raised reopens as a fresh episode with display state reset
+
+Scenario: The operator transition route keeps the read's authority
+  Test: native_ceiling_alert_transition_route_authority
+  Given the operator bearer boundary and one open alert
+  When the transition route is called anonymous forged with a foreign header on an unknown key with an unknown state word and through one legal walk to terminal
+  Then refusals are forty-one forty-three forty-four and four hundred with the store's own words and the legal walk returns the row itself with provenance per hop
+
+Scenario: The console transition serves the map it enforces
+  Test: native_console_alert_transition
+  Given the console session and the seeded open alert
+  When the list is read and transitions are posted through the console route
+  Then every row carries next from the one server-owned map acknowledged narrows it resolved empties it the illegal pair refuses bad_transition and the unknown key is a named not-found
+
+Scenario: Operator transitions match the retained store oracle
+  Test: native_ceiling_alert_transitions_match_javascript
+  Given the fixture's transition vectors computed by executing the retained alert store over the pairs both models share plus the terminal refusal
+  When the native store replays each walk
+  Then every status resolution actor and occurrence count matches the oracle exactly

@@ -2577,6 +2577,18 @@ impl DomainStore {
         self.call(weight(&limit)?, move |db| db.open_ceiling_alerts(limit))
             .await
     }
+    /// Operator display-state transition on a ceiling alert (ADR-124
+    /// amendment): ONE writer job like every other write; display state
+    /// only, never enforcement.
+    pub async fn transition_ceiling_alert(
+        &self,
+        command: crate::AlertTransition,
+    ) -> Result<CeilingAlert, Error> {
+        self.call(weight(&command)?, move |db| {
+            db.transition_ceiling_alert(command)
+        })
+        .await
+    }
     /// Host-only concrete publication command; never part of RunnerCommand.
     pub async fn resource_configuration(
         &self,

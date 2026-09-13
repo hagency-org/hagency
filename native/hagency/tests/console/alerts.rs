@@ -196,3 +196,92 @@ async fn native_console_alerts_publish_truncated_detail() {
     assert_eq!(alerts[0]["status"], "open");
     f.close().await;
 }
+
+/// The console transition route (ADR-124 amendment): session-required, the
+/// reply the SAME envelope the list read serves, `next` derived from the
+/// one server-owned map (never a client re-declaration), the illegal pair
+/// refused with the store's own `bad_transition` word, and the unknown key
+/// a named 404 — never a button the page could render.
+#[tokio::test]
+async fn native_console_alert_transition() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    // Anonymous is refused before any store read.
+    let anonymous = TestClient::post(format!(
+        "{BASE}/console/api/alerts/agent_ceiling_overrun:x/transition"
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .json(&serde_json::json!({"to": "acknowledged"}))
+    .send(&service)
+    .await;
+    assert_eq!(anonymous.status_code, Some(StatusCode::UNAUTHORIZED));
+    let cookie = session(&service).await;
+    // The seeded overrun's key comes from the read the page uses.
+    let mut response = get("/console/api/alerts", &cookie).send(&service).await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<serde_json::Value>().await.unwrap();
+    let alert = &value["alerts"][0];
+    assert_eq!(alert["status"], "open");
+    assert_eq!(
+        alert["next"],
+        serde_json::json!(["acknowledged", "resolved", "suppressed"]),
+        "the served map is the store's, in its order"
+    );
+    let key = alert["dedupe_key"].as_str().unwrap().to_owned();
+    // A legal pair through the console route: acknowledge the seeded alert.
+    let mut response = TestClient::post(format!("{BASE}/console/api/alerts/{key}/transition"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .add_header("sec-fetch-site", "same-origin", true)
+        .add_header("cookie", &cookie, true)
+        .add_header("origin", BASE, true)
+        .json(&serde_json::json!({"to": "acknowledged", "note": "seen"}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<serde_json::Value>().await.unwrap();
+    assert_eq!(value["alerts"][0]["status"], "acknowledged");
+    assert_eq!(value["alerts"][0]["note"], "seen");
+    assert_eq!(
+        value["alerts"][0]["next"],
+        serde_json::json!(["resolved", "suppressed"]),
+        "the reply carries the next legal set from the same map"
+    );
+    // The terminal state serves no transitions: resolve, then empty next.
+    let mut response = TestClient::post(format!("{BASE}/console/api/alerts/{key}/transition"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .add_header("sec-fetch-site", "same-origin", true)
+        .add_header("cookie", &cookie, true)
+        .add_header("origin", BASE, true)
+        .json(&serde_json::json!({"to": "resolved"}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<serde_json::Value>().await.unwrap();
+    assert_eq!(value["alerts"][0]["status"], "resolved");
+    assert_eq!(value["alerts"][0]["next"], serde_json::json!([]));
+    // The illegal pair from the now-terminal row: the store's own word.
+    let response = TestClient::post(format!("{BASE}/console/api/alerts/{key}/transition"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .add_header("sec-fetch-site", "same-origin", true)
+        .add_header("cookie", &cookie, true)
+        .add_header("origin", BASE, true)
+        .json(&serde_json::json!({"to": "open"}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::BAD_REQUEST));
+    let mut response = response;
+    let body = response.take_json::<serde_json::Value>().await.unwrap();
+    assert_eq!(body["code"], "bad_transition", "named the refusal");
+    // An unknown key is a named 404, never a silent shape.
+    let response = TestClient::post(format!(
+        "{BASE}/console/api/alerts/agent_ceiling_overrun:missing/transition"
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .add_header("sec-fetch-site", "same-origin", true)
+    .add_header("cookie", &cookie, true)
+    .add_header("origin", BASE, true)
+    .json(&serde_json::json!({"to": "acknowledged"}))
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND));
+}

@@ -221,3 +221,45 @@ it as a warning. That is the intended failure mode: a second alert type
 requires a migration (a severity column), a route change, and a validator +
 page change, in that order, in the SAME slice — the exact-key list is
 load-bearing for semantics, not just shape.
+
+## Amendment: the operator close path — one server-owned transition map (brief 25)
+
+The alarm slices left the lifecycle at auto-resolve only; this amendment adds the operator display-state
+transitions the brief-24 design specified, over the **four-state subset** the ceiling alert honestly
+carries: `open`, `acknowledged`, `resolved` (terminal), `suppressed`.
+
+**One map, owned by the server.** The legal-transition table exists exactly once
+(`hagency-store`'s `ALERT_STATUSES` + `allowed_transitions`), and every consumer derives from it: the
+store write, the operator route, the console route (which SERVES each row's legal set as `next`), and
+the page — buttons render only from the served `next`, so a client-side map can never disagree with the
+server's and a transition the server refuses is never offered as a control. **The retained console's
+drift is not ported**: its `NEXT_STATUS` (`mockup/app/alerts/page.jsx:31-37`) offers
+`acknowledged→suppressed` and `assigned→suppressed`, which the retained store itself refuses
+(`lib/alert-store.js:8-14`), and hides `suppressed→assigned`, which it allows — one concept, two
+disagreeing client maps. Native takes the opposite rule: the map is served, never re-declared.
+
+**The state subset and its named divergences.** `assigned` is dropped — it would require an assignee
+column and the retained agent-token authority (`backend-v2.js:16104-16113`), which the native boundary
+(operator bearer + console session) does not have. Native ADDS `acknowledged→suppressed` and
+`suppressed→resolved` (the retained console's intent, made legal by the one map). Suppression carries
+NO window natively — it is operator-released only (`suppressed→open`); the retained 24h expiry
+(`ALERT_SUPPRESS_DEFAULT_MS`) is a clock feature the native sweep honestly lacks, so the retained
+re-over behavior (`alert-store.js:245-248`: a suppressed row reopens on a new occurrence only once its
+`suppressUntil` has passed, staying suppressed inside it) becomes the simpler native rule: the sweep
+NEVER reopens a suppressed row — occurrences ride, the operator releases. An acknowledged (or
+suppressed) row that recovers auto-resolves exactly like an open one (`resolved_by='system'`), matching
+the retained `autoResolve` (`alert-store.js:341`: any non-resolved status).
+
+**Display state only.** A transition mutates the alert's render columns (`status`, `note` ≤2048
+operator text, `transitioned_at_ms`/`transitioned_by`, and `resolved_at_ms`/`resolved_by` on the
+terminal hop, the actor like the retained `meta.actor || 'operator'`) and nothing else — no admission,
+lease, engagement or retry consults them (the standing rule of this ADR). Notes carry operator text
+only; the read's existing private-value checks cover them. The migration is 025 (head 24→25) with every
+schema-enumerating assertion moved in the same commit; the store write is one `Immediate` transaction
+behind the single writer, refusing `bad_transition`/`not_found`/bounds like every other write.
+
+**Oracle.** The transition vectors in `ceiling-vectors.mjs` are EXECUTED by the retained
+`lib/alert-store.js` (fake clock, sha256-pinned, like the sweep vectors), covering the five pairs legal
+in both models plus the shared terminal refusal; native's additional pairs are pinned by its own
+store test. `tests/alert-store.test.js:59-78`'s suppressed-stays-suppressed half is encoded; the
+window-expiry half is the named non-goal above.

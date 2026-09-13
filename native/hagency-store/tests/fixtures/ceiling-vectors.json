@@ -512,5 +512,59 @@
       },
       "note": "unknown != zero: the closed period is not carried, so the first post-rollover sweep resolves"
     }
+  ],
+  "transitions": [
+    {
+      "from": "open",
+      "to": "acknowledged",
+      "expected": {
+        "status": "acknowledged",
+        "resolvedBy": null,
+        "occurrences": 1
+      }
+    },
+    {
+      "from": "open",
+      "to": "resolved",
+      "expected": {
+        "status": "resolved",
+        "resolvedBy": "operator",
+        "occurrences": 1
+      }
+    },
+    {
+      "from": "open",
+      "to": "suppressed",
+      "expected": {
+        "status": "suppressed",
+        "resolvedBy": null,
+        "occurrences": 1
+      }
+    },
+    {
+      "from": "acknowledged",
+      "to": "resolved",
+      "expected": {
+        "status": "resolved",
+        "resolvedBy": "operator",
+        "occurrences": 1
+      }
+    },
+    {
+      "from": "suppressed",
+      "to": "open",
+      "expected": {
+        "status": "open",
+        "resolvedBy": null,
+        "occurrences": 1
+      }
+    },
+    {
+      "from": "resolved",
+      "to": "open",
+      "expected": {
+        "refusal": "bad_transition"
+      }
+    }
   ]
 }
