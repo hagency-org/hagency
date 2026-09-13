@@ -20,7 +20,6 @@ permissions carry the controls; a read-only session renders none enabled.
 
 ### Must
 - Mint `Scope::AgentLifecycle` only through the operator-authenticated `/api/native/v1/console/access` under ADR-107's issuance rules verbatim: one issuance per second, one outstanding ticket at a time, replacement invalidating the preceding, exchanged before the next is minted; the CLI flag `--manage-agent-lifecycle` is mutually exclusive with both existing management flags, declared and asserted pairwise.
-- Add exactly one new public store surface — `stop_dispatch_for_agent` on `DomainStore`/`DomainRepository` (`domain_worker.rs` wrapping `conversation_lifecycle.rs`): the read-plus-stop entry that resolves the named engagement's dispatch (live set or unsettled `dispatch_stops` row) and fences it. It is the **only** store surface this slice adds; `fence_dispatch` stays `pub(super)`, and `settle_conversation_stop` remains uncallable from runtime-facing commands.
 - Scope the grant to a session's `Grant` — the existing caps govern (at most 4 concurrent sessions, absolute 15-minute lifetime, no rolling expiry); the scope adds no longer-lived credential.
 - Make start an at-most-once ensure: refused with a named code when the agent is already live, spawning nothing (ADR-053's fixed launcher rule).
 - Make stop idempotent through the resolution predicate — live set (`queued`,`leased`,`started`,`parked`) or an unsettled `dispatch_stops` row, newest by id — fencing only the resolved dispatch, never `retire`'s session cascade, and serving the five-key wire object (`stopped`, `stop_pending`, `dispatch_id`, `fence`, `state`) with refusals in the console's existing `{"ok":false,"code":…}` envelope.
@@ -39,29 +38,21 @@ permissions carry the controls; a read-only session renders none enabled.
 
 ### Allowed Changes
 - native/hagency/src/main.rs
-- native/hagency/src/console.rs # the lifecycle router + operator issuer wiring and the scope error map — the scope cannot route or refuse without them
-- native/hagency/src/console/client.rs # lifecycle_access() issues the operator CLI ticket — the flag has no issuer without it
 - native/hagency/src/console/authority.rs
 - native/hagency/src/console/agents.rs
-- native/hagency-store/src/domain_worker.rs
-- native/hagency-store/src/domain/conversation_lifecycle.rs
 - mockup/app/agents/page.jsx
-- mockup/components/NativeAgents.jsx # the lifecycle controls rendered from served permissions — the page has no controls without it
-- mockup/components/Data.jsx # the agents load path and permissions slice — the controls cannot read manageLifecycle without it
-- mockup/lib/native-api.js # startAgent/stopAgent/applyPreset + the exact-key validator — the controls have no client without it
-- mockup/scripts/native-console-browser.mjs # the lifecycle browser lane over the roster walk — the browser scenario has no driver without it
 - mockup/lib/i18n.js
 - native/hagency/tests/console/agents.rs
 - native/hagency/tests/console.rs
 - native/hagency/tests/cli.rs
 - native/hagency/tests/console/browser.rs
 - specs/task-rust-console-agent-lifecycle.spec.md
-- knowledge/decisions/adr-130-native-agent-lifecycle-authority.md
+- knowledge/decisions/adr-130-native-agent-lifecycle-stop.md
 - docs/progress.md
 
 ### Forbidden
 - Live services, live agents, credentials and deployed state.
-- native/hagency/src/console/resources.rs; mockup/app/api/**; every other hagency-store file (the two licensed store paths carry exactly one new public entry — `stop_dispatch_for_agent`, F1's fix — and the fence kernel and settlement stay the store's own).
+- native/hagency-store/src/domain/conversation_lifecycle.rs (the fence kernel and settlement stay the store's own); native/hagency/src/console/resources.rs; mockup/app/api/**.
 
 ## Acceptance Criteria
 
@@ -113,55 +104,6 @@ Scenario: The roster page renders lifecycle controls only from served permission
   Then the read-only roster shows no enabled lifecycle control
   And the scoped roster shows the controls enabled from the served permissions booleans
   And no external request leaves the page
-
-## Decisions
-
-**Start's already-live refusal word is `agent_already_live` (HTTP 409).** The
-route maps `hagency_store::Error::State` to it (`console/agents.rs`), so the
-start scenario binds to that exact word; the refusal happens before any spawn —
-start is an ensure over the store's own state, never a process birth.
-
-**Preset-apply has no completion path in this slice.** The apply is a pointer
-over an already-published preset id, and `begin_lifecycle_apply` refuses a
-second apply while one is pending (`agent_lifecycle_apply_pending`, HTTP 409);
-nothing in this slice completes it, so the scenario's third clause narrows to
-the pointer's shape — the response is exactly `{ok, presetId}` — never a widened
-field. Completion is a later slice.
-
-**The flag's pairwise exclusivity is declared AND asserted.**
-`--manage-agent-lifecycle` declares `conflicts_with_all` against both
-management flags, and the CLI selector asserts each combination is refused
-before any ticket issues — a declaration is not a test.
-
-**The browser lane is the roster walk's own driver.**
-`native_console_agent_lifecycle_browser` rides
-`mockup/scripts/native-console-browser.mjs` (now licensed in Allowed Changes),
-adding a lifecycle lane that mints no ticket and asserts the controls appear
-only when the served `permissions.manageLifecycle` boolean is true.
-
-**Stop's widening to `retire`'s session cascade is a later slice.** The route
-fences only the resolved dispatch — the one the named engagement resolves —
-and does not reuse `retire`'s session-keyed walk, which also closes child
-conversations (`conversation_lifecycle.rs:125-150`). Widening is a deliberate
-future decision with its own review, not a default; the cost (sibling
-dispatches keep running) is accepted now.
-
-**One new public store entry, named.** `stop_dispatch_for_agent`
-(`DomainStore` wrapper in `domain_worker.rs`, over the domain file) is the
-slice's entire store surface (F1's fix): the selector's resolution and the
-fence travel through it, and nothing else on the store becomes reachable from
-the console crate.
-
-**The CLI selector's grant-exclusivity and issuance clauses are pinned where they live (r1 F2).**
-The scenario's "grants the three lifecycle acts and no publication configuration or
-account act" is asserted by `native_console_agent_lifecycle_is_scoped`'s
-neighbouring-refusal half (the lifecycle session is refused by the publication,
-configuration and account mutations with their own scope words), and the
-one-per-second / one-outstanding / replacement-invalidates rules are asserted by
-`native_console_finite_clock`. The CLI selector itself pins what only the CLI can:
-the flag combinations refuse before issuance, and the issued ticket's URL page and
-shape. A reader taking the CLI selector alone as the pin for the grant's exclusivity
-would over-credit it; this entry names where each clause lives.
 
 ## Out of Scope
 
