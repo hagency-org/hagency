@@ -14,16 +14,19 @@ struct Issued {
     expires_in: u64,
 }
 pub async fn access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, false, false, false).await
+    scoped_access(state, address, false, false, false, false).await
 }
 pub async fn publication_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, true, false, false).await
+    scoped_access(state, address, true, false, false, false).await
 }
 pub async fn configuration_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, false, true, false).await
+    scoped_access(state, address, false, true, false, false).await
 }
 pub async fn account_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
-    scoped_access(state, address, false, false, true).await
+    scoped_access(state, address, false, false, true, false).await
+}
+pub async fn lifecycle_access(state: &Path, address: SocketAddr) -> Result<String, Error> {
+    scoped_access(state, address, false, false, false, true).await
 }
 async fn scoped_access(
     state: &Path,
@@ -31,6 +34,7 @@ async fn scoped_access(
     publication: bool,
     configuration: bool,
     account: bool,
+    lifecycle: bool,
 ) -> Result<String, Error> {
     if !address.ip().is_loopback()
         || address.port() == 0
@@ -46,7 +50,14 @@ async fn scoped_access(
     }
     tokio::time::timeout(
         Duration::from_secs(5),
-        exchange(address, token, publication, configuration, account),
+        exchange(
+            address,
+            token,
+            publication,
+            configuration,
+            account,
+            lifecycle,
+        ),
     )
     .await
     .map_err(|_| Error::Unavailable)?
@@ -57,6 +68,7 @@ async fn exchange(
     publication: bool,
     configuration: bool,
     account: bool,
+    lifecycle: bool,
 ) -> Result<String, Error> {
     let stream = TcpStream::connect(address)
         .await
@@ -72,7 +84,9 @@ async fn exchange(
     authorization.set_sensitive(true);
     let request = Request::builder()
         .method("POST")
-        .uri(if configuration {
+        .uri(if lifecycle {
+            "/api/native/v1/console/agent-lifecycle-access"
+        } else if configuration {
             "/api/native/v1/console/resource-configuration-access"
         } else if publication {
             "/api/native/v1/console/resource-publication-access"
@@ -128,6 +142,8 @@ async fn exchange(
                 "accounts"
             } else if publication || configuration {
                 "resources"
+            } else if lifecycle {
+                "agents"
             } else {
                 "usage"
             },

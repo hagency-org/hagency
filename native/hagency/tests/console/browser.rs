@@ -833,3 +833,76 @@ async fn native_console_project_side_browser() {
     serving.await.unwrap().unwrap();
     f.close().await;
 }
+
+/// CL-S2 (ADR-130) browser scenario: the roster renders NO enabled
+/// lifecycle control under a read-only ticket, then the SAME walk under a
+/// fresh agent-lifecycle ticket (the harness owns both tickets; the browser
+/// mints nothing) renders the controls enabled — and no external request
+/// leaves the page in either phase.
+#[tokio::test]
+async fn native_console_agent_lifecycle_browser() {
+    let address = address();
+    let f = Fixture::new(address, Some(&built()));
+    hagency_store::private::write_new(
+        &f.root.path().join("state/operator.token"),
+        TOKEN.as_bytes(),
+    )
+    .unwrap();
+    let acceptor = TcpListener::new(address).try_bind().await.unwrap();
+    let server = Server::new(acceptor);
+    let handle = server.handle();
+    let serving = tokio::spawn(server.try_serve(f.app.clone().router()));
+    let url = hagency::console::client::access(&f.root.path().join("state"), address)
+        .await
+        .unwrap();
+    let mut child = Command::new(node())
+        .arg(script())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("actual browser tooling must exist");
+    let mut input = child.stdin.take().unwrap();
+    let mut lines = BufReader::new(child.stdout.take().unwrap()).lines();
+    input
+        .write_all(
+            format!(
+                "{}\n",
+                json!({"base":format!("http://{address}"),"url":url,"lifecycle":true})
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let mut pass = false;
+    tokio::time::timeout(Duration::from_secs(90), async {
+        while let Some(line) = lines.next_line().await.unwrap() {
+            match line.as_str() {
+                "LIFECYCLE_TICKET" => {
+                    let lifecycle_url = hagency::console::client::lifecycle_access(
+                        &f.root.path().join("state"),
+                        address,
+                    )
+                    .await
+                    .unwrap();
+                    input
+                        .write_all(format!("{}\n", json!({"url":lifecycle_url})).as_bytes())
+                        .await
+                        .unwrap();
+                }
+                other => {
+                    if other.contains("PASS native agent lifecycle browser") {
+                        pass = true;
+                    }
+                }
+            }
+        }
+    })
+    .await
+    .expect("real lifecycle browser deadline");
+    assert!(pass, "the lifecycle lane reported no pass marker");
+    handle.stop_graceful(Some(Duration::from_secs(2)));
+    serving.await.unwrap().unwrap();
+    f.close().await;
+}

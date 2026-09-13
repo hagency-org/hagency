@@ -16,11 +16,13 @@
 import { useT } from '@/components/Prefs';
 import { useData } from '@/components/Data';
 import { fmtTokens } from '@/lib/mock-data';
+import { startAgent, stopAgent, applyPreset } from '@/lib/native-api';
 
 export default function NativeAgents() {
   const t = useT();
   const data = useData();
-  const { phase, error, refreshing, agents = [], unavailable = [] } = data;
+  const { phase, error, refreshing, agents = [], unavailable = [], permissions = {} } = data;
+  const manageLifecycle = permissions.manageLifecycle === true;
 
   if (phase === 'error') {
     return (
@@ -61,11 +63,12 @@ export default function NativeAgents() {
                 <th>{t('na.engagement')}</th>
                 <th className="num">{t('col.requested')}</th>
                 <th>{t('na.lastActivity')}</th>
+                {manageLifecycle && <th>{t('na.controls')}</th>}
               </tr>
             </thead>
             <tbody>
               {agents.map((a) => (
-                <tr key={a.engagement_id}>
+                <tr key={a.engagement_id} data-engagement-id={a.engagement_id}>
                   <td>{a.name}</td>
                   <td className="dim">{a.framework}</td>
                   <td>{a.role}</td>
@@ -75,6 +78,13 @@ export default function NativeAgents() {
                   {/* Last dispatch activity, not last seen; null is unknown,
                       rendered as the word — never a zero clock. */}
                   <td className="dim">{a.last_activity_ms === null ? t('nu.unknown') : new Date(a.last_activity_ms).toISOString()}</td>
+                  {manageLifecycle && (
+                    <td>
+                      <button className="btn" data-lifecycle-action="start" onClick={() => startAgent(a.engagement_id)}>{t('na.start')}</button>
+                      <button className="btn" data-lifecycle-action="stop" onClick={() => stopAgent(a.engagement_id)}>{t('na.stop')}</button>
+                      <button className="btn" data-lifecycle-action="preset" onClick={() => applyPreset(a.engagement_id, window.prompt(t('na.presetId')) ?? '')}>{t('na.preset')}</button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>

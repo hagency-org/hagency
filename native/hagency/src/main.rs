@@ -61,10 +61,21 @@ enum Command {
             long,
             conflicts_with_all = [
                 "manage_resource_publication",
-                "manage_resource_configuration"
+                "manage_resource_configuration",
+                "manage_agent_lifecycle"
             ]
         )]
         manage_account_enrollment: bool,
+        /// Grant finite agent lifecycle management (start, stop, preset-apply).
+        #[arg(
+            long,
+            conflicts_with_all = [
+                "manage_resource_publication",
+                "manage_resource_configuration",
+                "manage_account_enrollment"
+            ]
+        )]
+        manage_agent_lifecycle: bool,
     },
     /// Read-only inspection: open ceiling overrun alerts from the running service.
     Alerts {
@@ -246,10 +257,13 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             manage_resource_publication,
             manage_resource_configuration,
             manage_account_enrollment,
+            manage_agent_lifecycle,
         } => {
             println!(
                 "{}",
-                if manage_resource_configuration {
+                if manage_agent_lifecycle {
+                    hagency::console::client::lifecycle_access(&state_dir, listen).await?
+                } else if manage_resource_configuration {
                     hagency::console::client::configuration_access(&state_dir, listen).await?
                 } else if manage_resource_publication {
                     hagency::console::client::publication_access(&state_dir, listen).await?

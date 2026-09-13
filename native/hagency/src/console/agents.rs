@@ -17,14 +17,19 @@
 //! `unavailable` is server-owned, like the alert transition map: the
 //! page renders whatever the server names, so a future source turns a
 //! column on by removing its name here, not by a client edit.
-use super::{Error, failed, recheck, usage::query};
+use super::resources::failure;
+use super::{Error, Session, body, console, failed, recheck, usage::query};
 use crate::{refusal, resources::domain};
-use hagency_core::project::EngagementState;
+use hagency_core::project::{EngagementState, identifier};
 use salvo::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 pub(super) fn router() -> Router {
-    Router::with_path("agents").get(list)
+    Router::with_path("agents")
+        .get(list)
+        .push(Router::with_path("{id}/start").post(start))
+        .push(Router::with_path("{id}/stop").post(stop))
+        .push(Router::with_path("{id}/preset").post(preset))
 }
 
 /// Exactly seven keys, in the ADR-126 order. Every key except `name` is
@@ -92,14 +97,235 @@ async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     last_activity_ms: row.last_activity_ms,
                 })
                 .collect();
+            // CL-S2 (ADR-130): the lifecycle controls render ONLY from the
+            // served boolean — a read-only session renders none enabled.
+            let manage_lifecycle = match depot.get_typed::<Session>() {
+                Ok(session) => {
+                    match console(depot).and_then(|c| c.0.authority.can_lifecycle(session)) {
+                        Ok(value) => value,
+                        Err(error) => {
+                            failed(res, error);
+                            return;
+                        }
+                    }
+                }
+                Err(_) => {
+                    failed(res, Error::Unauthorized);
+                    return;
+                }
+            };
             res.render(Json(serde_json::json!({
                 "at_ms": at_ms,
                 "unavailable": UNAVAILABLE,
                 "agents": agents,
+                "permissions": {"manageLifecycle": manage_lifecycle},
             })));
         }
         Err(error) => store_error(res, error),
     }
+}
+
+/// The engagement id path parameter — an opaque identifier, never a path
+/// component that can address a session, authority or filesystem.
+fn engagement_id(req: &Request) -> Result<String, Error> {
+    let id = req.param::<String>("id").ok_or(Error::Invalid)?;
+    identifier(&id, 128).map_err(|_| Error::Invalid)?;
+    Ok(id)
+}
+
+/// The three lifecycle routes share one scope gate: a valid session whose
+/// grant is `Scope::AgentLifecycle`. A read-only or other-scoped session is
+/// refused with `agent_lifecycle_scope_required` before any store work.
+fn check_lifecycle(depot: &Depot, res: &mut Response) -> bool {
+    let session = match depot.get_typed::<Session>() {
+        Ok(session) => session,
+        Err(_) => {
+            failed(res, Error::Unauthorized);
+            return false;
+        }
+    };
+    match console(depot).and_then(|c| c.0.authority.can_lifecycle(session)) {
+        Ok(true) => true,
+        Ok(false) => {
+            failed(res, Error::LifecycleForbidden);
+            false
+        }
+        Err(error) => {
+            failed(res, error);
+            false
+        }
+    }
+}
+
+/// Start — an at-most-once ensure over the engagement's own state word,
+/// never a process birth (ADR-053's fixed launcher). An engagement that is
+/// already `active` is live and refuses with a named word; anything else
+/// reports the ensure held and spawns nothing.
+#[handler]
+async fn start(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if query(req, &[], 0).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let id = match engagement_id(req) {
+        Ok(id) => id,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = async {
+        let rows = store.agent_roster().await?;
+        let row = rows
+            .into_iter()
+            .find(|r| r.engagement_id == id)
+            .ok_or(hagency_store::Error::NotFound)?;
+        if row.state == EngagementState::Active {
+            return Err(hagency_store::Error::State);
+        }
+        Ok(())
+    }
+    .await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    match result {
+        Ok(()) => res.render(Json(serde_json::json!({"ok": true}))),
+        Err(hagency_store::Error::State) => {
+            refusal(res, StatusCode::CONFLICT, "agent_already_live")
+        }
+        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+        Err(error) => store_error(res, error),
+    }
+}
+
+/// Stop — fence, never settle: the store resolves the named engagement's
+/// dispatch (live set or unsettled stop row) and serves the five-key wire
+/// object verbatim. Idempotent by construction (see `stop_dispatch_for_agent`).
+#[handler]
+async fn stop(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if query(req, &[], 0).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let id = match engagement_id(req) {
+        Ok(id) => id,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+        .unwrap_or_default();
+    let result = store.stop_dispatch_for_agent(id, now).await;
+    if result.is_ok() && recheck(depot).is_err() {
+        failure(res, hagency_store::Error::OutcomeUnknown);
+        return;
+    }
+    match result {
+        Ok(value) => res.render(Json(value)),
+        Err(error) => failure(res, error),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct PresetApply {
+    preset_id: String,
+}
+
+/// Preset-apply — a pointer, not a second editor: the named preset must be
+/// already-published, and exactly one apply may be pending per session. The
+/// preset's own fields stay the configure scope's act; nothing is widened
+/// and no row is written by this route.
+#[handler]
+async fn preset(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if query(req, &[], 0).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let engagement = match engagement_id(req) {
+        Ok(id) => id,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let raw = match body(req, 256).await {
+        Ok(raw) => raw,
+        Err(_) => {
+            failed(res, Error::Invalid);
+            return;
+        }
+    };
+    let input: PresetApply = match serde_json::from_slice(&raw) {
+        Ok(input) => input,
+        Err(_) => {
+            failed(res, Error::Invalid);
+            return;
+        }
+    };
+    if identifier(&input.preset_id, 128).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let resource = match store.resource_configuration(input.preset_id.clone()).await {
+        Ok(resource) => resource,
+        Err(hagency_store::Error::NotFound) => {
+            refusal(res, StatusCode::NOT_FOUND, "preset_not_published");
+            return;
+        }
+        Err(error) => {
+            failure(res, error);
+            return;
+        }
+    };
+    if !resource.published {
+        refusal(res, StatusCode::NOT_FOUND, "preset_not_published");
+        return;
+    }
+    // One pending apply per session, tracked in-memory on the grant (the
+    // spec licenses no new store column; the apply writes no row).
+    let session = match depot.get_typed::<Session>() {
+        Ok(session) => session,
+        Err(_) => {
+            failed(res, Error::Unauthorized);
+            return;
+        }
+    };
+    if let Err(error) = console(depot).and_then(|c| {
+        c.0.authority
+            .begin_lifecycle_apply(session, &input.preset_id)
+    }) {
+        failed(res, error);
+        return;
+    }
+    let _ = engagement;
+    res.render(Json(
+        serde_json::json!({"ok": true, "presetId": input.preset_id}),
+    ));
 }
 
 fn store_error(res: &mut Response, error: hagency_store::Error) {

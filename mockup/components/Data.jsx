@@ -107,7 +107,7 @@ export function useData() {
 export const DataProvider = NATIVE_MODE ? NativeDataProvider : LegacyDataProvider;
 
 function NativeDataProvider({ children }) {
-  const initial = { nativeConsole: true, resourceConsole: false, configurationConsole: false, editor: null, editing: false, phase: 'loading', refreshing: false, requestKey: null, engagements: [], resources: [], roles: [], permissions: { publishResource: false, configureResource: false }, selected: null, report: null, budget: null, next_after: null, agents: [], sides: [], unavailable: [], error: null };
+  const initial = { nativeConsole: true, resourceConsole: false, configurationConsole: false, editor: null, editing: false, phase: 'loading', refreshing: false, requestKey: null, engagements: [], resources: [], roles: [], permissions: { publishResource: false, configureResource: false, manageLifecycle: false }, selected: null, report: null, budget: null, next_after: null, agents: [], sides: [], unavailable: [], error: null };
   const [state, setState] = useState(initial);
   const [logoutStatus, setLogoutStatus] = useState(null);
   const [action, setAction] = useState(null);

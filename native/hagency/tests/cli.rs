@@ -592,6 +592,94 @@ fn native_console_account_grant_is_mutually_exclusive() {
     ]);
 }
 
+/// CL-S2 (ADR-130): `console-access --manage-agent-lifecycle` issues a
+/// ticket whose URL lands on the agents page (the lifecycle act), and each
+/// combination with an existing management flag is refused by clap before
+/// any ticket issues — a declaration is not a test, so the pairwise
+/// exclusivity is asserted here.
+#[test]
+fn native_cli_console_access_issues_agent_lifecycle_scope() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("lifecycle access state");
+    let init = Command::new(env!("CARGO_BIN_EXE_hagency"))
+        .args(["init", "--state-dir"])
+        .arg(&state)
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(init.status.success());
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    drop(listener);
+    let running = launch(&state, address);
+
+    // Alone: issues a ticket on the agents page — the lifecycle act.
+    let alone = Command::new(env!("CARGO_BIN_EXE_hagency"))
+        .args([
+            "console-access",
+            "--state-dir",
+            state.to_str().unwrap(),
+            "--listen",
+            &address.to_string(),
+            "--manage-agent-lifecycle",
+        ])
+        .env("PATH", "")
+        .output()
+        .unwrap();
+    assert!(
+        alone.status.success(),
+        "lifecycle issuance failed: {}",
+        String::from_utf8_lossy(&alone.stderr)
+    );
+    let url = String::from_utf8_lossy(&alone.stdout).trim().to_owned();
+    assert!(
+        url.starts_with(&format!("http://{address}/console/agents/#access=")),
+        "the lifecycle ticket lands on the agents page: {url}"
+    );
+    let fragment = url.rsplit('#').next().unwrap();
+    assert!(
+        fragment.len() == 7 + 64
+            && fragment
+                .strip_prefix("access=")
+                .is_some_and(|t| t.len() == 64 && t.bytes().all(|b| b.is_ascii_hexdigit())),
+        "the ticket is the bounded 64-hex credential: {fragment}"
+    );
+
+    // Each pairwise combination is refused before any ticket issues.
+    // Post-rebase, the account grant is a third management flag and the
+    // declaration is pairwise against it too — asserted, not assumed (F1).
+    for combo in [
+        ["--manage-agent-lifecycle", "--manage-resource-publication"],
+        [
+            "--manage-agent-lifecycle",
+            "--manage-resource-configuration",
+        ],
+        ["--manage-agent-lifecycle", "--manage-account-enrollment"],
+    ] {
+        let output = Command::new(env!("CARGO_BIN_EXE_hagency"))
+            .args([
+                "console-access",
+                "--state-dir",
+                state.to_str().unwrap(),
+                "--listen",
+                &address.to_string(),
+            ])
+            .args(combo)
+            .env("PATH", "")
+            .output()
+            .unwrap();
+        assert!(
+            !output.status.success(),
+            "{combo:?} must be refused before issuance"
+        );
+        assert!(
+            output.stdout.is_empty(),
+            "{combo:?} refuses before any ticket is printed"
+        );
+    }
+    drop(running);
+}
+
 /// The native service and MCP helper construct no file log sink: every
 /// diagnostic arrives on stderr. Both refusals below happen before any store
 /// open (missing operator.token for serve; missing context env for the helper),

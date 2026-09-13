@@ -6,6 +6,7 @@ import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 const lines = createInterface({ input: process.stdin })[Symbol.asyncIterator]();
 const config = JSON.parse((await lines.next()).value);
+async function fixture(command) { console.log(command); return JSON.parse((await lines.next()).value); }
 
 /* The agent roster walk (ADR-126), shared by the full console walk and the
  * roster-only lane: the page renders the seven-column projection, the
@@ -80,10 +81,40 @@ if (config.roster) {
   } finally { await browser.close(); }
   process.exit(0);
 }
+if (config.lifecycle) {
+  // The lifecycle lane (ADR-130 browser scenario): the roster renders NO
+  // enabled control under a read-only ticket, then the SAME walk under a
+  // fresh agent-lifecycle ticket (the harness mints and hands it over
+  // stdin; the browser mints nothing) renders the controls enabled — and
+  // no external request leaves the page in either phase.
+  try {
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const page = await context.newPage();
+    const failures = []; const urls = [];
+    page.on('pageerror', (error) => failures.push(error.message));
+    await context.route('**/*', async (route) => {
+      const url = new URL(route.request().url()); urls.push(url.toString());
+      if (url.origin !== config.base) { failures.push('unexpected external request'); await route.abort(); }
+      else await route.continue();
+    });
+    await page.goto(config.url);
+    await page.locator('[data-native-state="ready"]').waitFor();
+    assert((await page.locator('[data-lifecycle-action]').count()) === 0, 'a read-only session renders no lifecycle control');
+    // The harness owns the lifecycle ticket; the browser mints nothing.
+    const lifecycleUrl = (await fixture('LIFECYCLE_TICKET')).url;
+    await page.goto(lifecycleUrl);
+    await page.locator('[data-native-state="ready"]').waitFor();
+    assert((await page.locator('[data-lifecycle-action="start"]').count()) >= 3, 'the scoped roster renders the start control per row');
+    assert((await page.locator('[data-lifecycle-action="stop"]').count()) >= 3, 'the scoped roster renders the stop control per row');
+    assert((await page.locator('[data-lifecycle-action="preset"]').count()) >= 3, 'the scoped roster renders the preset control per row');
+    assert(urls.every((url) => !url.includes('access=')), 'no ticket value in a request URL');
+    assert(!/private_|operator\.token/.test(await page.locator('main').innerText()), 'no credential value on screen');
+    assert.deepEqual(failures, []);
+    console.log('PASS native agent lifecycle browser');
+  } finally { await browser.close(); }
+  process.exit(0);
+}
 if (config.sides) {
-  // The project-sides-only lane (ADR-132 browser scenario): the same
-  // read-only ticket the usage walk exchanges, one page, no operator
-  // token in the browser, and no credential value on screen.
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage();

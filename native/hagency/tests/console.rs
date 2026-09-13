@@ -74,6 +74,42 @@ fn get(path: &str, cookie: &str) -> salvo::test::RequestBuilder {
         .add_header("sec-fetch-site", "same-origin", true)
         .add_header("cookie", cookie, true)
 }
+async fn lifecycle_issue(service: &Service) -> String {
+    let mut response = TestClient::post(format!(
+        "{BASE}/api/native/v1/console/agent-lifecycle-access"
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .bearer_auth(TOKEN)
+    .send(service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    response.take_json::<Value>().await.unwrap()["ticket"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+fn post(path: &str, cookie: &str) -> salvo::test::RequestBuilder {
+    TestClient::post(format!("{BASE}{path}"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .add_header("origin", BASE, true)
+        .add_header("sec-fetch-site", "same-origin", true)
+        .add_header("cookie", cookie, true)
+}
+async fn lifecycle_session(service: &Service) -> String {
+    let ticket = lifecycle_issue(service).await;
+    let response = exchange(service, &ticket).await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    response
+        .headers()
+        .get("set-cookie")
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .split(';')
+        .next()
+        .unwrap()
+        .to_owned()
+}
 
 #[tokio::test]
 async fn native_console_authority() {

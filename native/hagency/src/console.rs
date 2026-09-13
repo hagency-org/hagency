@@ -31,6 +31,10 @@ pub enum Error {
     ConfigurationForbidden,
     #[error("account enrollment management scope is required")]
     AccountForbidden,
+    #[error("agent lifecycle management scope is required")]
+    LifecycleForbidden,
+    #[error("a preset apply is already pending")]
+    LifecycleApplyPending,
     #[error("native console capacity is exhausted")]
     Busy,
     #[error("native console is unavailable")]
@@ -80,6 +84,7 @@ pub(crate) fn operator_router() -> Router {
         .push(Router::with_path("console/resource-publication-access").post(issue_publication))
         .push(Router::with_path("console/resource-configuration-access").post(issue_configuration))
         .push(Router::with_path("console/account-access").post(issue_account))
+        .push(Router::with_path("console/agent-lifecycle-access").post(issue_lifecycle))
 }
 fn console(depot: &Depot) -> Result<&Console, Error> {
     depot
@@ -101,6 +106,8 @@ fn failed(res: &mut Response, error: Error) {
             "resource_configuration_scope_required",
         ),
         Error::AccountForbidden => (StatusCode::FORBIDDEN, "account_scope_required"),
+        Error::LifecycleForbidden => (StatusCode::FORBIDDEN, "agent_lifecycle_scope_required"),
+        Error::LifecycleApplyPending => (StatusCode::CONFLICT, "agent_lifecycle_apply_pending"),
         Error::Busy => (StatusCode::TOO_MANY_REQUESTS, "console_busy"),
     };
     refusal(res, status, code);
@@ -231,15 +238,19 @@ async fn body(req: &mut Request, maximum: usize) -> Result<Vec<u8>, Error> {
 }
 #[handler]
 async fn issue(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    issue_scope(req, depot, res, false, false).await;
+    issue_scope(req, depot, res, false, false, false).await;
 }
 #[handler]
 async fn issue_publication(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    issue_scope(req, depot, res, true, false).await;
+    issue_scope(req, depot, res, true, false, false).await;
 }
 #[handler]
 async fn issue_configuration(req: &mut Request, depot: &mut Depot, res: &mut Response) {
-    issue_scope(req, depot, res, false, true).await;
+    issue_scope(req, depot, res, false, true, false).await;
+}
+#[handler]
+async fn issue_lifecycle(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    issue_scope(req, depot, res, false, false, true).await;
 }
 #[handler]
 async fn issue_account(req: &mut Request, depot: &mut Depot, res: &mut Response) {
@@ -268,6 +279,7 @@ async fn issue_scope(
     res: &mut Response,
     publication: bool,
     configuration: bool,
+    lifecycle: bool,
 ) {
     let result = async {
         let c = console(depot)?;
@@ -279,7 +291,9 @@ async fn issue_scope(
         if req.uri().query().is_some() || !body(req, 1).await?.is_empty() {
             return Err(Error::Invalid);
         }
-        let value = if configuration {
+        let value = if lifecycle {
+            c.0.authority.issue_lifecycle()?
+        } else if configuration {
             c.0.authority.issue_configuration()?
         } else if publication {
             c.0.authority.issue_publication()?

@@ -194,9 +194,10 @@ export function alertsView(location) { return /^\/console\/alerts\/?$/.test(loca
  * its name server-side, never by a client edit. */
 const ROSTER_KEYS = ['name', 'framework', 'role', 'state', 'engagement_id', 'requested_tokens', 'last_activity_ms'];
 export function validateAgents(v) {
-  if (!object(v, ['at_ms', 'unavailable', 'agents']) || !number(v.at_ms)
+  if (!object(v, ['at_ms', 'unavailable', 'agents', 'permissions']) || !number(v.at_ms)
     || !Array.isArray(v.unavailable) || v.unavailable.length > 32 || v.unavailable.some((n) => !text(n, 64))
     || !Array.isArray(v.agents) || v.agents.length > 100
+    || !object(v.permissions, ['manageLifecycle']) || typeof v.permissions.manageLifecycle !== 'boolean'
     || v.agents.some((a) => !object(a, ROSTER_KEYS)
       || !text(a.name, 128) || !text(a.framework, 64) || !text(a.role, 128)
       || !STATES.includes(a.state) || !id(a.engagement_id)
@@ -207,6 +208,21 @@ export async function fetchAgents() {
   return validateAgents(await request('/api/agents'));
 }
 export function agentsView(location) { return /^\/console\/agents\/?$/.test(location.pathname); }
+
+/* CL-S2 (ADR-130): the three lifecycle acts ride the SAME bounded request
+ * path as publication/configuration — no new transport. Start is a no-body
+ * POST; stop fences and serves the five-key wire object; preset-apply sends
+ * the already-published preset id and refuses unknown/unpublished ids and a
+ * second pending apply with named codes. */
+export async function startAgent(id) {
+  return request(`/api/agents/${id}/start`, { method: 'POST' });
+}
+export async function stopAgent(id) {
+  return request(`/api/agents/${id}/stop`, { method: 'POST' });
+}
+export async function applyPreset(id, presetId) {
+  return request(`/api/agents/${id}/preset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presetId }) });
+}
 
 /* The project-sides read (ADR-132): one row per fleet registration — the
  * id IS the server name (ADR-016) — with EXACTLY six keys and projects

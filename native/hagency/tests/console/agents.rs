@@ -1,4 +1,5 @@
 use super::*;
+use hagency_store::resource_publication_revision;
 
 /// The agent roster observation (ADR-126): the read is a bounded
 /// projection of the engagement rows — every item carries EXACTLY the
@@ -33,10 +34,14 @@ async fn native_console_agent_roster_observation() {
     let value = response.take_json::<Value>().await.unwrap();
     assert_eq!(
         value.as_object().unwrap().len(),
-        3,
-        "the envelope carries exactly at_ms, unavailable, agents"
+        4,
+        "the envelope carries exactly at_ms, unavailable, agents, permissions"
     );
     assert!(value["at_ms"].as_u64().unwrap() > 0);
+    assert!(
+        value["permissions"]["manageLifecycle"].as_bool() == Some(false),
+        "a read-only session serves no lifecycle permission"
+    );
     let unavailable = value["unavailable"].as_array().unwrap();
     let names: Vec<&str> = unavailable.iter().map(|v| v.as_str().unwrap()).collect();
     assert_eq!(
@@ -284,5 +289,228 @@ async fn native_console_stop_dispatch_for_agent_is_at_most_once() {
         Err(hagency_store::Error::NotFound)
     ));
     let _ = fence;
+    f.close().await;
+}
+
+/// CL-S2 (ADR-130) scope selector: the lifecycle gate refuses a read-only
+/// session on all three acts with `agent_lifecycle_scope_required` and no
+/// engagement row changes, and a lifecycle session performs only start/stop/
+/// preset — it is refused by publication and configuration with THEIR scope
+/// words, never its own.
+#[tokio::test]
+async fn native_console_agent_lifecycle_is_scoped() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let readonly = session(&service).await;
+    let lifecycle = lifecycle_session(&service).await;
+    let id = &f.engagement;
+    // Read-only: all three acts refused before any store work.
+    for path in [
+        format!("/console/api/agents/{id}/start"),
+        format!("/console/api/agents/{id}/stop"),
+        format!("/console/api/agents/{id}/preset"),
+    ] {
+        let mut builder = post(&path, &readonly);
+        if path.ends_with("/preset") {
+            builder = builder.json(&json!({"presetId":"private_usage_pool"}));
+        }
+        let mut response = builder.send(&service).await;
+        assert_eq!(
+            response.status_code,
+            Some(StatusCode::FORBIDDEN),
+            "read-only {path}"
+        );
+        let body = response.take_json::<Value>().await.unwrap();
+        assert_eq!(
+            body["code"], "agent_lifecycle_scope_required",
+            "read-only {path}"
+        );
+    }
+    // No engagement row changed: no stop row, the roster still holds it.
+    let raw = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    let stops: i64 = raw
+        .query_row("SELECT COUNT(*) FROM dispatch_stops", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(stops, 0, "a refused stop writes no stop row");
+    assert!(
+        f.domain
+            .agent_roster()
+            .await
+            .unwrap()
+            .iter()
+            .any(|r| r.engagement_id == *id),
+        "the engagement row survives the refusals"
+    );
+    drop(raw);
+    // The scoped session's own acts hold: start is refused as already-live,
+    // stop fences — both with the LIFECYCLE session, not a widened scope.
+    let mut response = post(&format!("/console/api/agents/{id}/start"), &lifecycle)
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "agent_already_live"
+    );
+    // Neighbouring mutations refuse the lifecycle session with THEIR words.
+    let source = native_resource("private_lifecycle_scope_source");
+    f.domain.put_resource(source.clone()).await.unwrap();
+    let revision = resource_publication_revision(&source).unwrap();
+    let mut response = post(
+        &format!("/console/api/resources/{}/publication", source.id()),
+        &lifecycle,
+    )
+    .json(&json!({"expectedRevision":revision,"published":false}))
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::FORBIDDEN));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "resource_publication_scope_required"
+    );
+    let mut response = TestClient::patch(format!(
+        "{BASE}/console/api/resources/{}/configuration",
+        source.id()
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .add_header("origin", BASE, true)
+    .add_header("sec-fetch-site", "same-origin", true)
+    .add_header("cookie", &lifecycle, true)
+    .json(&json!({
+        "expectedRevision":revision,
+        "profileChange":{"kind":"preserve"},
+        "ceilingChange":{"kind":"clear"}
+    }))
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::FORBIDDEN));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "resource_configuration_scope_required"
+    );
+    // F1 (review r1): the account mutation refuses the lifecycle session
+    // with ITS OWN word too — MA-S3a's surface is present on this lineage
+    // post-rebase, so the scenario's clause is asserted, not dropped. The
+    // prepare gate runs before any body is read or store work begins.
+    let mut response = post("/console/api/accounts", &lifecycle)
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::FORBIDDEN));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "account_scope_required"
+    );
+    f.close().await;
+}
+
+/// CL-S2 (ADR-130) at-most-once selector, driven at the HTTP surface: a
+/// start against the already-active fixture engagement refuses with the
+/// named already-live word and spawns nothing; two stops resolve the SAME
+/// dispatch id and fence through the unsettled stop row, writing no second
+/// row, and both still report `stop_pending` — `stopped` stays false.
+#[tokio::test]
+async fn native_console_agent_start_stop_is_at_most_once() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let lifecycle = lifecycle_session(&service).await;
+    let id = &f.engagement;
+    let mut response = post(&format!("/console/api/agents/{id}/start"), &lifecycle)
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "agent_already_live"
+    );
+    let stop = || async {
+        let mut response = post(&format!("/console/api/agents/{id}/stop"), &lifecycle)
+            .send(&service)
+            .await;
+        assert_eq!(response.status_code, Some(StatusCode::OK));
+        response.take_json::<Value>().await.unwrap()
+    };
+    let first = stop().await;
+    for key in ["stopped", "stop_pending", "dispatch_id", "fence", "state"] {
+        assert!(
+            first.get(key).is_some(),
+            "the stop wire object carries {key}"
+        );
+    }
+    assert_eq!(first["stop_pending"], true);
+    assert_eq!(first["stopped"], false);
+    let second = stop().await;
+    assert_eq!(second["dispatch_id"], first["dispatch_id"]);
+    assert_eq!(second["fence"], first["fence"]);
+    assert_eq!(second["stop_pending"], true);
+    assert_eq!(second["stopped"], false);
+    let raw = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    let count: i64 = raw
+        .query_row("SELECT COUNT(*) FROM dispatch_stops", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count, 1, "the second stop writes no second row");
+    let settled: Option<u64> = raw
+        .query_row(
+            "SELECT settled_at FROM dispatch_stops WHERE dispatch_id=?1",
+            [first["dispatch_id"].as_str().unwrap()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(settled, None, "no production path settles the stop");
+    drop(raw);
+    f.close().await;
+}
+
+/// CL-S2 (ADR-130) preset-apply boundedness selector: an unpublished id
+/// refuses with the named not-published word and writes no row, a published
+/// id applies (a pointer — the response is exactly `{ok, presetId}`), and a
+/// second apply refuses with the named one-pending word.
+#[tokio::test]
+async fn native_console_agent_preset_apply_is_bounded() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let lifecycle = lifecycle_session(&service).await;
+    let id = &f.engagement;
+    let published = native_resource("private_preset_apply_published");
+    let unpublished = native_resource("private_preset_apply_unpublished");
+    f.domain.put_resource(published.clone()).await.unwrap();
+    f.domain.put_resource(unpublished.clone()).await.unwrap();
+    f.domain
+        .edit_resource(unpublished.clone(), Some(false))
+        .await
+        .unwrap();
+    // Unpublished id refuses; no row is written.
+    let mut response = post(&format!("/console/api/agents/{id}/preset"), &lifecycle)
+        .json(&json!({"presetId": unpublished.id()}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "preset_not_published"
+    );
+    // Published id applies — a pointer, exactly two keys.
+    let mut response = post(&format!("/console/api/agents/{id}/preset"), &lifecycle)
+        .json(&json!({"presetId": published.id()}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let applied = response.take_json::<Value>().await.unwrap();
+    assert_eq!(applied["ok"], true);
+    assert_eq!(applied["presetId"], published.id());
+    assert_eq!(
+        applied.as_object().unwrap().len(),
+        2,
+        "a completed apply points only at the preset id, never widening a field"
+    );
+    // A second apply while one is pending refuses with the named word.
+    let mut response = post(&format!("/console/api/agents/{id}/preset"), &lifecycle)
+        .json(&json!({"presetId": published.id()}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
+    assert_eq!(
+        response.take_json::<Value>().await.unwrap()["code"],
+        "agent_lifecycle_apply_pending"
+    );
     f.close().await;
 }
