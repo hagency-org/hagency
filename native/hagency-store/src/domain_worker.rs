@@ -2615,6 +2615,30 @@ impl DomainStore {
         })
         .await
     }
+    /// Reserve the original public identity through the writer queue. Mirrors
+    /// `DomainRepository::reserve_account`; no second repository is opened.
+    pub async fn reserve_account(&self, profile: String) -> Result<crate::AccountChoice, Error> {
+        if profile.len() > 128 {
+            return Err(Error::Capacity);
+        }
+        self.call(256, move |db| db.reserve_account(&profile)).await
+    }
+    /// Exactly one materialization attempt through the writer queue; the row's
+    /// `'uncertain'`-before-`mkdir` ordering is the store's, unchanged.
+    pub async fn materialize_account(&self, id: String) -> Result<crate::AccountChoice, Error> {
+        if id.len() > 128 {
+            return Err(Error::Capacity);
+        }
+        self.call(256, move |db| db.materialize_account(&id)).await
+    }
+    /// Retire one account and unpublish its resources through the writer queue;
+    /// 512 because the store also walks and unpublishes every bound resource.
+    pub async fn retire_account(&self, id: String) -> Result<crate::AccountChoice, Error> {
+        if id.len() > 128 {
+            return Err(Error::Capacity);
+        }
+        self.call(512, move |db| db.retire_account(&id)).await
+    }
     pub async fn configure_resource(
         &self,
         command: crate::ResourceConfigurationCommand,

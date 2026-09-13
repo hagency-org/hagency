@@ -253,3 +253,50 @@ fn native_account_retirement() {
         AccountState::Retired
     ));
 }
+/// The DomainStore wrappers mirror the repository lifecycle (MA-S3a store half):
+/// reserve through the writer queue lands 'preparing', materialize lands
+/// 'active', and retire lands 'retired' while unpublishing bound resources.
+#[tokio::test]
+async fn native_console_account_wrappers_mirror_the_store() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let seed_choice = prepared(&mut db);
+    let seed_resource = enroll(&mut db, &seed_choice);
+    let store = DomainStore::start(db, 16).unwrap();
+    let reserved = store
+        .reserve_account(ACCOUNT_PROFILE.to_owned())
+        .await
+        .unwrap();
+    assert!(matches!(reserved.state, AccountState::Preparing));
+    assert!(matches!(
+        store.account_choices().await.unwrap()[0].state,
+        AccountState::Active
+    ));
+    let materialized = store
+        .materialize_account(reserved.id.clone())
+        .await
+        .unwrap();
+    assert!(matches!(materialized.state, AccountState::Active));
+    assert_ne!(materialized.id, reserved.id);
+    // The revision digests {version,id,state,ordinal,profile}, so the state
+    // transition preparing -> active must move it.
+    assert_ne!(materialized.revision, reserved.revision);
+    let retired = store.retire_account(seed_choice.id.clone()).await.unwrap();
+    assert!(matches!(retired.state, AccountState::Retired));
+    assert!(store.managed_account(seed_choice.id).await.is_err());
+    assert!(
+        !store
+            .resource_configuration(seed_resource.id())
+            .await
+            .unwrap()
+            .published
+    );
+    assert!(
+        store
+            .reserve_account("subscription-only".to_owned())
+            .await
+            .is_err()
+    );
+    store.shutdown().await.unwrap();
+}

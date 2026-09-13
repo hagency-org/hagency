@@ -12,8 +12,14 @@ materialize), retire and enrol through the console under one finite scope, and
 through the CLI's existing offline `account` verb — every route serializing the
 five-key `AccountRow` only, never `AccountChoice`, with ADR-114's opacity kept
 (no readiness, no login) and `ConsoleAccess` staying a flat variant. The store
-wrappers are the sibling MA-S3a-store slice (`native_console_account_wrappers_
+wrappers ride this spec's store half (`native_console_account_wrappers_
 mirror_the_store`); this spec binds the console block's five selectors.
+
+## Decisions
+
+The store half was folded into this slice because no sibling MA-S3a-store slice
+exists: no lane owns it and the backlog row licenses only the console and
+main.rs, which was the gap.
 
 ## Constraints
 
@@ -34,6 +40,8 @@ mirror_the_store`); this spec binds the console block's five selectors.
 ## Boundaries
 
 ### Allowed Changes
+- native/hagency-store/src/domain_worker.rs
+- native/hagency-store/tests/accounts.rs
 - native/hagency/src/console/accounts.rs
 - native/hagency/src/console.rs
 - native/hagency/src/console/authority.rs
@@ -108,6 +116,5 @@ Scenario: The accounts page renders under the native browser boundary
 
 ## Out of Scope
 
-The store wrappers (the sibling MA-S3a-store selector), the readiness enum and
-D-ADR114 (MA-S3b), login or auth inspection, the command-binding follow-up for
-reserve and retire, and every other console page.
+The readiness enum and D-ADR114 (MA-S3b), login or auth inspection, the
+command-binding follow-up for reserve and retire, and every other console page.

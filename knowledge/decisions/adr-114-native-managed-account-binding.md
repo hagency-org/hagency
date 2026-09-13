@@ -76,3 +76,7 @@ that must exist exactly when a row is live. **None crosses the wire.**
 (accounts.rs:373-375), and `DirectoryIdentity` is `{platform, volume, object}`
 (directory_identity.rs:8-12) — no path field exists to leak. The wire carries
 the five-key `AccountRow` only: id, ordinal, state, revision, profile.
+
+The store half was folded into this slice because no sibling MA-S3a-store slice
+exists: no lane owns it and the backlog row licenses only the console and
+main.rs, which was the gap.
