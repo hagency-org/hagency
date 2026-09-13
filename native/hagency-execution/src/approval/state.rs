@@ -448,7 +448,6 @@ mod trace_tests {
         ] {
             written.mark(label);
         }
-        crate::approval::diagnostics::phase("dispatch-b", &id, "checked");
         assert_eq!(
             written.as_slice().last(),
             Some(&"turn-ended-ignored-written")
