@@ -152,6 +152,34 @@ fn write_engagement(tx: &Transaction<'_>, value: &Engagement) -> Result<(), Erro
     )?;
     Ok(())
 }
+/// One project of a side, in the project-sides projection (ADR-132):
+/// exactly these two keys — `owner_mxid` and `owner_room_id` are
+/// deliberately withheld (the owner's DM room is non-public, ADR-112, and
+/// the retained `publicSide` serves neither).
+#[derive(Debug, Clone, Serialize)]
+pub struct SideProject {
+    pub id: String,
+    pub room_id: String,
+}
+/// One row of the read-only project-sides projection (ADR-132): the fleet
+/// registration read as a side — the id IS the server name (ADR-016) —
+/// joined to its projects. Exactly these six keys; no credential key
+/// exists at all, and the read extracts only the named config paths
+/// (`json_extract`), never a parse-and-strip of the whole config, so a
+/// credential-shaped value seeded into the config cannot travel inside an
+/// otherwise-allowed key. `registered` compares the row's generation
+/// column against the config's own generation field — true by
+/// construction today, but computed, so drift is visible rather than
+/// assumed away.
+#[derive(Debug, Clone, Serialize)]
+pub struct ProjectSide {
+    pub id: String,
+    pub representative: String,
+    pub generation: u64,
+    pub reception_room_id: String,
+    pub registered: bool,
+    pub projects: Vec<SideProject>,
+}
 fn read_resource(db: &Connection, id: &str) -> Result<Resource, Error> {
     let value: String = db
         .query_row("SELECT config FROM resources WHERE id=?1", [id], |r| {
@@ -636,6 +664,66 @@ impl DomainRepository {
     }
     pub fn get(&self, id: &str) -> Result<Engagement, Error> {
         read_engagement(&self.db, id)
+    }
+    /// The read-only project-sides projection (ADR-132): one row per fleet
+    /// registration — the id IS the server name (ADR-016) — LEFT JOINed to
+    /// its projects. `SELECT`-named columns only, and the side fields are
+    /// extracted by path from the config JSON (`json_extract`), never by
+    /// parsing the whole config and stripping: a credential-shaped value
+    /// seeded into the config has no path into this projection. Projects
+    /// are capped at 64 per side; the fleet cap is `registrations`' own
+    /// 1024-row bound. `registered` compares the row's generation column
+    /// against the config's own generation field — true by construction
+    /// today, computed rather than assumed.
+    pub fn project_sides(&self) -> Result<Vec<ProjectSide>, Error> {
+        let mut query = self.db.prepare(
+            "SELECT r.fleet_id, json_extract(r.config,'$.serverName'), \
+             json_extract(r.config,'$.representativeMxid'), \
+             json_extract(r.config,'$.receptionRoomId'), \
+             json_extract(r.config,'$.generation'), r.generation \
+             FROM registrations r ORDER BY r.fleet_id LIMIT 1024",
+        )?;
+        let heads: Vec<(String, String, String, String, u64, u64)> = query
+            .query_map([], |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            })?
+            .collect::<Result<_, _>>()?;
+        let mut projects = self.db.prepare(
+            "SELECT p.fleet_id,p.id,p.room_id FROM projects p ORDER BY p.fleet_id,p.id LIMIT 65536",
+        )?;
+        let rooms: Vec<(String, String, String)> = projects
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?
+            .collect::<Result<_, _>>()?;
+        let mut by_fleet: std::collections::BTreeMap<String, Vec<SideProject>> =
+            std::collections::BTreeMap::new();
+        for (fleet, id, room) in rooms {
+            by_fleet
+                .entry(fleet)
+                .or_default()
+                .push(SideProject { id, room_id: room });
+        }
+        Ok(heads
+            .into_iter()
+            .map(
+                |(fleet, id, representative, reception, config_generation, row_generation)| {
+                    ProjectSide {
+                        id,
+                        representative,
+                        generation: row_generation,
+                        reception_room_id: reception,
+                        registered: row_generation == config_generation,
+                        projects: by_fleet.remove(&fleet).unwrap_or_default(),
+                    }
+                },
+            )
+            .collect())
     }
     /// The read-only agent roster (ADR-126): one row per engagement — the
     /// derivation is engagement-keyed, so an agent with no engagement row is

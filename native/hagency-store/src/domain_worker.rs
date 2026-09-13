@@ -2557,6 +2557,11 @@ impl DomainStore {
     pub async fn agent_roster(&self) -> Result<Vec<crate::AgentRosterRow>, Error> {
         self.call(64, |db| db.agent_roster()).await
     }
+    /// The read-only project-sides projection (ADR-132): one writer job,
+    /// one bounded read; the route adds no second projection.
+    pub async fn project_sides(&self) -> Result<Vec<crate::ProjectSide>, Error> {
+        self.call(64, |db| db.project_sides()).await
+    }
     pub async fn resource_budget(&self, id: String) -> Result<Budget, Error> {
         self.call(weight(&id)?, move |db| db.resource_budget(&id))
             .await
