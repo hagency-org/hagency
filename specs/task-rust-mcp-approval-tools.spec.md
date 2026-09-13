@@ -70,8 +70,10 @@ Scenario: A consumed approval cannot be consumed twice
   Level: integration
   Test Double: a fixture dispatch with one approval at the live fence
   Given an approval whose consume has succeeded under one call_id
-  When consume_approval is called again with a fresh call_id
-  Then it refuses with the named word already_consumed and never re-applies
+  When consume_approval is called again with the same call_id and identical content
+  Then the stored response is returned unchanged
+  And a differing content under the same call_id refuses with the store's conflict word
+  And a fresh call_id against a consumed approval refuses with the named word already_consumed and never re-applies
 
 Scenario: The approval projection omits the owner room and the tool detail
   Test: native_mcp_approval_projection_omits_owner_room_and_tool_detail
@@ -90,6 +92,14 @@ Scenario: An approval cannot be read or consumed for another task
   When get_approval or consume_approval names the other task
   Then both refuse with the session-binding word and no approval row changes
 
+Scenario: An approval that failed to deliver is observed as denied
+  Test: native_mcp_approval_failed_delivery_observes_the_denial
+  Level: integration
+  Test Double: the C1 denial leg over a fixture failed delivery
+  Given an approval whose private delivery failed and C1's denial leg has run
+  When get_approval serves it
+  Then under the deny assumption it reports state decided with choice deny
+  And under leave-pending it reports state pending with choice null — the scenario asserts whichever D-PC-FC decides, and binds with C1's denial leg, not before
 
 ## Decisions
 
@@ -103,19 +113,4 @@ lookup; the new refusal words) are C3's own new store work and land with it.
 
 The console approval observation (PC-C2, its own spec), the delivery status
 route (behind PC-C0), the fail-closed denial policy itself (D-PC-FC, C1's to
-decide), and any retained HTTP intake port. The failed-delivery scenario
-(native_mcp_approval_failed_delivery_observes_the_denial) is deferred with NO
-selector bound here: it waits on C1's denial leg and the operator's D-PC-FC
-answer, and a Test: line whose test cannot exist yet would fail the hosted
-binding gate.
-
-The helper-to-store host leg is DEFERRED with no selector bound here: the
-two tool bodies return the "not wired" tool_error today, and the tool-to-store
-wiring with the session's own task — a runner API route plus the transport
-variant in task_client and runner.rs — is outside this spec's Allowed Changes
-(the same boundary A1's collector gap drew). The reason is scope, not
-feasibility: `task_client*` and `runner*` are Root-reviewed files no bound
-selector's surface list names. Also inherited and unproven here: the call_id
-receipt gate (identical replay returns the stored response; differing content
-under the same call_id refuses with the conflict word) is execution.rs's
-existing rule, untouched by this slice, and no selector here re-proves it.
+decide), and any retained HTTP intake port.
