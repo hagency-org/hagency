@@ -117,6 +117,16 @@ no subcommand creates, verdicts, revokes or resolves anything.
 
 Refusals exit distinctly, never a silent 0: **3** unreachable (connect/handshake/timeout), **4**
 refused (401/403, or an unreadable local operator credential), **5** invalid request (bad flags or
-a route 400), **6** busy/unavailable (route 503 or any other server state) — each named on stderr.
+a route 400), **6** busy/unavailable (route 503 or any other server state), **7** route not
+present (a 404 — the running service does not mount that read, e.g. a branch without the alerts
+slice; a missing route is never a malformed request) — each named on stderr. The `--limit` is
+FORWARDED verbatim, including 0 and out-of-range values: every bound lives in the route (which
+refuses, never clamps), and the CLI reports the route's own refusal class. The operator
+credential header is built exactly like `console::client`'s — a `HeaderValue` marked SENSITIVE,
+so any `Debug`/log of the request redacts the token (pinned by a unit test: a plain header value
+fails the assertion, and the rendered header never contains the token).
 The client lives in `src/inspect.rs` as a lib module beside `console::client` (there is no cli
-module; every `main.rs` arm calls a lib module), and `main.rs` only wires the three arms.
+module; every `main.rs` arm calls a lib module), and `main.rs` only wires the three arms. One
+invariant worth naming for a future contributor: `resources` shares its path with a mutating
+route (`put_resource`), so read-only-ness rests on the fixed `GET` verb — a constant no flag can
+reach.

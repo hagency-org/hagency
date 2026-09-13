@@ -187,7 +187,7 @@ Scenario: Inspection subcommands render the operator routes verbatim
 Scenario: Inspection refusals exit distinctly and are named
   Test: native_cli_inspection_exit_codes_name_refusals
   Level: integration
-  Test Double: actual native executable a dead port a foreign credential directory and a fixed 503 responder
-  Given the inspection subcommands facing unreachable refused invalid and unavailable conditions
+  Test Double: actual native executable a dead port a foreign credential directory fixed 404 and 503 responders and limits forwarded to the route
+  Given the inspection subcommands facing unreachable refused invalid unavailable and missing-route conditions with limits zero and one hundred one forwarded to the route itself
   When each executes
-  Then exit codes are three four five and six respectively each refusal named on stderr and never a silent zero
+  Then exit codes are three four five six and seven respectively the forwarded limits are refused by the route never clamped the operator token never appears on stderr and never a silent zero

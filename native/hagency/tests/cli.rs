@@ -217,20 +217,43 @@ fn native_cli_inspection_matches_operator_routes() {
         route.trim(),
         "the passthrough must equal the route body"
     );
-    // The table's columns are the route's own keys, never derived figures.
-    let table = String::from_utf8_lossy(&output.stdout);
-    let _ = table;
+    // E2 of the CLI review: the table is compared CELL BY CELL against the
+    // route's own values, and the header is EXACT per column (order and
+    // membership — `contains("id")` would accept `resource_id`).
     let output = inspect(&state, address, "resources", &[]);
     assert!(output.status.success());
     let table = String::from_utf8_lossy(&output.stdout);
-    let header = table.lines().next().unwrap();
-    for column in ["id", "framework", "model", "tier", "ceiling"] {
-        assert!(header.contains(column), "missing column {column}: {header}");
-    }
-    assert!(
-        table.lines().count() >= 2,
-        "the seeded resource renders as a row"
+    let rows: Vec<serde_json::Value> = serde_json::from_str(route.trim()).unwrap();
+    let header: Vec<&str> = table.lines().next().unwrap().split_whitespace().collect();
+    assert_eq!(
+        header,
+        vec!["id", "framework", "model", "tier", "ceiling"],
+        "the header row is exactly the route's keys, in order"
     );
+    assert_eq!(
+        table.lines().count(),
+        rows.len() + 1,
+        "one header plus one line per route row"
+    );
+    // The expected cell, computed the way the renderer computes it: null
+    // renders "-", a string renders itself, anything else its JSON text.
+    let expected = |row: &serde_json::Value, key: &str| -> String {
+        match &row[key] {
+            serde_json::Value::Null => "-".into(),
+            serde_json::Value::String(text) => text.clone(),
+            other => other.to_string(),
+        }
+    };
+    for (index, row) in rows.iter().enumerate() {
+        let line = table.lines().nth(index + 1).unwrap();
+        for column in ["id", "framework", "model", "tier", "ceiling"] {
+            let cell = expected(row, column);
+            assert!(
+                line.contains(&cell),
+                "row {index} column {column} must carry the route's value {cell}: {line}"
+            );
+        }
+    }
 
     // Engagements: empty state, still byte-for-byte.
     let route = operator_get(address, &token, "/api/native/v1/engagements?limit=100");
@@ -240,9 +263,26 @@ fn native_cli_inspection_matches_operator_routes() {
     let output = inspect(&state, address, "engagements", &[]);
     assert!(output.status.success());
     let table = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        table.lines().next().unwrap().starts_with("id"),
-        "the engagements header leads with the route's key"
+    // E2: the exact header, not a prefix — `starts_with("id")` would accept
+    // any leading word containing it and any column set after.
+    let header: Vec<&str> = table.lines().next().unwrap().split_whitespace().collect();
+    assert_eq!(
+        header,
+        vec![
+            "id",
+            "agentName",
+            "projectId",
+            "role",
+            "requestedTokens",
+            "state"
+        ],
+        "the engagements header is exactly the route's keys, in order"
+    );
+    let engagements: Vec<serde_json::Value> = serde_json::from_str(route.trim()).unwrap();
+    assert_eq!(
+        table.lines().count(),
+        engagements.len() + 1,
+        "one header plus one line per route row (empty here)"
     );
 
     // Alerts: `at_ms` is the read clock, so the rows compare parsed.
@@ -272,6 +312,7 @@ fn native_cli_inspection_exit_codes_name_refusals() {
         .output()
         .unwrap();
     assert!(init.status.success());
+    let token = fs::read_to_string(state.join("operator.token")).unwrap();
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     drop(listener);
@@ -296,10 +337,49 @@ fn native_cli_inspection_exit_codes_name_refusals() {
         "the refusal is named"
     );
 
-    // Invalid (5): a limit no route accepts (they refuse, never clamp).
-    let output = inspect(&state, address, "engagements", &["--limit", "0"]);
-    assert_eq!(output.status.code(), Some(5), "invalid exits 5");
-    assert!(String::from_utf8_lossy(&output.stderr).contains("invalid"));
+    // Invalid (5): limits the CLI FORWARDS and the route refuses — E3 of
+    // the CLI review: with the local short-circuit gone, 0 and 101 both
+    // reach the route, whose own 400 maps to the invalid class. The
+    // outcome is the documented one: the CLI never clamps, the route
+    // refuses.
+    for forwarded in ["0", "101"] {
+        let output = inspect(&state, address, "engagements", &["--limit", forwarded]);
+        assert_eq!(
+            output.status.code(),
+            Some(5),
+            "forwarded limit {forwarded} refused by the route exits 5"
+        );
+        assert!(String::from_utf8_lossy(&output.stderr).contains("invalid"));
+        // §4.3 of the review: no refusal path ever echoes the token.
+        assert!(
+            !String::from_utf8_lossy(&output.stderr).contains(&token),
+            "stderr must never carry the operator token"
+        );
+    }
+
+    // Missing route (7): a server that answers 404 — E4 of the CLI
+    // review: "route not present" is its own class, never a malformed
+    // request (the alerts route is the one contributed by another slice,
+    // so a branch without it must report this, not exit 5).
+    let absent = TcpListener::bind("127.0.0.1:0").unwrap();
+    let absent_address = absent.local_addr().unwrap();
+    let responder = std::thread::spawn(move || {
+        if let Ok((mut stream, _)) = absent.accept() {
+            use std::io::{Read as _, Write as _};
+            let mut scratch = [0u8; 1024];
+            let _ = stream.read(&mut scratch);
+            let _ = stream.write_all(
+                b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            );
+        }
+    });
+    let output = inspect(&state, absent_address, "alerts", &[]);
+    assert_eq!(output.status.code(), Some(7), "a 404 exits 7");
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("route not present"),
+        "the missing route is named"
+    );
+    let _ = responder.join();
 
     // Unavailable (6): a server that answers 503.
     let busy = TcpListener::bind("127.0.0.1:0").unwrap();

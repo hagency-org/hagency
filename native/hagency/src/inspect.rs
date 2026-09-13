@@ -33,13 +33,17 @@ impl Kind {
 /// Refusal classes with DISTINCT exit codes — never a silent 0:
 /// 3 unreachable (connect/handshake/timeout), 4 refused (401/403, or no
 /// readable local operator credential), 5 invalid request (bad flags or a
-/// route 400), 6 busy/unavailable (route 503 or any other server state).
+/// route 400), 6 busy/unavailable (route 503 or any other server state),
+/// 7 route not present (a 404: the running service does not mount that
+/// read — e.g. a branch without the alerts slice — which is not a
+/// malformed request; E4 of the CLI review).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     Unreachable,
     Refused,
     Invalid,
     Unavailable,
+    Missing,
 }
 
 impl Error {
@@ -49,6 +53,7 @@ impl Error {
             Error::Refused => 4,
             Error::Invalid => 5,
             Error::Unavailable => 6,
+            Error::Missing => 7,
         }
     }
     pub fn describe(self) -> &'static str {
@@ -57,6 +62,7 @@ impl Error {
             Error::Refused => "operator authority refused",
             Error::Invalid => "invalid inspection request",
             Error::Unavailable => "service busy or unavailable",
+            Error::Missing => "route not present",
         }
     }
 }
@@ -71,12 +77,11 @@ async fn fetch(kind: Kind, state: &Path, address: SocketAddr, limit: u32) -> Res
     {
         return Err(Error::Invalid);
     }
-    // `0` is invalid on every route (alerts and engagements bound their own
-    // upper limits; the route refuses, never clamps — the CLI forwards and
-    // reports the route's own refusal word).
-    if limit == 0 {
-        return Err(Error::Invalid);
-    }
+    // E3 of the CLI review: the limit is FORWARDED verbatim — including 0
+    // and out-of-range values — so "the CLI never clamps, the route
+    // refuses" is literally true: every bound lives in the route
+    // (`page()` refuses 1..=100 for resources/engagements, the alerts
+    // route 1..=200), and the CLI reports the route's own refusal class.
     let token = hagency_store::private::read_secret(&state.join("operator.token"))
         .map_err(|_| Error::Refused)?;
     let token = std::str::from_utf8(&token).map_err(|_| Error::Refused)?;
@@ -89,6 +94,17 @@ async fn fetch(kind: Kind, state: &Path, address: SocketAddr, limit: u32) -> Res
     )
     .await
     .map_err(|_| Error::Unreachable)?
+}
+
+/// The operator credential header, built exactly like `console::client`'s
+/// (`console/client.rs:65-67`): a `HeaderValue` marked SENSITIVE, so any
+/// `Debug`/log of the request redacts the token (E1 of the CLI review). A
+/// plain `.header(name, String)` would print `Bearer <token>` verbatim.
+fn authorization(token: &str) -> Result<hyper::header::HeaderValue, Error> {
+    let mut value = hyper::header::HeaderValue::from_str(&format!("Bearer {token}"))
+        .map_err(|_| Error::Invalid)?;
+    value.set_sensitive(true);
+    Ok(value)
 }
 
 async fn exchange(
@@ -109,11 +125,15 @@ async fn exchange(
             .handshake::<_, Full<Bytes>>(TokioIo::new(stream))
             .await
             .map_err(|_| Error::Unreachable)?;
+        // E1 of the CLI review: the authorization header is built exactly
+        // like `console::client`'s — a HeaderValue marked SENSITIVE, so any
+        // Debug/log of the request redacts the operator token. A plain
+        // `.header(name, String)` would print it verbatim.
         let request = Request::builder()
             .method("GET")
             .uri(format!("{path}?limit={limit}"))
-            .header("authorization", format!("Bearer {token}"))
             .header("host", address.to_string())
+            .header("authorization", authorization(token)?)
             .body(Full::<Bytes>::default())
             .map_err(|_| Error::Invalid)?;
         tokio::pin!(connection);
@@ -136,7 +156,8 @@ async fn exchange(
             }
             match status.as_u16() {
                 200 => Ok(String::from_utf8(bytes.to_vec()).map_err(|_| Error::Unavailable)?),
-                400 | 404 => Err(Error::Invalid),
+                400 => Err(Error::Invalid),
+                404 => Err(Error::Missing),
                 401 | 403 => Err(Error::Refused),
                 _ => Err(Error::Unavailable),
             }
@@ -232,5 +253,46 @@ pub async fn run(kind: Kind, state: &Path, address: SocketAddr, limit: u32, json
             eprintln!("hagency: {}", error.describe());
             std::process::exit(error.exit_code());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// E1 of the CLI review: the operator credential header MUST be marked
+    /// sensitive — a plain `.header(name, String)` value fails this
+    /// assertion, and `HeaderValue`'s Debug redacts only when the flag is
+    /// set (verified by rendering: the token never appears in the
+    /// formatted header; a plain value would print it verbatim).
+    #[test]
+    fn native_inspection_authorization_header_is_sensitive() {
+        let value = authorization("fixture_operator_token_32_bytes_minimum").unwrap();
+        assert!(value.is_sensitive(), "a plain header value would fail");
+        let rendered = format!("{value:?}");
+        assert!(
+            !rendered.contains("fixture_operator_token"),
+            "Debug of the header must redact the token: {rendered}"
+        );
+        let plain = hyper::header::HeaderValue::from_str("Bearer fixture_operator_token").unwrap();
+        assert!(
+            !plain.is_sensitive(),
+            "the control: a plain value is not flagged"
+        );
+        assert!(format!("{plain:?}").contains("fixture_operator_token"));
+    }
+
+    /// E4 of the CLI review: the missing-route class is distinct from
+    /// invalid — exit 7 with its own name, never folded into 5.
+    #[test]
+    fn native_inspection_missing_route_is_its_own_class() {
+        assert_eq!(Error::Missing.exit_code(), 7);
+        assert_eq!(Error::Invalid.exit_code(), 5);
+        assert_eq!(Error::Missing.describe(), "route not present");
+        assert_ne!(
+            Error::Missing.exit_code(),
+            Error::Invalid.exit_code(),
+            "404 must never read as a malformed request"
+        );
     }
 }

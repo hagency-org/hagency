@@ -23,7 +23,33 @@
   → 6, each named). Spec scenarios with both `Test:` names appended beside
   `native_account_cli`'s; ADR-107 gains the inspection amendment.
 
-## 2026-09-12 — Readiness contract edits F1–F3 + both lanes' headroom (brief 21)
+## 2026-09-12 — CLI inspection review edits E1–E4 (review of 315ab663)
+
+- E1 (a sensitive bearer): the operator credential header is built exactly
+  like `console::client`'s — a `HeaderValue` marked
+  `set_sensitive(true)`, extracted into an `authorization()` helper so a
+  unit test pins it: the flag is asserted, the rendered header never
+  contains the token, and a plain header value fails both assertions.
+- E2 (cell-level table tests): the resources table is compared cell by
+  cell against the fetched route body (every column, every row, with the
+  renderer's own null→"-" rule), the header is EXACT per column in order
+  (`contains("id")` would accept `resource_id`), and the line count equals
+  the route's rows plus one; the engagements prefix check became the same
+  exact-header assertion with the row-count equality.
+- E3 (the documented contract made true): the local `--limit 0`
+  short-circuit is GONE — the CLI forwards every limit verbatim and the
+  route refuses (never clamps); the test now exercises the forwarded path
+  with both `0` and `101` against the live route. (A million-limit guard I
+  briefly added was self-caught and removed — it was exactly the local
+  bounding E3 forbids.)
+- E4 (an honest missing-route exit): 404 is its own class — `Error::Missing`,
+  exit **7**, "route not present" — never folded into "invalid inspection
+  request"; a unit test pins Missing≠Invalid, and the refusal test adds a
+  real 404 responder asserting exit 7 with the name. The review's §4.3
+  suggestion is also in: no refusal path may echo the operator token
+  (asserted on stderr in the invalid-class cases).
+
+
 
 - F2 (the retained health contract): `/health` is again unauthenticated,
   **200 whenever the process is live**, readiness as body detail (names and
