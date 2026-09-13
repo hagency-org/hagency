@@ -75,6 +75,7 @@ lifecycle must use the same enabled feature and inspect each actual test count.
 - tests/dashboard-native-usage.test.js
 - knowledge/decisions/adr-107-native-console-usage.md
 - knowledge/decisions/adr-126-native-agent-roster.md
+- knowledge/decisions/adr-132-native-project-side-observation.md
 - specs/task-rust-native-console-usage.spec.md
 - native/README.md
 - docs/agent-knowledge.md
@@ -174,3 +175,23 @@ Scenario: The agent roster page renders under the native browser boundary
   Given the native console fixture and the built agent page with the native-console-browser feature whose selectors appear in cargo test --list under --all-features exactly as native_console_browser is bound by this spec
   When real Chromium opens /console/agents without any operator token
   Then the roster reaches data-native-state ready with no external request and no credential value on screen
+
+Scenario: The project-side projection omits credentials in every byte
+  Test: native_console_project_side_projection_omits_credentials
+  Given a registered fleet whose store config carries a credential-shaped value and projects on its side
+  When the console reads the project sides through a valid session
+  Then the serialized response body contains none of that value and none of as_token hs_token asToken or hsToken
+  And every item carries exactly the six declared keys with projects entries of exactly id and room_id
+  And the top-level unavailable list names every column native has no source for
+
+Scenario: A foreign origin cannot read the project sides
+  Test: native_console_project_side_refuses_foreign_origin
+  Given a valid console session cookie
+  When the projection is read with a cross-site sec-fetch-site or a foreign host or origin
+  Then the route refuses with console_origin_required and serves no side item
+
+Scenario: The project-sides page renders under the native browser boundary
+  Test: native_console_project_side_browser
+  Given the native console fixture and the built project-sides page with the native-console-browser feature whose selectors appear in cargo test --list under --all-features exactly as native_console_browser is bound by this spec
+  When real Chromium opens /console/project-sides without any operator token
+  Then the list reaches data-native-state ready with no external request and no credential value on screen
