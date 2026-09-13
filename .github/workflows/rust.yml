@@ -95,6 +95,7 @@ jobs:
         if: runner.os != 'Windows'
       - run: node native/scripts/usage-vectors.mjs --check
       - run: node native/scripts/ceiling-vectors.mjs --check
+      - run: node native/scripts/corpus-retention-vectors.mjs --check
       - run: node native/scripts/account-vectors.mjs --check
       - run: node native/scripts/canonical-vectors.mjs --check
       - run: node native/scripts/allocation-vectors.mjs --check

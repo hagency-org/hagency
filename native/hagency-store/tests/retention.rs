@@ -4,8 +4,8 @@
 //! relies on row order beyond what an ORDER BY gives.
 mod common;
 use common::*;
-use hagency_core::{ingress::*, messages::*, replies::*, tasks::*};
-use hagency_store::DomainRepository;
+use hagency_core::{ingress::*, messages::*, replies::*, task_intents::TaskDefinition, tasks::*};
+use hagency_store::{DomainRepository, Error};
 use rusqlite::{Connection, params};
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -102,6 +102,30 @@ impl Fixture {
                 event_id: format!("${id}"),
                 sender_mxid: "@owner:example.test".into(),
                 thread_root: None,
+                body: format!("Message {id}"),
+                kind: "m.text".into(),
+                origin_ts: at,
+            },
+            mentions: std::collections::BTreeSet::from_iter([format!(
+                "@{}:example.test",
+                self.agent
+            )]),
+            encrypted: false,
+        };
+        self.db.admit_matrix_event(&event, at).unwrap().sequence
+    }
+    /// One admitted threaded REPLY through the same real path, its thread
+    /// root bound to the given event id (read 6's caller shape).
+    fn admit_threaded(&mut self, id: &str, at: u64, thread_root: &str) -> u64 {
+        let session = format!("session_{}", self.agent);
+        let event = MatrixEventObservation {
+            scope: self.db.matrix_ingress_scope(&session).unwrap(),
+            event: InboundMessage {
+                server_name: "example.test".into(),
+                room_id: "!project:example.test".into(),
+                event_id: format!("${id}"),
+                sender_mxid: "@owner:example.test".into(),
+                thread_root: Some(thread_root.into()),
                 body: format!("Message {id}"),
                 kind: "m.text".into(),
                 origin_ts: at,
@@ -489,6 +513,25 @@ async fn native_retained_corpus_parity_with_javascript() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/corpus-retention-vectors.json")).unwrap();
     let vectors = &fixture["vectors"];
+    // (d) (wiring review, O-1): the fixture's sha pin is asserted HERE, so a
+    // drifted backend-v2.js fails the Rust test even before CI's
+    // `corpus-retention-vectors.mjs --check` step runs. The digest matches
+    // the oracle's `sha()`: utf-8 bytes, CRLF folded to LF.
+    {
+        use sha2::{Digest, Sha256};
+        let source =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../../backend-v2.js"))
+                .expect("backend-v2.js is readable from the store test");
+        let normalized = source.replace("\r\n", "\n");
+        let pinned = vectors["backendSha256"].as_str().unwrap();
+        let digest = Sha256::digest(normalized.as_bytes());
+        assert_eq!(
+            pinned,
+            &format!("{digest:x}"),
+            "the fixture's backendSha256 pin is stale: regenerate with \
+             `node native/scripts/corpus-retention-vectors.mjs`"
+        );
+    }
     let limit = vectors["observedLimit"].as_u64().unwrap();
     let total = vectors["total"].as_u64().unwrap();
     let pruned_count = vectors["prunedCount"].as_u64().unwrap();
@@ -564,6 +607,168 @@ async fn native_retained_corpus_floor_is_hundred() {
     let outcome = f.db.sweep_admitted_corpus(10_000, 5, 512).unwrap();
     assert_eq!(outcome.pruned, 20, "the sweep clamps the ceiling too");
     assert_eq!(f.count("admitted_messages"), 100);
+}
+
+/// R5 (impl review): the delete list's completeness depends on the pin
+/// list's — the two attachment tables are NEVER deleted, safe only because
+/// P9/P10 make any row carrying an attachment a non-candidate. Asserted,
+/// not assumed: two past-window processed messages, one pinned by a
+/// `matrix_attachments` row (P9), one additionally carrying a
+/// `session_attachment_visibility` projection (P10), and neither is ever a
+/// candidate.
+#[tokio::test]
+async fn native_retained_corpus_attachment_projection_pins_the_message() {
+    let mut f = Fixture::new("attach");
+    let pinned9 = f.admit("attachment9", 2000);
+    let pinned10 = f.admit("attachment10", 2001);
+    for i in 0..100 {
+        f.admit(&format!("recent{i}"), 2002 + i);
+    }
+    processed(&f, pinned9, 2500);
+    processed(&f, pinned10, 2500);
+    {
+        let sql = f.sql();
+        for sequence in [pinned9, pinned10] {
+            let (engagement, source_key): (String, String) = sql
+                .query_row(
+                    "SELECT engagement_id,source_key FROM matrix_ingress_events WHERE message_sequence=?1",
+                    [sequence],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .unwrap();
+            sql.execute(
+                "INSERT INTO matrix_attachments(engagement_id,source_key,message_sequence,source_session_id,digest,content_digest,metadata,sdk_identity,manifest_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![engagement, source_key, sequence, format!("session_{}", f.agent), "digest", "content", "{}", "sdk", "manifest"],
+            )
+            .unwrap();
+        }
+        // P10: the visibility projection rides the second row (its FK
+        // requires the attachment row to exist first).
+        sql.execute(
+            "INSERT INTO session_attachment_visibility(session_id,engagement_id,source_key,message_sequence) \
+             SELECT ?1,engagement_id,source_key,message_sequence FROM matrix_attachments WHERE message_sequence=?2",
+            params![format!("session_{}", f.agent), pinned10],
+        )
+        .unwrap();
+    }
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
+    assert_eq!(
+        outcome.pruned, 0,
+        "attachment custody pins past-window rows"
+    );
+    assert_eq!(outcome.remaining, 2);
+    assert_eq!(f.count("admitted_messages"), 102);
+    assert_eq!(
+        f.count("matrix_attachments"),
+        2,
+        "the projection survives with its parent"
+    );
+    assert_eq!(f.count("session_attachment_visibility"), 1);
+    assert_eq!(f.count("retained_message_archive"), 0);
+    // The mirror: the same two rows WITHOUT the projections are candidates.
+    let mut f2 = Fixture::new("attachmirror");
+    let plain1 = f2.admit("plain9", 2000);
+    let plain2 = f2.admit("plain10", 2001);
+    for i in 0..100 {
+        f2.admit(&format!("recent{i}"), 2002 + i);
+    }
+    processed(&f2, plain1, 2500);
+    processed(&f2, plain2, 2500);
+    let outcome2 = f2.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
+    assert_eq!(
+        outcome2.pruned, 2,
+        "the same rows without projections are candidates"
+    );
+}
+
+/// R6 (impl review), the hit: read 6's archive fallback resolves a pruned
+/// thread root whose session route survives — but only on a matching
+/// `scope_digest` (A2). The root is the one past-window row; the reply is
+/// the newest admission.
+#[tokio::test]
+async fn native_retained_corpus_threaded_root_resolves_from_archive_by_scope_digest() {
+    let mut f = Fixture::new("root6");
+    let root = f.admit("root6", 2000);
+    for i in 0..99 {
+        f.admit(&format!("fill{i}"), 2001 + i);
+    }
+    let reply = f.admit_threaded("reply6", 2100, "$root6");
+    processed(&f, root, 2500);
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
+    assert_eq!(outcome.pruned, 1, "the root is the one past-window row");
+    let live_root: u64 = f
+        .sql()
+        .query_row(
+            "SELECT COUNT(*) FROM matrix_ingress_events WHERE message_sequence=?1",
+            [root],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(live_root, 0, "the root's live provenance is gone");
+    // The verified task request from the reply: read 6 must miss live and
+    // hit the archive on the matching scope digest.
+    let input = VerifiedTaskRequest {
+        scope: f
+            .db
+            .matrix_ingress_scope(&format!("session_{}", f.agent))
+            .unwrap(),
+        request_key: "root6_request".into(),
+        source_sequence: reply,
+        definition: TaskDefinition {
+            title: "R6 archive hit".into(),
+            ..Default::default()
+        },
+    };
+    let task = f.db.create_verified_task_intent(&input, 3000).unwrap();
+    let bound: u64 = f
+        .sql()
+        .query_row(
+            "SELECT root_sequence FROM task_intents WHERE task_id=?1",
+            [&task.task_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(bound, root, "the intent binds the archived root's sequence");
+}
+
+/// R6, the refusal: the same request against an archive row whose
+/// `scope_digest` does not match the route refuses with `RunnerAuthority`
+/// and creates nothing.
+#[tokio::test]
+async fn native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch() {
+    let mut f = Fixture::new("root6miss");
+    let root = f.admit("root6miss", 2000);
+    for i in 0..99 {
+        f.admit(&format!("fill{i}"), 2001 + i);
+    }
+    let reply = f.admit_threaded("reply6miss", 2100, "$root6miss");
+    processed(&f, root, 2500);
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
+    assert_eq!(outcome.pruned, 1);
+    // Diverge the archived root's scope digest (the mismatch under test).
+    f.sql()
+        .execute(
+            "UPDATE retained_message_archive SET scope_digest='mismatch' WHERE sequence=?1",
+            [root],
+        )
+        .unwrap();
+    let input = VerifiedTaskRequest {
+        scope: f
+            .db
+            .matrix_ingress_scope(&format!("session_{}", f.agent))
+            .unwrap(),
+        request_key: "root6miss_request".into(),
+        source_sequence: reply,
+        definition: TaskDefinition {
+            title: "R6 archive miss".into(),
+            ..Default::default()
+        },
+    };
+    assert!(matches!(
+        f.db.create_verified_task_intent(&input, 3000),
+        Err(Error::RunnerAuthority)
+    ));
+    assert_eq!(f.count("task_intents"), 0, "the refusal creates nothing");
 }
 
 /// Migration 026 over populated rows, in the `native_usage_migration` shape:
