@@ -50,7 +50,12 @@ second state map can drift. Bounds mirror the existing validators:
 safe-integer `requested_tokens`/`last_activity_ms`. `last_activity_ms` is the
 newest clock among the engagement's dispatch rows (`runner_attempts.created_at`)
 — **"last dispatch activity", not "last seen"**: native has no heartbeat
-model, and this ADR says so rather than implying parity.
+model, and this ADR says so rather than implying parity. The source is the
+per-`(dispatch_id,fence)` attempt row (`003:30-33`), so the consequence is
+named: a dispatch with a dispatch row but **no attempt row** reports `null` —
+a narrower set than "last dispatch activity" implies, and deliberate, because
+the attempt row is the record a legitimate capability actually authenticated
+against.
 
 **A server-owned `unavailable` list** names every retained roster column
 native has no source for (`consumed`, `last_seen`, `online`, `tmux`, `pane`,
