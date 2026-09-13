@@ -39,11 +39,17 @@ permissions carry the controls; a read-only session renders none enabled.
 
 ### Allowed Changes
 - native/hagency/src/main.rs
+- native/hagency/src/console.rs # the lifecycle router + operator issuer wiring and the scope error map — the scope cannot route or refuse without them
+- native/hagency/src/console/client.rs # lifecycle_access() issues the operator CLI ticket — the flag has no issuer without it
 - native/hagency/src/console/authority.rs
 - native/hagency/src/console/agents.rs
 - native/hagency-store/src/domain_worker.rs
 - native/hagency-store/src/domain/conversation_lifecycle.rs
 - mockup/app/agents/page.jsx
+- mockup/components/NativeAgents.jsx # the lifecycle controls rendered from served permissions — the page has no controls without it
+- mockup/components/Data.jsx # the agents load path and permissions slice — the controls cannot read manageLifecycle without it
+- mockup/lib/native-api.js # startAgent/stopAgent/applyPreset + the exact-key validator — the controls have no client without it
+- mockup/scripts/native-console-browser.mjs # the lifecycle browser lane over the roster walk — the browser scenario has no driver without it
 - mockup/lib/i18n.js
 - native/hagency/tests/console/agents.rs
 - native/hagency/tests/console.rs
@@ -110,6 +116,29 @@ Scenario: The roster page renders lifecycle controls only from served permission
 
 ## Decisions
 
+**Start's already-live refusal word is `agent_already_live` (HTTP 409).** The
+route maps `hagency_store::Error::State` to it (`console/agents.rs`), so the
+start scenario binds to that exact word; the refusal happens before any spawn —
+start is an ensure over the store's own state, never a process birth.
+
+**Preset-apply has no completion path in this slice.** The apply is a pointer
+over an already-published preset id, and `begin_lifecycle_apply` refuses a
+second apply while one is pending (`agent_lifecycle_apply_pending`, HTTP 409);
+nothing in this slice completes it, so the scenario's third clause narrows to
+the pointer's shape — the response is exactly `{ok, presetId}` — never a widened
+field. Completion is a later slice.
+
+**The flag's pairwise exclusivity is declared AND asserted.**
+`--manage-agent-lifecycle` declares `conflicts_with_all` against both
+management flags, and the CLI selector asserts each combination is refused
+before any ticket issues — a declaration is not a test.
+
+**The browser lane is the roster walk's own driver.**
+`native_console_agent_lifecycle_browser` rides
+`mockup/scripts/native-console-browser.mjs` (now licensed in Allowed Changes),
+adding a lifecycle lane that mints no ticket and asserts the controls appear
+only when the served `permissions.manageLifecycle` boolean is true.
+
 **Stop's widening to `retire`'s session cascade is a later slice.** The route
 fences only the resolved dispatch — the one the named engagement resolves —
 and does not reuse `retire`'s session-keyed walk, which also closes child
@@ -122,6 +151,17 @@ dispatches keep running) is accepted now.
 slice's entire store surface (F1's fix): the selector's resolution and the
 fence travel through it, and nothing else on the store becomes reachable from
 the console crate.
+
+**The CLI selector's grant-exclusivity and issuance clauses are pinned where they live (r1 F2).**
+The scenario's "grants the three lifecycle acts and no publication configuration or
+account act" is asserted by `native_console_agent_lifecycle_is_scoped`'s
+neighbouring-refusal half (the lifecycle session is refused by the publication,
+configuration and account mutations with their own scope words), and the
+one-per-second / one-outstanding / replacement-invalidates rules are asserted by
+`native_console_finite_clock`. The CLI selector itself pins what only the CLI can:
+the flag combinations refuse before issuance, and the issued ticket's URL page and
+shape. A reader taking the CLI selector alone as the pin for the grant's exclusivity
+would over-credit it; this entry names where each clause lives.
 
 ## Out of Scope
 

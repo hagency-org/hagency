@@ -15,21 +15,10 @@ impl Drop for Running {
     }
 }
 fn launch(state: &Path, address: SocketAddr) -> Running {
-    launch_with(state, address, None)
-}
-/// The console-access issuances live on the console's authority, so a test
-/// that exercises one needs a served console: without `--console-assets`
-/// the app carries no Console and every issuance answers Unavailable.
-fn launch_with(state: &Path, address: SocketAddr, console: Option<&Path>) -> Running {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_hagency"));
-    command
+    let child = Command::new(env!("CARGO_BIN_EXE_hagency"))
         .args(["serve", "--state-dir"])
         .arg(state)
-        .args(["--listen", &address.to_string()]);
-    if let Some(console) = console {
-        command.arg("--console-assets").arg(console);
-    }
-    let child = command
+        .args(["--listen", &address.to_string()])
         .env("PATH", "")
         .stdin(Stdio::null())
         .stdout(Stdio::null())
@@ -563,38 +552,6 @@ fn native_account_cli() {
     }
 }
 
-/// A minimal valid console build: the console-access issuer lives on the
-/// console's authority, so `serve` answers it only when a console is served
-/// — without `--console-assets` the app carries no Console and the CLI's
-/// lifecycle issuance reads Error: Unavailable. Same shape as the console
-/// fixture's own asset builder (manifest + digest, private root).
-fn console_assets(dir: &Path) -> std::path::PathBuf {
-    use sha2::Digest as _;
-    let root = dir.join("console-assets");
-    hagency_store::private::directory(&root).unwrap();
-    std::fs::create_dir(root.join("usage")).unwrap();
-    let bytes = b"<!doctype html><html><body>cli console fixture</body></html>";
-    hagency_store::private::write_new(&root.join("usage/index.html"), bytes).unwrap();
-    let digest: String = sha2::Sha256::digest(bytes)
-        .iter()
-        .map(|b| format!("{b:02x}"))
-        .collect();
-    let manifest = serde_json::json!({
-        "version": 1,
-        "assets": [{
-            "path": "usage/index.html",
-            "size": bytes.len(),
-            "sha256": digest,
-            "mime": "text/html; charset=utf-8"
-        }]
-    });
-    hagency_store::private::write_new(&root.join("manifest.json"), manifest.to_string().as_bytes())
-        .unwrap();
-    // macOS temp paths traverse the /var alias; production refuses that
-    // alias, so hand serve the canonical host path (the fixture's rule).
-    root.canonicalize().unwrap()
-}
-
 /// The three console-access management flags are pairwise mutually exclusive:
 /// each pair is refused before any ticket is issued (MA-S3a's CLI selector).
 #[test]
@@ -654,7 +611,7 @@ fn native_cli_console_access_issues_agent_lifecycle_scope() {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     drop(listener);
-    let running = launch_with(&state, address, Some(&console_assets(directory.path())));
+    let running = launch(&state, address);
 
     // Alone: issues a ticket on the agents page — the lifecycle act.
     let alone = Command::new(env!("CARGO_BIN_EXE_hagency"))
