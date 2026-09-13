@@ -109,8 +109,9 @@ predicate has no counterpart for P2..P10, so native-only pairs are pinned by
 the store tests.
 
 **The test set is larger than the backlog's four names.** The retention
-backlog names four selectors; the landed set carries thirteen (round-3
-review: the count is corrected and the set named) —
+backlog names four selectors; the landed set carries fourteen (the r4
+review's count: the spec carries fourteen `Test:` lines, the test file
+fourteen `native_retained_corpus_*` fns) —
 `native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference`,
 `native_retained_corpus_pending_pin_exceeds_ceiling`,
 `native_retained_corpus_processed_dispatch_does_not_pin` and
@@ -121,7 +122,9 @@ P7' release arms), `native_retained_corpus_unknown_fate_is_retained`,
 attachment custody),
 `native_retained_corpus_threaded_root_resolves_from_archive_by_scope_digest`
 and `native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch`
-(read 6's archive fallback, both verdicts), and
+(read 6's archive fallback, both verdicts),
+`native_retained_corpus_archive_rearchive_is_keyed_not_fatal` (S4's keyed
+re-archive and its NULL-engagement exception), and
 `native_retained_corpus_archive_is_bounded`,
 `native_retained_corpus_parity_with_javascript`,
 `native_retained_corpus_floor_is_hundred` and
