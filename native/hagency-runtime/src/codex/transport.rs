@@ -31,8 +31,11 @@ pub enum Error {
     CancelledOperation,
     #[error("native runner transport deadline exceeded")]
     Timeout,
-    #[error("native runner transport IO failed")]
-    Io,
+    #[error("native runner transport IO failed ({0})")]
+    /// Which stream arm failed. The four sites used to collapse into `Io`,
+    /// so a hosted failure could not be attributed from the report. Pure
+    /// diagnostics: the variant text carries the arm; no predicate reads it.
+    Io(&'static str),
     #[error("native runner transport peer closed")]
     PeerEof,
     #[error("native runner transport event capacity exceeded")]
@@ -499,7 +502,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> Driver<R
                     .offset
                     .checked_add(n)
                     .filter(|&n| n <= writing.bytes.len())
-                    .ok_or(Error::Io)?;
+                    .ok_or(Error::Io("stdin write"))?;
             }
             Observed::Flush(Ok(())) => self.writing.as_mut().ok_or(Error::Closed)?.flushed = true,
             Observed::Read(Ok(n)) => {
@@ -508,10 +511,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> Driver<R
             }
             Observed::Stderr(Ok(0)) => self.stderr_open = false,
             Observed::Stderr(Ok(n)) => self.diagnostics.append(&self.stderr_buffer[..n])?,
-            Observed::Write(Err(_))
-            | Observed::Flush(Err(_))
-            | Observed::Read(Err(_))
-            | Observed::Stderr(Err(_)) => return Err(Error::Io),
+            Observed::Write(Err(_)) => return Err(Error::Io("stdin write")),
+            Observed::Flush(Err(_)) => return Err(Error::Io("stdin flush")),
+            Observed::Read(Err(_)) => return Err(Error::Io("stdout read")),
+            Observed::Stderr(Err(_)) => return Err(Error::Io("stderr read")),
         }
         self.check(operation_deadline)
     }

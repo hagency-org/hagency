@@ -113,12 +113,12 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> Driver<R
                 }
                 _ = tokio::time::sleep_until(wake) => return Err(Error::Timeout),
                 result = streams.stdout.read(&mut self.input) => {
-                    self.input_end = result.map_err(|_| Error::Io)?;
+                    self.input_end = result.map_err(|_| Error::Io("stdout read"))?;
                     self.input_start = 0;
                     if self.input_end == 0 { return Err(Error::PeerEof); }
                 }
                 result = streams.stderr.read(&mut self.stderr_buffer), if self.stderr_open => {
-                    let n = result.map_err(|_| Error::Io)?;
+                    let n = result.map_err(|_| Error::Io("stderr read"))?;
                     if n == 0 { self.stderr_open = false; }
                     else { self.diagnostics.append(&self.stderr_buffer[..n])?; }
                 }
@@ -201,18 +201,18 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> Driver<R
             biased;
             _ = tokio::time::sleep_until(wake) => return Err(Error::Timeout),
             result = streams.stdout.read(&mut self.input) => {
-                self.input_end = result.map_err(|_| Error::Io)?;
+                self.input_end = result.map_err(|_| Error::Io("stdout read"))?;
                 self.input_start = 0;
                 if self.input_end == 0 { return Err(Error::PeerEof); }
             }
             result = streams.stdin.write(&writing.bytes), if !partial => {
-                let n = result.map_err(|_| Error::Io)?;
+                let n = result.map_err(|_| Error::Io("stdin write"))?;
                 if n == 0 { return Err(Error::PeerEof); }
-                if n > writing.bytes.len() { return Err(Error::Io); }
+                if n > writing.bytes.len() { return Err(Error::Io("stdin write")); }
                 writing.offset = n;
             }
             result = streams.stderr.read(&mut self.stderr_buffer), if self.stderr_open => {
-                let n = result.map_err(|_| Error::Io)?;
+                let n = result.map_err(|_| Error::Io("stderr read"))?;
                 if n == 0 { self.stderr_open = false; }
                 else { self.diagnostics.append(&self.stderr_buffer[..n])?; }
             }
