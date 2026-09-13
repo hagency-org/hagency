@@ -2583,6 +2583,26 @@ impl DomainStore {
         self.call(weight(&now)?, move |db| db.sweep_ceiling_overruns(now))
             .await
     }
+    /// The `messages` phase of the retention tick (ADR-125): the admitted
+    /// corpus bound. Takes the clock, ceiling and batch from the caller —
+    /// the loop owns the cadence, the caller owns the policy, exactly the
+    /// ceiling-sweep split above.
+    pub async fn sweep_admitted_corpus(
+        &self,
+        now: u64,
+        ceiling: u64,
+        batch: u64,
+    ) -> Result<crate::CorpusSweepOutcome, Error> {
+        self.call(weight(&(&now, &ceiling, &batch))?, move |db| {
+            db.sweep_admitted_corpus(now, ceiling, batch)
+        })
+        .await
+    }
+    /// The one corpus retention read (ADR-125 §5).
+    pub async fn retention_status(&self, ceiling: u64) -> Result<crate::RetentionStatus, Error> {
+        self.call(weight(&ceiling)?, move |db| db.retention_status(ceiling))
+            .await
+    }
     /// Open ceiling alerts for the operator read (ADR-124 slice b).
     pub async fn open_ceiling_alerts(&self, limit: u32) -> Result<Vec<CeilingAlert>, Error> {
         self.call(weight(&limit)?, move |db| db.open_ceiling_alerts(limit))

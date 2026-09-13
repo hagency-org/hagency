@@ -420,6 +420,24 @@ pub enum CeilingSweepTick {
 /// [`Bootstrap::with_ceiling_sweep_period`].
 pub const CEILING_SWEEP_PERIOD: Duration = Duration::from_secs(3600);
 
+/// Installed-corpus ceiling for admitted messages (ADR-125). Retained default
+/// 5000 (`backend-v2.js:236`, `MESSAGE_RETENTION_LIMIT`); the store clamps any
+/// configured value up to `MESSAGE_RETENTION_FLOOR = 100` — the same
+/// `Math.max(100, …)` guard. Reconciled by the `[retention]` sweep; never a
+/// refusal of new admission.
+pub const MESSAGE_RETENTION_CEILING: u64 = 5000;
+/// One period for the whole retention task (tick contract §2.2): every
+/// phase's condition is standing, so a missed tick is harmless and a shorter
+/// period only re-does the same deferral.
+pub const RETENTION_SWEEP_PERIOD: Duration = Duration::from_secs(60);
+/// Per-phase writer budget (tick contract §2.3): each phase must complete
+/// inside 600 ms — under a third of the callers' 2 s reply bound. A phase
+/// that exceeds it halves its batch next tick (floor 1).
+pub const RETENTION_PHASE_BUDGET_MS: u64 = 600;
+/// The `messages` phase's initial batch (a hypothesis, not the bound — the
+/// deadline is what actually stops it, tick contract §2.3).
+const RETENTION_MESSAGES_BATCH: u64 = 512;
+
 /// The ceiling-overrun sweep loop (ADR-124 slice b): hourly in production
 /// because the condition is standing — an agent past its ceiling at 09:00 is
 /// still past it at 09:05, and a tighter loop would only re-file the same
@@ -480,6 +498,95 @@ pub fn start_ceiling_sweep(
     (handle, observed)
 }
 
+/// What one retention tick observed for its `messages` phase: the outcome, or
+/// the refusal code when the writer could not take the job. Diagnostic only.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RetentionSweepTick {
+    Swept(hagency_store::CorpusSweepOutcome),
+    Refused(&'static str),
+}
+
+/// The ONE retention sweep task (tick contract §1.5/§2.2): one period for
+/// every phase, one sequential `Job::Run` submission per phase per tick.
+/// Slice 1 lands the `messages` phase only (ADR-125); later slices append
+/// their phase to this same loop, sharing the period and the reply bound.
+/// On `Busy` or `OutcomeUnknown` a phase logs the refusal with the
+/// `[retention]` prefix and waits for the next tick — never an in-line
+/// retry. Each phase owns one `Immediate` transaction, so a tick is skipped
+/// or committed, never torn. The measured `elapsed_ms` is logged every tick
+/// (tick contract §2.5) and drives the batch-reduction rule: over
+/// [`RETENTION_PHASE_BUDGET_MS`] halves the batch for the next tick, floor 1.
+pub fn start_retention_sweep(
+    domain: DomainStore,
+    shutdown: CancellationToken,
+    period: Duration,
+    ceiling: u64,
+) -> (
+    tokio::task::JoinHandle<()>,
+    tokio::sync::watch::Receiver<RetentionSweepTick>,
+) {
+    let (sender, observed) = tokio::sync::watch::channel(RetentionSweepTick::Refused("unstarted"));
+    let mut batch = RETENTION_MESSAGES_BATCH;
+    let handle = tokio::spawn(async move {
+        let mut interval = tokio::time::interval(period);
+        interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        loop {
+            tokio::select! {
+                _ = shutdown.cancelled() => break,
+                _ = interval.tick() => {}
+            }
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .ok()
+                .and_then(|d| u64::try_from(d.as_millis()).ok())
+                .unwrap_or_default();
+            // Phase 1 of the tick: `messages` (ADR-125). Phases land in the
+            // contract's fixed order; between submissions the writer's FIFO
+            // channel drains any foreground caller that arrived in between.
+            let tick = match domain.sweep_admitted_corpus(now, ceiling, batch).await {
+                Ok(outcome) => {
+                    // The contract's measured budget rule (§2.3/§2.4): over
+                    // budget halves the batch next tick; floor 1. Under
+                    // budget restores the hypothesis upward one step.
+                    if outcome.elapsed_ms > RETENTION_PHASE_BUDGET_MS {
+                        batch = (batch / 2).max(1);
+                    } else if batch < RETENTION_MESSAGES_BATCH {
+                        batch = (batch * 2).min(RETENTION_MESSAGES_BATCH);
+                    }
+                    tracing::info!(
+                        "[retention] messages phase: pruned {} remaining {} elapsed_ms {} batch {}",
+                        outcome.pruned,
+                        outcome.remaining,
+                        outcome.elapsed_ms,
+                        batch
+                    );
+                    RetentionSweepTick::Swept(outcome)
+                }
+                Err(hagency_store::Error::Busy) => {
+                    tracing::warn!(
+                        "[retention] messages phase refused: busy; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("busy")
+                }
+                Err(hagency_store::Error::OutcomeUnknown) => {
+                    tracing::warn!(
+                        "[retention] messages phase outcome unknown; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("outcome_unknown")
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "[retention] messages phase failed: {error}; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("failed")
+                }
+            };
+            let _ = sender.send(tick);
+        }
+    });
+    (handle, observed)
+}
+
 pub struct Bootstrap {
     store: Store,
     domain: DomainStore,
@@ -499,10 +606,15 @@ pub struct Bootstrap {
     domain_closed: bool,
     store_closed: bool,
     ceiling_sweep_period: Duration,
+    message_retention_ceiling: u64,
+    retention_sweep_period: Duration,
     /// Shared with the readiness read in `App` (brief 19): bootstrap keeps
     /// this to abort at shutdown, `/health` observes liveness. Neither owns
     /// the loop alone.
     ceiling_sweep: Option<std::sync::Arc<tokio::task::JoinHandle<()>>>,
+    /// The one retention sweep task's handle (tick contract §1.5): kept to
+    /// abort at shutdown, exactly the ceiling sweep's shape above.
+    retention_sweep: Option<std::sync::Arc<tokio::task::JoinHandle<()>>>,
 }
 impl Bootstrap {
     /// Own fresh development state. No live repository, .env, arbitrary command
@@ -633,7 +745,10 @@ impl Bootstrap {
             domain_closed: false,
             store_closed: false,
             ceiling_sweep_period: CEILING_SWEEP_PERIOD,
+            message_retention_ceiling: MESSAGE_RETENTION_CEILING,
+            retention_sweep_period: RETENTION_SWEEP_PERIOD,
             ceiling_sweep: None,
+            retention_sweep: None,
         })
     }
     pub fn status(&self) -> Status {
@@ -649,6 +764,15 @@ impl Bootstrap {
     /// cadence); tests inject a short one here rather than sleeping.
     pub fn with_ceiling_sweep_period(mut self, period: Duration) -> Self {
         self.ceiling_sweep_period = period;
+        self
+    }
+    /// Override the installed-corpus retention policy (ADR-125): the ceiling
+    /// the `messages` phase reconciles to, and the one retention-tick period
+    /// every phase shares (tick contract §2.2). The store clamps the ceiling
+    /// up to the floor; a smaller ceiling only prunes sooner.
+    pub fn with_message_retention(mut self, ceiling: u64, period: Duration) -> Self {
+        self.message_retention_ceiling = ceiling;
+        self.retention_sweep_period = period;
         self
     }
     /// Borrowing close retains this original owner/writer wrapper on failure.
@@ -755,6 +879,17 @@ impl Bootstrap {
         let sweep = std::sync::Arc::new(ceiling_sweep);
         self.ceiling_sweep = Some(sweep.clone());
         self.app = self.app.clone().with_ceiling_sweep(sweep, sweep_tick);
+        // The ONE retention sweep task (tick contract §1.5), beside the
+        // ceiling task — same `start_*_sweep` shape, its own period and its
+        // own watch channel; slice 1 lands the `messages` phase only.
+        let (retention_sweep, retention_tick) = start_retention_sweep(
+            self.domain.clone(),
+            shutdown.clone(),
+            self.retention_sweep_period,
+            self.message_retention_ceiling,
+        );
+        self.retention_sweep = Some(std::sync::Arc::new(retention_sweep));
+        let _ = retention_tick;
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: server_poll_entered");
         let server = Server::new(acceptor).max_connections(64);
         let handle = server.handle();

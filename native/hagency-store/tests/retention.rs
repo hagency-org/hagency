@@ -1,0 +1,691 @@
+//! The admitted-corpus retention slice (ADR-125): the pin predicate, the
+//! archive move, the bounded window and the migration, each pinned by its
+//! own scenario. Every SQL statement binds its parameters; no assertion
+//! relies on row order beyond what an ORDER BY gives.
+mod common;
+use common::*;
+use hagency_core::{ingress::*, messages::*, replies::*, tasks::*};
+use hagency_store::DomainRepository;
+use rusqlite::{Connection, params};
+use serde_json::json;
+use std::collections::BTreeSet;
+
+struct Fixture {
+    root: tempfile::TempDir,
+    db: DomainRepository,
+    engagement: String,
+    agent: String,
+}
+
+impl Fixture {
+    /// One group-room agent with a live verified route, in the
+    /// verified-ingress harness shape. A fresh private database per test, so
+    /// agent and runner names never collide across tests.
+    fn new(agent: &str) -> Self {
+        let root = tempfile::tempdir().unwrap();
+        let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
+        db.register(&registration()).unwrap();
+        let pool = resource("pool", "seat", 1000);
+        db.put_resource(&pool).unwrap();
+        let name = format!("corpus_{agent}");
+        let proof = proof(&request(agent, &name, &pool, 100));
+        let engagement = db.admit(&proof, 1000).unwrap();
+        db.approve(&format!("approve_{agent}"), &proof, 1000)
+            .unwrap();
+        let effect = db.claim_effect().unwrap().unwrap();
+        db.observe_effect(
+            &effect.id,
+            effect.fence,
+            &hagency_store::EffectOutcome::Applied {
+                receipt: "fixture account".into(),
+            },
+        )
+        .unwrap();
+        let mxid = format!("@{agent}:example.test");
+        db.observe_matrix_transport(
+            &MatrixTransportObservation {
+                engagement_id: engagement.id.clone(),
+                registration_generation: 1,
+                generation: 1,
+                sender_mxid: mxid.clone(),
+                device_id: format!("DEVICE_{agent}"),
+            },
+            1001,
+        )
+        .unwrap();
+        db.observe_matrix_room(
+            &MatrixRoomObservation {
+                engagement_id: engagement.id.clone(),
+                registration_generation: 1,
+                transport_generation: 1,
+                room_id: "!project:example.test".into(),
+                generation: 1,
+                privacy: RoomPrivacy::Group {},
+                joined: BTreeSet::from_iter([
+                    "@owner:example.test".into(),
+                    mxid.clone(),
+                    registration().representative_mxid,
+                    registration().approval_bot_mxid,
+                ]),
+                invite_only: true,
+                encrypted: false,
+            },
+            1002,
+        )
+        .unwrap();
+        db.resolve_verified_matrix_session(
+            &SessionBinding {
+                id: format!("session_{agent}"),
+                engagement_id: engagement.id.clone(),
+                room_id: "!project:example.test".into(),
+                thread_root: None,
+            },
+            1003,
+        )
+        .unwrap();
+        db.register_workspace("work").unwrap();
+        Self {
+            root,
+            db,
+            engagement: engagement.id,
+            agent: agent.to_owned(),
+        }
+    }
+    /// One admitted wake event through the real verified-ingress path.
+    fn admit(&mut self, id: &str, at: u64) -> u64 {
+        let session = format!("session_{}", self.agent);
+        let event = MatrixEventObservation {
+            scope: self.db.matrix_ingress_scope(&session).unwrap(),
+            event: InboundMessage {
+                server_name: "example.test".into(),
+                room_id: "!project:example.test".into(),
+                event_id: format!("${id}"),
+                sender_mxid: "@owner:example.test".into(),
+                thread_root: None,
+                body: format!("Message {id}"),
+                kind: "m.text".into(),
+                origin_ts: at,
+            },
+            mentions: std::collections::BTreeSet::from_iter([format!(
+                "@{}:example.test",
+                self.agent
+            )]),
+            encrypted: false,
+        };
+        self.db.admit_matrix_event(&event, at).unwrap().sequence
+    }
+    fn observation(&self, id: &str, at: u64) -> MatrixEventObservation {
+        let scope = self
+            .db
+            .matrix_ingress_scope(&format!("session_{}", self.agent))
+            .expect("scope resolves");
+        MatrixEventObservation {
+            scope,
+            event: InboundMessage {
+                server_name: "example.test".into(),
+                room_id: "!project:example.test".into(),
+                event_id: format!("${id}"),
+                sender_mxid: "@owner:example.test".into(),
+                thread_root: None,
+                body: format!("Message {id}"),
+                kind: "m.text".into(),
+                origin_ts: at,
+            },
+            mentions: std::collections::BTreeSet::from_iter([format!(
+                "@{}:example.test",
+                self.agent
+            )]),
+            encrypted: false,
+        }
+    }
+    fn sql(&self) -> Connection {
+        Connection::open(self.root.path().join("state/domain.sqlite3")).unwrap()
+    }
+    fn count(&self, table: &str) -> u64 {
+        self.sql()
+            .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r.get(0))
+            .unwrap()
+    }
+}
+
+/// Mark one admitted message's session input processed (the P2/P3' release
+/// witness), bound parameters only.
+fn processed(f: &Fixture, sequence: u64, at: u64) {
+    f.sql()
+        .execute(
+            "UPDATE session_inputs SET processed_at=?2 WHERE message_sequence=?1",
+            params![sequence, at],
+        )
+        .unwrap();
+}
+
+/// A canonical task row with the given terminal status, plus (optionally) a
+/// task_inputs row and a task_intents root row for the message.
+fn task(f: &Fixture, id: &str, status: &str, sequence: u64, intent: bool) {
+    let config = json!({
+        "id": id, "session_id": format!("session_{}", f.agent), "title": "T",
+        "status": status, "execution_epoch": 1, "created_at": 1, "updated_at": 1,
+    })
+    .to_string();
+    let sql = f.sql();
+    sql.execute(
+        "INSERT INTO canonical_tasks(id,session_id,config) VALUES(?1,?2,?3)",
+        params![id, format!("session_{}", f.agent), config],
+    )
+    .unwrap();
+    let encoded: String = sql
+        .query_row(
+            "SELECT config FROM admitted_messages WHERE sequence=?1",
+            [sequence],
+            |r| r.get(0),
+        )
+        .unwrap();
+    sql.execute(
+        "INSERT INTO task_inputs(task_id,message_sequence,config,wake) VALUES(?1,?2,?3,1)",
+        params![id, sequence, encoded],
+    )
+    .unwrap();
+    if intent {
+        sql.execute(
+            "INSERT INTO task_intents(task_id,request_scope,request_key,digest,session_id,root_sequence,state) VALUES(?1,?2,?3,?4,?5,?6,'pending')",
+            params![id, "scope", format!("key_{id}"), "digest", format!("session_{}", f.agent), sequence],
+        )
+        .unwrap();
+    }
+}
+
+#[tokio::test]
+async fn native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference() {
+    let mut f = Fixture::new("prune");
+    let mut sequences = Vec::new();
+    for i in 0..6 {
+        sequences.push(f.admit(&format!("plain{i}"), 2000 + i));
+    }
+    // The oldest three are processed and unreferenced; the newest three carry
+    // unprocessed session inputs (P2) and sit inside the P1 window anyway.
+    for sequence in &sequences[..3] {
+        processed(&f, *sequence, 3000);
+    }
+    let outcome = f.db.sweep_admitted_corpus(4000, 3, 512).unwrap();
+    // The F3 measurement, logged for the report: the tick's own wall-clock.
+    println!(
+        "[corpus] sweep tick elapsed_ms={} pruned={} remaining={}",
+        outcome.elapsed_ms, outcome.pruned, outcome.remaining
+    );
+    assert_eq!(outcome.pruned, 3);
+    assert_eq!(outcome.archived, 3);
+    assert_eq!(outcome.remaining, 0);
+    assert_eq!(f.count("admitted_messages"), 3);
+    assert_eq!(f.count("retained_message_archive"), 3);
+    assert_eq!(f.count("matrix_ingress_events"), 3);
+    // The pinned survivors keep their children.
+    let pinned: u64 = f
+        .sql()
+        .query_row(
+            "SELECT COUNT(*) FROM session_inputs WHERE processed_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(pinned, 3);
+    // The receipt: one row, the messages phase, the over-ceiling figure.
+    let (phase, pruned, remaining): (String, u64, u64) = f
+        .sql()
+        .query_row(
+            "SELECT phase,pruned,remaining FROM retention_prune_receipts ORDER BY sequence DESC LIMIT 1",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!((phase.as_str(), pruned, remaining), ("messages", 3, 0));
+}
+
+#[tokio::test]
+async fn native_retained_corpus_pending_pin_exceeds_ceiling() {
+    let mut f = Fixture::new("pending");
+    for i in 0..6 {
+        f.admit(&format!("held{i}"), 2000 + i);
+    }
+    // Every row is pinned by an unprocessed session input (P2).
+    let outcome = f.db.sweep_admitted_corpus(4000, 3, 512).unwrap();
+    assert_eq!(outcome.pruned, 0);
+    assert_eq!(outcome.remaining, 3);
+    assert_eq!(f.count("admitted_messages"), 6);
+    assert_eq!(f.count("retained_message_archive"), 0);
+    // The over-ceiling figure is REPORTED, never a refusal of admission.
+    let status = f.db.retention_status(3).unwrap();
+    assert_eq!(
+        (status.corpus_rows, status.ceiling, status.over_by),
+        (6, 3, 3)
+    );
+    // A further admission still lands: the bound never refuses work.
+    let extra = f.admit("held6", 5000);
+    assert!(extra > 0);
+}
+
+#[tokio::test]
+async fn native_retained_corpus_processed_dispatch_does_not_pin() {
+    let mut f = Fixture::new("dispatch");
+    let old = f.admit("claimed", 2000);
+    let _new = f.admit("recent", 2001);
+    let input = DispatchInput {
+        id: "dispatch_done".into(),
+        session_id: format!("session_{}", f.agent),
+        task_id: None,
+        resources: vec![ResourceLease {
+            id: "work".into(),
+            exclusive: true,
+        }],
+        payload: json!({"instruction":"Handle the admitted input"}),
+    };
+    f.db.enqueue_inbox_dispatch(&input, &[old]).unwrap();
+    let cap =
+        f.db.claim_dispatch("runner_dispatch_done", 2002, 60_000, 120_000, 8)
+            .unwrap()
+            .unwrap();
+    f.db.start_dispatch(&cap, 2003).unwrap();
+    f.db.complete_dispatch(&cap, &json!({"ok":true}), 2004)
+        .unwrap();
+    // The stale non-null dispatch_id and the processed witness are exactly
+    // the P3' release: a completed dispatch does not pin.
+    let (dispatch_id, processed): (Option<String>, Option<u64>) = f
+        .sql()
+        .query_row(
+            "SELECT dispatch_id,processed_at FROM session_inputs WHERE message_sequence=?1",
+            [old],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(dispatch_id.is_some() && processed.is_some());
+    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    assert_eq!(outcome.pruned, 1);
+    assert_eq!(f.count("admitted_messages"), 1);
+    assert_eq!(
+        f.count("session_inputs"),
+        1,
+        "the pruned row's child is removed; the survivor keeps its own"
+    );
+    assert_eq!(f.count("dispatch_inputs"), 0);
+}
+
+#[tokio::test]
+async fn native_retained_corpus_closed_task_input_does_not_pin() {
+    let mut f = Fixture::new("taskdone");
+    let old = f.admit("attached_to_task", 2000);
+    let _new = f.admit("recent", 2001);
+    // The task lifecycle gate is the CANONICAL task's own terminal state
+    // (A1): `task_intents.state='closed'` has no production writer, so the
+    // release witness is config status 'done'. The session input is marked
+    // processed first so ONLY the task clause is under test.
+    processed(&f, old, 2500);
+    task(&f, "task_done", "done", old, true);
+    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    assert_eq!(outcome.pruned, 1, "a done task's input is a candidate");
+    assert_eq!(f.count("task_inputs"), 0);
+    assert_eq!(f.count("task_intents"), 0);
+    // The mirror: an OPEN task pins the same shape.
+    let mut f2 = Fixture::new("taskopen");
+    let old2 = f2.admit("attached_open", 2000);
+    let _new2 = f2.admit("recent", 2001);
+    processed(&f2, old2, 2500);
+    task(&f2, "task_open", "in_progress", old2, true);
+    let outcome2 = f2.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    assert_eq!(outcome2.pruned, 0, "an open task's root and input pin");
+    assert_eq!(f2.count("task_inputs"), 1);
+    assert_eq!(f2.count("task_intents"), 1);
+}
+
+#[tokio::test]
+async fn native_retained_corpus_unknown_fate_is_retained() {
+    let mut f = Fixture::new("unknown");
+    let old = f.admit("unknown_fate", 2000);
+    let _new = f.admit("recent", 2001);
+    // An unknown-outcome dispatch: the pin is the dispatch state pair P4/P5
+    // read from `runner_dispatches.state` directly (tick contract D-1 — the
+    // `unresolved_dispatches` view is for reporting, never pinning). The
+    // session input is marked processed so ONLY the unknown-fate pin holds.
+    let sql = f.sql();
+    sql.execute(
+        "INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence,not_before) VALUES(?1,?2,NULL,'{}','digest','outcome_unknown',1,0)",
+        params!["dispatch_unknown", format!("session_{}", f.agent)],
+    )
+    .unwrap();
+    sql.execute(
+        "INSERT INTO dispatch_inputs(dispatch_id,message_sequence) VALUES(?1,?2)",
+        params!["dispatch_unknown", old],
+    )
+    .unwrap();
+    drop(sql);
+    processed(&f, old, 2500);
+    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    assert_eq!(outcome.pruned, 0, "unknown fate is retained indefinitely");
+    assert_eq!(outcome.remaining, 1);
+    assert_eq!(f.count("admitted_messages"), 2);
+    assert_eq!(f.count("dispatch_inputs"), 1);
+    assert_eq!(f.count("retained_message_archive"), 0);
+}
+
+#[tokio::test]
+async fn native_retained_corpus_provenance_moves_with_the_message() {
+    let mut f = Fixture::new("provenance");
+    let old = f.admit("moves", 2000);
+    let _new = f.admit("recent", 2001);
+    processed(&f, old, 2500);
+    let live_key: String = f
+        .sql()
+        .query_row(
+            "SELECT source_key FROM matrix_ingress_events WHERE message_sequence=?1",
+            [old],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let event = f.observation("moves", 2000);
+    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    assert_eq!(outcome.pruned, 1);
+    // The archive row carries the full ingress identity plus wake (P8'/A3/A4).
+    let (engagement, source_key, scope, session, wake): (String, String, String, String, bool) = f
+        .sql()
+        .query_row(
+            "SELECT engagement_id,source_key,scope_digest,source_session_id,wake \
+             FROM retained_message_archive WHERE sequence=?1",
+            [old],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+        )
+        .unwrap();
+    assert_eq!(engagement, f.engagement);
+    assert_eq!(
+        source_key, live_key,
+        "the archive's ingress identity is the pair the live row carried"
+    );
+    assert!(!scope.is_empty());
+    assert_eq!(session, format!("session_{}", f.agent));
+    assert!(wake, "wake moved with the message into the archive");
+    assert_eq!(
+        f.count("matrix_ingress_events"),
+        1,
+        "the live provenance row is deleted in the same transaction"
+    );
+    // An exact redelivery is still recognised as admitted: live miss, the
+    // archive answers by identity, the receipt reconstructs wake/config.
+    let replay = f.db.matrix_ingress_receipt(&event).unwrap().unwrap();
+    assert_eq!(replay.sequence, old);
+    assert!(replay.wake);
+    assert!(!replay.created && !replay.projected);
+    // A divergent redelivery under the same event id is still refused with
+    // the same word — the archive-side divergence probe is engagement-scoped.
+    let mut divergent = event.clone();
+    divergent.event.body = "Changed under the same event id".into();
+    assert!(f.db.matrix_ingress_receipt(&divergent).is_err());
+}
+
+#[tokio::test]
+async fn native_retained_corpus_archive_is_bounded() {
+    let mut f = Fixture::new("bounded");
+    let mut sequences = Vec::new();
+    for i in 0..6 {
+        sequences.push(f.admit(&format!("window{i}"), 2000 + i));
+    }
+    for sequence in &sequences[..4] {
+        processed(&f, *sequence, 3000);
+    }
+    let outcome = f.db.sweep_admitted_corpus(4000, 2, 512).unwrap();
+    assert_eq!(outcome.pruned, 4);
+    // Bounded to the same ceiling, pruned oldest-first IN THE SAME TICK.
+    assert_eq!(f.count("retained_message_archive"), 2);
+    let kept: Vec<u64> = {
+        let sql = f.sql();
+        let mut statement = sql
+            .prepare("SELECT sequence FROM retained_message_archive ORDER BY sequence")
+            .unwrap();
+        statement
+            .query_map([], |r| r.get::<_, u64>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    assert_eq!(
+        kept,
+        sequences[2..4].to_vec(),
+        "the newest pruned rows stay"
+    );
+}
+
+#[tokio::test]
+async fn native_retained_corpus_parity_with_javascript() {
+    // The shared-subset oracle (native/scripts/corpus-retention-vectors.mjs):
+    // the retained planMessagePrune partitioned a corpus of `total` rows into
+    // pruned/retained; the native predicate must produce the SAME partition
+    // on the shared clauses (recency window vs inbox membership) and agree on
+    // archive membership. The native-only clauses (P2 claimed, P3', P4..P10)
+    // have no retained counterpart and are pinned by the tests above — that
+    // honest limit is stated in the oracle's header and in ADR-125.
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/corpus-retention-vectors.json")).unwrap();
+    let vectors = &fixture["vectors"];
+    let limit = vectors["observedLimit"].as_u64().unwrap();
+    let total = vectors["total"].as_u64().unwrap();
+    let pruned_count = vectors["prunedCount"].as_u64().unwrap();
+    let retained_count = vectors["retainedCount"].as_u64().unwrap();
+    let keep_unread = vectors["keep"]["unread"].as_array().unwrap().len() as u64;
+    assert_eq!(pruned_count + retained_count, total);
+    // The retained partition: every keep-set member survives (unread
+    // membership), plus the one group-mention row the recency window holds
+    // (it is not unread — beta is not a member of the empty group seed).
+    assert!(
+        keep_unread <= retained_count,
+        "unread membership is a subset of the retained set"
+    );
+    let mut f = Fixture::new("parity");
+    let mut sequences = Vec::new();
+    for i in 0..total {
+        sequences.push(f.admit(&format!("parity{i}"), 2000 + i));
+    }
+    // The vector's seed: the oldest `pruned_count` rows have no live
+    // reference; every newer row is unread (P2) membership.
+    for sequence in &sequences[..pruned_count as usize] {
+        processed(&f, *sequence, 9000);
+    }
+    let outcome = f.db.sweep_admitted_corpus(10_000, limit, 512).unwrap();
+    assert_eq!(outcome.pruned, pruned_count, "the pruned counts agree");
+    // The one over-ceiling residue: the oldest UNREAD row sits just below the
+    // recency window, P2 holds it, so it survives as corpus 121 against a
+    // ceiling of 120 — reported, never a refusal (same shape as the retained
+    // planner, which also keeps it).
+    assert_eq!(outcome.remaining, 1);
+    // Same partition, by position: the pruned set is exactly the oldest
+    // `pruned_count` admissions (ORDER BY, never row order).
+    let live: Vec<u64> = {
+        let sql = f.sql();
+        let mut statement = sql
+            .prepare("SELECT sequence FROM admitted_messages ORDER BY sequence")
+            .unwrap();
+        statement
+            .query_map([], |r| r.get::<_, u64>(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    assert_eq!(live.len() as u64, retained_count);
+    assert_eq!(live, sequences[pruned_count as usize..].to_vec());
+    // The archive-membership pair (A2): exactly the pruned rows are durably
+    // recorded, no retained row is.
+    assert_eq!(f.count("retained_message_archive"), pruned_count);
+    let archived: u64 = f
+        .sql()
+        .query_row(
+            "SELECT COUNT(*) FROM retained_message_archive WHERE sequence > ?1",
+            [sequences[pruned_count as usize - 1]],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(archived, 0, "no retained row is in the archive");
+}
+
+#[tokio::test]
+async fn native_retained_corpus_floor_is_hundred() {
+    let mut f = Fixture::new("floor");
+    for i in 0..120 {
+        f.admit(&format!("floor{i}"), 2000 + i);
+    }
+    for i in 1..=120u64 {
+        processed(&f, i, 9000);
+    }
+    // A ceiling below the floor is clamped up to 100 — the same
+    // `Math.max(100, …)` guard as the retained env default.
+    let status = f.db.retention_status(5).unwrap();
+    assert_eq!((status.ceiling, status.over_by), (100, 20));
+    let outcome = f.db.sweep_admitted_corpus(10_000, 5, 512).unwrap();
+    assert_eq!(outcome.pruned, 20, "the sweep clamps the ceiling too");
+    assert_eq!(f.count("admitted_messages"), 100);
+}
+
+/// Migration 026 over populated rows, in the `native_usage_migration` shape:
+/// rewind a live head-26 database to 25 and reopen — 026 replays over a
+/// database that already carries its objects, and every statement is
+/// CREATE ... IF NOT EXISTS with no ALTER, so the replay is a no-op. The
+/// migration creates the archive, the receipt table and the seven pin-probe
+/// indexes and drains NOTHING; the sweep entry point does the draining.
+#[tokio::test]
+async fn native_retained_corpus_schema_upgrade() {
+    let mut f = Fixture::new("upgrade");
+    let prunable1 = f.admit("upgrade1", 2000);
+    let prunable2 = f.admit("upgrade2", 2001);
+    let pinned_pending = f.admit("upgrade3", 2002);
+    let _ = pinned_pending; // P2 holds this row: its session input is never marked processed.
+    let pinned_unknown = f.admit("upgrade4", 2003);
+    let pinned_task = f.admit("upgrade5", 2004);
+    let pinned_attachment = f.admit("upgrade6", 2005);
+    let _window7 = f.admit("upgrade7", 2006);
+    let _window8 = f.admit("upgrade8", 2007);
+    let _window9 = f.admit("upgrade9", 2008);
+    let _window10 = f.admit("upgrade10", 2009);
+    processed(&f, prunable1, 2500);
+    processed(&f, prunable2, 2500);
+    // P2: unprocessed session input.
+    // P5: unknown-fate dispatch with the session input processed.
+    {
+        let sql = f.sql();
+        sql.execute(
+            "INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence,not_before) VALUES(?1,?2,NULL,'{}','digest','outcome_unknown',1,0)",
+            params!["dispatch_upgrade", format!("session_{}", f.agent)],
+        )
+        .unwrap();
+        sql.execute(
+            "INSERT INTO dispatch_inputs(dispatch_id,message_sequence) VALUES(?1,?2)",
+            params!["dispatch_upgrade", pinned_unknown],
+        )
+        .unwrap();
+    }
+    processed(&f, pinned_unknown, 2500);
+    // P6'/P7': an open task's root and input.
+    task(&f, "task_upgrade", "in_progress", pinned_task, true);
+    // P9: an attachment row.
+    {
+        let sql = f.sql();
+        let (engagement, source_key): (String, String) = sql
+            .query_row(
+                "SELECT engagement_id,source_key FROM matrix_ingress_events WHERE message_sequence=?1",
+                [pinned_attachment],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        sql.execute(
+            "INSERT INTO matrix_attachments(engagement_id,source_key,message_sequence,source_session_id,digest,content_digest,metadata,sdk_identity,manifest_id) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+            params![engagement, source_key, pinned_attachment, format!("session_{}", f.agent), "digest", "content", "{}", "sdk", "manifest"],
+        )
+        .unwrap();
+    }
+    let state = f.root.path().join("state");
+    drop(f.db);
+    {
+        let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+        sql.pragma_update(None, "user_version", 25).unwrap();
+    }
+    // The double open: the second run is at head 26 and replays nothing.
+    for _ in 0..2 {
+        let db = DomainRepository::open(&state).unwrap();
+        drop(db);
+        let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+        assert_eq!(
+            sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
+                .unwrap(),
+            26
+        );
+        let archive: u64 = sql
+            .query_row("SELECT COUNT(*) FROM retained_message_archive", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(archive, 0, "the migration creates and drains nothing");
+        let indexes: u64 = sql
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN (?1,?2,?3,?4,?5,?6,?7)",
+                params![
+                    "session_inputs_message",
+                    "dispatch_inputs_message",
+                    "task_intents_root",
+                    "task_inputs_message",
+                    "ingress_event_message",
+                    "matrix_attachment_message",
+                    "attachment_visibility_message"
+                ],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(indexes, 7, "the seven pin-probe indexes exist");
+    }
+    // Drain through the sweep entry point, one row per tick (the batch).
+    let agent = f.agent.clone();
+    let mut f2 = Fixture {
+        root: f.root,
+        db: DomainRepository::open(&state).unwrap(),
+        engagement: f.engagement,
+        agent,
+    };
+    let first = f2.db.sweep_admitted_corpus(5000, 4, 1).unwrap();
+    assert_eq!(first.pruned, 1, "the batch bound stops at one row");
+    assert_eq!(first.remaining, 5, "9 live rows against a ceiling of 4");
+    let second = f2.db.sweep_admitted_corpus(5001, 4, 1).unwrap();
+    assert_eq!(second.pruned, 1);
+    assert_eq!(second.remaining, 4);
+    let third = f2.db.sweep_admitted_corpus(5002, 4, 1).unwrap();
+    assert_eq!(third.pruned, 0, "only pinned rows remain");
+    // The archive holds the pruned content with its full identity.
+    let archived: Vec<(u64, String, bool)> = {
+        let sql = f2.sql();
+        let mut statement = sql
+            .prepare("SELECT sequence,engagement_id,wake FROM retained_message_archive ORDER BY sequence")
+            .unwrap();
+        statement
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap()
+    };
+    assert_eq!(archived.len(), 2);
+    assert_eq!(archived[0].0, prunable1);
+    assert_eq!(archived[1].0, prunable2);
+    assert_eq!(archived[0].1, f2.engagement);
+    // Every pinned row survived with its children.
+    assert_eq!(f2.count("admitted_messages"), 8);
+    assert_eq!(
+        f2.count("session_inputs"),
+        8,
+        "one per survivor; the pruned rows' children moved with them"
+    );
+    assert_eq!(f2.count("dispatch_inputs"), 1);
+    assert_eq!(f2.count("task_inputs"), 1);
+    assert_eq!(f2.count("task_intents"), 1);
+    assert_eq!(f2.count("matrix_attachments"), 1);
+    // The receipt table: the messages phase, trimmed to the limit.
+    let (phases, rows): (String, u64) = f2
+        .sql()
+        .query_row(
+            "SELECT (SELECT DISTINCT phase FROM retention_prune_receipts), COUNT(*) FROM retention_prune_receipts",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(phases, "messages");
+    assert!(rows > 0 && rows <= 100);
+}

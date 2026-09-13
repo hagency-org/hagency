@@ -17636,6 +17636,20 @@ export {
   notificationRouter,
 };
 export const __backendV2TestInternals = {
+  // Retention oracle (ADR-125 / native/scripts/corpus-retention-vectors.mjs):
+  // the real prune planner and the module-level inputs it reads, exported so
+  // the oracle can execute the retained rule instead of re-deriving it. Test
+  // surface only — no production path reads these keys.
+  planMessagePruneForTest: planMessagePrune,
+  messageRetentionLimitForTest: MESSAGE_RETENTION_LIMIT,
+  // planMessagePrune's keep-set comes from module globals (agents, messages,
+  // routerStore cursor), not from `rows`, so a caller must READ those inputs
+  // back in the same step (no await between) to build the expected set
+  // without re-deriving the rule.
+  retentionKeepIdsForTest: () => ({
+    unread: [...collectUnreadRetainedMessageIds()],
+    routerUncopied: [...collectRouterUncopiedMessageIds()],
+  }),
   // The directory this module bound to when its body evaluated. RUNTIME_ROOT is
   // read from process.env at import time, and process.env is process-global, so a
   // test that sets it and then awaits import() can have the value changed

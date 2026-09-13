@@ -69,7 +69,7 @@ fn native_account_schema22() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        25
+        26
     );
     assert_eq!(before, snapshot(&sql));
     drop(sql);
