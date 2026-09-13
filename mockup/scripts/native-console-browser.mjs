@@ -33,7 +33,7 @@ async function rosterWalk(page) {
 }
 
 const browser = await chromium.launch({ executablePath: process.env.HAGENCY_BROWSER_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true,
-  args: ['--disable-background-networking', '--disable-component-update', '--no-default-browser-checking'] });
+  args: ['--disable-background-networking', '--disable-component-update', '--no-default-browser-check'] });
 if (config.roster) {
   // The roster-only lane (ADR-126 browser scenario): same read-only ticket
   // the usage walk exchanges, one page, no operator token in the browser.
