@@ -121,3 +121,9 @@ world (the routes do).
 The delivery route (its own commit behind PC-C0, owning `lib.rs` and `bootstrap.rs`),
 the MCP approval tool pair (PC-C3), the fail-closed denial (PC-C1), and every other
 console page.
+
+A browser lane for this page is deliberately absent (review r1 C3): Spec C2's
+selector set is exactly the five console selectors, no browser driver is
+licensed for this slice, and the page's rendering is covered by the Rust
+key-set assertions plus the staged build. Recording it as a decision, not
+leaving it silent.
