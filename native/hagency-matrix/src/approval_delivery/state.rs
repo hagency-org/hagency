@@ -387,3 +387,95 @@ pub(crate) fn request_id(id: &str) -> bool {
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hagency_core::approvals::{ApprovalIntakeTarget, ApprovalRoomAuthority};
+
+    fn target() -> ApprovalIntakeTarget {
+        ApprovalIntakeTarget {
+            authority: ApprovalRoomAuthority {
+                engagement_id: "agent-one".into(),
+                fleet_id: "fleet-one".into(),
+                project_id: "project-one".into(),
+                registration_generation: 1,
+                server_name: "hq.test".into(),
+                room_id: "!owner-dm:hq.test".into(),
+                project_room_id: "!project:hq.test".into(),
+                owner_mxid: "@owner:hq.test".into(),
+                bot_mxid: "@bot:hq.test".into(),
+            },
+            device_id: "DEVICE".into(),
+            room_generation: 1,
+            binding_generation: 1,
+            request_id: format!("approval_{}", "b".repeat(40)),
+            request_digest: "a".repeat(64),
+            expires_at: 1_789_300_900_000,
+            reusable_scope: false,
+        }
+    }
+
+    /// Digests recomputed exactly as `Frozen::new` does, so `validate`
+    /// reaches the packet-kind rules rather than failing on a digest.
+    fn frozen(content: Value) -> Frozen {
+        let mut value = Frozen {
+            target: Target(target()),
+            cutoff: 1_789_300_800_000,
+            content,
+            content_digest: String::new(),
+            digest: String::new(),
+        };
+        value.content_digest =
+            state::hash(state::encode(&value.content, MAX_CARD).unwrap().as_bytes());
+        value.digest = value.hash().unwrap();
+        value
+    }
+
+    /// nativeNotes `packet-kind` (ADR-143): a public status notice carries
+    /// `kind: "status"` under the same event key as a request, and
+    /// `Frozen::validate` refuses it — any non-request msgtype, any kind
+    /// other than `request`, any content object that is not exactly three
+    /// keys. The valid REQUEST control beside it proves the refusal is the
+    /// packet-kind rule, not a broken fixture.
+    #[test]
+    fn frozen_refuses_status_notice_but_accepts_request() {
+        let request = json!({
+            "msgtype": "com.agentchat.approval.request.v1",
+            "body": "Owner approval requested",
+            "com.agentchat.approval": {
+                "version": 1,
+                "kind": "request",
+                "runtime": "codex",
+                "agent": "agent-one",
+                "project": "project-one",
+                "project_room_id": "!project:hq.test",
+                "request_id": format!("approval_{}", "b".repeat(40)),
+                "input_digest": "a".repeat(64),
+                "expires_at": 1_789_300_800_000u64,
+                "upstream_request_id": "17",
+                "tool_name": "shell",
+                "input_preview": "{\"command\":\"echo ok\"}",
+                "actions": [{"id": "approve_once"}, {"id": "deny"}]
+            }
+        });
+        assert!(frozen(request).validate().is_ok());
+        // The notice shape the retained builder emits (fixture `notices`
+        // rows): same event key, kind `status`, no request-only fields.
+        let notice = json!({
+            "msgtype": "com.agentchat.approval.status.v1",
+            "body": "Agent agent-one is waiting for approval from its owner.",
+            "com.agentchat.approval": {
+                "version": 1,
+                "kind": "status",
+                "agent": "agent-one",
+                "project": "project-one",
+                "state": "waiting_for_owner"
+            }
+        });
+        assert!(
+            frozen(notice).validate().is_err(),
+            "a status notice must not pass the request packet validator"
+        );
+    }
+}

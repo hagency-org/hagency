@@ -413,6 +413,19 @@ fn main() -> io::Result<()> {
         [command] if command == "app-server" => {
             // Fixed host installation entrypoint for offline dispatch fixtures.
             // The environment is explicitly supplied by that test host only.
+            // The child records the argv the HOST actually spawned it with:
+            // the launch-surface selectors assert this recording, never a
+            // Launch the test builds itself (ADR-139).
+            let marker = std::env::current_dir()?.join("owned-dispatch");
+            fs::write(
+                marker.with_extension("argv"),
+                serde_json::to_vec(
+                    &args
+                        .iter()
+                        .map(|value| value.to_string_lossy().into_owned())
+                        .collect::<Vec<_>>(),
+                )?,
+            )?;
             let mode = std::env::var("HAGENCY_OFFLINE_MODE").map_err(io::Error::other)?;
             if mode == "account" {
                 let home = std::env::var_os("HOME").ok_or(io::ErrorKind::InvalidInput)?;
@@ -434,10 +447,7 @@ fn main() -> io::Result<()> {
                     )?,
                 )?;
             }
-            fake(
-                if mode == "account" { "normal" } else { &mode },
-                &std::env::current_dir()?.join("owned-dispatch"),
-            )
+            fake(if mode == "account" { "normal" } else { &mode }, &marker)
         }
         #[cfg(windows)]
         [mode, marker] if mode == "owner-crash" => owner_crash(Path::new(marker)),

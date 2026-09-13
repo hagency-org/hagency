@@ -1,18 +1,23 @@
 //! Codex launch-surface argv and stdio pins (brief 29; ADR-139).
 //!
-//! `native_codex_argv_is_app_server_only` — the host's prepared launch argv is
-//! EXACTLY one argument, `app-server`; sandbox, approval and directory policy
-//! travel in the typed initialize request, never on argv.
+//! `native_codex_argv_is_app_server_only` — the host's REAL prepared launch
+//! argv, recorded by the offline fixture child it spawns, is EXACTLY one
+//! argument, `app-server`; sandbox, approval and directory policy travel in
+//! the typed initialize request, never on argv. A host regression adding any
+//! flag to the prepared launch turns this red.
 //!
 //! `native_codex_stdio_flag_matches_pinned_cli` — the pinned Codex CLI's
-//! app-server transport default must remain stdio (or an exact equivalent),
-//! probed offline from the checked-in captured help output
-//! (`tests/fixtures/codex-app-server-help.txt`). When the pinned version's
-//! default transport stops being stdio, this probe fails and reopens ADR-139.
+//! app-server transport default must remain stdio, read from the checked-in
+//! captured help output (`tests/fixtures/codex-app-server-help.txt`), AND the
+//! host's real argv must carry no transport flag, so that documented default
+//! is the one in force. When either half drifts, this probe fails and
+//! reopens ADR-139.
 //!
-//! Neither selector spawns a real Codex CLI: the argv selector runs the host
-//! against the offline fixture binary, and the stdio selector reads the
-//! captured metadata only.
+//! Neither selector spawns a real Codex CLI: both run the host against the
+//! offline fixture binary (`hagency-execution-probe`), whose `app-server`
+//! entry records the argv it was spawned with in `owned-dispatch.argv`
+//! inside the leased workspace; the stdio selector also reads the captured
+//! metadata.
 #[path = "../../hagency-store/tests/common/mod.rs"]
 mod common;
 use common::*;
@@ -34,6 +39,7 @@ fn now() -> u64 {
 
 struct ScopeFixture {
     _root: tempfile::TempDir,
+    work: std::path::PathBuf,
     domain: DomainStore,
     cap: RunnerCapability,
 }
@@ -85,45 +91,51 @@ fn scope_fixture() -> ScopeFixture {
         .unwrap()
         .unwrap();
     let domain = DomainStore::start(db, 16).unwrap();
+    let work = root.path().join("workspace");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
     ScopeFixture {
         _root: root,
+        work,
         domain,
         cap,
     }
 }
 
-fn host() -> Host {
-    let root = tempfile::tempdir().unwrap();
-    let work = root.path().join("workspace");
-    hagency_store::private::directory(&work).unwrap();
-    let work = work.canonicalize().unwrap();
-    let binary = std::env::current_exe().unwrap();
-    let mut environment = BTreeMap::from([
-        ("PATH".into(), "".into()),
-        ("HAGENCY_OFFLINE_MODE".into(), "normal".into()),
-    ]);
-    if let Some(system) = std::env::var_os("SystemRoot") {
-        environment.insert("SystemRoot".into(), system);
+impl ScopeFixture {
+    fn host(&self) -> Host {
+        // The REAL offline fixture binary the host installs, not the test
+        // harness binary: only its `app-server` entry speaks the protocol
+        // and records the argv the host spawned it with.
+        let binary: std::path::PathBuf = env!("CARGO_BIN_EXE_hagency-execution-probe").into();
+        let mut environment = BTreeMap::from([
+            ("PATH".into(), "".into()),
+            ("HAGENCY_OFFLINE_MODE".into(), "normal".into()),
+        ]);
+        if let Some(system) = std::env::var_os("SystemRoot") {
+            environment.insert("SystemRoot".into(), system);
+        }
+        Host::new(
+            binary.clone(),
+            binary,
+            environment,
+            BTreeMap::from([("work".into(), self.work.clone())]),
+        )
+        .unwrap()
     }
-    Host::new(
-        binary.clone(),
-        binary,
-        environment,
-        BTreeMap::from([("work".into(), work)]),
-    )
-    .unwrap()
 }
 
-#[tokio::test]
-async fn native_codex_argv_is_app_server_only() {
+/// Run one real operation through the offline fixture child and return the
+/// argv the HOST actually spawned it with, as recorded by the child itself
+/// (`owned-dispatch.argv` in the leased workspace). The test never builds a
+/// `Launch` of its own; the child is spawned with exactly what `prepare`
+/// built, so this is the host-side truth.
+async fn recorded_argv() -> Vec<String> {
     let f = scope_fixture();
-    // Wait for the prepared launch argv of a real operation: the report's
-    // custody observation carries the actual spawned argv recorded by the
-    // offline fixture child (it is spawned with exactly what `prepare` built).
     let mut operation = Operation::start(
         f.domain.clone(),
         f.cap.clone(),
-        host(),
+        f.host(),
         Limits {
             operation_ms: 25_000,
             response_ms: 2_000,
@@ -131,52 +143,34 @@ async fn native_codex_argv_is_app_server_only() {
     )
     .unwrap();
     let report = operation.wait().await.unwrap();
-    // The offline fixture completes the turn and records the argv it was
-    // launched with in its request marker directory; the host-side truth is
-    // that the child ran and reported completion over the owned pipes.
     assert!(
         report.protocol == Protocol::Completed,
         "fixture child did not complete: {:?}",
         report.failure
     );
-    // The argv the host builds is exactly ["app-server"]: this is asserted
-    // directly from the launch type the platform owns, since argv travels in
-    // `hagency_platform::Launch` and nothing else may add to it.
-    let launch = hagency_platform::Launch {
-        executable: std::env::current_exe().unwrap(),
-        arguments: vec!["app-server".into()],
-        directory: std::env::temp_dir(),
-        environment: BTreeMap::new(),
-        require_crash_containment: false,
-    };
-    launch.validate().unwrap();
-    assert_eq!(launch.arguments.len(), 1);
-    assert_eq!(launch.arguments[0].to_str(), Some("app-server"));
-    for flag in [
-        "--sandbox",
-        "--dangerously-bypass",
-        "--cd",
-        "--add-dir",
-        "--full-auto",
-        "--approval",
-        "--cwd",
-    ] {
-        assert!(
-            !launch
-                .arguments
-                .iter()
-                .any(|a| a.to_string_lossy().contains(flag)),
-            "policy flag {flag} appeared on argv"
-        );
-    }
-    let _ = report;
+    let raw = std::fs::read(f.work.join("owned-dispatch.argv"))
+        .expect("fixture child records the argv it was spawned with");
+    serde_json::from_slice(&raw).unwrap()
+}
+
+#[tokio::test]
+async fn native_codex_argv_is_app_server_only() {
+    let argv = recorded_argv().await;
+    // Exact equality carries every clause of the scenario: one argument,
+    // exactly `app-server`, and therefore no sandbox, approval, directory or
+    // transport flag anywhere on argv. A host regression adding `--stdio`
+    // or any policy flag to the prepared launch turns this red with the
+    // recorded argv printed.
+    assert_eq!(argv, ["app-server"], "host spawn argv drifted: {argv:?}");
 }
 
 /// The pinned CLI probe: offline, over the captured `app-server --help`
-/// metadata. The default `--listen` value must remain `stdio://` (or the help
-/// must state an exact stdio equivalent, as 0.154 does in its note).
-#[test]
-fn native_codex_stdio_flag_matches_pinned_cli() {
+/// metadata, crossed with the host's real prepared argv. The pinned default
+/// `--listen` must remain `stdio://`, and the host's argv must carry no
+/// transport flag at all, so that documented default is the transport
+/// actually in force.
+#[tokio::test]
+async fn native_codex_stdio_flag_matches_pinned_cli() {
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),
         "/tests/fixtures/codex-app-server-help.txt"
@@ -188,18 +182,29 @@ fn native_codex_stdio_flag_matches_pinned_cli() {
         .expect("pinned version line")
         .trim()
         .to_owned();
-    let listen_default = help
-        .lines()
-        .find(|l| l.trim() == "[default: stdio://]")
-        .or_else(|| help.lines().find(|l| l.contains("default: stdio")));
+    // The pin is the version the excerpt was ACTUALLY captured from:
+    // 0.154.0 on 2026-09-13 (the protocol spec separately pins 0.153.4 for
+    // wire envelopes). Strict equality — a re-captured excerpt from any
+    // other version fails here and must be re-pinned together with ADR-139
+    // and this spec scenario, never silently.
+    assert_eq!(
+        version, "codex-cli 0.154.0",
+        "the captured app-server help excerpt is no longer from the pinned \
+         0.154.0 surface; re-pin it together with ADR-139 and the spec"
+    );
+    // The pinned CLI surface, read once from the captured help.
+    let listen_default = help.lines().find(|l| l.trim() == "[default: stdio://]");
     assert!(
         listen_default.is_some(),
         "pinned CLI {version} no longer defaults --listen to stdio://; ADR-139 is reopened"
     );
-    let equivalent = help.contains("equivalent to `--listen stdio://`")
-        || help.contains("Use stdio as the transport");
+    // The host half: the real prepared argv carries no transport flag, so
+    // the pinned default above is the one in force for every launch.
+    let argv = recorded_argv().await;
     assert!(
-        listen_default.is_some() || equivalent,
-        "pinned CLI {version} neither defaults to stdio nor documents an exact equivalent"
+        !argv
+            .iter()
+            .any(|a| a == "--stdio" || a.starts_with("--listen")),
+        "host argv carries a transport flag: {argv:?}; the bare-argv stdio pin no longer holds"
     );
 }

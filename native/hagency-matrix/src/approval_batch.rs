@@ -658,3 +658,88 @@ fn select(
         None => (None, None),
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn target(request_id: &str) -> Target {
+        Target(ApprovalIntakeTarget {
+            authority: ApprovalRoomAuthority {
+                engagement_id: "agent-one".into(),
+                fleet_id: "fleet-one".into(),
+                project_id: "project-one".into(),
+                registration_generation: 1,
+                server_name: "hq.test".into(),
+                room_id: "!owner-dm:hq.test".into(),
+                project_room_id: "!project:hq.test".into(),
+                owner_mxid: "@owner:hq.test".into(),
+                bot_mxid: "@bot:hq.test".into(),
+            },
+            device_id: "DEVICE".into(),
+            room_generation: 1,
+            binding_generation: 1,
+            request_id: request_id.into(),
+            request_digest: "a".repeat(64),
+            expires_at: 1_789_300_900_000,
+            reusable_scope: false,
+        })
+    }
+
+    fn verdict_event(request_id: &str) -> Value {
+        json!({
+            "redacted": false,
+            "type": "m.room.message",
+            "sender": "@owner:hq.test",
+            "event_id": "$verdict",
+            "content": {
+                "msgtype": "com.agentchat.approval.verdict.v1",
+                "body": "Owner button action",
+                "com.agentchat.approval": {
+                    "version": 1,
+                    "kind": "verdict",
+                    "action": "approve_once",
+                    "request_id": request_id,
+                    "agent": "agent-one",
+                    "project": "project-one",
+                    "project_room_id": "!project:hq.test",
+                    "input_digest": "a".repeat(64)
+                }
+            }
+        })
+    }
+
+    /// nativeNotes `request-id-length` (ADR-143): the retained verdict parser
+    /// refuses a forty-hex request id; the native matcher accepts it, because
+    /// every native target id IS forty hex (`approvals.rs` generates
+    /// `approval_` + forty hex). The oracle row `forty-hex-request-id`
+    /// records `expected: null` on the retained side; this is the native
+    /// half, asserted against the real matcher.
+    #[test]
+    fn native_verdict_matcher_admits_forty_hex_request_ids() {
+        let forty = format!("approval_{}", "b".repeat(40));
+        let targets = [target(&forty)];
+        let (matched, choice) = select(
+            &targets,
+            "!owner-dm:hq.test",
+            "@owner:hq.test",
+            &verdict_event(&forty),
+            true,
+        );
+        assert_eq!(matched.unwrap().0.request_id, forty);
+        assert_eq!(choice, Some(ApprovalChoice::Once));
+        // Thirty-two hex remains matchable when the target carries it — the
+        // native rule is target equality, not a length cap.
+        let thirty_two = format!("approval_{}", "a".repeat(32));
+        let targets = [target(&thirty_two)];
+        let (matched, choice) = select(
+            &targets,
+            "!owner-dm:hq.test",
+            "@owner:hq.test",
+            &verdict_event(&thirty_two),
+            true,
+        );
+        assert_eq!(matched.unwrap().0.request_id, thirty_two);
+        assert_eq!(choice, Some(ApprovalChoice::Once));
+    }
+}
