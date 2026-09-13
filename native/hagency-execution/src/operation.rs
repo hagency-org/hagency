@@ -893,7 +893,10 @@ async fn execute(
     // Linux; `drive?` below surfaces it unchanged. Every other drive end that
     // is not a cancellation, a deadline or an unsupported approval keeps
     // consulting custody: the retained helper-finish flows end without a
-    // terminal Codex turn and complete through the held row.
+    // terminal Codex turn and complete through the held row. Any other drive
+    // error (a protocol refusal, a lost authority) also consults custody, and
+    // publication still requires the store's own held completion row, so
+    // nothing is ever published that the store did not commit as finished.
     if !matches!(
         drive,
         Err(Failure::Cancelled

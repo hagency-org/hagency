@@ -576,12 +576,14 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
         report.runtime_observation()
     );
     assert_eq!(report.settlement_cause, None);
-    // Negative control: a drive that actually succeeded still publishes. On
-    // Linux cleanup is proven, so the held completion is published
-    // (`CanonicalReplyReady`). On macOS cleanup stays unproven, so the held row
-    // is retained and the operation reports `CleanupUnknown` — and there the
-    // settlement uncertainty is recorded BESIDE the verdict (not instead of a
-    // published completion) and the host asserts no unobserved Done.
+    // Negative control: this fixture drives approval acceptance only and never
+    // records a completion row, so the completion block is skipped on every
+    // platform and the successful drive completes plainly. The two branches
+    // below differ in which cleanup gate refuses, not in custody: on Linux the
+    // owner's cleanup is proven; on macOS the retained owner's cleanup stays
+    // unproven, so the second gate refuses with `CleanupUnknown` and the
+    // failure finalization records the store's observation beside it, and the
+    // host asserts no unobserved Done.
     if cfg!(target_os = "macos") {
         // The worker's failure finalization records the store's observation
         // of the cleanup failure as the settlement: the lease is fenced for

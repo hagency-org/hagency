@@ -8218,3 +8218,9 @@ client qualification and ongoing identity/key management remain separate.
   held completion reference, the store's committed finish read back through
   custody, sets Done at block entry as before. Execution-crate gates now
   include the hagency workflow targets.
+- 2026-09-13: after the landing review of the harness commits and the
+  completion-path fix: the reconcile-accepted fixture's comment now says what
+  the two platform branches actually differ in (which cleanup gate refuses, not
+  custody), and ADR-060 states the invariant the exclusion list relies on: every
+  drive outcome outside the four verdict classes consults custody, and
+  publication still requires the store's own held completion row.

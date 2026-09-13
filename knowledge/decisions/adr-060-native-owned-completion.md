@@ -271,3 +271,10 @@ observation of that failure (a fenced lease, never a publication). A value
 written to `settlement` earlier on the failure path does not survive it, so
 the completion path writes none; only `settlement_cause` keeps its first
 value. (2026-09-13, after the precedence review.)
+
+The completion path is skipped for exactly the four verdict classes
+(cancelled, deadline, unsupported approval, settlement unknown). Every other
+drive outcome, including a protocol refusal or a lost authority, consults
+custody, and publication still requires the store's own held completion row,
+so nothing is published that the store did not commit as finished. (2026-09-13,
+after the landing review.)
