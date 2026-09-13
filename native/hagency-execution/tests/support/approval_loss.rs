@@ -168,7 +168,7 @@ async fn native_owned_approval_caller_loss() {
         .unwrap();
         let mut notices = op.take_approval_requests().unwrap();
         if !matches!(fault, Fault::RequestAck | Fault::SpawnPanic) {
-            let notice = tokio::time::timeout(Duration::from_secs(6), notices.recv())
+            let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
                 .await
                 .unwrap()
                 .unwrap();
@@ -286,12 +286,12 @@ async fn native_owned_approval_barriers_pending_receipt() {
         )
         .unwrap();
         let mut notices = op.take_approval_requests().unwrap();
-        let first = tokio::time::timeout(Duration::from_secs(6), notices.recv())
+        let first = tokio::time::timeout(harness_wait() * 3, notices.recv())
             .await
             .unwrap()
             .unwrap();
         choose(&domain, first.request_id).await;
-        let end = tokio::time::Instant::now() + Duration::from_secs(2);
+        let end = tokio::time::Instant::now() + harness_wait();
         while !gate.entered.load(Ordering::Acquire) {
             assert!(
                 tokio::time::Instant::now() < end,
@@ -313,7 +313,7 @@ async fn native_owned_approval_barriers_pending_receipt() {
             .await
             .unwrap();
         std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
-        let second = tokio::time::timeout(Duration::from_secs(1), notices.recv())
+        let second = tokio::time::timeout(harness_wait(), notices.recv())
             .await
             .unwrap()
             .unwrap();
@@ -405,12 +405,12 @@ async fn native_owned_approval_usage_successful_control() {
     )
     .unwrap();
     let mut notices = op.take_approval_requests().unwrap();
-    let first = tokio::time::timeout(Duration::from_secs(6), notices.recv())
+    let first = tokio::time::timeout(harness_wait() * 3, notices.recv())
         .await
         .unwrap()
         .unwrap();
     choose(&domain, first.request_id).await;
-    let end = tokio::time::Instant::now() + Duration::from_secs(2);
+    let end = tokio::time::Instant::now() + harness_wait();
     while !gate.entered.load(Ordering::Acquire) {
         assert!(tokio::time::Instant::now() < end);
         tokio::time::sleep(Duration::from_millis(5)).await;
@@ -445,7 +445,7 @@ async fn native_owned_approval_usage_successful_control() {
 
 async fn failed_usage_receipt(gate: &crate::approval::Gate) {
     use std::sync::atomic::Ordering;
-    let until = tokio::time::Instant::now() + Duration::from_secs(2);
+    let until = tokio::time::Instant::now() + harness_wait();
     while !gate.usage_failed.load(Ordering::Acquire) {
         assert!(
             tokio::time::Instant::now() < until,
@@ -477,11 +477,11 @@ async fn native_owned_approval_usage_unknown_slot() {
     )
     .unwrap();
     let mut notices = op.take_approval_requests().unwrap();
-    tokio::time::timeout(Duration::from_secs(6), notices.recv())
+    tokio::time::timeout(harness_wait() * 3, notices.recv())
         .await
         .unwrap()
         .expect("actual pending owner request");
-    let until = tokio::time::Instant::now() + Duration::from_secs(2);
+    let until = tokio::time::Instant::now() + harness_wait();
     while !gate.entered.load(Ordering::Acquire) {
         assert!(
             tokio::time::Instant::now() < until,
@@ -537,7 +537,7 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
     )
     .unwrap();
     let mut notices = op.take_approval_requests().unwrap();
-    let notice = tokio::time::timeout(Duration::from_secs(6), notices.recv())
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
         .await
         .unwrap()
         .unwrap();
@@ -649,7 +649,7 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     )
     .unwrap();
     let mut notices = op.take_approval_requests().unwrap();
-    let notice = tokio::time::timeout(Duration::from_secs(6), notices.recv())
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
         .await
         .unwrap()
         .unwrap();
@@ -658,7 +658,7 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     // next store write it attempts is the acceptance observation. Taking the
     // single writer here makes that acceptance transaction refuse after its
     // bounded busy wait rather than commit.
-    let end = tokio::time::Instant::now() + Duration::from_secs(2);
+    let end = tokio::time::Instant::now() + harness_wait();
     while !gate.entered.load(Ordering::Acquire) {
         assert!(
             tokio::time::Instant::now() < end,
@@ -672,9 +672,10 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     // Hold the write lock until the operation has produced its verdict. The
     // acceptance write is refused by the 100 ms busy timeout; the reconcile read
     // is a WAL read and answers while the lock is still held, so the scenario no
-    // longer races the host's scheduling. Bounded, not widened: a premise that
-    // no longer holds must fail as a timeout, never pass by waiting longer.
-    let report = tokio::time::timeout(Duration::from_secs(6), op.wait())
+    // longer races the host's scheduling. Bounded by the harness budget, not
+    // widened: a premise that no longer holds must fail as a timeout, never pass
+    // by waiting longer.
+    let report = tokio::time::timeout(harness_wait() * 3, op.wait())
         .await
         .expect("the acceptance verdict must arrive while the lock is held")
         .unwrap();
@@ -725,4 +726,12 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
         .unwrap(),
         0
     );
+}
+
+/// The harness's derived wait: one tenth of the operation budget every
+/// scenario below grants (`Limits::operation_ms`, 25 s). A literal here is
+/// what let a loaded run miss a notice the host had lawfully not yet sent —
+/// every wait scales with the budget the fixture actually runs.
+const fn harness_wait() -> Duration {
+    Duration::from_millis(crate::approval::Gate::OPERATION_BUDGET_MS / 10)
 }

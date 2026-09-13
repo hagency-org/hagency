@@ -58,10 +58,16 @@ pub(crate) struct Gate {
 }
 #[cfg(test)]
 impl Gate {
+    /// The operation budget the owned harness grants (`Limits::operation_ms`,
+    /// 25 s in every scenario below). The gate's bound is derived from it —
+    /// never a literal — so a held coordinator can never outlive the
+    /// operation it serves.
+    pub(crate) const OPERATION_BUDGET_MS: u64 = 25_000;
     pub async fn wait(&self) {
         use std::sync::atomic::Ordering;
         self.entered.store(true, Ordering::Release);
-        let until = tokio::time::Instant::now() + std::time::Duration::from_secs(2);
+        let until = tokio::time::Instant::now()
+            + std::time::Duration::from_millis(Self::OPERATION_BUDGET_MS / 10);
         while !self.release.load(Ordering::Acquire) {
             assert!(
                 tokio::time::Instant::now() < until,
