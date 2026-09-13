@@ -133,6 +133,34 @@ Scenario: Incomplete migration capabilities are explicit
   When its authenticated capabilities are read
   Then Agent execution transport and production API parity remain unavailable
 
+Scenario: A supervisor-less service fixture starts and reports ready
+  Test: native_service_unit_starts_and_reports_ready
+  Level: integration
+  Test Double: fixture harness spawning the serve binary and polling its routes
+  Given a fresh private state directory and the serve command the systemd unit renders
+  When the harness starts the binary and polls health and ready
+  Then health answers 200 from the first response while the process is live
+  And ready answers 200 only after every component reports a ready word with the existing vocabulary
+
+Scenario: A supervisor-less service fixture stops cleanly inside the budget
+  Test: native_service_unit_stops_cleanly_within_timeout_budget
+  Level: integration
+  Test Double: fixture harness sending SIGTERM and observing the drain sequence
+  Given a running serve process with open writer channels
+  When the harness sends SIGTERM within the unit's TimeoutStopSec budget
+  Then ready flips to 503 naming the stopped components while health keeps 200
+  And the bounded writer drains and both stores close leaving WAL files for next-open replay
+  And the process exits zero before the budget expires
+
+Scenario: Pending state survives a service restart
+  Test: native_service_unit_restart_preserves_pending_state
+  Level: integration
+  Test Double: fixture harness seeding an outcome-unknown row then restarting the serve binary
+  Given a seeded pending or outcome-unknown custody row and a running service
+  When the harness stops the service and starts it again on the same state directory
+  Then the pending row is still reported pending or unknown and never resolved or dropped
+  And the store stays locked to every other process between the two runs
+
 ## Out of Scope
 
 The spec-binding build tool may distinguish native Cargo contracts from Vitest
