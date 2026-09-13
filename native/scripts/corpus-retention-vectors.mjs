@@ -6,8 +6,10 @@
 // retained backend and needs no hooks from it.
 //
 // WHERE THE VECTORS COME FROM: the retained code HAS corpus retention
-// (backend-v2.js:3367-3386 planMessagePrune, :3325-3341 the keep-set
-// collectors), but it is not exported, and the port may not edit the file
+// (backend-v2.js:3367-3386 planMessagePrune, :3325-3334
+// collectUnreadRetainedMessageIds and :3336-3353
+// collectRouterUncopiedMessageIds — the keep-set collectors), but it is
+// not exported, and the port may not edit the file
 // to export it. So the arithmetic below MIRRORS the retained lines with
 // their citations — the same convention ceiling-vectors.mjs uses at its
 // lines 73 and 136 — derived from ADR-125's stated rules:
@@ -63,7 +65,7 @@ for (let i = 0; i < LIMIT; i += 1) seed.push(message(OLD_UNREFERENCED + i, { to:
 seed.push(message(OLD_UNREFERENCED + LIMIT, { group: 'group_x', mentions: ['beta'] }));
 
 // The keep-set the seed implies (the retained collectors' semantics,
-// backend-v2.js:3325-3333 mirrored): every message routed `to` an agent
+// backend-v2.js:3325-3334 mirrored): every message routed `to` an agent
 // whose cursor has not passed it is unread; the group-mention row rides
 // the tail inside the recency window anyway; router-uncopied is empty
 // (no thread-session sources in this seed).

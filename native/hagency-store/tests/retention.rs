@@ -536,12 +536,15 @@ async fn native_retained_corpus_parity_with_javascript() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/corpus-retention-vectors.json")).unwrap();
     let vectors = &fixture["vectors"];
-    // The fixture's sha pin (provenance, not enforcement): it records the
-    // retained backend-v2.js bytes the vectors were derived against — the
-    // file the port never edits. The digest matches the oracle's `sha()`:
-    // utf-8 bytes, CRLF folded to LF. A mismatch means the fixture was
-    // regenerated against a different retained file than this tree carries
-    // (e.g. a merge moved one side); regenerate the fixture to re-derive.
+    // The fixture's sha pin, ENFORCED: the assert below hard-fails this
+    // test whenever the retained backend-v2.js bytes drift from the
+    // fixture — the file the port never edits, so any change to it is a
+    // real event this test must surface (regenerate the fixture and
+    // re-derive the vectors in the same commit). The digest matches the
+    // oracle's `sha()`: utf-8 bytes, CRLF folded to LF. (The r4 review's
+    // F-6: the earlier "provenance, not enforcement" wording understated
+    // the gate — the assertion is a drift gate, and the description now
+    // says so.)
     {
         use sha2::{Digest, Sha256};
         let source =
@@ -553,9 +556,10 @@ async fn native_retained_corpus_parity_with_javascript() {
         assert_eq!(
             pinned,
             &format!("{digest:x}"),
-            "the fixture's backendSha256 provenance pin does not match the \
-             retained backend-v2.js on this tree; regenerate with `node \
-             native/scripts/corpus-retention-vectors.mjs`"
+            "the fixture's backendSha256 pin does not match the retained \
+             backend-v2.js on this tree; the retained file changed under the \
+             oracle — regenerate with `node \
+             native/scripts/corpus-retention-vectors.mjs` and re-derive"
         );
     }
     let limit = vectors["observedLimit"].as_u64().unwrap();
