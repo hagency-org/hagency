@@ -820,6 +820,64 @@ impl DomainRepository {
             .map(|s| Ok(serde_json::from_str(&s?)?))
             .collect()
     }
+    /// The bounded approval observation read (ADR-138, C2a): pages
+    /// `owner_approvals` by the opaque id cursor with the same hard cap as
+    /// `engagements`, and names its `SELECT` columns so the projection cannot
+    /// widen silently — no `description`, no `config`/`application`/
+    /// `observation` JSON, no owner or room column is ever read, so none can
+    /// cross. The item is exactly the console's seven camelCase keys.
+    pub fn approvals(&self, after: &str, limit: usize) -> Result<Vec<Value>, Error> {
+        if limit == 0 || limit > 100 {
+            return Err(InvalidInput("page limit must be 1..100").into());
+        }
+        let mut query = self.db.prepare(
+            "SELECT a.id,a.state,a.choice,a.scope_key IS NOT NULL,a.expires_at,c.engagement_id,p.room_id \
+             FROM owner_approvals a \
+             JOIN approval_contexts c ON c.id=a.context_id \
+             JOIN engagements e ON e.id=c.engagement_id \
+             LEFT JOIN projects p ON p.fleet_id=e.fleet_id AND p.id=e.project_id \
+             AND p.generation=e.generation \
+             WHERE a.id>?1 ORDER BY a.id LIMIT ?2",
+        )?;
+        let rows = query
+            .query_map(params![after, limit as i64], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, Option<String>>(2)?,
+                    r.get::<_, bool>(3)?,
+                    r.get::<_, i64>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, Option<String>>(6)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, rusqlite::Error>>()?;
+        rows.into_iter()
+            .map(
+                |(
+                    id,
+                    state,
+                    choice,
+                    reusable_scope,
+                    expires_at,
+                    engagement_id,
+                    project_room_id,
+                )| {
+                    Ok(json!({
+                        "id": id,
+                        "state": state,
+                        "choice": choice
+                            .map(|c| serde_json::from_str::<String>(&c))
+                            .transpose()?,
+                        "reusableScope": reusable_scope,
+                        "expiresAt": expires_at,
+                        "engagementId": engagement_id,
+                        "projectRoomId": project_room_id,
+                    }))
+                },
+            )
+            .collect()
+    }
     pub fn get(&self, id: &str) -> Result<Engagement, Error> {
         read_engagement(&self.db, id)
     }

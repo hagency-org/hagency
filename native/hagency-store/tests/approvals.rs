@@ -9,7 +9,7 @@ mod owned;
 mod responses;
 use common::*;
 use hagency_core::{approvals::*, replies::*, tasks::*};
-use hagency_store::{DomainRepository, EffectOutcome, Error};
+use hagency_store::{DomainRepository, DomainStore, EffectOutcome, Error};
 use serde_json::json;
 use std::collections::BTreeSet;
 
@@ -969,6 +969,150 @@ fn native_matrix_transport_negative_retires_only_own_approval_authority() {
         f.db.consume_owner_approval(&f.caps[0], &decided.id, 1017)
             .is_err()
     );
+}
+
+#[tokio::test]
+async fn native_console_approval_list_read_is_bounded() {
+    let mut f = Fixture::new(true);
+    let mut ids = Vec::new();
+    for n in 1..=3u64 {
+        ids.push(f.admit(0, n).id);
+    }
+    for n in 1..=2u64 {
+        ids.push(f.admit(1, n).id);
+    }
+    // Seed rows beyond the hard cap through the store's own file so the
+    // truncating read is exercised against real rows, not the guard alone.
+    {
+        let context = f.contexts[0].id.clone();
+        let mut sql = f.sql();
+        let tx = sql.transaction().unwrap();
+        for n in 1..=150u32 {
+            let id = format!("raw_{n:04}");
+            tx.execute(
+                "INSERT INTO owner_approvals(id,source_key,context_id,digest,config,state,choice,grant_id,expires_at) VALUES(?1,?2,?3,'raw_digest','{}','pending',NULL,NULL,12000)",
+                rusqlite::params![id, format!("raw_source_{n}"), context],
+            )
+            .unwrap();
+            ids.push(id);
+        }
+        tx.commit().unwrap();
+    }
+    ids.sort();
+    let engagements = f.agents.clone();
+    let store = DomainStore::start(f.db, 16).unwrap();
+    // The hard cap refuses out-of-range limits; the boundary truncates.
+    assert!(matches!(
+        store.approvals(String::new(), 0).await,
+        Err(Error::Invalid(_))
+    ));
+    assert!(matches!(
+        store.approvals(String::new(), 101).await,
+        Err(Error::Invalid(_))
+    ));
+    assert_eq!(
+        store.approvals(String::new(), 100).await.unwrap().len(),
+        100,
+        "the read truncates at the hard cap"
+    );
+    // The page bound holds inside the cap: walk the whole corpus at a small
+    // limit and collect every id in ascending order with no overlap, then
+    // confirm the read past the last id is empty.
+    let mut listed = Vec::new();
+    let mut seen = Vec::new();
+    let mut cursor = String::new();
+    loop {
+        let page = store.approvals(cursor.clone(), 7).await.unwrap();
+        if page.is_empty() {
+            break;
+        }
+        assert!(page.len() <= 7, "the page bound is not enforced");
+        for row in page {
+            let id = row["id"].as_str().unwrap().to_owned();
+            assert!(!seen.contains(&id), "a page re-served id {id}");
+            seen.push(id.clone());
+            listed.push(row);
+        }
+        cursor = listed.last().unwrap()["id"].as_str().unwrap().to_owned();
+    }
+    assert_eq!(
+        listed
+            .iter()
+            .map(|r| r["id"].as_str().unwrap())
+            .collect::<Vec<_>>(),
+        ids.iter().map(|s| s.as_str()).collect::<Vec<_>>()
+    );
+    assert!(
+        store
+            .approvals(ids[ids.len() - 1].clone(), 7)
+            .await
+            .unwrap()
+            .is_empty()
+    );
+    // Every row names its SELECT columns: exactly the seven camelCase keys,
+    // scalar values only, no derived blob, no withheld column.
+    for row in listed {
+        let object = row.as_object().unwrap();
+        let mut keys = object.keys().collect::<Vec<_>>();
+        keys.sort();
+        assert_eq!(
+            keys,
+            vec![
+                "choice",
+                "engagementId",
+                "expiresAt",
+                "id",
+                "projectRoomId",
+                "reusableScope",
+                "state",
+            ],
+            "the projection widened"
+        );
+        for (key, value) in object {
+            assert!(
+                !value.is_object() && !value.is_array(),
+                "{key} carries a nested value"
+            );
+            assert!(
+                !matches!(
+                    key.as_str(),
+                    "config"
+                        | "application"
+                        | "observation"
+                        | "description"
+                        | "digest"
+                        | "grantId"
+                        | "ownerMxid"
+                        | "ownerDmRoomId"
+                        | "toolName"
+                        | "inputPreview"
+                ),
+                "withheld key {key} crossed"
+            );
+        }
+        assert!(matches!(
+            row["state"].as_str().unwrap(),
+            "pending"
+                | "decided"
+                | "applying"
+                | "uncertain"
+                | "applied"
+                | "invalidated"
+                | "not_applied"
+        ));
+        assert!(row["choice"].is_null());
+        assert!(row["reusableScope"].as_bool().is_some());
+        assert_eq!(row["expiresAt"].as_u64(), Some(12_000));
+        assert!(
+            engagements.contains(&row["engagementId"].as_str().unwrap().to_owned()),
+            "the join lost the engagement"
+        );
+        assert_eq!(
+            row["projectRoomId"].as_str(),
+            Some("!project:example.test"),
+            "the project join lost the room"
+        );
+    }
 }
 
 #[path = "approvals/intake.rs"]

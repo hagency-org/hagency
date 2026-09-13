@@ -1574,6 +1574,17 @@ impl DomainStore {
         self.call(weight(&id)?, move |db| db.approval_summary(&id))
             .await
     }
+    /// The C2a bounded read (ADR-138): one worker job per page, the same
+    /// `after`/`limit` contract as `engagements`, with the 1..=100 cap
+    /// enforced inside the store so no console caller can widen it.
+    pub async fn approvals(
+        &self,
+        after: String,
+        limit: usize,
+    ) -> Result<Vec<serde_json::Value>, Error> {
+        self.call(weight(&after)?, move |db| db.approvals(&after, limit))
+            .await
+    }
     pub async fn private_approval(
         &self,
         id: String,
