@@ -359,7 +359,7 @@ async fn native_owned_approval_barriers_pending_receipt() {
             "{fault:?}: {:?} {:?}; {}",
             report.failure,
             report.runtime_observation(),
-            crate::approval::diagnostics::last_cancellation_trace()
+            crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
         );
         assert_eq!(report.approval_custody(), (2, 2, 2, 2));
         assert_eq!(

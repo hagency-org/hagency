@@ -66,8 +66,8 @@ pub(super) fn operation(
 }
 /// ADR-046 stage-1: when an owned approval cancels, name the primitive, the
 /// offending entry, and every phase it had reached.
-pub(super) fn cancellation_trace() -> String {
-    hagency_execution::diagnostics::last_cancellation_trace()
+pub(super) fn cancellation_trace(f: &Fixture) -> String {
+    hagency_execution::diagnostics::last_cancellation_trace(&f.cap.dispatch_id)
 }
 /// Await one committed approval request notice. Never a bare "notice channel
 /// closed": a closed channel or the expired deadline means the operation

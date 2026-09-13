@@ -28,6 +28,12 @@ pub(super) struct Pending {
     pub admitted: bool,
     pub recorded: bool,
     pub resolved: bool,
+    /// The dispatch id of the operation that drove this entry. Test and
+    /// `test-diagnostics` builds only: keys the diagnostic journal and
+    /// cancellation slot so parallel tests never read each other's records
+    /// (a process-wide slot once interleaved two tests' `approval-1`s).
+    #[cfg(any(test, feature = "test-diagnostics"))]
+    pub dispatch: String,
     /// Ordered diagnostic record of every phase this entry reached. Exists
     /// only in test and `test-diagnostics` builds; production carries none.
     #[cfg(any(test, feature = "test-diagnostics"))]
@@ -62,7 +68,7 @@ impl Pending {
     #[cfg(any(test, feature = "test-diagnostics"))]
     pub(super) fn mark(&mut self, label: &'static str) {
         self.trace.mark(label);
-        super::diagnostics::phase(&format!("{:?}", self.request.id()), label);
+        super::diagnostics::phase(&self.dispatch, &format!("{:?}", self.request.id()), label);
     }
     /// ADR-046 ruling for a resolution observed while this entry is live:
     /// before write acceptance it cancels the callback; after acceptance it
@@ -73,8 +79,19 @@ impl Pending {
         self.resolved = true;
         #[cfg(any(test, feature = "test-diagnostics"))]
         {
-            let (label, _cancels) = resolution_outcome(self.write.is_none());
-            self.mark(label);
+            // Two labels name two different things: the arrival label says
+            // WHEN the resolution arrived (before/after the write receipt);
+            // the arm label names WHICH RULE fired. Field-independent arms
+            // only here: the `in_flight` arm belongs to the product branch's
+            // flag, which upstream does not carry.
+            let (arrival, _) = resolution_outcome(self.write.is_none());
+            self.mark(arrival);
+            let arm = if self.write.is_some() {
+                "resolved-ignored-written"
+            } else {
+                "resolved-cancels"
+            };
+            self.mark(arm);
         }
         if self.write.is_none() {
             Err(Failure::ApprovalCancelled)
@@ -169,7 +186,12 @@ impl Callbacks {
         runner: &OwnedSession,
         request: ApprovalRequest,
         until: Instant,
+        dispatch: &str,
     ) -> Result<RequestId, Failure> {
+        // The dispatch key exists only for the diagnostic journal; silence
+        // the unused parameter exactly in the builds that compile no journal.
+        #[cfg(not(any(test, feature = "test-diagnostics")))]
+        let _ = dispatch;
         if self.entries.len() >= 16 || self.entries.contains_key(request.id()) {
             return Err(Failure::ApprovalCapacity);
         }
@@ -231,6 +253,8 @@ impl Callbacks {
                 admitted: false,
                 recorded: false,
                 resolved: false,
+                #[cfg(any(test, feature = "test-diagnostics"))]
+                dispatch: dispatch.to_owned(),
                 #[cfg(any(test, feature = "test-diagnostics"))]
                 trace: PhaseTrace::new(),
             },
@@ -377,22 +401,60 @@ mod trace_tests {
         // The cancellation primitive labels and outcomes, both directions.
         assert_eq!(resolution_outcome(true), ("resolved-before-write", true));
         assert_eq!(resolution_outcome(false), ("resolved-after-write", false));
-        // The journal mirrors the marks for the entry they belong to.
+        // The arm labels name the rule that fired, not just the arrival
+        // (field-independent half of e3dd70c3; the `in_flight` arm belongs
+        // to the product branch). Pinned so a renamed or withdrawn label
+        // fails here rather than silently impoverishing the traces.
+        let mut written = PhaseTrace::new();
+        for label in [
+            "acknowledged",
+            "prepared",
+            "begun",
+            "admitted",
+            "checked",
+            "resolved-after-write",
+            "resolved-ignored-written",
+            "turn-ended-ignored-written",
+        ] {
+            written.mark(label);
+        }
+        assert_eq!(written.as_slice().last(), Some(&"turn-ended-ignored-written"));
+        let mut cancelling = PhaseTrace::new();
+        for label in ["acknowledged", "resolved-before-write", "resolved-cancels"] {
+            cancelling.mark(label);
+        }
+        assert_eq!(cancelling.as_slice().last(), Some(&"resolved-cancels"));
+        // The journal is keyed by dispatch: records of another operation are
+        // invisible to this one's reads (parallel tests never interleave).
+        let dispatch = "dispatch-a";
         let id = format!("{:?}", hagency_runtime::codex::RequestId::Number(1));
         for label in ["acknowledged", "prepared"] {
-            crate::approval::diagnostics::phase(&id, label);
+            crate::approval::diagnostics::phase(dispatch, &id, label);
         }
+        crate::approval::diagnostics::phase("dispatch-b", &id, "checked");
         assert_eq!(
-            crate::approval::diagnostics::phases_of(&id),
-            ["acknowledged", "prepared"]
+            crate::approval::diagnostics::phases_of(dispatch, &id),
+            ["acknowledged", "prepared"],
+            "another dispatch's records must be invisible"
         );
-        // A cancellation is recorded with the primitive and the trace.
+        assert!(
+            crate::approval::diagnostics::dispatch_trace(dispatch).contains(&id),
+            "the dispatch trace names its entries"
+        );
+        assert!(
+            !crate::approval::diagnostics::dispatch_trace("dispatch-b").is_empty()
+                && crate::approval::diagnostics::dispatch_trace("dispatch-b").contains("checked"),
+            "the other dispatch sees only its own record"
+        );
+        // A cancellation is recorded under its dispatch, with the primitive
+        // and the trace.
         crate::approval::diagnostics::cancellation(
+            dispatch,
             "turn-ended-unwritten",
             &id,
             &["retained", "acknowledged"],
         );
-        let trace_text = crate::approval::diagnostics::last_cancellation_trace();
+        let trace_text = crate::approval::diagnostics::last_cancellation_trace(dispatch);
         assert!(trace_text.contains("turn-ended-unwritten"), "{trace_text}");
         assert!(trace_text.contains(&id), "{trace_text}");
         assert!(
@@ -401,9 +463,12 @@ mod trace_tests {
         );
         crate::approval::diagnostics::reset();
         assert_eq!(
-            crate::approval::diagnostics::phases_of(&id),
+            crate::approval::diagnostics::phases_of(dispatch, &id),
             Vec::<&str>::new()
         );
-        assert_eq!(crate::approval::diagnostics::last_cancellation_trace(), "");
+        assert_eq!(
+            crate::approval::diagnostics::last_cancellation_trace(dispatch),
+            ""
+        );
     }
 }
