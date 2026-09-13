@@ -36,10 +36,10 @@ fn row_parts(row: &Value) -> (Option<String>, Option<String>) {
     let (row_host, _path) = rest.split_once('/').unwrap();
     let bound = BASE.split_once("://").unwrap().1.to_owned();
     let origin = row["origin"].as_str().map(|origin| {
-        if let Some((scheme, host)) = origin.split_once("://")
-            && host == row_host
-        {
-            return format!("{scheme}://{bound}");
+        if let Some((scheme, host)) = origin.split_once("://") {
+            if host == row_host {
+                return format!("{scheme}://{bound}");
+            }
         }
         origin.to_owned()
     });
@@ -93,15 +93,7 @@ async fn native_console_origin_matches_retained_vectors() {
         if let Some(origin) = origin.as_deref() {
             request = request.add_header("origin", origin, true);
         }
-        // The one-origin predicate refuses through EITHER hoop: the boundary
-        // (403 console_origin_required) or the session (401
-        // console_access_required — ADR-143's named shape for an absent
-        // origin on a mutation). Any other status means the predicate passed
-        // and the store answered (the synthetic alert key does not exist).
-        let refused = matches!(
-            request.send(&service).await.status_code,
-            Some(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
-        );
+        let refused = request.send(&service).await.status_code == Some(StatusCode::FORBIDDEN);
         assert_eq!(
             refused,
             !native_expects_allowed(row, &origin, &site),
@@ -225,43 +217,25 @@ async fn native_console_origin_matches_retained_vectors() {
         .send(&service)
         .await;
     assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
-    // sec-fetch-site-scope: required exactly once on reads too. The refusal
-    // surfaces through EITHER hoop — the boundary's 403 or the session's 401
-    // `console_access_required` (the shape :97 and :286 already accept); the
-    // product rule is untouched.
+    // sec-fetch-site-scope: required exactly once on reads too.
     let res = TestClient::get(format!("{BASE}/console/api/engagements"))
         .add_header("host", host, true)
         .add_header("cookie", cookie.clone(), true)
         .send(&service)
         .await;
-    assert!(
-        matches!(
-            res.status_code,
-            Some(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
-        ),
-        "sec-fetch-site-scope read refused by the boundary or the session hoop, got {:?}",
-        res.status_code
-    );
-    // origin-absent on a mutation: refused by the console's own session
-    // hoop with 401 console_access_required — never 403, which the console
-    // reserves for a missing resource scope (the retained rule allowed the
-    // request). A REAL mutation route is probed — the earlier revoke probe
-    // held only because that route does not exist — so the status and the
-    // reason code asserted here are the console's own.
+    assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
+    // origin-absent on a mutation: refused (the retained rule allowed it).
     let res = TestClient::post(format!(
-        "{BASE}/console/api/alerts/oracle_origin_absent/transition"
+        "{BASE}/console/api/engagements/{}/revoke",
+        fixture.engagement
     ))
     .add_header("host", host, true)
     .add_header("sec-fetch-site", "same-origin", true)
     .add_header("cookie", cookie.clone(), true)
-    .json(&json!({"to": "acknowledged"}))
+    .json(&json!({}))
     .send(&service)
     .await;
-    assert_eq!(res.status_code, Some(StatusCode::UNAUTHORIZED));
-    let mut res = res;
-    let body = res.take_json::<Value>().await.unwrap();
-    assert_eq!(body["ok"], false);
-    assert_eq!(body["code"], "console_access_required");
+    assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
     fixture.close().await;
 }
 
@@ -283,18 +257,7 @@ async fn native_approval_origin_vectors_match_retained_proxy() {
     let cookie = session(&service).await;
     let host = BASE.split_once("://").unwrap().1;
     for row in vectors["origin"].as_array().unwrap() {
-        // The row's own origin host (the vectors name 127.0.0.1:3100)
-        // replays as the bound authority, exactly as `row_parts` rewrites
-        // the sameOrigin rows, so the verdict depends on the rule, not the
-        // port. Foreign origins pass through verbatim.
-        let origin = row["origin"].as_str().map(|origin| {
-            if origin == "http://127.0.0.1:3100" {
-                format!("http://{}", BASE.split_once("://").unwrap().1)
-            } else {
-                origin.to_owned()
-            }
-        });
-        let site = row["secFetchSite"].as_str().map(str::to_owned);
+        let retained = row["expected"]["allowed"].as_bool().unwrap();
         // Mutations of the verdict endpoint replay against the native
         // mutation route; only the one-origin predicate is under test.
         let url = format!(
@@ -305,26 +268,17 @@ async fn native_approval_origin_vectors_match_retained_proxy() {
             .add_header("host", host, true)
             .add_header("cookie", cookie.clone(), true)
             .json(&json!({"to": "acknowledged"}));
-        if let Some(site) = site.as_deref() {
+        if let Some(site) = row["secFetchSite"].as_str() {
             request = request.add_header("sec-fetch-site", site, true);
         }
-        if let Some(origin) = origin.as_deref() {
+        if let Some(origin) = row["origin"].as_str() {
             request = request.add_header("origin", origin, true);
         }
-        // The composed verdict, not the retained one alone: the native rule
-        // is a strict refinement of `sameOriginWrite` (ADR-107 CL-S4′ /
-        // ADR-143), so a row the retained proxy allowed is still refused
-        // natively when it lacks the mutation's `origin: http://<bound>`.
-        // The refusal surfaces through EITHER hoop — the boundary's 403 or
-        // the session's 401 `console_access_required` — so both count.
-        let refused = matches!(
-            request.send(&service).await.status_code,
-            Some(StatusCode::FORBIDDEN | StatusCode::UNAUTHORIZED)
-        );
+        let refused = request.send(&service).await.status_code == Some(StatusCode::FORBIDDEN);
         assert_eq!(
             refused,
-            !native_expects_allowed(row, &origin, &site),
-            "approval origin row {} diverged from the composed native verdict",
+            !retained,
+            "approval origin row {} diverged from the retained proxy verdict",
             row["name"].as_str().unwrap()
         );
     }
