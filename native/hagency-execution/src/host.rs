@@ -9,6 +9,17 @@ use hagency_store::OwnedDispatchScope;
 use std::sync::Arc;
 use std::{collections::BTreeMap, ffi::OsString, net::SocketAddr, path::PathBuf};
 
+/// The exact argv the host ever passes to the Codex CLI (ADR-139): one
+/// argument, `app-server`. Sandbox policy and approval mode travel in the
+/// typed initialize/thread request, and stdio is the pinned CLI's default
+/// transport — so no `--sandbox`, `--ask-for-approval`, `--cd`, `--listen` or
+/// `--stdio` flag may ever appear here. Both launch sites (the Host
+/// constructor's admission validation and `Host::prepare`) build argv from
+/// this one function, which `native_codex_argv_is_app_server_only` pins.
+fn app_server_arguments() -> Vec<OsString> {
+    vec!["app-server".into()]
+}
+
 /// One operation uses a 100 ms..30 s absolute monotonic execution deadline.
 /// Native RPC response/write waits are 10 ms..2 s. Acknowledged turn silence
 /// uses the same original operation budget. Cancellation is checked every
@@ -80,7 +91,7 @@ impl Host {
         // Reuse the launch validator for exact environment/argv byte limits.
         Launch {
             executable: executable.clone(),
-            arguments: vec!["app-server".into()],
+            arguments: app_server_arguments(),
             directory: workspaces.first_path()?.to_path_buf(),
             environment: environment.clone(),
             require_crash_containment: false,
@@ -299,9 +310,12 @@ impl Host {
         // ADR-139: argv is deliberately just "app-server" — sandbox and
         // approval travel in the typed initialize request, and stdio is the
         // pinned CLI's default transport (see adr-139-native-codex-launch-surface.md).
+        // Both launch sites build argv from `app_server_arguments`, so
+        // `native_codex_argv_is_app_server_only` pins every argument the
+        // host can ever pass to the Codex CLI.
         let launch = Launch {
             executable: self.executable.clone(),
-            arguments: vec!["app-server".into()],
+            arguments: app_server_arguments(),
             directory: path.clone(),
             environment,
             require_crash_containment: false,
@@ -337,6 +351,29 @@ pub(crate) struct Prepared {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_codex_argv_is_app_server_only() {
+        // ADR-139: the host passes exactly one argument, `app-server`. Both
+        // launch sites (the Host constructor's admission validation and
+        // `Host::prepare`) build argv from this single function, so pinning
+        // its output pins every argument the host can ever pass.
+        let arguments = app_server_arguments();
+        assert_eq!(
+            arguments,
+            vec![OsString::from("app-server")],
+            "the spawn argv must be exactly one argument: app-server"
+        );
+        // No sandbox, approval, directory or transport flag may ever appear
+        // on argv: policy travels in the typed initialize/thread request and
+        // stdio is the pinned CLI's default transport.
+        assert!(
+            arguments
+                .iter()
+                .all(|argument| { !argument.to_string_lossy().starts_with("--") }),
+            "no flag may ever appear on the Codex spawn argv"
+        );
+    }
 
     #[test]
     fn native_receive_tools_host_profile() {
