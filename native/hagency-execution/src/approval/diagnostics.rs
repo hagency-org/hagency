@@ -113,13 +113,18 @@ pub fn dispatch_trace(dispatch: &str) -> String {
         .join("; ")
 }
 
-/// Clear both structures, every dispatch. Tests call this before a
-/// deterministic drive.
-pub fn reset() {
+/// Clear one operation's records — and only that operation's. The old
+/// clear-everything `reset()` let one test wipe another's in-flight journal
+/// under `--test-threads=8`, producing prefix-truncated traces that read as
+/// product misses (the landing verdict's Q2). Caveat, stated honestly: the
+/// owned fixtures share the dispatch id `"dispatch"`, so two same-process
+/// tests with that id still clear each other; full isolation needs unique
+/// fixture dispatch ids, a fixture change kept for the product branch.
+pub fn reset(dispatch: &str) {
     if let Ok(mut journal) = PHASES.lock() {
-        journal.clear();
+        journal.retain(|(owner, _, _)| owner != dispatch);
     }
     if let Ok(mut slot) = CANCELLED.lock() {
-        slot.clear();
+        slot.retain(|(owner, _, _, _)| owner != dispatch);
     }
 }
