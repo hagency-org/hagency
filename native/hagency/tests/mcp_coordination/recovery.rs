@@ -149,7 +149,9 @@ async fn native_mcp_coordination_catalog() {
             "cancel_graph",
             "report_graph_result",
             "read_graph_dependencies",
-            "read_graph_dependency"
+            "read_graph_dependency",
+            "get_approval",
+            "consume_approval"
         ])
     );
     for tool in tools {

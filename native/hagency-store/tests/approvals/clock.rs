@@ -221,9 +221,13 @@ async fn native_approval_consumption_clock_after_lock() {
                     "applying"
                 );
             }
+            // The row reached `applying` (asserted above): the design names the
+            // settled-state word `already_consumed`, not the generic authority
+            // refusal (spec: "the consume refuses already_consumed / not_consumable
+            // instead of the generic authority word").
             assert!(matches!(
                 store.consume_owner_approval(cap, pending.id).await,
-                Err(Error::RunnerAuthority)
+                Err(Error::AlreadyConsumed)
             ));
             store.shutdown().await.unwrap();
             break;
