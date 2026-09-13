@@ -510,3 +510,50 @@ async fn native_owned_dispatch_deadline_stops_and_fences() {
     drop(report);
     f.domain.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn native_owned_dispatch_fixture_artifacts_are_temp_owned() {
+    let root_path = {
+        let f = Fixture::new();
+        let root_canonical = f.root.path().canonicalize().unwrap();
+        let mut operation = f.operation("normal");
+        f.entered().await;
+        let report = operation.wait().await.unwrap();
+        drop(report);
+        // Every marker lives under the TempDir-owned work directory — never a
+        // production state directory. Paths are compared canonicalized, not by
+        // a separator-assuming string (the fixture work dir is a Unicode path).
+        assert!(
+            f.work.starts_with(&root_canonical),
+            "fixture markers must live under the temp root"
+        );
+        assert!(
+            f.work.join("owned-dispatch.entered").is_file(),
+            "fixture must write its entry marker"
+        );
+        assert!(
+            f.work.join("owned-dispatch.requests").is_file(),
+            "fixture must write its request journal"
+        );
+        // No owned-dispatch.* path is written anywhere the production state
+        // directory reaches.
+        let state = f.root.path().join("state");
+        for entry in std::fs::read_dir(&state).unwrap() {
+            let entry = entry.unwrap();
+            assert!(
+                !entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("owned-dispatch"),
+                "no owned-dispatch path may reach the production state directory"
+            );
+        }
+        f.domain.shutdown().await.unwrap();
+        f.root.path().to_owned()
+    };
+    // The owner is dropped: nothing survives the drop.
+    assert!(
+        !root_path.exists(),
+        "temp-owned fixture artifacts must self-clean on drop"
+    );
+}

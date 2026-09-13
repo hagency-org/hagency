@@ -752,3 +752,68 @@ fn native_media_stage_replay_custody() {
     drop(store);
     drop(constrained.snapshot(&selection).unwrap());
 }
+
+#[test]
+fn native_media_store_capacity_refuses_rather_than_evicts() {
+    let f = Fixture::new();
+    let limits = Limits::new(512, 2048, 1, 1).unwrap();
+    let mut store = f.create(limits);
+    store
+        .stage(&op("only"), f.plain(b"committed payload"))
+        .map_err(|failure| failure.error())
+        .unwrap();
+    let records = store.committed_records();
+    let bytes = store.occupied_bytes();
+    // An operation that would exceed the declared record bound is refused —
+    // never evicted. The prior record stays readable and the figures unchanged.
+    assert!(matches!(
+        store
+            .stage(&op("second"), f.plain(b"would exceed the record bound"))
+            .map_err(|failure| failure.error()),
+        Err(Error::Capacity)
+    ));
+    assert_eq!(store.committed_records(), records);
+    assert_eq!(store.occupied_bytes(), bytes);
+    assert_eq!(
+        store.read(&op("only")).unwrap().bytes(),
+        b"committed payload"
+    );
+}
+
+#[test]
+fn native_media_store_survives_reopen_with_unsettled_operation() {
+    let f = Fixture::new();
+    let mut store = f.create(Limits::default());
+    store
+        .stage(&op("settled"), f.plain(b"retained evidence"))
+        .map_err(|failure| failure.error())
+        .unwrap();
+    let records = store.committed_records();
+    // An unsettled operation: its write is interrupted before commit, leaving
+    // the store's recovery non-Clean. It is never promoted to committed.
+    assert!(matches!(
+        store
+            .stage_inner(&op("unsettled"), f.plain(b"interrupted payload"), |phase| {
+                if phase == Checkpoint::PayloadChunk {
+                    Err(Error::OutcomeUnknown)
+                } else {
+                    Ok(())
+                }
+            })
+            .map_err(|failure| failure.error()),
+        Err(Error::OutcomeUnknown)
+    ));
+    drop(store);
+    // Reopen over the same directory: the committed record survives and reads
+    // back; the unsettled operation is retained as evidence, not fabricated.
+    let mut reopened = f.reopen(Limits::default()).unwrap();
+    assert_eq!(reopened.committed_records(), records);
+    assert_eq!(
+        reopened.read(&op("settled")).unwrap().bytes(),
+        b"retained evidence"
+    );
+    assert!(matches!(
+        reopened.read(&op("unsettled")),
+        Err(Error::NotFound)
+    ));
+}

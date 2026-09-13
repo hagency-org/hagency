@@ -591,3 +591,74 @@ fn native_console_account_grant_is_mutually_exclusive() {
         "--manage-resource-configuration",
     ]);
 }
+
+/// The native service and MCP helper construct no file log sink: every
+/// diagnostic arrives on stderr. Both refusals below happen before any store
+/// open (missing operator.token for serve; missing context env for the helper),
+/// so the assertion needs no SQLite and runs on every OS.
+#[test]
+fn native_logs_to_stderr_with_no_file_sink() {
+    let directory = tempfile::tempdir().unwrap();
+    let state = directory.path().join("fresh state");
+
+    // Serve refuses startup at the missing credential, before any store open.
+    let serve = Command::new(env!("CARGO_BIN_EXE_hagency"))
+        .args(["serve", "--state-dir"])
+        .arg(&state)
+        .env("PATH", "")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .output()
+        .unwrap();
+    assert!(!serve.status.success(), "missing token must refuse startup");
+    assert!(
+        serve.stdout.is_empty(),
+        "native service must not write diagnostics to stdout"
+    );
+    assert!(
+        !serve.stderr.is_empty(),
+        "the startup refusal is reported on stderr"
+    );
+
+    // The MCP helper refuses at context load (no HAGENCY_* env): same posture.
+    let mut helper = Command::new(env!("CARGO_BIN_EXE_hagency"));
+    helper
+        .arg("mcp")
+        .env_clear()
+        .env("PATH", "")
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    #[cfg(windows)]
+    helper.env("SystemRoot", std::env::var_os("SystemRoot").unwrap());
+    let mcp = helper.output().unwrap();
+    assert!(
+        !mcp.status.success(),
+        "missing context must refuse the helper"
+    );
+    assert!(
+        mcp.stdout.is_empty(),
+        "the helper must not write diagnostics to stdout"
+    );
+    assert!(
+        !mcp.stderr.is_empty(),
+        "the helper's refusal is reported on stderr"
+    );
+
+    // No file sink: nothing under the temp root carries a log-shaped name.
+    fn collect_log_names(root: &Path, found: &mut Vec<String>) {
+        if let Ok(entries) = fs::read_dir(root) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().into_owned();
+                if name.ends_with(".log") || name.contains("jsonl") || name == "logs" {
+                    found.push(entry.path().display().to_string());
+                }
+                collect_log_names(&entry.path(), found);
+            }
+        }
+    }
+    let mut found = Vec::new();
+    collect_log_names(directory.path(), &mut found);
+    assert!(found.is_empty(), "a file log sink appeared: {found:?}");
+}

@@ -481,3 +481,26 @@ async fn native_receive_workspace_authority_read_deadline() {
     ));
     close(&f, &mut operation).await;
 }
+
+#[tokio::test]
+async fn native_receive_partial_destination_survives_unknown_outcome() {
+    let f = fixture();
+    let mut operation = f.operation("receive-unknown");
+    let binding = started(&f, &mut operation).await;
+    let bytes = vec![b'r'; 64 * 1024 + 5];
+    let mut held = owner(&f, &binding, 0, &bytes).await;
+    held.materialize(&bytes).await.unwrap();
+    let path = f.work.join(held.relative_path());
+    assert!(path.is_file(), "receive destination is written");
+    // The receive owner is dropped before the dispatch settles, and the
+    // dispatch is cancelled: the outcome is unknown, and the destination is
+    // the only evidence the write may have run. Dropping the borrowed receive
+    // cannot reset the attempt or drop its File — the destination survives.
+    drop(held);
+    close(&f, &mut operation).await;
+    assert!(
+        path.is_file(),
+        "the partial destination must survive an unknown outcome"
+    );
+    assert_eq!(fs::read(&path).unwrap(), bytes, "destination is unmodified");
+}
