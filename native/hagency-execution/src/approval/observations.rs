@@ -60,11 +60,22 @@ impl Drive<'_> {
                 #[cfg(any(test, feature = "test-diagnostics"))]
                 for entry in callbacks.entries.values_mut() {
                     if entry.write.is_some() {
-                        // Arm label (field-independent half of e3dd70c3): a
-                        // written entry is retired by its receipt path, not by
-                        // the turn end. The `in_flight`-dependent arms stay on
-                        // the product branch — upstream has no such field.
-                        entry.mark("turn-ended-ignored-written");
+                        if entry.resolved {
+                            // Arm label (field-independent half of e3dd70c3): a
+                            // written entry whose frame the peer resolved is
+                            // retired by its receipt path, not by the turn end.
+                            // The `in_flight`-dependent arms stay on the
+                            // product branch — upstream has no such field.
+                            entry.mark("turn-ended-ignored-written");
+                            continue;
+                        }
+                        // A written entry the peer never resolved: the frame is
+                        // on the wire but the peer's receipt is UNKNOWN — the
+                        // turn end must name that fate, never complete
+                        // silently over it (the midwrite scenario's subject:
+                        // `pending_server_requests: 1` at the close).
+                        entry.mark("turn-ended-unwritten");
+                        entry.mark("turn-ended-in-flight-uncertain");
                         continue;
                     }
                     // Two labels: the arrival label is stamped on every
@@ -119,12 +130,16 @@ impl Drive<'_> {
                     {
                         Err(Failure::ApprovalCancelled)
                     } else if callbacks.entries.values().any(|e| {
-                        // In flight, receipt-less, and NOT resolved-away: the
-                        // frame's fate is unknown (the quiet drop's resolved
-                        // entries are exempt — their fate is known: never
-                        // sent). The turn end must not end the operation
-                        // silently over that unresolved acceptance.
-                        e.in_flight && e.write.is_none() && !e.resolved
+                        // Receipt-unknown and NOT resolved-away: the frame's
+                        // fate is unknown (the quiet drop's resolved entries
+                        // are exempt — their fate is known: never sent). A
+                        // WRITTEN but never-resolved entry has the same
+                        // unknown fate at the peer (the midwrite scenario:
+                        // the frame is on the wire, the probe exits with it
+                        // unread, `pending_server_requests: 1` at the close).
+                        // The turn end must not end the operation silently
+                        // over that unresolved acceptance.
+                        (e.in_flight || e.write.is_some()) && !e.resolved
                     }) {
                         // Decide from the transport's TERMINATION SNAPSHOT —
                         // `stop()` erases `writing`, so `write_progress()`
@@ -132,10 +147,11 @@ impl Drive<'_> {
                         // used here. Cause first (ADR-046's
                         // who-closed-first): the host closing its own pipe on
                         // the peer's turn end is a HOST-side termination.
-                        // With accepted bytes the fate is unknown —
-                        // `SettlementUnknown` whoever closed; with none sent
-                        // the host-side cause is the quiet family (the turn
-                        // completed without the approval), never
+                        // With accepted bytes — on the wire (`write`) or in
+                        // the snapshot's unconfirmed custody — the fate is
+                        // unknown: `SettlementUnknown` whoever closed; with
+                        // none sent the host-side cause is the quiet family
+                        // (the turn completed without the approval), never
                         // `PeerUnavailable` — that name stays reserved for
                         // `Io("stdin write")` against a gone reader and
                         // `PeerEof`. A peer-side cause with an OBSERVED
@@ -151,7 +167,9 @@ impl Drive<'_> {
                         let accepted = termination
                             .and_then(|t| t.unconfirmed_write.as_ref())
                             .map_or(0, |write| write.accepted_bytes);
-                        if accepted > 0 {
+                        let transmitted =
+                            accepted > 0 || callbacks.entries.values().any(|e| e.write.is_some());
+                        if transmitted {
                             Err(Failure::SettlementUnknown)
                         } else if host_side {
                             // Quiet: host's own close, nothing sent. The
