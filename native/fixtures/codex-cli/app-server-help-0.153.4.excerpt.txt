@@ -6,21 +6,19 @@
 # `stdio://`), and (b) `--stdio` is an exact synonym ("equivalent to
 # `--listen stdio://`") — so a bare `app-server` argv yields stdio.
 #
-# CAVEAT (recorded honestly): the excerpt below was captured from the local
-# Homebrew codex 0.154.0 because 0.153.4 is not installed on this host.
-# It is committed as the SHAPE of the capture and the assertions to re-verify;
-# `native_codex_stdio_flag_matches_pinned_cli` must FAIL until this file is
-# re-captured from a real 0.153.4 binary (version string below then reads
-# 0.153.4) or the spec's pin moves to the version actually captured.
+# Captured by integration on 2026-09-13 from the pinned build: the npm package
+# @openai/codex@0.153.4 (registry tarball codex-0.153.4.tgz), run as
+# `npx -y @openai/codex@0.153.4 app-server --help`; `codex --version` printed
+# `codex-cli 0.153.4`. The excerpt is the verbatim transport section.
 #
-# captured_version: 0.154.0  (target: 0.153.4 — re-capture required)
+# captured_version: 0.153.4
 # capture_command: codex app-server --help
 # ----------------------------------------------------------------------
 
       --listen <URL>
           Transport endpoint URL. Supported values: `stdio://` (default), `unix://`, `unix://PATH`,
           `ws://IP:PORT`, `off`
-
+          
           [default: stdio://]
 
       --stdio
