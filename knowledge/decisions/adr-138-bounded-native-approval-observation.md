@@ -100,3 +100,22 @@ but sparse.
 - Bind the delivery selector now with a documented refusal — rejected per the
   V2 ruling: a test asserting a refusal for a nonexistent route asserts
   nothing; the route's own commit owns its selector.
+
+---
+
+## Note: PC-C0's wiring observation and the fixture slice (PC-C0b)
+
+PC-C0's wiring spec carries one selector whose observation the composition
+cannot produce on the hosted lanes: `native_private_approval_delivery_is_wired`
+times out because the composition never delivers — the worker environment is
+fixed at `config.rs` (HOME/CODEX_HOME only, no offline-mode switch), the
+executable is sha256-pinned per configured path, and the composition never
+network-enrolls the approval collector. **No product change follows**: the
+wiring this record defers to stands exactly as PC-C0 landed it. The gap is
+closed by a **fixture slice** (`specs/task-rust-private-approval-delivery-fixture.spec.md`,
+PC-C0b) that makes the delivery leg observable with test-only machinery — a
+callback-capable runtime probe selected by the test's own pinned executable
+path, and a scripted second-identity enrollment of the approval collector
+against the shared fake peer — leaving the production launch shape, the pin,
+and every production code path untouched. The wiring selector binds in that
+spec; this spec's own selectors are unchanged.

@@ -53,7 +53,7 @@ peer. Nothing about the production launch shape changes.
 ## Acceptance Criteria
 
 Scenario: A service-composed run delivers a request end to end
-  Owed Selector: native_private_approval_delivery_is_wired (parked — the name is owed by this slice and binds only when the PC-C0b code exists; no Test: line here yet)
+  Test: native_private_approval_delivery_is_wired
   Level: integration
   Test Double: the test-only callback-capable runtime probe pinned by its own executable path, and a scripted second-identity enrollment of the approval collector against the shared fake peer; no live homeserver
   Given the composition with the fixture probe selected by the test's own pinned path and the collector enrolled against the shared fake peer
@@ -64,18 +64,13 @@ Scenario: A service-composed run delivers a request end to end
 
 ## Decisions
 
-**The wiring selector is owed by this slice, parked until it lands.**
+**The wiring selector is moved here from the PC-C0 spec.**
 `native_private_approval_delivery_is_wired` is the red selector whose
-observation this slice exists to make possible; it is **parked as an owed
-name** in the scenario above (no `Test:` line, because the checker binds only
-names that exist and the PC-C0b code does not exist yet) — **integration
-restores the `Test:` line when the fixture slice lands** with the same name
-and same end-to-end semantics. The PC-C0 wiring spec keeps its other selector
-(`native_private_approval_delivery_wiring_refuses_without_enrollment`) bound
-where it is, untouched. The `#[test] fn` in
-`native/hagency/tests/bootstrap/approval.rs` carries the name today and will
-be removed from the PC-C0 lineage until this slice rebuilds it; this slice's
-Allowed Changes own that file.
+observation this slice exists to make possible; it binds in this spec with
+the same name and same end-to-end semantics, and the PC-C0 spec keeps its
+other selector (`native_private_approval_delivery_wiring_refuses_without_enrollment`)
+untouched. The `#[test] fn` in `native/hagency/tests/bootstrap/approval.rs`
+carries the name today; this slice's Allowed Changes own that file.
 
 **Test-only, never production.** The callback-capable probe and the scripted
 enrollment exist only under test support; the production launch shape
