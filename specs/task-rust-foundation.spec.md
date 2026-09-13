@@ -212,6 +212,34 @@ Scenario: The release tree contains no Node entry point
   Then the scan finds none and passes
   And any finding fails the scan never skips
 
+Scenario: The runbook dry-run proves version identity on a temp state directory
+  Test: native_cutover_dryrun_version_identity
+  Level: integration
+  Test Double: the built binary run with --version against a fresh temp state directory
+  Given a temp state directory initialized by hagency init and the runbook's step 0 precondition
+  When the binary's --version output is compared with the workspace version and the artifact naming rule
+  Then the reported version equals the workspace [workspace.package] version exactly
+  And a mismatch fails the dry-run before any service start
+
+Scenario: The runbook dry-run gates on ready and proves the stop contract
+  Test: native_cutover_dryrun_ready_gate_and_stop_contract
+  Level: integration
+  Test Double: fixture harness starting serve on a temp state directory sending SIGTERM and polling both routes
+  Given the runbook's step 3 and step 6 on a temp state directory with the service started
+  When /ready is polled to ok before SIGTERM is sent within the stop budget
+  Then the gate observed ready ok and never relied on health which is 200 while live
+  And after SIGTERM ready flips to 503 naming stopped components while health keeps 200
+  And the process exits zero or parks on an unknown close inside the budget without a false success
+
+Scenario: The runbook dry-run preserves pending rows across the stop-start pair
+  Test: native_cutover_dryrun_pending_preserved_across_restart
+  Level: integration
+  Test Double: fixture harness seeding an outcome-unknown row then performing the runbook's stop and start pair
+  Given the runbook's steps 6 and 7 on a temp state directory with a seeded pending or outcome-unknown row
+  When the service is stopped and restarted on the same state directory
+  Then every pending or unknown row before the stop is still reported pending or unknown after the start
+  And no row is resolved dropped or marked done by the stop-start pair
+
 ## Out of Scope
 
 The spec-binding build tool may distinguish native Cargo contracts from Vitest
