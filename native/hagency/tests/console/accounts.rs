@@ -5,13 +5,24 @@ use std::time::{Duration, Instant};
 /// An account-management session: the operator ticket from the new route,
 /// exchanged exactly as the other two management scopes are.
 async fn management(service: &Service) -> String {
+    // The issuer shares one rate budget across every scope (authority.rs
+    // `issue_scope`): a second issue within one second of the `session()` issue
+    // answers Busy. Clear the budget before issuing; a 429 is a real refusal
+    // to be reported from its body, never retried.
+    tokio::time::sleep(Duration::from_millis(1010)).await;
     let mut response = TestClient::post(format!("{BASE}/api/native/v1/console/account-access"))
         .add_header("host", "127.0.0.1:13300", true)
         .bearer_auth(TOKEN)
         .send(service)
         .await;
-    assert_eq!(response.status_code, Some(StatusCode::OK));
-    let ticket = response.take_json::<Value>().await.unwrap()["ticket"]
+    let status = response.status_code;
+    let body = response.take_string().await.unwrap_or_default();
+    assert_eq!(
+        status,
+        Some(StatusCode::OK),
+        "account access issue refused: {body}"
+    );
+    let ticket = serde_json::from_str::<Value>(&body).unwrap()["ticket"]
         .as_str()
         .unwrap()
         .to_owned();
@@ -222,15 +233,23 @@ async fn native_console_account_mutations_require_the_scope() {
         serde_json::from_str::<Value>(&prepare.take_string().await.unwrap()).unwrap()["code"],
         "account_scope_required"
     );
-    let retire = command("/console/api/accounts/no_such_row/retire", &readonly)
+    let mut retire = command("/console/api/accounts/no_such_row/retire", &readonly)
         .send(&service)
         .await;
     assert_eq!(retire.status_code, Some(StatusCode::FORBIDDEN));
-    let enrol = command("/console/api/accounts/no_such_row/enrollment", &readonly)
+    assert_eq!(
+        serde_json::from_str::<Value>(&retire.take_string().await.unwrap()).unwrap()["code"],
+        "account_scope_required"
+    );
+    let mut enrol = command("/console/api/accounts/no_such_row/enrollment", &readonly)
         .json(&json!({"model":"gpt-5.6-sol","expected_revision":"0".repeat(64)}))
         .send(&service)
         .await;
     assert_eq!(enrol.status_code, Some(StatusCode::FORBIDDEN));
+    assert_eq!(
+        serde_json::from_str::<Value>(&enrol.take_string().await.unwrap()).unwrap()["code"],
+        "account_scope_required"
+    );
     assert_eq!(
         f.domain.account_choices().await.unwrap().len(),
         before,
