@@ -127,7 +127,7 @@ Scenario: Absolute operation deadline stops silent work
 
 Scenario: The Codex argv is exactly the app-server subcommand
   Test: native_codex_argv_is_app_server_only
-  Level: unit
+  Level: integration
   Given a configured host with a validated executable and workspace
   When the host prepares an owned launch
   Then the spawn argv is exactly one argument app-server
@@ -141,6 +141,7 @@ Scenario: The bare argv still yields stdio on the pinned Codex CLI
   When its app-server transport default or explicit --stdio equivalence is probed offline
   Then stdio remains the default transport or an exact equivalent of the default
   And a pinned CLI whose default transport is no longer stdio fails the probe and reopens ADR-139
+  And the captured excerpt is from codex-cli 0.154.0 captured 2026-09-13 pinned by strict version equality
 
 ## Out of Scope
 

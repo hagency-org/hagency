@@ -224,18 +224,26 @@ async fn native_console_origin_matches_retained_vectors() {
         .send(&service)
         .await;
     assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
-    // origin-absent on a mutation: refused (the retained rule allowed it).
+    // origin-absent on a mutation: refused by the console's own session
+    // hoop with 401 console_access_required — never 403, which the console
+    // reserves for a missing resource scope (the retained rule allowed the
+    // request). A REAL mutation route is probed — the earlier revoke probe
+    // held only because that route does not exist — so the status and the
+    // reason code asserted here are the console's own.
     let res = TestClient::post(format!(
-        "{BASE}/console/api/engagements/{}/revoke",
-        fixture.engagement
+        "{BASE}/console/api/alerts/oracle_origin_absent/transition"
     ))
     .add_header("host", host, true)
     .add_header("sec-fetch-site", "same-origin", true)
     .add_header("cookie", cookie.clone(), true)
-    .json(&json!({}))
+    .json(&json!({"to": "acknowledged"}))
     .send(&service)
     .await;
-    assert_eq!(res.status_code, Some(StatusCode::FORBIDDEN));
+    assert_eq!(res.status_code, Some(StatusCode::UNAUTHORIZED));
+    let mut res = res;
+    let body = res.take_json::<Value>().await.unwrap();
+    assert_eq!(body["ok"], false);
+    assert_eq!(body["code"], "console_access_required");
     fixture.close().await;
 }
 
