@@ -32,6 +32,13 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
     let mut environment = BTreeMap::from([
         ("PATH".into(), "".into()),
         ("HAGENCY_OFFLINE_MODE".into(), mode.into()),
+        // The operation budget every scenario's `Limits::operation_ms`
+        // grants (`Gate::OPERATION_BUDGET_MS`, 25 s) — the probe derives
+        // every one of its waits from this value, never its own literal.
+        (
+            "HAGENCY_OPERATION_BUDGET_MS".into(),
+            crate::approval::Gate::OPERATION_BUDGET_MS.to_string().into(),
+        ),
     ]);
     if let Some(system) = std::env::var_os("SystemRoot") {
         environment.insert("SystemRoot".into(), system);

@@ -18,14 +18,47 @@ fn resolved(id: &str) -> io::Result<()> {
 }
 pub(super) fn gate(marker: &Path) -> io::Result<()> {
     fs::write(marker.with_extension("approval-ready"), b"ready")?;
-    let until = Instant::now() + Duration::from_secs(6);
+    // Derived from the operation budget (one tenth, doubled: the test side
+    // must first observe something of its own before releasing) — never a
+    // literal, which let the probe give up while a loaded host was still
+    // inside its operation budget. Expiry names what it was waiting for.
+    let until = Instant::now() + harness_wait() * 2;
     while !marker.with_extension("approval-release").is_file() {
         if Instant::now() >= until {
-            return Err(io::ErrorKind::TimedOut.into());
+            return Err(io::Error::other(
+                "probe timed out waiting for the host to write owned-dispatch.approval-release",
+            ));
         }
         std::thread::sleep(Duration::from_millis(5));
     }
     Ok(())
+}
+/// Hold until the HOST stops ownership, observed as EOF on the response
+/// stream we were already given (the parent's own `StdinLock`, borrowed as
+/// `reader` — never a second lock, which would deadlock on the guard).
+/// Pulses for evidence while polling; the budget is the outer ceiling. Used
+/// by the cancellation mode, whose subject ends before the host does.
+fn hold_reader_to_eof(reader: &mut impl BufRead, marker: &Path) -> io::Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(marker.with_extension("pulse"))?;
+    let until = Instant::now() + Duration::from_millis(operation_budget_ms() * 3 / 2);
+    loop {
+        file.write_all(b"x")?;
+        file.flush()?;
+        // An empty fill_buf is EOF: the host closed our stdin (ownership
+        // stop). The bytes are left unconsumed for any later reader.
+        if reader.fill_buf()?.is_empty() {
+            return Ok(());
+        }
+        if Instant::now() >= until {
+            return Err(io::Error::other(
+                "probe held past its derived ceiling without the host closing stdin",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(20));
+    }
 }
 pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::Result<bool> {
     callback("approval-1")?;
@@ -33,9 +66,15 @@ pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::R
         return Ok(false);
     }
     if mode == "owned-approval-resolve" {
+        // Cancellation: the probe must resolve without reading a response —
+        // that is its subject — so the handshake is explicit both ways and
+        // the probe never exits before the host is done with it: announce
+        // the resolution (the test can release the host on THIS marker),
+        // then hold to the host's stdin close.
         gate(marker)?;
         resolved("approval-1")?;
-        pulse(marker)?;
+        fs::write(marker.with_extension("approval-resolving"), b"resolving")?;
+        hold_reader_to_eof(reader, marker)?;
         return Ok(false);
     }
     if mode == "owned-approval-barriers" {

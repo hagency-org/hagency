@@ -153,6 +153,13 @@ impl Fixture {
         let mut environment = BTreeMap::from([
             ("PATH".into(), "".into()),
             ("HAGENCY_OFFLINE_MODE".into(), mode.into()),
+            // The operation budget every operation below grants — the probe
+            // derives every one of its waits from this value (never its own
+            // literal), so the two sides can never disagree about time.
+            (
+                "HAGENCY_OPERATION_BUDGET_MS".into(),
+                limits().operation_ms.to_string().into(),
+            ),
         ]);
         if let Some(system) = std::env::var_os("SystemRoot") {
             environment.insert("SystemRoot".into(), system);

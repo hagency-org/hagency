@@ -4,7 +4,7 @@ mod approval_probe;
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
-    io::{self, BufRead, Write},
+    io::{self, BufRead, Read, Write},
     path::Path,
     process::{Command, Stdio},
     time::{Duration, Instant},
@@ -15,7 +15,7 @@ fn pulse(marker: &Path) -> io::Result<()> {
         .create(true)
         .append(true)
         .open(marker.with_extension("pulse"))?;
-    let until = Instant::now() + Duration::from_secs(8);
+    let until = Instant::now() + harness_wait() * 4;
     while Instant::now() < until {
         file.write_all(b"x")?;
         file.flush()?;
@@ -23,12 +23,95 @@ fn pulse(marker: &Path) -> io::Result<()> {
     }
     Ok(())
 }
+/// The operation budget the host grants, in ms. The host builders pass it on
+/// the same env channel as `HAGENCY_OFFLINE_MODE`; the 25 s default matches
+/// `Limits::operation_ms` so a probe run outside the harness is still
+/// bounded.
+fn operation_budget_ms() -> u64 {
+    std::env::var("HAGENCY_OPERATION_BUDGET_MS")
+        .ok()
+        .and_then(|value| value.parse().ok())
+        .unwrap_or(25_000)
+}
+/// A derived wait: one tenth of the operation budget. A literal here is what
+/// let the probe exit before a loaded host's first byte (`Io("stdin write")`,
+/// accepted 0 of 51).
+fn harness_wait() -> Duration {
+    Duration::from_millis(operation_budget_ms() / 10)
+}
+/// Stay alive after terminal output until the HOST stops ownership, which it
+/// signals by closing our stdin — the close drives the hold, and the budget
+/// (plus half again) is only the outer ceiling. The old fixed 8 s pulse was
+/// a literal while the harness grants the operation 25 s, so on a loaded
+/// host the fixture exited while the operation was still running and its
+/// next write failed as `Io` with zero bytes accepted. `StdinLock` is
+/// `!Send`, so the lock is taken in the reading thread; the caller must have
+/// dropped its own lock first (a second `io::stdin().lock()` would block on
+/// the caller's guard forever).
+fn hold_until_stdin_closed(marker: &Path, budget_ms: u64) -> io::Result<()> {
+    let (closed, host_closed) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let mut stdin = io::stdin().lock();
+        let mut byte = [0u8; 1];
+        // Block until the host closes our stdin (EOF) or the stream errors.
+        while stdin.read(&mut byte).unwrap_or(0) != 0 {}
+        let _ = closed.send(());
+    });
+    hold(marker, budget_ms, host_closed)
+}
+/// The hold itself, over any blocking reader: it ends when the reader
+/// reports EOF (the write end of the stream was closed — for the real probe,
+/// the host stopping ownership) or when the derived ceiling expires, with
+/// the reason printed. Generic so a unit test can prove the EOF path with a
+/// synthetic reader instead of a spawned child (the sandbox walls spawning).
+/// Test-only: the real probe takes the `stdin` path directly.
+#[cfg(test)]
+fn hold_until_closed<R: Read + Send + 'static>(
+    marker: &Path,
+    budget_ms: u64,
+    mut stream: R,
+) -> io::Result<()> {
+    let (closed, host_closed) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let mut byte = [0u8; 1];
+        // Block until the stream closes (EOF) or errors.
+        while stream.read(&mut byte).unwrap_or(0) != 0 {}
+        let _ = closed.send(());
+    });
+    hold(marker, budget_ms, host_closed)
+}
+/// Pulse for evidence while waiting; the budget (plus half again) is the
+/// outer ceiling, and expiry names what was being waited for.
+fn hold(
+    marker: &Path,
+    budget_ms: u64,
+    host_closed: std::sync::mpsc::Receiver<()>,
+) -> io::Result<()> {
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(marker.with_extension("pulse"))?;
+    let until = Instant::now() + Duration::from_millis(budget_ms + budget_ms / 2);
+    loop {
+        if host_closed.try_recv().is_ok() {
+            return Ok(());
+        }
+        if Instant::now() >= until {
+            return Err(io::Error::other(format!(
+                "held {budget_ms}ms past the operation budget waiting for the host to close stdin"
+            )));
+        }
+        file.write_all(b"x")?;
+        file.flush()?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+}
 fn gated_pulse(marker: &Path) -> io::Result<()> {
     let mut file = OpenOptions::new()
         .create_new(true)
         .write(true)
         .open(marker.with_extension("pulse"))?;
-    let until = Instant::now() + Duration::from_secs(8);
+    let until = Instant::now() + harness_wait() * 4;
     file.write_all(b"xxx")?;
     file.flush()?;
     while !marker.with_extension("release").is_file() {
@@ -94,6 +177,10 @@ fn method(request: &Value, expected: &str) -> io::Result<()> {
 }
 fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     fs::write(marker.with_extension("entered"), b"entered")?;
+    // The mode echo (stale-binary proof): the probe records WHICH mode it
+    // executed before dispatching, so a VM run whose markers imply one path
+    // can never masquerade as a logic miss in another — tests can assert it.
+    fs::write(marker.with_extension("mode"), mode)?;
     #[cfg(unix)]
     {
         use std::os::unix::fs::FileTypeExt;
@@ -157,7 +244,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         // Observe a distinct child's output before protocol completion can cause
         // the owner to stop us. This prevents a never-scheduled child from being
         // mistaken for a successfully exercised descendant termination path.
-        let until = Instant::now() + Duration::from_secs(3);
+        let until = Instant::now() + harness_wait();
         while fs::metadata(child_marker.with_extension("pulse")).map_or(0, |m| m.len()) < 2 {
             if Instant::now() >= until {
                 let _ = child.kill();
@@ -227,7 +314,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         }
         // A real acknowledged turn can run a tool without another app-server
         // event during the shorter RPC response interval.
-        std::thread::sleep(Duration::from_millis(2200));
+        std::thread::sleep(harness_wait());
     }
     if mode.starts_with("owned-approval") && !approval_probe::run(mode, &mut stdin, marker)? {
         return Ok(());
@@ -247,7 +334,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     }
     if mode == "usage-gate" {
         fs::write(marker.with_extension("usage-ready"), b"ready")?;
-        let until = Instant::now() + Duration::from_secs(4);
+        let until = Instant::now() + harness_wait() * 2;
         while !marker.with_extension("usage-release").is_file() {
             if Instant::now() >= until {
                 return Err(io::Error::other("offline usage gate expired"));
@@ -301,9 +388,15 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         "turn/completed",
         json!({ "threadId": "owned-thread", "turn": { "id": "owned-turn", "status": "completed", "items": [] } }),
     )?;
-    // Stay alive after writing terminal output. The host must explicitly stop
-    // ownership; the fixture does not convert protocol completion into exit.
-    let outcome = pulse(marker);
+    // Stay alive after writing terminal output until the HOST stops ownership
+    // (our stdin closes). The old fixed 8 s pulse expired while a loaded host
+    // was still inside its operation budget, and the host's next write failed
+    // as `Io` with zero bytes accepted — the fixture, not the product, caused
+    // it. The close drives the hold; the budget (plus half again) is only the
+    // outer ceiling. `stdin` is still held here — drop it first, or the
+    // reading thread's lock would block on this guard forever.
+    drop(stdin);
+    let outcome = hold_until_stdin_closed(marker, operation_budget_ms());
     if let Some(child) = &mut child {
         let _ = child.kill();
         let _ = child.wait();
@@ -377,7 +470,7 @@ fn owner_crash(marker: &Path) -> io::Result<()> {
         require_crash_containment: true,
     };
     let (_owner, _pipes) = hagency_platform::SupervisedProcess::spawn_piped(&binary, &launch)?;
-    let until = Instant::now() + Duration::from_secs(3);
+    let until = Instant::now() + harness_wait();
     while fs::metadata(marker.with_file_name("descendant-child.pulse")).map_or(0, |m| m.len()) < 3 {
         if Instant::now() >= until {
             return Err(io::Error::other("owned descendant did not start"));
@@ -387,4 +480,32 @@ fn owner_crash(marker: &Path) -> io::Result<()> {
     // Deliberately bypass Drop: only kill-on-close job ownership can stop the
     // already-running descendant when the controller's process exits.
     std::process::exit(0);
+}
+
+#[cfg(test)]
+mod hold_tests {
+    use super::hold_until_closed;
+    use std::time::{Duration, Instant};
+
+    /// The observable-hold proof (brief 20's H1): a stream whose write end
+    /// is closed (an empty reader reports EOF immediately) ends the hold
+    /// promptly — the hold must observe the close, not run to its ceiling.
+    /// The old broken shape (a second `io::stdin().lock()` deadlocking on
+    /// the main thread's guard) never observes the close and holds to the
+    /// ceiling, so this test discriminates the mechanism, not the constants.
+    #[test]
+    fn native_probe_hold_ends_when_the_stream_closes() {
+        let marker =
+            std::env::temp_dir().join(format!("hagency-probe-hold-{}-close", std::process::id()));
+        let started = Instant::now();
+        // An empty reader IS a closed stream: its write end is gone.
+        let closed_stream: &[u8] = &[];
+        let outcome = hold_until_closed(&marker, 10_000, closed_stream);
+        let _ = std::fs::remove_file(marker.with_extension("pulse"));
+        outcome.expect("a closed stream must end the hold, not the ceiling");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the hold ran toward its ceiling instead of observing the close"
+        );
+    }
 }
