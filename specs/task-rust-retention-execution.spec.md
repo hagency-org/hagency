@@ -50,8 +50,12 @@ fate is unknown or whose completion is unpublished, is ever a candidate.
 - native/hagency-store/src/domain.rs
 - native/hagency-store/src/domain/execution.rs
 - native/hagency-store/src/domain/graphs.rs
+- native/hagency-store/src/domain/messages.rs (the phase shares the JSON-safe bound with the messages sweep, so bounded is pub(super))
+- native/hagency-store/src/domain_worker.rs (the DomainStore Job::Run plumbing the phase wrapper rides)
 - native/hagency-store/src/lib.rs
+- native/hagency-store/tests/ceiling_alerts.rs (a live schema-head pin, moving with the migration head)
 - native/hagency-store/tests/retention_execution.rs
+- native/hagency/src/lib.rs (the readiness mirror match arm for the phase's swept outcome)
 - native/hagency/src/bootstrap.rs
 - specs/task-rust-retention-execution.spec.md
 - knowledge/decisions/adr-053-native-owned-dispatch.md
