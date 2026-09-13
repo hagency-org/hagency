@@ -443,6 +443,10 @@ const RETENTION_MESSAGES_BATCH: u64 = 512;
 /// The `peer` phase's initial batch (ADR-125 peer phase, tick contract §2.3): the
 /// same 512 hypothesis, its own deadline is the budget.
 const RETENTION_PEER_BATCH: u64 = 512;
+/// The `engagements` phase's initial batch hypothesis (tick contract §2.3):
+/// each cascade prunes a whole reachable set, so the hypothesis starts an
+/// order of magnitude below the messages one.
+const RETENTION_ENGAGEMENTS_BATCH: u64 = 32;
 
 /// The ceiling-overrun sweep loop (ADR-124 slice b): hourly in production
 /// because the condition is standing — an agent past its ceiling at 09:00 is
@@ -522,6 +526,7 @@ pub enum RetentionSweepTick {
 struct RetentionBatches {
     messages: u64,
     peer: u64,
+    engagements: u64,
 }
 
 impl Default for RetentionBatches {
@@ -529,6 +534,7 @@ impl Default for RetentionBatches {
         Self {
             messages: RETENTION_MESSAGES_BATCH,
             peer: RETENTION_PEER_BATCH,
+            engagements: RETENTION_ENGAGEMENTS_BATCH,
         }
     }
 }
@@ -663,6 +669,47 @@ pub fn start_retention_sweep(
                 }
             };
             let _ = sender.send(tick);
+            // Phase 4, `engagements` (ADR-095 Slice 6), last in the
+            // contract's fixed order: its cascade is the longest, and the
+            // earlier phases' deletes only shorten it. The watch channel's
+            // shape still carries the last reported phase's outcome; this
+            // phase reports through its own logs with the `[engagement]`
+            // prefix the contract requires.
+            match domain
+                .sweep_engagements(now, hagency_store::ENDED_LIMIT, batches.engagements)
+                .await
+            {
+                Ok(outcome) => {
+                    if outcome.elapsed_ms > RETENTION_PHASE_BUDGET_MS {
+                        batches.engagements = (batches.engagements / 2).max(1);
+                    } else if batches.engagements < RETENTION_ENGAGEMENTS_BATCH {
+                        batches.engagements =
+                            (batches.engagements * 2).min(RETENTION_ENGAGEMENTS_BATCH);
+                    }
+                    tracing::info!(
+                        "[engagement] engagements phase: pruned {} remaining {} elapsed_ms {} batch {}",
+                        outcome.pruned,
+                        outcome.remaining,
+                        outcome.elapsed_ms,
+                        batches.engagements
+                    );
+                }
+                Err(hagency_store::Error::Busy) => {
+                    tracing::warn!(
+                        "[engagement] engagements phase refused: busy; waiting for the next tick"
+                    );
+                }
+                Err(hagency_store::Error::OutcomeUnknown) => {
+                    tracing::warn!(
+                        "[engagement] engagements phase outcome unknown; waiting for the next tick"
+                    );
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "[engagement] engagements phase failed: {error}; waiting for the next tick"
+                    );
+                }
+            }
         }
     });
     (handle, observed)
