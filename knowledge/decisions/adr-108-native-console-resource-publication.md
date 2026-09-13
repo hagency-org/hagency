@@ -109,3 +109,64 @@ domain_worker.rs:2393, vs a 5 s preparation deadline, accounts.rs:525), and
 inspectable either way. The printed link lands on `/console/accounts/` (a third
 branch of client.rs:118-126), and the page stays **outside** the five-document
 exception (a non-document with no query string).
+
+---
+
+## Amendment — the catalogue's derived fillability, and what stays absent (G5)
+
+ADR-108's observation route already serves the six-role catalogue beside the
+resource list (`console/resources.rs:144-152`), and the native resources page
+already renders it as its own section (`NativeResources.jsx:75`). The
+console-parity inventory's G5 row read "STILL OPEN — native resources is a
+different model"; on this revision the *read* is served, so this amendment
+records what was actually missing, which is smaller and narrower.
+
+**Added: three derived keys on each role row — `families`, `fillable`,
+`overTier` — over ONE set.** `role_publications` (`domain.rs:343-356`) already
+walks the published resources to compute `available` via `Resource::qualifies`
+(`project.rs:168-173`), which is
+`published ∧ provisionable() ∧ ceiling.tokens.is_some() ∧ qualification::qualifies`.
+The amendment derives all three new values over **that same set** and no other.
+`qualification::resources_for_role` (`:192-210`) is deliberately NOT used: its
+filter omits both `published` and `provisionable()`, so a resource could count
+toward `fillable` and not toward `available` — two answers for one question, the
+drift `route.js:121-125` refuses. Cross-referenced with ADR-111, whose preset
+scope owns the write side this amendment deliberately does not touch.
+
+**`families` is the model family, not the framework.** The retained catalogue's
+cross-family rule counts *model families* — `mockup/lib/derive.js:91` builds
+`families` from `r.match.family`, and `:100` requires two of them for a
+cross-family role (`lib/matrix-agent.js:26-27`). `qualification::model()`
+returns exactly that (`(tier, family)`, `qualification.rs:143-156`), so
+`families` is `model(&r.profile()).1` over the qualifying set, sorted for a
+stable wire. A framework list would have made the native verdict disagree with
+the retained page for the same deployment.
+
+**Not added, and why — the ADRs already named these absent.**
+- **`name`.** `Resource` has no name field (`project.rs:127-139`); ADR-111:55
+  says a preset "must own friendly names rather than a second browser metadata
+  store". The page keeps its derived label (`NativeResources.jsx:9`).
+- **`rateCapPerDay`.** `Ceiling` is `{tokens, period}` only
+  (`allocation.rs:72-76`); ADR-108 and ADR-111 name daily rate caps absent
+  pending canonical persistence (`native/README.md:716-719` states the same).
+  A `null` would read as "no cap chosen" when the truth is "no such column
+  exists", so no key is added and the page renders a reasoned blank — the
+  retained page's own device (`resources/page.jsx:119-121`).
+- **`apiBaseUrl`, `apiKeySet`, `extraArgs`.** Forbidden by ADR-111:38 and
+  `native/README.md:716-717`.
+- **`usedBy`.** Depends on the agent roster (backlog CL-S1); named as a
+  dependency, not silently dropped.
+
+**Read-only.** No route, no scope, no mutation is added. Publishing a role
+remains an operator act (`resources.rs:22`) and the browser keeps no
+offer-terms form: the retained catalogue's `count`/`budgetCapPerEngagement`/
+`rateCap` write (`capability/page.jsx:288-325`) needs the canonical persistence
+ADR-111 names.
+
+**One-key-set contract change, one commit.** `RoleRow` is `deny_unknown_fields`
+(`console/resources.rs:57-59`), so the three new keys make the
+`serde_json::from_value::<RoleRow>` at `:148` hard-fail until `RoleRow` gains
+them, and the client's exact-key conjunction (`native-api.js:10-11` at
+`:176-178`) must move with it. Server keys, `RoleRow` and the validator are
+therefore one commit; the failure mode is a schema error (a 503), never a
+silent widening.
