@@ -258,7 +258,10 @@ async fn native_codex_transport_failures_flush_broken_stream_and_eof() {
         stderr: _stderr,
     } = peer;
     drop(stdin);
-    assert_eq!(driver.send(initialize()).await.err(), Some(Error::Io));
+    assert_eq!(
+        driver.send(initialize()).await.err(),
+        Some(Error::Io("stdin write"))
+    );
     assert_eq!(driver.termination().unwrap().pending_requests, 1);
 
     let (mut driver, mut peer) = fixture(1024, limits());

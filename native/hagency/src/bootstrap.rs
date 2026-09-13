@@ -239,7 +239,10 @@ fn transport_error_label(error: hagency_runtime::codex::transport::Error) -> &'s
         Closed => "closed",
         CancelledOperation => "cancelled_operation",
         Timeout => "timeout",
-        Io => "io",
+        // The arm tag the runtime named — the operator surface can tell
+        // "stdin write" from "stdout read" instead of the old four-way
+        // "io" collapse. Fixed four-tag set, width-safe.
+        Io(tag) => tag,
         PeerEof => "peer_eof",
         Capacity => "capacity",
         HostClosed => "host_closed",
