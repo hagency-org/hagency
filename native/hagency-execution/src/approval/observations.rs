@@ -126,21 +126,41 @@ impl Drive<'_> {
                         // silently over that unresolved acceptance.
                         e.in_flight && e.write.is_none() && !e.resolved
                     }) {
-                        // Decide by the transport's write custody through the
-                        // same evidence rule as the classifier (H3): an
-                        // OBSERVED zero accepted bytes means never
-                        // transmitted (`PeerUnavailable` — the peer was gone
-                        // before the frame); any accepted byte — or no writer
-                        // at all, which is absent evidence, not zero — is the
-                        // uncertain `SettlementUnknown`. Never a silent
-                        // completion in either arm.
-                        let zero_observed = runner
-                            .write_progress()
-                            .is_some_and(|(accepted, _total)| accepted == 0);
-                        if zero_observed {
-                            Err(Failure::PeerUnavailable)
-                        } else {
+                        // Decide from the transport's TERMINATION SNAPSHOT —
+                        // `stop()` erases `writing`, so `write_progress()`
+                        // reads zero after the host's close and must not be
+                        // used here. Cause first (ADR-046's
+                        // who-closed-first): the host closing its own pipe on
+                        // the peer's turn end is a HOST-side termination.
+                        // With accepted bytes the fate is unknown —
+                        // `SettlementUnknown` whoever closed; with none sent
+                        // the host-side cause is the quiet family (the turn
+                        // completed without the approval), never
+                        // `PeerUnavailable` — that name stays reserved for
+                        // `Io("stdin write")` against a gone reader and
+                        // `PeerEof`. A peer-side cause with an OBSERVED
+                        // zero-byte snapshot keeps the named refusal.
+                        let termination = runner.transport_termination();
+                        let host_side = termination.is_some_and(|t| {
+                            matches!(
+                                t.cause,
+                                hagency_runtime::codex::transport::Error::HostClosed
+                                    | hagency_runtime::codex::transport::Error::Closed
+                            )
+                        });
+                        let accepted = termination
+                            .and_then(|t| t.unconfirmed_write.as_ref())
+                            .map_or(0, |write| write.accepted_bytes);
+                        if accepted > 0 {
                             Err(Failure::SettlementUnknown)
+                        } else if host_side {
+                            // Quiet: host's own close, nothing sent. The
+                            // in-flight frame is retired with the turn, the
+                            // trace already names it, and the drive
+                            // completes.
+                            Ok(true)
+                        } else {
+                            Err(Failure::PeerUnavailable)
                         }
                     } else {
                         Ok(true)
