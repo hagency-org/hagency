@@ -730,7 +730,7 @@ fn verify_schema_upgrade() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        26
+        27
     );
     assert_eq!(
         sql.query_row(

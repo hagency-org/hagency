@@ -198,15 +198,18 @@ fn task(f: &Fixture, id: &str, status: &str, sequence: u64, intent: bool) {
 async fn native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference() {
     let mut f = Fixture::new("prune");
     let mut sequences = Vec::new();
-    for i in 0..6 {
+    for i in 0..103 {
         sequences.push(f.admit(&format!("plain{i}"), 2000 + i));
     }
-    // The oldest three are processed and unreferenced; the newest three carry
-    // unprocessed session inputs (P2) and sit inside the P1 window anyway.
+    // The oldest three are processed and unreferenced; everything newer
+    // carries an unprocessed session input (P2) and sits inside the P1
+    // window of the effective ceiling. The corpus is sized above the floor
+    // because the store clamps every ceiling up to it (the `Math.max(100,…)`
+    // guard) — a smaller corpus can never be over the ceiling.
     for sequence in &sequences[..3] {
         processed(&f, *sequence, 3000);
     }
-    let outcome = f.db.sweep_admitted_corpus(4000, 3, 512).unwrap();
+    let outcome = f.db.sweep_admitted_corpus(4000, 100, 512).unwrap();
     // The F3 measurement, logged for the report: the tick's own wall-clock.
     println!(
         "[corpus] sweep tick elapsed_ms={} pruned={} remaining={}",
@@ -215,9 +218,9 @@ async fn native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference
     assert_eq!(outcome.pruned, 3);
     assert_eq!(outcome.archived, 3);
     assert_eq!(outcome.remaining, 0);
-    assert_eq!(f.count("admitted_messages"), 3);
+    assert_eq!(f.count("admitted_messages"), 100);
     assert_eq!(f.count("retained_message_archive"), 3);
-    assert_eq!(f.count("matrix_ingress_events"), 3);
+    assert_eq!(f.count("matrix_ingress_events"), 100);
     // The pinned survivors keep their children.
     let pinned: u64 = f
         .sql()
@@ -227,7 +230,7 @@ async fn native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(pinned, 3);
+    assert_eq!(pinned, 100);
     // The receipt: one row, the messages phase, the over-ceiling figure.
     let (phase, pruned, remaining): (String, u64, u64) = f
         .sql()
@@ -243,23 +246,24 @@ async fn native_retained_corpus_prunes_below_ceiling_only_when_no_live_reference
 #[tokio::test]
 async fn native_retained_corpus_pending_pin_exceeds_ceiling() {
     let mut f = Fixture::new("pending");
-    for i in 0..6 {
+    for i in 0..103 {
         f.admit(&format!("held{i}"), 2000 + i);
     }
-    // Every row is pinned by an unprocessed session input (P2).
-    let outcome = f.db.sweep_admitted_corpus(4000, 3, 512).unwrap();
+    // Every row is pinned by an unprocessed session input (P2). The corpus
+    // is above the floor because the store clamps every ceiling up to it.
+    let outcome = f.db.sweep_admitted_corpus(4000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 0);
     assert_eq!(outcome.remaining, 3);
-    assert_eq!(f.count("admitted_messages"), 6);
+    assert_eq!(f.count("admitted_messages"), 103);
     assert_eq!(f.count("retained_message_archive"), 0);
     // The over-ceiling figure is REPORTED, never a refusal of admission.
-    let status = f.db.retention_status(3).unwrap();
+    let status = f.db.retention_status(100).unwrap();
     assert_eq!(
         (status.corpus_rows, status.ceiling, status.over_by),
-        (6, 3, 3)
+        (103, 100, 3)
     );
     // A further admission still lands: the bound never refuses work.
-    let extra = f.admit("held6", 5000);
+    let extra = f.admit("held103", 5000);
     assert!(extra > 0);
 }
 
@@ -267,7 +271,12 @@ async fn native_retained_corpus_pending_pin_exceeds_ceiling() {
 async fn native_retained_corpus_processed_dispatch_does_not_pin() {
     let mut f = Fixture::new("dispatch");
     let old = f.admit("claimed", 2000);
-    let _new = f.admit("recent", 2001);
+    for i in 0..100 {
+        f.admit(&format!("recent{i}"), 2001 + i);
+    }
+    // The corpus sits above the floor because the store clamps every
+    // ceiling up to it; the completed-dispatch row is the one candidate
+    // below the recency window of the effective ceiling.
     let input = DispatchInput {
         id: "dispatch_done".into(),
         session_id: format!("session_{}", f.agent),
@@ -297,13 +306,13 @@ async fn native_retained_corpus_processed_dispatch_does_not_pin() {
         )
         .unwrap();
     assert!(dispatch_id.is_some() && processed.is_some());
-    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 1);
-    assert_eq!(f.count("admitted_messages"), 1);
+    assert_eq!(f.count("admitted_messages"), 100);
     assert_eq!(
         f.count("session_inputs"),
-        1,
-        "the pruned row's child is removed; the survivor keeps its own"
+        100,
+        "the pruned row's child is removed; the survivors keep their own"
     );
     assert_eq!(f.count("dispatch_inputs"), 0);
 }
@@ -312,24 +321,31 @@ async fn native_retained_corpus_processed_dispatch_does_not_pin() {
 async fn native_retained_corpus_closed_task_input_does_not_pin() {
     let mut f = Fixture::new("taskdone");
     let old = f.admit("attached_to_task", 2000);
-    let _new = f.admit("recent", 2001);
-    // The task lifecycle gate is the CANONICAL task's own terminal state
-    // (A1): `task_intents.state='closed'` has no production writer, so the
-    // release witness is config status 'done'. The session input is marked
-    // processed first so ONLY the task clause is under test.
+    for i in 0..100 {
+        f.admit(&format!("recent{i}"), 2001 + i);
+    }
+    // The corpus sits above the floor because the store clamps every
+    // ceiling up to it; the done-task row is the one candidate below the
+    // recency window of the effective ceiling. The task lifecycle gate is
+    // the CANONICAL task's own terminal state (A1): `task_intents.state=
+    // 'closed'` has no production writer, so the release witness is config
+    // status 'done'. The session input is marked processed first so ONLY
+    // the task clause is under test.
     processed(&f, old, 2500);
     task(&f, "task_done", "done", old, true);
-    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 1, "a done task's input is a candidate");
     assert_eq!(f.count("task_inputs"), 0);
     assert_eq!(f.count("task_intents"), 0);
     // The mirror: an OPEN task pins the same shape.
     let mut f2 = Fixture::new("taskopen");
     let old2 = f2.admit("attached_open", 2000);
-    let _new2 = f2.admit("recent", 2001);
+    for i in 0..100 {
+        f2.admit(&format!("recent{i}"), 2001 + i);
+    }
     processed(&f2, old2, 2500);
     task(&f2, "task_open", "in_progress", old2, true);
-    let outcome2 = f2.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    let outcome2 = f2.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome2.pruned, 0, "an open task's root and input pin");
     assert_eq!(f2.count("task_inputs"), 1);
     assert_eq!(f2.count("task_intents"), 1);
@@ -339,11 +355,15 @@ async fn native_retained_corpus_closed_task_input_does_not_pin() {
 async fn native_retained_corpus_unknown_fate_is_retained() {
     let mut f = Fixture::new("unknown");
     let old = f.admit("unknown_fate", 2000);
-    let _new = f.admit("recent", 2001);
-    // An unknown-outcome dispatch: the pin is the dispatch state pair P4/P5
-    // read from `runner_dispatches.state` directly (tick contract D-1 — the
-    // `unresolved_dispatches` view is for reporting, never pinning). The
-    // session input is marked processed so ONLY the unknown-fate pin holds.
+    for i in 0..100 {
+        f.admit(&format!("recent{i}"), 2001 + i);
+    }
+    // The corpus sits above the floor because the store clamps every
+    // ceiling up to it. An unknown-outcome dispatch: the pin is the dispatch
+    // state pair P4/P5 read from `runner_dispatches.state` directly (tick
+    // contract D-1 — the `unresolved_dispatches` view is for reporting,
+    // never pinning). The session input is marked processed so ONLY the
+    // unknown-fate pin holds.
     let sql = f.sql();
     sql.execute(
         "INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence,not_before) VALUES(?1,?2,NULL,'{}','digest','outcome_unknown',1,0)",
@@ -357,10 +377,10 @@ async fn native_retained_corpus_unknown_fate_is_retained() {
     .unwrap();
     drop(sql);
     processed(&f, old, 2500);
-    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 0, "unknown fate is retained indefinitely");
     assert_eq!(outcome.remaining, 1);
-    assert_eq!(f.count("admitted_messages"), 2);
+    assert_eq!(f.count("admitted_messages"), 101);
     assert_eq!(f.count("dispatch_inputs"), 1);
     assert_eq!(f.count("retained_message_archive"), 0);
 }
@@ -369,7 +389,11 @@ async fn native_retained_corpus_unknown_fate_is_retained() {
 async fn native_retained_corpus_provenance_moves_with_the_message() {
     let mut f = Fixture::new("provenance");
     let old = f.admit("moves", 2000);
-    let _new = f.admit("recent", 2001);
+    for i in 0..100 {
+        f.admit(&format!("recent{i}"), 2001 + i);
+    }
+    // The corpus sits above the floor because the store clamps every
+    // ceiling up to it; the provenance row under test is the one candidate.
     processed(&f, old, 2500);
     let live_key: String = f
         .sql()
@@ -380,7 +404,7 @@ async fn native_retained_corpus_provenance_moves_with_the_message() {
         )
         .unwrap();
     let event = f.observation("moves", 2000);
-    let outcome = f.db.sweep_admitted_corpus(3000, 1, 512).unwrap();
+    let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 1);
     // The archive row carries the full ingress identity plus wake (P8'/A3/A4).
     let (engagement, source_key, scope, session, wake): (String, String, String, String, bool) = f
@@ -402,7 +426,7 @@ async fn native_retained_corpus_provenance_moves_with_the_message() {
     assert!(wake, "wake moved with the message into the archive");
     assert_eq!(
         f.count("matrix_ingress_events"),
-        1,
+        100,
         "the live provenance row is deleted in the same transaction"
     );
     // An exact redelivery is still recognised as admitted: live miss, the
@@ -422,16 +446,19 @@ async fn native_retained_corpus_provenance_moves_with_the_message() {
 async fn native_retained_corpus_archive_is_bounded() {
     let mut f = Fixture::new("bounded");
     let mut sequences = Vec::new();
-    for i in 0..6 {
+    for i in 0..205 {
         sequences.push(f.admit(&format!("window{i}"), 2000 + i));
     }
-    for sequence in &sequences[..4] {
+    // The corpus sits above the floor because the store clamps every
+    // ceiling up to it; the archive's own bound needs more than one
+    // ceiling of pruned rows to bite.
+    for sequence in &sequences[..105] {
         processed(&f, *sequence, 3000);
     }
-    let outcome = f.db.sweep_admitted_corpus(4000, 2, 512).unwrap();
-    assert_eq!(outcome.pruned, 4);
+    let outcome = f.db.sweep_admitted_corpus(4000, 100, 512).unwrap();
+    assert_eq!(outcome.pruned, 105);
     // Bounded to the same ceiling, pruned oldest-first IN THE SAME TICK.
-    assert_eq!(f.count("retained_message_archive"), 2);
+    assert_eq!(f.count("retained_message_archive"), 100);
     let kept: Vec<u64> = {
         let sql = f.sql();
         let mut statement = sql
@@ -445,7 +472,7 @@ async fn native_retained_corpus_archive_is_bounded() {
     };
     assert_eq!(
         kept,
-        sequences[2..4].to_vec(),
+        sequences[5..105].to_vec(),
         "the newest pruned rows stay"
     );
 }
@@ -555,10 +582,11 @@ async fn native_retained_corpus_schema_upgrade() {
     let pinned_unknown = f.admit("upgrade4", 2003);
     let pinned_task = f.admit("upgrade5", 2004);
     let pinned_attachment = f.admit("upgrade6", 2005);
-    let _window7 = f.admit("upgrade7", 2006);
-    let _window8 = f.admit("upgrade8", 2007);
-    let _window9 = f.admit("upgrade9", 2008);
-    let _window10 = f.admit("upgrade10", 2009);
+    // The window fill: the corpus must sit above the floor because the store
+    // clamps every ceiling up to it (the `Math.max(100,…)` guard).
+    for i in 7..=103 {
+        f.admit(&format!("upgrade{i}"), 2000 + i);
+    }
     processed(&f, prunable1, 2500);
     processed(&f, prunable2, 2500);
     // P2: unprocessed session input.
@@ -609,7 +637,7 @@ async fn native_retained_corpus_schema_upgrade() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            26
+            27
         );
         let archive: u64 = sql
             .query_row("SELECT COUNT(*) FROM retained_message_archive", [], |r| {
@@ -642,13 +670,13 @@ async fn native_retained_corpus_schema_upgrade() {
         engagement: f.engagement,
         agent,
     };
-    let first = f2.db.sweep_admitted_corpus(5000, 4, 1).unwrap();
+    let first = f2.db.sweep_admitted_corpus(5000, 100, 1).unwrap();
     assert_eq!(first.pruned, 1, "the batch bound stops at one row");
-    assert_eq!(first.remaining, 5, "9 live rows against a ceiling of 4");
-    let second = f2.db.sweep_admitted_corpus(5001, 4, 1).unwrap();
+    assert_eq!(first.remaining, 2, "102 live rows against a ceiling of 100");
+    let second = f2.db.sweep_admitted_corpus(5001, 100, 1).unwrap();
     assert_eq!(second.pruned, 1);
-    assert_eq!(second.remaining, 4);
-    let third = f2.db.sweep_admitted_corpus(5002, 4, 1).unwrap();
+    assert_eq!(second.remaining, 1);
+    let third = f2.db.sweep_admitted_corpus(5002, 100, 1).unwrap();
     assert_eq!(third.pruned, 0, "only pinned rows remain");
     // The archive holds the pruned content with its full identity.
     let archived: Vec<(u64, String, bool)> = {
@@ -667,10 +695,10 @@ async fn native_retained_corpus_schema_upgrade() {
     assert_eq!(archived[1].0, prunable2);
     assert_eq!(archived[0].1, f2.engagement);
     // Every pinned row survived with its children.
-    assert_eq!(f2.count("admitted_messages"), 8);
+    assert_eq!(f2.count("admitted_messages"), 101);
     assert_eq!(
         f2.count("session_inputs"),
-        8,
+        101,
         "one per survivor; the pruned rows' children moved with them"
     );
     assert_eq!(f2.count("dispatch_inputs"), 1);
