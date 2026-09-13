@@ -152,7 +152,15 @@ and macOS x86_64/aarch64. Exact OS versions and Windows ARM64 are open until the
 runner/SDK/dependency checks. Native Windows must be tested on Windows, not inferred
 from a successful Linux cross-compilation.
 
-| Boundary | Linux | macOS | Windows | Required evidence |
+**Platform scope (2026-09-13):** Windows is paused, not a release target
+([ADR-136](../../knowledge/decisions/adr-136-windows-paused-release-target.md);
+operator decision recorded with commit `cda737cd`, whose `continue-on-error` at
+`.github/workflows/rust.yml:64` makes the hosted `windows-2025` lane diagnostic-only).
+The Windows column below is retained — not deleted — so the earlier Windows findings
+keep their context; its rows are requirements for a future Windows release, not this
+one. The release gate is Ubuntu and macOS.
+
+| Boundary | Linux | macOS | Windows (paused, not a release target, 2026-09-13) | Required evidence |
 | --- | --- | --- | --- | --- |
 | Start/stop/own processes | Process groups and verified descendant identity; evaluate pidfds/cgroups where applicable | Process groups and verified descendant identity with macOS APIs | Job Objects, process handles and startup ownership established before work begins | Parent crash, grandchild spawn, PID reuse, cancellation and failed spawn cannot leave untracked work or kill unrelated processes |
 | Interactive terminal | Unix PTY; optional tmux adapter | Unix PTY; optional tmux adapter | ConPTY through a native adapter | UTF-8, resize, EOF, output backpressure and disconnect/reconnect; daemon owns persistent sessions |
