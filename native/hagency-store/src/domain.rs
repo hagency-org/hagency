@@ -321,6 +321,25 @@ fn replay_decision(db: &Connection, id: &str, digest: &str) -> Result<Option<Eng
         })
         .transpose()
 }
+/// The decision-receipt bound (ADR-095 amendment, retention Slice 3): the
+/// newest `DECISION_RETENTION_LIMIT` verdicts by `rowid` replay idempotently;
+/// older rows are trimmed in-write, inside the deciding command's own
+/// transaction — never a phase, no period, no bootstrap constant.
+const DECISION_RETENTION_LIMIT: u64 = 500;
+/// Per-command catch-up bound: at most this many rows are removed by one
+/// deciding command, so a deeply over-window corpus drains over later writes
+/// rather than lengthening a single verdict's writer hold.
+const DECISION_PRUNE_BATCH: u64 = 512;
+/// The kind word whose decisions are excluded from the bound (ADR-095 §2):
+/// `retry_cleanup` mutates before it records, so its replay lookup on a fresh
+/// command id finds no row by design, and pruning it would refuse a legitimate
+/// first retry. The exclusion is recomputed in Rust over each candidate's
+/// stored result, never by a `LIKE` on a digest.
+const DECISION_PRUNE_RETRY_KIND: &str = "retry_cleanup";
+/// Receipt trim bound (tick contract §3.1), applied by the same writer that
+/// inserts a `phase='decisions'` receipt row.
+const RETENTION_RECEIPT_LIMIT: u64 = 100;
+
 fn record_decision(
     tx: &Transaction<'_>,
     id: &str,
@@ -331,6 +350,96 @@ fn record_decision(
         "INSERT INTO decisions(id,digest,result) VALUES(?1,?2,?3)",
         params![id, digest, serialize(value)?],
     )?;
+    // The in-write trim runs after the insert, in the same transaction, so a
+    // rolled-back verdict carries neither the prune nor a receipt.
+    trim_decisions(tx)?;
+    Ok(())
+}
+
+/// Trim `decisions` to the newest `DECISION_RETENTION_LIMIT` rows by `rowid`,
+/// oldest first, excluding every `retry_cleanup` decision (recomputed in Rust
+/// over the stored result) and never the maximum-`rowid` row. Writes one
+/// `retention_prune_receipts` row with `phase='decisions'` when the phase did
+/// work (`pruned > 0`) or the corpus still stands over the window
+/// (`remaining > 0`), and trims the receipt table to `RETENTION_RECEIPT_LIMIT`
+/// in the same step.
+fn trim_decisions(tx: &Transaction<'_>) -> Result<(), Error> {
+    let max_rowid: Option<i64> = tx
+        .query_row("SELECT MAX(rowid) FROM decisions", [], |r| r.get(0))
+        .optional()?;
+    let Some(max_rowid) = max_rowid else {
+        return Ok(());
+    };
+    // Rows at or below (max - limit) are past the newest-LIMIT window; the
+    // subquery keeps the window correct while the batch catches up.
+    let threshold = max_rowid.saturating_sub(DECISION_RETENTION_LIMIT as i64);
+    if threshold <= 0 {
+        return Ok(());
+    }
+    let started = std::time::Instant::now();
+    let candidates: Vec<(String, i64, String, String)> = {
+        let mut statement = tx.prepare(
+            "SELECT id,rowid,digest,result FROM decisions \
+             WHERE rowid <= ?1 AND rowid < ?2 ORDER BY rowid",
+        )?;
+        let rows = statement
+            .query_map(params![threshold, max_rowid], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        rows
+    };
+    let mut pruned = 0u64;
+    let mut oldest: Option<i64> = None;
+    let mut newest: Option<i64> = None;
+    for (_id, rowid, digest, result) in candidates {
+        // Exclude retry_cleanup by recomputing its digest over the stored
+        // engagement — exact comparison, never a LIKE on a digest (ADR-095 §2).
+        let is_retry = serde_json::from_str::<Engagement>(&result)
+            .ok()
+            .and_then(|e| decision_digest(DECISION_PRUNE_RETRY_KIND, &e.id).ok())
+            .is_some_and(|d| d == digest);
+        if is_retry {
+            continue;
+        }
+        if pruned >= DECISION_PRUNE_BATCH {
+            break;
+        }
+        tx.execute("DELETE FROM decisions WHERE rowid = ?1", [rowid])?;
+        oldest = Some(oldest.map_or(rowid, |o| o.min(rowid)));
+        newest = Some(newest.map_or(rowid, |n| n.max(rowid)));
+        pruned += 1;
+    }
+    let total: i64 = tx.query_row("SELECT COUNT(*) FROM decisions", [], |r| r.get(0))?;
+    let remaining = (total as u64).saturating_sub(DECISION_RETENTION_LIMIT);
+    if pruned > 0 || remaining > 0 {
+        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2);
+        tx.execute(
+            "INSERT INTO retention_prune_receipts\
+             (phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms) \
+             VALUES('decisions',?1,?2,?3,?4,?5,?6)",
+            params![
+                pruned,
+                oldest.map(|v| v.to_string()).unwrap_or_default(),
+                newest.map(|v| v.to_string()).unwrap_or_default(),
+                remaining,
+                elapsed_ms,
+                graphs::now_ms()?,
+            ],
+        )?;
+        tx.execute(
+            "DELETE FROM retention_prune_receipts WHERE sequence NOT IN (\
+             SELECT sequence FROM retention_prune_receipts \
+             ORDER BY sequence DESC LIMIT ?1)",
+            [RETENTION_RECEIPT_LIMIT],
+        )?;
+    }
     Ok(())
 }
 fn budget(
