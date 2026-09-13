@@ -86,13 +86,17 @@ impl Pending {
         {
             // Two labels name two different things: the arrival label says
             // WHEN the resolution arrived (before/after the write receipt);
-            // the arm label names WHICH RULE fired. Field-independent arms
-            // only here: the `in_flight` arm belongs to the product branch's
-            // flag, which upstream does not carry.
+            // the arm label names WHICH RULE fired. The arm vocabulary is
+            // exactly the behavior's three cases below — a label that says
+            // "cancels" while the rule returns Ok(false) is a lie a failing
+            // trace would repeat (the Windows hosted failure's
+            // `resolved-cancels` was exactly that on the harness branch).
             let (arrival, _) = resolution_outcome(self.write.is_none());
             self.mark(arrival);
             let arm = if self.write.is_some() {
                 "resolved-ignored-written"
+            } else if self.in_flight {
+                "resolved-ignored-in-flight"
             } else {
                 "resolved-cancels"
             };
@@ -444,6 +448,28 @@ mod trace_tests {
             cancelling.mark(label);
         }
         assert_eq!(cancelling.as_slice().last(), Some(&"resolved-cancels"));
+        // The quiet pre-send arm (the Windows barriers case): an in-flight
+        // entry resolved before its first byte ignores the resolution —
+        // `Ok(false)` in behavior, `resolved-ignored-in-flight` in the
+        // label, never `resolved-cancels` (which the harness branch's
+        // two-way seam mislabeled).
+        let mut quiet = PhaseTrace::new();
+        for label in [
+            "acknowledged",
+            "admitted",
+            "in-flight",
+            "checked",
+            "resolved-before-write",
+            "resolved-ignored-in-flight",
+            "resolved-before-send",
+        ] {
+            quiet.mark(label);
+        }
+        assert_eq!(
+            quiet.as_slice().last(),
+            Some(&"resolved-before-send")
+        );
+        assert!(!quiet.as_slice().contains(&"resolved-cancels"));
         // The final verdict's rule: an in-flight, receipt-less, unresolved
         // entry names its fate at a turn end — never a silent completion.
         // The two arms are mutually exclusive in one run (the transport's
