@@ -80,3 +80,49 @@ the five-key `AccountRow` only: id, ordinal, state, revision, profile.
 The store half was folded into this slice because no sibling MA-S3a-store slice
 exists: no lane owns it and the backlog row licenses only the console and
 main.rs, which was the gap.
+
+---
+
+## Amendment (MA-S1): the observed provider-login readiness fact
+
+**D-ADR114 is decided: observe.** The operator's decision in force ends the
+ambiguity this record's opacity clause carried: the provider login is
+**observed at the host, never driven by the native side** — the operator runs
+the provider's own login themselves, and native records what resulted.
+Readiness and expiry are **derived facts**, not properties native asserts.
+
+**What the opacity clause forbids, restated under the decision.** "No live
+auth inspection" forbids **inferring** readiness from credential files, and
+forbids reading, copying or exporting a token. It does not forbid
+**observing** the outcome of a login the operator performed: that is the one
+input retained's own caveat names as able to distinguish "the directory
+exists" from "a valid session is in it" (`backend-v2.js:13541`). The
+inference prohibition stands unchanged.
+
+**What is observed, and where.** A host-only, one-shot login inside the
+retained namespace (`HOME`/`CODEX_HOME` set exactly as
+`apply_codex_environment` sets them, `accounts.rs:140-158`; ambient provider
+keys refused; the child inheriting the operator's terminal, no captured
+stdout), producing exactly a **derived mode** — `subscription`, `api_key`, or
+`unknown` — and an **expiry**: the provider's own when it reports one,
+otherwise a bounded default TTL, so no fact is ever immortal. The receipt is
+written in the same SQLite-before-effect ordering materialise uses, so an
+**interrupted login is `uncertain`, never ready**, and no read promotes it.
+
+**What is never stored.** No credential, no token, no refresh material, no
+`auth.json` body, no path to one — not in any column, any JSON blob, any log
+line, any fixture, or any CLI output. The naming rule is ADR-014's
+`/credential/` guard, pinned by a test.
+
+**The store shape.** Migration **028** is MA-S1's per the backlog ledger
+(§0.2): the readiness/expiry fact and its provenance in new tables created
+`IF NOT EXISTS` — never `ALTER TABLE managed_accounts` (the 025 replay
+hazard) — with the attempt-before-spawn ordering above. The fact's
+consumption rule is fixed here so MA-S2 cannot drift from it: `usable`
+requires `outcome='observed'`, matching generation, and unexpired, evaluated
+**at read time**; a read never writes; where readiness is unknown the
+dispatch **parks** with the named reason `account_readiness_unknown`.
+
+**The console DTO is not this amendment's.** `AccountRow` stays five keys;
+the readiness field is MA-S3b's, landing in its own commit when the fact
+exists to serve.
