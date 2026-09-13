@@ -29,8 +29,13 @@ impl PairFixture {
         let pool_b = domain::resource("pool-b", "seat-b", 1000);
         db.put_resource(&pool_a).unwrap();
         db.put_resource(&pool_b).unwrap();
-        let proof_a = domain::proof(&domain::request("worker", "Worker A", &pool_a, 100));
-        let proof_b = domain::proof(&domain::request("helper", "Worker B", &pool_b, 100));
+        // AgentName's validator (`hagency-core/src/project.rs:13`) is
+        // `^\p{L}[\p{L}\p{M}\p{N}_-]*$` — no spaces — so the pair's names
+        // stay distinct with an underscore, not a space: `Worker_A` and
+        // `Worker_B` both pass and remain the two distinct identities the
+        // admit-collision rule needs.
+        let proof_a = domain::proof(&domain::request("worker", "Worker_A", &pool_a, 100));
+        let proof_b = domain::proof(&domain::request("helper", "Worker_B", &pool_b, 100));
         // The two admissions must be distinct under the fleet: `admit`
         // refuses a collision on (fleet_id, project_id, name), so a shared
         // name with the same fleet/project returns Conflict on the second
