@@ -1,0 +1,6 @@
+{
+  "schema": "hagency-two-agent-qualification-v1",
+  "placeholder": true,
+  "placeholder_reason": "no operator qualification run has been recorded yet: follow docs/design/two-agent-qualification-runbook.md against a real Palpo homeserver and a real owner client, then commit the rewritten record in the same commit that changes the launch path",
+  "pinned_native_version": "0.1.0"
+}

@@ -101,3 +101,32 @@ qualification-only.
   `new()`.
 - Carry MA-M8b in a new hosted job now — deferred: a real homeserver in CI is a
   service-lane decision (SR-*), not this slice's.
+
+## Amendment 2026-09-13 — MA-M8b's evidence lands as a file plus an always-present test
+
+The qualification record is a tracked evidence file at
+`native/hagency/qualification/two-agent.json`, validated by
+`native_two_agent_qualification_records_its_evidence`
+(`native/hagency/tests/qualification.rs`) on EVERY leg — ungated, failing with a
+named reason when the file is absent, partial, stale or carries no verdict for
+any claim (ADR-140's evidence class; `qualification/codex-sandbox.json` is the
+exemplar). Until an operator run is recorded, the file is an honest placeholder
+and the test's refusal IS its state.
+
+**How the operator runs it.** Follow
+`docs/design/two-agent-qualification-runbook.md` against a real Palpo homeserver
+and a real owner client: qualify the three claims (foreign homeserver
+membership/PL admission, E2EE to a second real device, the approval round-trip
+through a real owner client), rewrite the record in the same commit as any
+launch-path change — schema `hagency-two-agent-qualification-v1`, pinned native
+version and full commit hash, timestamp, both engagements, the shared room as
+delivery-only, the DM in BOTH directions verified as plaintext, two usage rows,
+one passing verdict per claim naming its evidence, a non-empty `unproven` list,
+and every homeserver/room identity as a sha256 digest, never a name — then run
+`cargo test -p hagency --test qualification`.
+
+Hosted runners skip exactly this one selector BY NAME in
+`.github/workflows/rust.yml` (the ADR-140 skip-list mechanism, `dad9de14`'s
+shape), never inside the test: they have no real homeserver and will never have
+real evidence. A green validating test proves the record's shape and verdicts,
+not that the qualification ran.

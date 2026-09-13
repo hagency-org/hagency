@@ -55,6 +55,24 @@ Scenario: The qualification record exists, is pinned and carries a verdict per c
   Then it exists, names the artifact and version, and carries one verdict for each of the three claims
   And a missing, partial, stale or non-verdict record fails the test never skips
 
+## Decisions
+
+- The evidence record lives at `native/hagency/qualification/two-agent.json`,
+  schema `hagency-two-agent-qualification-v1` (`hagency-two-agent-qualification`
+  is its provenance), with: `placeholder`/`placeholder_reason` while unrecorded;
+  `pinned_native_version` + `native_version` + full 40-hex `commit` +
+  `recorded_at_ms` (epoch ms); `environment.homeserver.identity_digest` (sha256
+  hex of the identity, never a hostname) + `software`; `engagements` (exactly
+  two); `rooms.shared` carrying `delivery_room: true`, `approval_room: false`
+  and `id_digest`; `direct_messages` (exactly two, one per direction, each with
+  `from` ∈ {owner, agent}, `room_id_digest`, `plaintext_verified: true`);
+  `usage` (two rows, each attributed to its engagement with token counts);
+  `verdicts` — one passing verdict for each of `homeserver_admission`,
+  `e2ee_second_device`, `approval_round_trip`, each naming its `evidence`; and
+  a non-empty `unproven` list so the M8 exit gate is never read green from this
+  record. The operator procedure and rewrite rules are the runbook's
+  (`docs/design/two-agent-qualification-runbook.md`).
+
 ## Out of Scope
 
 The in-process two-engagement acceptance (the sibling spec), the operator procedure
