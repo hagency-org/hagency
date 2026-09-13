@@ -20,8 +20,8 @@ the wiring sends and what happens when it cannot.
 
 ### Must
 - On a send that does not reach `Accepted` (transport failure, refusal, timeout), drive the existing `owner_approvals` state machine to a recorded denial — `state='decided'`, `choice='deny'` (the deserialized values; the stored `choice` text is the JSON-encoded `"deny"`) — carrying a named denial reason that says the send failed.
-- Give the reason a storage home: **migration 031** (the ledger's next after 030; 029 stays MA-S4's) adds one nullable `denial_reason TEXT` to `approval_verdict_receipts` — the receipts table PC-C3's at-most-once gate already reads — via `ADD COLUMN`, with the schema-head pin moving to 31 in this slice's own commit and every rewind preserved. The denial writes its reason there; the row read serves it from there (PC-C2's observation reads this source).
-- Enter the denial through a **new public store wrapper distinct from the owner-verdict path** — `deny_for_failed_delivery` on `DomainStore`/`DomainRepository` (`domain/approvals.rs`): it is not `decide_verdict` (private, and it takes an owner's `OwnerVerdictObservation`, which a delivery failure is not), and it **does not mint an `approval_verdict_receipts` verdict row** — that receipt is the owner-event at-most-once record, and a send failure is not an owner event; the reason column carries the failure's own record, keyed by the approval it denied.
+- Give the reason a storage home: **migration 031** (the ledger's next after 030; 029 stays MA-S4's) adds one nullable `denial_reason TEXT` to `approval_verdict_receipts` — the receipts table PC-C3's at-most-once gate already reads — via `ADD COLUMN`, with the schema-head pin moving to 31 **in the tests that pin it, in this slice's own commit** (every `assert_eq!(… user_version …)` site moves, every `pragma_update` rewind stays — the tick contract §6.7 rule). The denial **is a deny verdict**: it mints a receipt row of **kind deny** — `(source_key, digest, request_id, denial_reason)` — so the reason has the row it was added for.
+- Enter the denial through a **new public store wrapper distinct from the owner-verdict path** — `deny_for_failed_delivery` on `DomainRepository` (`domain/approvals.rs`) with its `DomainStore` wrapper (`domain_worker.rs`) — writing `owner_approvals` to `state='decided'`, `choice='deny'` (the deserialized values) **and minting the kind-deny receipt row, at most once per request** (a second call for the same request is idempotent on the receipt, differing content refused). It is not `decide_verdict` (private, and it takes an owner's `OwnerVerdictObservation`, which a delivery failure is not): the entry point is distinct, the receipt kind is distinct, the at-most-once rule is shared.
 - Record the denial in the same `owner_approvals` row every other surface serves, so PC-C2's observation read and PC-C3's tools report one fact, not two.
 - Post the status notice through `PublicFrozen`, its own validator: exact status packet kind (`len()==3`, `msgtype == "com.agentchat.approval.status.v1"`, `kind=="status"`, `version==1`, `state=="waiting_for_owner"`, `body ≤ 512`), destination re-derivation from the live rows by the same `room_authority` path `Frozen` uses, agent/project equality, absence of request material (no request id, digest, tool name, preview, or scope key), room distinctness, identifier checks.
 - Make the delivery-status word **one fact with the row read**: the single source is the `owner_approvals` row — after a denial, the status the operator sees is `state='decided'` with `choice='deny'`, and the stage enum's intermediate word is not surfaced as the status. (The stage enum gains no denied arm; the delivery stage stays a transport fact, the row stays the decision fact.)
@@ -43,6 +43,9 @@ the wiring sends and what happens when it cannot.
 - native/hagency-matrix/tests/
 - native/hagency-store/src/domain/approvals.rs
 - native/hagency-store/src/domain/approvals/
+- native/hagency-store/src/domain_worker.rs
+- native/hagency-store/src/lib.rs
+- native/hagency-store/src/domain.rs
 - native/hagency-store/src/migrations/031-approval-denial-reason.sql
 - native/hagency-store/tests/
 - specs/task-rust-private-approval-send.spec.md
@@ -54,7 +57,7 @@ the wiring sends and what happens when it cannot.
 
 ### Forbidden
 - Live homeservers, credentials, deployed state.
-- native/hagency/src/console/** (PC-C2's observation routes); native/hagency/src/mcp/** (PC-C3's tools); native/hagency/src/bootstrap/** (PC-C0's wiring); migrations other than 031 (028 MA-S1's, 030 MA-S2's).
+- native/hagency/src/console/** (PC-C2's observation routes); native/hagency/src/mcp/** (PC-C3's tools); native/hagency/src/bootstrap/** (PC-C0's wiring); migrations other than 031 (028 MA-S1's, 029 MA-S4's, 030 MA-S2's).
 
 ## Acceptance Criteria
 

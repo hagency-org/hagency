@@ -29,17 +29,22 @@ transport failure, refusal, timeout — the approval is **denied**: a recorded
 transition in the existing `owner_approvals` state machine (`state='decided'`,
 `choice='deny'` — the deserialized values; the stored `choice` text is the
 JSON-encoded `"deny"`), carrying a **named denial reason** that says the send
-failed. **The reason has a storage home**: migration **031** adds one
-nullable `denial_reason TEXT` to `approval_verdict_receipts` — the receipts
-table PC-C3's at-most-once gate already reads — via `ADD COLUMN` (029 stays
-MA-S4's, 030 MA-S2's; the schema-head pin moves to 31 in the same commit).
-The denial is entered through a **new public store wrapper,
-`deny_for_failed_delivery`** — distinct from `decide_verdict`, which is
-private and takes an owner's `OwnerVerdictObservation`; a delivery failure
-is not an owner event, and the wrapper **mints no verdict receipt** — the
-reason column is the failure's own record. The request never sits `pending`
-after a failed send, and the denial is recorded **where PC-C2's observation
-read and PC-C3's tools read it** — the same `owner_approvals` row every
+failed. **Under D-PC-FC a failed private send IS a deny verdict**, so the
+denial mints a receipt row of **kind deny** in `approval_verdict_receipts` —
+`(source_key, digest, request_id, denial_reason)` — through a **new public
+store wrapper, `deny_for_failed_delivery`** on `DomainRepository` with its
+`DomainStore` half, an entry point **distinct from the owner-verdict path**
+(`decide_verdict` is private and takes an owner's
+`OwnerVerdictObservation`, which a delivery failure is not), **at most once
+per request**: a second call is idempotent on the receipt and differing
+content is refused. **The reason has a storage home**: migration **031**
+adds one nullable `denial_reason TEXT` to `approval_verdict_receipts` via
+`ADD COLUMN` (029 stays MA-S4's, 030 MA-S2's; the schema-head pin moves to
+31 **in the tests that pin it**, in this slice's own commit — every
+`assert_eq!(… user_version …)` site moves, every `pragma_update` rewind
+stays). The request never sits `pending` after a failed send, and the denial
+is recorded **where PC-C2's observation read and PC-C3's tools read it** —
+the same `owner_approvals` row and the same kind-deny receipt row every
 other surface serves, so the operator and the runner see one fact, not two:
 **the delivery-status word the operator sees is the row's own
 `state`/`choice`** (after a denial: `decided`/`deny`), not the stage enum's
