@@ -12,6 +12,7 @@ import { useData, Provenance } from '@/components/Data';
 import { send } from '@/lib/api';
 import TechnicalDetails from '@/components/TechnicalDetails';
 import { NativeAccessNotice } from '@/components/NativeUsage';
+import NativeStatusStrip from '@/components/NativeStatusStrip';
 
 /*
  * ② 配置向导 — four steps, and three of them write a field that already exists.
@@ -63,6 +64,7 @@ export default function WizardPage() {
   const data = useData(); const t = useT();
   if (!data.nativeConsole) return <WizardForm />;
   return <>
+    <PageHead title={t(data.editing ? 'nc.edit' : 'nc.create')} sub={t('nc.scope')}><NativeStatusStrip /></PageHead>
     <NativeAccessNotice />
     {data.phase === 'loading' && <p role="status">{t('nr.loading')}</p>}
     {data.phase === 'error' && <section className="notice" role="alert"><p>{t('nr.failed')}</p><button className="btn" onClick={data.refresh}>{t('nu.refresh')}</button></section>}
@@ -74,7 +76,7 @@ export default function WizardPage() {
     </section>}
     {['ready', 'stale'].includes(data.phase) && (data.editor
       ? <div data-native-configuration-id={data.editor.resource.id} aria-busy={data.refreshing === true}><WizardForm key={`${data.editing}:${data.editor.resource.id}`} native={data} /></div>
-      : <section className="panel"><PageHead title={t('nc.create')} sub={t('nc.scope')} /><p>{t('nc.noSource')}</p><a className="btn" href="/console/resources/">{t('wz.cancel')}</a></section>)}
+      : <section className="panel"><PageHead title={t('nc.create')} sub={t('nc.scope')}><NativeStatusStrip /></PageHead><p>{t('nc.noSource')}</p><a className="btn" href="/console/resources/">{t('wz.cancel')}</a></section>)}
   </>;
 }
 const validNativeTokens = (value) => /^[0-9]+$/.test(String(value)) && Number.isSafeInteger(Number(value)) && Number(value) >= 0;
@@ -110,6 +112,7 @@ function WizardForm({ native = null }) {
   return (
     <>
       <PageHead title={t(native ? native.editing ? 'nc.edit' : 'nc.create' : 'wz.title')} sub={t(native ? 'nc.scope' : 'wz.sub')}>
+        {native && <NativeStatusStrip />}
         {native ? <a className="btn" href="/console/resources/">{t('wz.cancel')}</a> : <Link className="btn" href="/resources">{t('wz.cancel')}</Link>}
       </PageHead>
 

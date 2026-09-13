@@ -2,6 +2,14 @@
  * and HttpOnly cookie; usage facts never enter local/session storage. */
 export const NATIVE_MODE = process.env.NEXT_PUBLIC_HAGENCY_NATIVE_CONSOLE === '1';
 const ROOT = '/console';
+
+/* Build-time constants (ADR-145): the workspace version and the binary's
+ * EXPECTED schema head. build-native-console.mjs appends reassignments to
+ * the staged copy of this module inside the build's mkdtemp tree — no repo
+ * path is generated and nothing enters manifest.json. The repo copy keeps
+ * these neutral defaults; the strip renders them verbatim, never invents. */
+export let HAGENCY_NATIVE_VERSION = 'unknown';
+export let HAGENCY_NATIVE_SCHEMA_HEAD = 0;
 const KINDS = ['input', 'output', 'cacheWrite', 'cacheRead'];
 const STATES = ['pending', 'reserved', 'active', 'rejected', 'revoked', 'failed'];
 const CLEANUP = ['not_required', 'pending', 'uncertain', 'complete'];
@@ -81,6 +89,24 @@ async function request(path, options = {}) {
     if (['POST', 'PATCH'].includes(options.method) && (path.startsWith('/api/resources') || path.startsWith('/api/accounts'))) throw new Error('outcome_unknown');
     throw new Error('native_unavailable');
   } finally { clearTimeout(timer); }
+}
+/* ADR-145: the readiness payload consumed as-is — exact key set and count
+ * only, no state-word enumeration in the client (one vocabulary, the
+ * server's; unknown state words render as text, never error). Same-origin
+ * top-level /ready, never under /console and never /health. */
+export function validateReadiness(v) {
+  const word = (s, max) => typeof s === 'string' && s.length <= max;
+  if (!object(v, ['status', 'implementation', 'components']) || !word(v.status, 32) || !word(v.implementation, 32)
+    || !Array.isArray(v.components) || v.components.length > 64
+    || v.components.some((c) => !object(c, ['name', 'state']) || !word(c.name, 64) || !word(c.state, 64))) throw new Error('invalid_native_response');
+  return v;
+}
+export async function fetchReadiness(signal) {
+  /* Top-level same-origin route (outside the console router); a 503 still
+   * carries the payload, a network failure rejects — the strip's unknown. */
+  const response = await fetch('/ready', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal });
+  const value = await response.json();
+  return validateReadiness(value);
 }
 export function resourceView(location) { return /^\/console\/resources\/?$/.test(location.pathname); }
 export function selection(location, field = 'engagement_id') {

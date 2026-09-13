@@ -22,6 +22,26 @@ await mkdir(join(staged, 'app', 'engagements'), { recursive: true, mode: 0o700 }
 await mkdir(join(staged, 'app', 'accounts'), { recursive: true, mode: 0o700 });
 for (const name of ['components', 'lib', 'package.json', 'jsconfig.json', 'next.config.mjs']) await cp(join(source, name), join(staged, name), { recursive: true });
 for (const name of ['layout.jsx', 'globals.css', 'usage/page.jsx', 'resources/page.jsx', 'resources/new/page.jsx', 'alerts/page.jsx', 'engagements/page.jsx', 'accounts/page.jsx']) await cp(join(source, 'app', name), join(staged, 'app', name));
+/*
+ * ADR-145 build-time constants, staged inside the mkdtemp tree before
+ * `next build` — no repo path is generated and nothing enters
+ * manifest.json. The version is parsed from the root Cargo.toml's
+ * [workspace.package] (the single source the versioned-release ADR
+ * fixes); the schema head defaults to the migration registry's current
+ * value and may be overridden by --schema-head when it moves.
+ */
+const toml = await readFile(join(source, '..', 'Cargo.toml'), 'utf8');
+const packageAt = toml.indexOf('[workspace.package]');
+const version = packageAt >= 0 ? /^version\s*=\s*"([^"]+)"\s*$/m.exec(toml.slice(packageAt))?.[1] : undefined;
+if (!version) throw new Error('Workspace version missing from [workspace.package]');
+const headAt = args.indexOf('--schema-head');
+const schemaHead = headAt >= 0 ? Number(args[headAt + 1]) : 25;
+if (!Number.isSafeInteger(schemaHead) || schemaHead < 1) throw new Error('Invalid --schema-head');
+await writeFile(
+  join(staged, 'lib', 'native-api.js'),
+  `\n/* Appended by build-native-console.mjs (ADR-145): build-time constants.\n * The globalThis mirror exists for the bundle test: minifiers keep property\n * names and string literals while they may mangle the module-scoped binding. */\nHAGENCY_NATIVE_VERSION = ${JSON.stringify(version)};\nHAGENCY_NATIVE_SCHEMA_HEAD = ${schemaHead};\nglobalThis.__hagencyNativeVersion = ${JSON.stringify(version)};\nglobalThis.__hagencySchemaHead = ${schemaHead};\n`,
+  { flag: 'a' },
+);
 await mkdir(join(work, 'lib'), { mode: 0o700 });
 await cp(join(source, '..', 'lib', 'role-capacity.json'), join(work, 'lib', 'role-capacity.json'));
 await symlink(await realpath(join(source, 'node_modules')), join(staged, 'node_modules'), 'dir');

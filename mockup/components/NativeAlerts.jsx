@@ -14,6 +14,8 @@
  * here is open by construction, and the sweep is what resolves them.
  */
 import { useMemo, useState } from 'react';
+import PageHead from '@/components/PageHead';
+import NativeStatusStrip from '@/components/NativeStatusStrip';
 import Severity from '@/components/Severity';
 import { useT } from '@/components/Prefs';
 import { useData } from '@/components/Data';
@@ -58,6 +60,7 @@ export default function NativeAlerts() {
     <div data-native-state={phase} aria-busy={refreshing === true}>
       {refreshing && <p role="status">{t('nu.refreshing')}</p>}
 
+      <PageHead title={t('al.title')}><NativeStatusStrip /></PageHead>
       <h2 style={{ marginTop: 0 }}>{t('al.title')}<span className="note"> {t('al.nativeReadonly')}</span></h2>
 
       {/* One strip: the open set. There is only one status natively. */}

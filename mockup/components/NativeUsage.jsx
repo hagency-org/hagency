@@ -1,5 +1,6 @@
 'use client';
 import PageHead from '@/components/PageHead';
+import NativeStatusStrip from '@/components/NativeStatusStrip';
 import TechnicalDetails from '@/components/TechnicalDetails';
 import { useData } from '@/components/Data';
 import { useT } from '@/components/Prefs';
@@ -34,7 +35,7 @@ export default function NativeUsage() {
   const data = useData();
   const { phase, report, engagements, selected, error } = data;
   return <>
-    <PageHead title={t('us.title')} sub={t('nu.sub')} />
+    <PageHead title={t('us.title')} sub={t('nu.sub')}><NativeStatusStrip /></PageHead>
     <p className="muted">{t('nu.evidence')}</p>
     {phase === 'loading' && <p role="status">{t('nu.loading')}</p>}
     <NativeAccessNotice />
