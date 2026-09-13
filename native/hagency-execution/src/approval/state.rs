@@ -194,6 +194,16 @@ impl ApprovalRun {
             parked.release();
         }
         self.callbacks.parked = None;
+        // F3 (no leak on cancel): the terminal-drain deferral lets an armed
+        // callback — in flight, no accepted byte, never resolved/recorded —
+        // reach stop still armed. Its fate is settled by the turn-end rule,
+        // so release the deferred entries here instead of letting them leak
+        // until the whole Callbacks/Report drops. Entries with an accepted
+        // byte (`write`) are deliberately kept: their custody is still
+        // observed after the report.
+        self.callbacks
+            .entries
+            .retain(|_, entry| !(entry.in_flight && entry.write.is_none()));
     }
 }
 impl Callbacks {
