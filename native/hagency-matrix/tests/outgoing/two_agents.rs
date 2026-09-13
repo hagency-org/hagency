@@ -2,11 +2,13 @@
 //! fake peer and the two-engagement `PairFixture`. One shared DELIVERY room
 //! that is never an approval room, one direct room per engagement, and the
 //! retained oracle's properties plus its two refusals. Every HTTP loop runs
-//! INSIDE the `common::scripted` future and ends on a quiet window, so the
-//! exact preflight counts never couple to the assertions.
+//! INSIDE the `common::scripted` future and ends on a quiet window. Both
+//! engagements are bootstrapped in EVERY test, and each negative is asserted
+//! against an engagement that carries real traffic of its own (review F2/F3):
+//! a vacuous "the other side never existed" check is not isolation proof.
 use super::*;
 use crate::collector::observation::{Phase as ObservationPhase, Trace, observed};
-use common::pair::{DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, state_for, who};
+use common::pair::{DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, state_for, state_plain_for, who};
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -22,9 +24,9 @@ fn pair_config(pair: &PairFixture, agent: &HostIdentity, dm: &str, endpoint: &st
         .unwrap()
 }
 /// Answer bootstrap traffic for one agent — whoami as ITS OWN identity,
-/// empty syncs, room state for any number of rooms — until the peer falls
-/// quiet.
-async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity) {
+/// empty syncs, room state (encrypted or plain per the leg) — until the
+/// peer falls quiet.
+async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity, encrypted: bool) {
     loop {
         let request = tokio::select! {
             request = fake.next() => request,
@@ -35,30 +37,47 @@ async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity) {
         } else if request.target.contains("/sync") {
             request.json(200, common::sync("boot"));
         } else if request.target.ends_with("/state") {
-            request.json(200, state_for(agent));
+            request.json(
+                200,
+                if encrypted {
+                    state_for(agent)
+                } else {
+                    state_plain_for(agent)
+                },
+            );
         } else {
             panic!("unexpected bootstrap request: {}", request.target);
         }
     }
 }
+/// The agent's own direct room, derived from its identity.
+fn dm_of(pair: &PairFixture, agent: &HostIdentity) -> &'static str {
+    if agent.transport.sender_mxid == pair.a.transport.sender_mxid {
+        DM_A
+    } else {
+        DM_B
+    }
+}
 /// Bootstrap one agent's collector and resolve its session on ONE room (the
-/// shared delivery room, or that agent's direct room) — the session's route
-/// is what a final reply is addressed to.
+/// shared delivery room, or that agent's direct room).
 async fn bootstrap_session(
     pair: &PairFixture,
     agent: &HostIdentity,
-    dm: &str,
     endpoint: &str,
     session: &str,
     room: &str,
     fake: &mut common::Fake,
+    encrypted: bool,
 ) -> Collector {
-    let collector =
-        Collector::new(pair_config(pair, agent, dm, endpoint), pair.store.clone()).unwrap();
+    let collector = Collector::new(
+        pair_config(pair, agent, dm_of(pair, agent), endpoint),
+        pair.store.clone(),
+    )
+    .unwrap();
     let cancel = CancellationToken::new();
     let trace = Trace::new("pair bootstrap", None, None);
     let operation = observed(trace, collector.collect(&cancel));
-    let (result, ()) = common::scripted(operation, serve_bootstrap(fake, agent)).await;
+    let (result, ()) = common::scripted(operation, serve_bootstrap(fake, agent, encrypted)).await;
     result.unwrap();
     pair.store
         .resolve_verified_matrix_session(SessionBinding {
@@ -71,8 +90,8 @@ async fn bootstrap_session(
         .unwrap();
     collector
 }
-/// Drive one agent's settled final reply through the store's public
-/// dispatch lifecycle — the same shape `final_claim_named` pins for the
+/// Drive one agent's settled final reply through the store's public dispatch
+/// lifecycle — the same shape `final_claim_named` pins for the
 /// single-engagement fixture.
 async fn final_claim_for(
     store: &hagency_store::DomainStore,
@@ -130,8 +149,9 @@ async fn final_claim_for(
         .unwrap();
     store.claim_final_reply(60_000).await.unwrap().unwrap()
 }
-/// Send one final reply as one agent and capture the message PUTs the peer
-/// received, answering every preflight as the agent's own identity.
+/// Send one final reply as one agent (PLAIN leg) and capture the message
+/// PUTs the peer received, answering every preflight as the agent's own
+/// identity over plain room state.
 async fn send_and_capture(
     collector: &Collector,
     fake: &mut common::Fake,
@@ -154,7 +174,7 @@ async fn send_and_capture(
             } else if request.target.contains("/sync") {
                 request.json(200, common::sync("boot"));
             } else if request.target.ends_with("/state") {
-                request.json(200, state_for(agent));
+                request.json(200, state_plain_for(agent));
             } else if request.method == "PUT" && request.target.contains("/send/m.room.message/") {
                 targets.push(request.target.clone());
                 bodies.push(serde_json::from_slice(&request.body).unwrap());
@@ -170,12 +190,80 @@ async fn send_and_capture(
     assert!(trace.has(ObservationPhase::OwnerReturned));
     puts
 }
+/// The owner→agent direction (review F1): deliver the owner's DM event for
+/// one agent into that agent's room and assert it is admitted.
+async fn owner_dm_intake(
+    collector: &Collector,
+    fake: &mut common::Fake,
+    agent: &HostIdentity,
+    room: &str,
+    body: &str,
+    session: &str,
+) {
+    let event = json!({
+        "event_id": format!("$own-{session}"),
+        "sender": OWNER,
+        "type": "m.room.message",
+        "origin_server_ts": now(),
+        "content": {
+            "msgtype": "m.text",
+            "body": body,
+            "m.mentions": {"user_ids": [agent.transport.sender_mxid]}
+        }
+    });
+    let mut packet = common::sync(&format!("own-{session}"));
+    packet["rooms"]["join"][room]["timeline"] = json!({"events":[event],"limited":false});
+    packet["rooms"]["join"][room]["state"] = json!({"events":[]});
+    let plan = HostIntakePlan::new(vec![session.into()]).unwrap();
+    let cancel = CancellationToken::new();
+    let mut delivered = false;
+    let trace = Trace::new("pair owner dm intake", None, None);
+    let operation = observed(trace, collector.intake(plan, &cancel));
+    let (summary, ()) = common::scripted(operation, async {
+        loop {
+            let request = tokio::select! {
+                request = fake.next() => request,
+                _ = tokio::time::sleep(Duration::from_millis(300)) => return,
+            };
+            if request.target.contains("/account/whoami") {
+                request.json(200, who(agent));
+            } else if request.target.contains("/sync") {
+                if delivered {
+                    request.json(200, common::sync("after"));
+                } else {
+                    delivered = true;
+                    request.json(200, packet.clone());
+                }
+            } else if request.target.ends_with("/state") {
+                request.json(200, state_plain_for(agent));
+            } else {
+                panic!("unexpected intake request: {}", request.target);
+            }
+        }
+    })
+    .await;
+    assert!(
+        summary.unwrap().admitted >= 1,
+        "the owner's DM for {session} must be admitted into its own room"
+    );
+}
 async fn shutdown_pair(pair: PairFixture, fake: common::Fake) {
     pair.store.shutdown().await.unwrap();
     fake.close().await;
 }
 fn sql(pair: &PairFixture) -> rusqlite::Connection {
     rusqlite::Connection::open(pair.root.path().join("domain/domain.sqlite3")).unwrap()
+}
+/// Both engagements' reply rows, per session — the "rows unchanged"
+/// evidence for the negatives (review F2/F3).
+fn reply_rows(pair: &PairFixture, session: &str) -> Vec<String> {
+    sql(pair)
+        .prepare("SELECT body FROM final_replies WHERE session_id=?1 ORDER BY id")
+        .unwrap()
+        .query_map([session], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap()
 }
 
 #[tokio::test]
@@ -186,21 +274,21 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
     let ca = bootstrap_session(
         &pair,
         &pair.a,
-        DM_A,
         &endpoint,
         "root-a",
         SHARED_ROOM,
         &mut fake,
+        false,
     )
     .await;
     let cb = bootstrap_session(
         &pair,
         &pair.b,
-        DM_B,
         &endpoint,
         "root-b",
         SHARED_ROOM,
         &mut fake,
+        false,
     )
     .await;
     // P1+P2: both agents deliver into the ONE shared room, each charged to
@@ -282,39 +370,80 @@ async fn native_two_agent_dm_reaches_only_its_own_engagement() {
     let pair = PairFixture::new_pair();
     let mut fake = common::Fake::start(true).await;
     let endpoint = fake.endpoint.clone();
-    let c = bootstrap_session(&pair, &pair.a, DM_A, &endpoint, "root-a", DM_A, &mut fake).await;
-    // P3: the DM is addressed to the direct room only — no request in the
-    // whole leg carries the shared room id.
-    let claim = final_claim_for(&pair.store, "root-a", "task-dm", "Private DM body").await;
-    let (targets, _) = send_and_capture(&c, &mut fake, &pair.a, claim).await;
-    assert_eq!(targets.len(), 1);
+    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", DM_A, &mut fake, false).await;
+    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", DM_B, &mut fake, false).await;
+    // P3: A's DM is addressed to the direct room only. B sends its own DM
+    // first so the later negative is asserted against real B traffic.
+    let claim_b = final_claim_for(&pair.store, "root-b", "task-dm-b", "DM from B 中文").await;
+    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair.b, claim_b).await;
+    assert_eq!(targets_b.len(), 1);
+    assert!(targets_b[0].contains("dm-b"), "B's DM targets B's room");
+    let claim_a = final_claim_for(&pair.store, "root-a", "task-dm-a", "Private DM body").await;
+    let (targets_a, _) = send_and_capture(&ca, &mut fake, &pair.a, claim_a).await;
+    assert_eq!(targets_a.len(), 1);
     assert!(
-        targets[0].contains("dm-a"),
+        targets_a[0].contains("dm-a"),
         "the DM must be addressed to the direct room: {}",
-        targets[0]
+        targets_a[0]
     );
-    assert!(
-        !targets[0].contains("shared"),
-        "no DM request may carry the shared room id"
-    );
-    // The other engagement's rows are unchanged: B has no session at all,
-    // so its inbox read is refused rather than silently shared.
-    let b_sessions: i64 = sql(&pair)
-        .query_row(
-            "SELECT COUNT(*) FROM runner_sessions s \
-             JOIN engagements e ON e.id=s.engagement_id WHERE e.id=?1",
-            [&pair.b.transport.engagement_id],
-            |r| r.get(0),
-        )
+    // No DM request in either direction carries the shared room id.
+    for (targets, agent) in [(&targets_a, "A"), (&targets_b, "B")] {
+        assert!(
+            !targets.iter().any(|t| t.contains("shared")),
+            "a DM send by {agent} referenced the shared room: {targets:?}"
+        );
+    }
+    // The owner's DM back to A reaches A's engagement's inbox only, and the
+    // owner's DM to B never appears in A's rows or in the shared room
+    // (review F1: both owner→agent clauses asserted).
+    owner_dm_intake(
+        &ca,
+        &mut fake,
+        &pair.a,
+        DM_A,
+        "Owner to A private 中文",
+        "root-a",
+    )
+    .await;
+    owner_dm_intake(
+        &cb,
+        &mut fake,
+        &pair.b,
+        DM_B,
+        "Owner to B private 中文",
+        "root-b",
+    )
+    .await;
+    let inbox_a = pair
+        .store
+        .inbox("root-a".into(), 0, 100, None)
+        .await
         .unwrap();
-    assert_eq!(b_sessions, 0);
-    assert!(
-        pair.store
-            .inbox("root-b".into(), 0, 100, None)
-            .await
-            .is_err()
+    assert_eq!(inbox_a.len(), 1, "A's inbox carries only its own DM");
+    assert_eq!(inbox_a[0].message.body, "Owner to A private 中文");
+    assert_eq!(inbox_a[0].message.event_id, "$own-root-a");
+    let inbox_b = pair
+        .store
+        .inbox("root-b".into(), 0, 100, None)
+        .await
+        .unwrap();
+    assert_eq!(inbox_b.len(), 1, "B's inbox carries only its own DM");
+    assert_eq!(inbox_b[0].message.body, "Owner to B private 中文");
+    assert_eq!(inbox_b[0].message.event_id, "$own-root-b");
+    // B's rows are unchanged by all of A's activity: still exactly its own
+    // DM reply, never A's body (review F2: real traffic, not a zero count).
+    assert_eq!(
+        reply_rows(&pair, "root-b"),
+        vec!["DM from B 中文".to_string()],
+        "B's reply rows must remain exactly its own"
     );
-    c.close().await.unwrap();
+    assert_eq!(
+        reply_rows(&pair, "root-a"),
+        vec!["Private DM body".to_string()],
+        "A's reply rows must remain exactly its own"
+    );
+    ca.close().await.unwrap();
+    cb.close().await.unwrap();
     shutdown_pair(pair, fake).await;
 }
 
@@ -323,9 +452,16 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
     let pair = PairFixture::new_pair();
     let mut fake = common::Fake::start(true).await;
     let endpoint = fake.endpoint.clone();
-    let c = bootstrap_session(&pair, &pair.a, DM_A, &endpoint, "root-a", DM_A, &mut fake).await;
+    // A's DM room is the encrypted leg; B is bootstrapped plain and sends
+    // its own DM first, so the negative is asserted against real B traffic.
+    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", DM_A, &mut fake, true).await;
+    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", DM_B, &mut fake, false).await;
+    let claim_b = final_claim_for(&pair.store, "root-b", "task-plain-b", "Plain DM from B").await;
+    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair.b, claim_b).await;
+    assert_eq!(targets_b.len(), 1);
+    assert!(targets_b[0].contains("dm-b"));
     let claim = final_claim_for(&pair.store, "root-a", "task-crypto", "Enciphered DM 中文").await;
-    let peer = c
+    let peer = ca
         .inner
         .owner
         .lock()
@@ -336,7 +472,7 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
         .await;
     let cancel = CancellationToken::new();
     let trace = Trace::new("pair crypto dm", None, None);
-    let operation = observed(trace.clone(), c.send_final(claim, &cancel));
+    let operation = observed(trace.clone(), ca.send_final(claim, &cancel));
     // The whole enciphered DM round — keys/query, share, then the encrypted
     // PUT(s). Room ciphertexts are counted: none may exist, so none can
     // decrypt to the DM body.
@@ -391,7 +527,14 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
     assert_eq!(room_puts, 0, "no ciphertext may target the shared room");
     let plain = dm_plain.expect("exactly one DM ciphertext was sent");
     assert_eq!(plain["content"]["body"], "Enciphered DM 中文");
-    c.close().await.unwrap();
+    // B's rows are unchanged by A's enciphered DM: still exactly its own
+    // plain reply (review F2/F3 form).
+    assert_eq!(
+        reply_rows(&pair, "root-b"),
+        vec!["Plain DM from B".to_string()]
+    );
+    ca.close().await.unwrap();
+    cb.close().await.unwrap();
     shutdown_pair(pair, fake).await;
 }
 
@@ -400,74 +543,84 @@ async fn native_two_agent_message_never_crosses_engagements() {
     let pair = PairFixture::new_pair();
     let mut fake = common::Fake::start(true).await;
     let endpoint = fake.endpoint.clone();
-    let c = bootstrap_session(
+    // Two engagements with an active conversation EACH (review F2): both are
+    // bootstrapped on the shared room and each receives its own owner
+    // mention, so the negative is asserted against an engagement that
+    // carries real traffic of its own.
+    let ca = bootstrap_session(
         &pair,
         &pair.a,
-        DM_A,
         &endpoint,
         "root-a",
         SHARED_ROOM,
         &mut fake,
+        false,
     )
     .await;
-    // The owner's shared-room mention reaches A's engagement only (N1).
-    // `intake` — not `collect` — is the admitting job for a message batch.
-    let event = json!({
-        "event_id":"$question","sender":OWNER,"type":"m.room.message","origin_server_ts":now(),
-        "content":{"msgtype":"m.text","body":"Secret for A 中文",
-                   "m.mentions":{"user_ids":[pair.a.transport.sender_mxid]}}
-    });
-    let mut packet = common::sync("pair1");
-    packet["rooms"]["join"][SHARED_ROOM]["timeline"] = json!({"events":[event],"limited":false});
-    packet["rooms"]["join"][SHARED_ROOM]["state"] = json!({"events":[]});
-    let plan = HostIntakePlan::new(vec!["root-a".into()]).unwrap();
-    let cancel = CancellationToken::new();
-    let mut delivered = false;
-    let trace = Trace::new("pair intake", None, None);
-    let operation = observed(trace, c.intake(plan, &cancel));
-    let (summary, ()) = common::scripted(operation, async {
-        loop {
-            let request = tokio::select! {
-                request = fake.next() => request,
-                _ = tokio::time::sleep(Duration::from_millis(300)) => return,
-            };
-            if request.target.contains("/account/whoami") {
-                request.json(200, who(&pair.a));
-            } else if request.target.contains("/sync") {
-                if delivered {
-                    request.json(200, common::sync("pair2"));
-                } else {
-                    delivered = true;
-                    request.json(200, packet.clone());
-                }
-            } else if request.target.ends_with("/state") {
-                request.json(200, state_for(&pair.a));
-            } else {
-                panic!("unexpected intake request: {}", request.target);
-            }
-        }
-    })
+    let cb = bootstrap_session(
+        &pair,
+        &pair.b,
+        &endpoint,
+        "root-b",
+        SHARED_ROOM,
+        &mut fake,
+        false,
+    )
     .await;
-    assert!(
-        summary.unwrap().admitted >= 1,
-        "the shared-room batch is admitted"
-    );
-    let inbox = pair
+    owner_dm_intake(
+        &ca,
+        &mut fake,
+        &pair.a,
+        SHARED_ROOM,
+        "Secret for A 中文",
+        "root-a",
+    )
+    .await;
+    owner_dm_intake(
+        &cb,
+        &mut fake,
+        &pair.b,
+        SHARED_ROOM,
+        "Secret for B 中文",
+        "root-b",
+    )
+    .await;
+    // A's inbox: only its own message — its own sequence and body; B's body
+    // and event are absent even though B's conversation is real and live.
+    let inbox_a = pair
         .store
         .inbox("root-a".into(), 0, 100, None)
         .await
         .unwrap();
-    assert_eq!(inbox.len(), 1);
-    assert_eq!(inbox[0].message.body, "Secret for A 中文");
-    assert_eq!(inbox[0].message.event_id, "$question");
-    // The other engagement's inbox does not exist to read: B has no session,
-    // so its read is refused — the body and sequence are absent, not shared.
+    assert_eq!(inbox_a.len(), 1, "A sees exactly its own message");
+    assert_eq!(inbox_a[0].message.body, "Secret for A 中文");
+    assert_eq!(inbox_a[0].message.event_id, "$own-root-a");
+    let inbox_b = pair
+        .store
+        .inbox("root-b".into(), 0, 100, None)
+        .await
+        .unwrap();
+    assert_eq!(inbox_b.len(), 1, "B sees exactly its own message");
+    assert_eq!(inbox_b[0].message.body, "Secret for B 中文");
+    assert_eq!(inbox_b[0].message.event_id, "$own-root-b");
+    // The cross-bodies are absent by name, not by count.
+    let bodies_a: Vec<&str> = inbox_a
+        .iter()
+        .map(|item| item.message.body.as_str())
+        .collect();
     assert!(
-        pair.store
-            .inbox("root-b".into(), 0, 100, None)
-            .await
-            .is_err()
+        !bodies_a.contains(&"Secret for B 中文"),
+        "B's body leaked into A's inbox"
     );
-    c.close().await.unwrap();
+    let bodies_b: Vec<&str> = inbox_b
+        .iter()
+        .map(|item| item.message.body.as_str())
+        .collect();
+    assert!(
+        !bodies_b.contains(&"Secret for A 中文"),
+        "A's body leaked into B's inbox"
+    );
+    ca.close().await.unwrap();
+    cb.close().await.unwrap();
     shutdown_pair(pair, fake).await;
 }

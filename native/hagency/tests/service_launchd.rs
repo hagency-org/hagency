@@ -76,12 +76,19 @@ fn assert_plist_contract() {
         arguments.iter().any(|v| v == "__STATE_DIR__"),
         "explicit state placeholder, never a guessed default"
     );
+    // Comments are stripped before parsing: a directive line named only
+    // inside a comment block never resolves to a value.
+    let commented = "<!-- <key>Shadowed</key>\n  <string>no</string> -->\n<key>Real</key>\n<string>yes</string>";
+    assert!(plist_value(commented, "Shadowed").is_none());
+    assert_eq!(plist_value(commented, "Real").as_deref(), Some("yes"));
 }
 
 /// Read one scalar plist value by key from the rendered XML — a real
-/// `<key>`/value pair, never a comment substring.
+/// `<key>`/value pair, never a comment substring: XML comments (which may
+/// span lines) are stripped before the line scan.
 fn plist_value(plist: &str, key: &str) -> Option<String> {
-    let lines: Vec<&str> = plist.lines().map(str::trim).collect();
+    let stripped = strip_xml_comments(plist);
+    let lines: Vec<&str> = stripped.lines().map(str::trim).collect();
     let mut i = 0;
     while i < lines.len() {
         if lines[i] == format!("<key>{key}</key>") {
@@ -90,6 +97,22 @@ fn plist_value(plist: &str, key: &str) -> Option<String> {
         i += 1;
     }
     None
+}
+
+/// Remove `<!-- ... -->` spans, including multi-line comment blocks; an
+/// unterminated comment drops the tail.
+fn strip_xml_comments(plist: &str) -> String {
+    let mut out = String::with_capacity(plist.len());
+    let mut rest = plist;
+    while let Some(start) = rest.find("<!--") {
+        out.push_str(&rest[..start]);
+        match rest[start..].find("-->") {
+            Some(end) => rest = &rest[start + end + 3..],
+            None => return out,
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Parse one scalar plist element line: `<true/>` → "true",

@@ -27,6 +27,65 @@ const SNAPSHOT: &str = r#"{"payload":{"info":{"total_token_usage":{"input_tokens
 async fn native_two_agent_task_handoff_observes_usage_on_the_right_engagement() {
     let pair = PairFixture::new_pair();
     let store = &pair.store;
+    // B carries REAL prior activity of its own (review F3): its own session,
+    // task, dispatch and usage row exist before A's handoff runs, so the
+    // cross-engagement negative asserts "B's rows are unchanged", not "B
+    // never had anything".
+    store
+        .register_session(SessionBinding {
+            id: "b-session".into(),
+            engagement_id: pair.b.transport.engagement_id.clone(),
+            room_id: SHARED_ROOM.into(),
+            thread_root: None,
+        })
+        .await
+        .unwrap();
+    store.register_workspace("work-b".into()).await.unwrap();
+    store
+        .create_canonical_task(
+            "b-task".into(),
+            "b-session".into(),
+            "B's own prior task".into(),
+            now(),
+        )
+        .await
+        .unwrap();
+    store
+        .enqueue_dispatch(DispatchInput {
+            id: "b-dispatch".into(),
+            session_id: "b-session".into(),
+            task_id: Some("b-task".into()),
+            resources: vec![ResourceLease {
+                id: "work-b".into(),
+                exclusive: true,
+            }],
+            payload: json!({"instruction":"B's own prior spend"}),
+        })
+        .await
+        .unwrap();
+    let b_cap = store
+        .claim_dispatch("owned_host_b".into(), now(), 60_000, 60_000, 1)
+        .await
+        .unwrap()
+        .unwrap();
+    let b_scope = store.owned_dispatch_scope(b_cap.clone()).await.unwrap();
+    let b_started = store
+        .start_owned_dispatch(b_cap.clone(), b_scope.fingerprint().to_owned())
+        .await
+        .unwrap();
+    let b_source = store
+        .bind_usage_source(b_cap.clone(), b_started.clone())
+        .await
+        .unwrap();
+    let b_prior = UsageObservation::parse(Framework::Codex, SNAPSHOT).unwrap();
+    store
+        .record_usage_observation(b_source, "b_prior".into(), b_prior)
+        .await
+        .unwrap();
+    let b_before = store
+        .usage_summary(pair.b.transport.engagement_id.clone())
+        .await
+        .unwrap();
     // The handoff lands on A's engagement: its session is bound to the ONE
     // shared delivery room, and the task is created for that session.
     store
@@ -117,13 +176,16 @@ async fn native_two_agent_task_handoff_observes_usage_on_the_right_engagement() 
     assert_eq!(settled.0, "completed");
     assert_eq!(settled.1, pair.a.transport.engagement_id);
     // The spend is attributed to A's engagement and to no other row.
-    let attributed: String = connection
-        .query_row("SELECT engagement_id FROM usage_sources", [], |r| r.get(0))
+    let attributed: Vec<String> = connection
+        .prepare("SELECT engagement_id FROM usage_sources WHERE dispatch_id='dispatch'")
+        .unwrap()
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
         .unwrap();
-    assert_eq!(attributed, pair.a.transport.engagement_id);
+    assert_eq!(attributed, vec![pair.a.transport.engagement_id.clone()]);
     drop(connection);
-    // The ledger's own rollup: one source with the parsed counts on A;
-    // nothing on B — not a zero that could hide a shared read.
+    // The ledger's own rollup: one source with the parsed counts on A.
     let summary_a = store
         .usage_summary(pair.a.transport.engagement_id.clone())
         .await
@@ -133,11 +195,18 @@ async fn native_two_agent_task_handoff_observes_usage_on_the_right_engagement() 
     assert_eq!(counts.input, Some(10));
     assert_eq!(counts.output, Some(2));
     assert_eq!(counts.cache_read, Some(3));
+    // B's prior rows are UNCHANGED by A's handoff (review F3): the same one
+    // source, the same counts it recorded before A's dispatch ran — real
+    // prior traffic, not an engagement that never existed.
     let summary_b = store
         .usage_summary(pair.b.transport.engagement_id.clone())
         .await
         .unwrap();
-    assert_eq!(summary_b.sources, 0);
-    assert!(summary_b.latest_counts.is_none());
+    assert_eq!(summary_b.sources, b_before.sources);
+    assert_eq!(summary_b.latest_counts, b_before.latest_counts);
+    assert_eq!(summary_b.sources, 1, "B carries its own prior usage source");
+    let b_counts = summary_b.latest_counts.expect("B's prior counts stand");
+    assert_eq!(b_counts.input, Some(10));
+    assert_eq!(b_counts.output, Some(2));
     pair.store.shutdown().await.unwrap();
 }
