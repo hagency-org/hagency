@@ -1,5 +1,7 @@
 #[path = "bootstrap/accounts.rs"]
 mod accounts;
+#[path = "bootstrap/approval.rs"]
+mod approval;
 #[path = "bootstrap/fixture.rs"]
 mod fixture;
 #[path = "bootstrap/scope.rs"]

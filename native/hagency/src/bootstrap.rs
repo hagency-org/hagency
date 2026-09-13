@@ -1,5 +1,6 @@
 //! Explicit one-attempt development startup; no production scheduler or file tool.
 pub mod accounts;
+mod approval;
 mod config;
 mod driver;
 pub(crate) mod palpo;
@@ -678,6 +679,12 @@ pub struct Bootstrap {
     palpo_status: palpo::StatusHandle,
     driver: Option<driver::Driver>,
     shared: Option<Shared>,
+    /// PC-C0: the approval bot's own collector (never the pooled ordinary
+    /// one) and the pump's handoff channel. The pump is built at open; the
+    /// forwarder is spawned on THIS service runtime in `serve`.
+    approval: Option<Arc<approval::Pump>>,
+    approval_sender: Option<tokio::sync::mpsc::Sender<hagency_execution::ApprovalRequests>>,
+    approval_pump: Option<Arc<tokio::task::JoinHandle<()>>>,
     files: Option<crate::file_service::FileOwner>,
     receives: Option<crate::receive_service::ReceiveOwner>,
     collector_close: Option<tokio::task::JoinHandle<Result<(), hagency_matrix::Error>>>,
@@ -778,6 +785,26 @@ impl Bootstrap {
             .as_mut()
             .map(|p| Shared::new(p.matrix.take().ok_or(Failure::Config)?, domain.clone()))
             .transpose()?;
+        // PC-C0 (plan v4 Q3): build the approval bot's OWN collector from the
+        // second credential set — never the pooled ordinary `HostConfig` in
+        // `Shared` (`Collector::new` refuses `approval == true`). Refuses at
+        // startup with the named failure when the fresh-account enrollment
+        // anchors are absent; no card can then be sent through any owner.
+        let approval = match (
+            shared.is_some(),
+            prepared.as_mut().and_then(|p| p.approval.take()),
+        ) {
+            (true, Some(approval)) => Some(std::sync::Arc::new(approval::Pump::new(
+                approval::collector(
+                    approval.config,
+                    approval.engagement_id,
+                    approval.anchors,
+                    domain.clone(),
+                )?,
+                domain.clone(),
+            ))),
+            _ => None,
+        };
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: files_entered");
         let files = match (&shared, prepared.as_mut().and_then(|p| p.files.take())) {
             (Some(shared), Some(setup)) => Some(
@@ -818,6 +845,9 @@ impl Bootstrap {
             palpo_status,
             driver: None,
             shared,
+            approval,
+            approval_sender: None,
+            approval_pump: None,
             files,
             receives,
             collector_close: None,
@@ -930,6 +960,16 @@ impl Bootstrap {
                 result?;
             }
         }
+        // PC-C0: stop the forwarder and close the approval bot's own
+        // collector beside the ordinary one — same bounded shape, the
+        // original owner retained on an unknown outcome.
+        if let Some(pump) = self.approval_pump.take() {
+            pump.abort();
+        }
+        self.approval_sender = None;
+        if let Some(pump) = self.approval.take() {
+            pump.close().await?;
+        }
         if !self.domain_closed {
             self.domain
                 .shutdown()
@@ -1003,11 +1043,28 @@ impl Bootstrap {
             ));
         }
         if let Some(prepared) = self.prepared.take() {
+            // PC-C0 (plan v4 Q1): the handoff channel exists ONLY when the
+            // approval pump is configured. The forwarder is spawned HERE, on
+            // the service's multi-threaded runtime — host/service scope —
+            // and the driver receives only the sender half. The pump ends by
+            // itself when the worker drops the notices sender (`recv() == None`).
+            if self.approval.is_some() && self.approval_pump.is_none() {
+                let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+                let pump = self.approval.clone().expect("approval pump");
+                let cancel = shutdown.clone();
+                self.approval_pump = Some(std::sync::Arc::new(tokio::spawn(async move {
+                    while let Some(requests) = receiver.recv().await {
+                        pump.drain(requests, &cancel).await;
+                    }
+                })));
+                self.approval_sender = Some(sender);
+            }
             self.driver = Some(driver::Driver::start(
                 prepared,
                 self.shared.clone().ok_or(Failure::Startup)?,
                 self.files.as_ref().map(|files| files.handle()),
                 self.status.clone(),
+                self.approval_sender.clone(),
             )?);
         }
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: serving");

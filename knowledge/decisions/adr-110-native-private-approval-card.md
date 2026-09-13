@@ -43,11 +43,13 @@ budget. Oversize refuses; input and scope are never silently truncated.
 
 ## Consequences
 
-There is no schema change, public endpoint, Matrix send, grant creation or
+There is no schema change, public endpoint, grant creation or
 execution resumption. Existing original-writer ownership and bounded queue
-remain. A later packet read cannot reconstruct a lost send. Approval-purpose
-SDK enrollment, protected encrypted delivery custody and executable wiring
-remain required. Current native forty-hex request IDs differ from the retained
+remain. A later packet read cannot reconstruct a lost send. Executable wiring
+(PC-C0) is now in place: the bootstrap host carries the approval capacity and
+the delivery pump sends through the approval bot's own collector; approval-
+purpose SDK enrollment, protected encrypted delivery custody and that wiring
+clause change no rule above. Current native forty-hex request IDs differ from the retained
 client's thirty-two-hex parser; this work does not claim Robrix interoperability.
 ADR115 explicitly aligns the finite peer-schema profiles and records the receiver
 upgrade, field-size and scoped-action requirements. It does not replace the

@@ -1,7 +1,7 @@
 #[path = "inbox.rs"]
 mod inbox;
 use super::{Failure, Shared, StatusHandle, config::Prepared, workspace::WorkspaceAccess};
-use hagency_execution::{Operation, Report};
+use hagency_execution::{ApprovalRequests, Operation, Report};
 use hagency_matrix::{CancellationToken, Collector};
 use hagency_store::DomainStore;
 use std::{
@@ -27,6 +27,11 @@ impl Driver {
         shared: Shared,
         files: Option<crate::file_service::FileHandle>,
         status: StatusHandle,
+        // PC-C0 (plan v4 Q1): the ONE buildable handoff — the driver has no
+        // usable `&mut Operation` window after `Box::pin(wait_boxed())`, so
+        // it takes the single-consumer value once, immediately after the
+        // operation exists, and forwards it; the pump owns the receiver.
+        notices: Option<tokio::sync::mpsc::Sender<ApprovalRequests>>,
     ) -> Result<Self, Failure> {
         let (control, commands) = mpsc::sync_channel(1);
         let cancel = CancellationToken::new();
@@ -58,6 +63,7 @@ impl Driver {
                         receive_inbox: prepared.receive_inbox,
                         cancel: &signal,
                         status: &status,
+                        notices: notices.as_ref(),
                         #[cfg(test)]
                         discard_claim_reply: prepared.discard_claim_reply,
                     });
@@ -174,6 +180,7 @@ struct Attempt<'a> {
     receive_inbox: Option<hagency_core::received_files::ReceiveInboxPlan>,
     cancel: &'a CancellationToken,
     status: &'a StatusHandle,
+    notices: Option<&'a tokio::sync::mpsc::Sender<ApprovalRequests>>,
     #[cfg(test)]
     discard_claim_reply: bool,
 }
@@ -190,6 +197,7 @@ async fn run(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failure> {
         receive_inbox,
         cancel,
         status,
+        notices,
         #[cfg(test)]
         discard_claim_reply,
     } = input;
@@ -270,6 +278,17 @@ async fn run(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failure> {
     let mut operation =
         Operation::start_requiring_workspace(domain.clone(), capability.clone(), host, limits)
             .map_err(|_| Failure::Worker)?;
+    // PC-C0 (plan v4 Q1): the one `&mut` window — immediately after the
+    // operation exists, before `wait_boxed()` pins it for the whole run. The
+    // single-consumer value is taken once and forwarded to the pump, which
+    // owns the receiver on the service runtime; this driver never drains it
+    // and never blocks on the send (capacity 1, try-send only).
+    if let Some(sender) = notices
+        && let Some(requests) = operation.take_approval_requests()
+        && sender.try_send(requests).is_err()
+    {
+        tracing::warn!("[approval] delivery pump unavailable; run notices dropped");
+    }
     status.phase("registering");
     loop {
         if cancel.is_cancelled() {
@@ -418,6 +437,7 @@ mod tests {
             )
             .unwrap(),
             managed_account: None,
+            approval: None,
             matrix: Some(
                 f.config(endpoint)
                     .with_root_pem(include_bytes!(
@@ -459,7 +479,8 @@ mod tests {
         prepared.discard_claim_reply = true;
         let status = StatusHandle::new(true);
         let shared = Shared::new(prepared.matrix.take().unwrap(), f.store.clone()).unwrap();
-        let mut driver = Driver::start(prepared, shared.clone(), None, status.clone()).unwrap();
+        let mut driver =
+            Driver::start(prepared, shared.clone(), None, status.clone(), None).unwrap();
         test_common::success(&mut fake, "claim_loss").await;
         let until = tokio::time::Instant::now() + Duration::from_secs(5);
         while status.get().state != "outcome_unknown" {

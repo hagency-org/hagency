@@ -35,6 +35,8 @@ struct Config {
     operation_ms: u64,
     response_ms: u64,
     matrix: Matrix,
+    #[serde(default)]
+    approval: Option<ApprovalMatrix>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -57,6 +59,29 @@ struct CryptoEnrollment {
     profile: String,
     peer_masters: Vec<PeerMaster>,
 }
+/// The approval bot's own credential set (PC-C0, plan v4 Q3): a SECOND
+/// identity, token, device and SDK root, never the pooled ordinary
+/// `HostConfig` (which `Collector::new` refuses for `approval == true`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ApprovalMatrix {
+    origin: String,
+    server_name: String,
+    registration_fingerprint: String,
+    engagement_id: String,
+    registration_generation: u64,
+    transport_generation: u64,
+    sender_mxid: String,
+    device_id: String,
+    rooms: Vec<Room>,
+    peer_masters: Vec<PeerMaster>,
+}
+/// What `bootstrap::approval` builds the pump's collector from.
+pub(super) struct Approval {
+    pub config: HostConfig,
+    pub engagement_id: String,
+    pub anchors: Vec<(String, String)>,
+}
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct PeerMaster {
@@ -74,6 +99,7 @@ pub(super) struct Prepared {
     pub host: Host,
     pub managed_account: Option<String>,
     pub matrix: Option<HostConfig>,
+    pub approval: Option<Approval>,
     pub files: Option<crate::file_service::Setup>,
     pub receives: Option<crate::receive_service::Setup>,
     pub enrollment: bool,
@@ -301,10 +327,91 @@ impl Prepared {
         {
             return Err(Failure::Config);
         }
+        // The approval bot's own credential and the host's approval capacity
+        // (PC-C0, plan v4 Q3): a SECOND identity set, never the pooled
+        // ordinary `HostConfig`, and the `ApprovalHost` without whose
+        // attachment `Operation::start_mode` never creates the notices
+        // channel at all. `ApprovalHost::new` values must `fits(limits)` or
+        // every start refuses with `Failure::Admission`.
+        let approval = match config.approval {
+            Some(approval) => {
+                if approval.rooms.is_empty()
+                    || approval.rooms.len() > 16
+                    || !approval.origin.starts_with("https://")
+                    || !approval
+                        .rooms
+                        .iter()
+                        .all(|r| matches!(r.privacy, RoomPrivacy::Direct { .. }))
+                {
+                    return Err(Failure::Config);
+                }
+                let transport = MatrixTransportObservation {
+                    engagement_id: approval.engagement_id.clone(),
+                    registration_generation: approval.registration_generation,
+                    generation: approval.transport_generation,
+                    sender_mxid: approval.sender_mxid.clone(),
+                    device_id: approval.device_id.clone(),
+                };
+                let rooms = approval
+                    .rooms
+                    .into_iter()
+                    .map(|room| HostRoom {
+                        room_id: room.id,
+                        generation: room.generation,
+                        privacy: room.privacy,
+                    })
+                    .collect();
+                let token = read(&state.join("approval.access_token"), 4096)?;
+                let token = std::str::from_utf8(&token).map_err(|_| Failure::Config)?;
+                let key: [u8; 32] = read(&state.join("approval.sdk_key"), 32)?
+                    .try_into()
+                    .map_err(|_| Failure::Config)?;
+                let mut config = HostConfig::new(
+                    HostIdentity {
+                        server_name: approval.server_name,
+                        registration_fingerprint: approval.registration_fingerprint,
+                        transport,
+                    },
+                    &approval.origin,
+                    token,
+                    state.join("approval-sdk"),
+                    key,
+                    rooms,
+                    hagency_matrix::Limits::default(),
+                )
+                .map_err(|_| Failure::Config)?;
+                let ca = state.join("approval.ca.pem");
+                if ca.try_exists().map_err(|_| Failure::Config)? {
+                    config = config
+                        .with_root_pem(&read(&ca, 16 * 1024)?)
+                        .map_err(|_| Failure::Config)?;
+                }
+                // The capacity must fit the operation limits exactly as
+                // `ApprovalHost::fits` checks them, or `start_mode` refuses.
+                let response_reserve_ms = limits.response_ms.max(2000);
+                let host_approvals =
+                    hagency_execution::ApprovalHost::new(8, 2, 1000, response_reserve_ms)
+                        .map_err(|_| Failure::Config)?;
+                host = host
+                    .with_approvals(host_approvals)
+                    .map_err(|_| Failure::Config)?;
+                Some(Approval {
+                    config,
+                    engagement_id: approval.engagement_id,
+                    anchors: approval
+                        .peer_masters
+                        .into_iter()
+                        .map(|p| (p.user_id, p.master_key))
+                        .collect(),
+                })
+            }
+            None => None,
+        };
         Ok(Self {
             host,
             managed_account: config.managed_account,
             matrix: Some(matrix),
+            approval,
             files,
             receives: config
                 .receive_file

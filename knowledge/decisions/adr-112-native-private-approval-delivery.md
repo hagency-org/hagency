@@ -86,6 +86,13 @@ hosted Windows/Linux execution remain separate qualification gates.
 ## Consequences
 
 Only explicit fresh approval accounts qualify for this initial sender. Historical
-Matrix acceptance does not grant a verdict or runtime application. Service wiring,
-client compatibility, identity recovery and general ongoing key management remain
+Matrix acceptance does not grant a verdict or runtime application. Client
+compatibility, identity recovery and general ongoing key management remain
 separate. Already-admitted HTTP bytes cannot be recalled after later changes.
+The service wiring clause (PC-C0) is now recorded: the bootstrap builds the
+approval bot's own collector from a second credential set via
+`HostApprovalConfig` + `with_fresh_account_enrollment`, the driver forwards the
+one-shot `ApprovalRequests` from its single `&mut` window, and the pump running
+on the service runtime owns the receiver; close observes the bounded
+original-owner semantics (`OutcomeUnknown` retained) beside the ordinary
+collector.

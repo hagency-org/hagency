@@ -36,10 +36,10 @@ fn row_parts(row: &Value) -> (Option<String>, Option<String>) {
     let (row_host, _path) = rest.split_once('/').unwrap();
     let bound = BASE.split_once("://").unwrap().1.to_owned();
     let origin = row["origin"].as_str().map(|origin| {
-        if let Some((scheme, host)) = origin.split_once("://") {
-            if host == row_host {
-                return format!("{scheme}://{bound}");
-            }
+        if let Some((scheme, host)) = origin.split_once("://")
+            && host == row_host
+        {
+            return format!("{scheme}://{bound}");
         }
         origin.to_owned()
     });
