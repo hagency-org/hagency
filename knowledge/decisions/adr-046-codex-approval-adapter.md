@@ -395,3 +395,25 @@ classifier's rule, stated in full:
    close with the full budget as the outer ceiling, and the phase journal
    is per-dispatch on write (`reset(dispatch)`) or it reports another
    test's clear as a missing host phase.
+
+**Amendment (2026-09-12, drain deferral): the terminal drain must not settle
+an armed callback before the turn-end rule classifies it.** The runtime's
+`drain_terminal` runs inside `accept_update` after the peer's turn has ended,
+immediately before `wire.close()`. A `ServerRequest` that arrives there is not
+an unowned protocol violation when approvals are enabled — it is the host
+coordinator's own armed approval callback, whose frame the peer could not
+answer before its turn ended. Rejecting it (`UnsupportedRequest`) would
+propagate through `accept_update`'s `?` and starve the `TurnEnded` update from
+ever reaching the coordinator's turn-end rule, collapsing every turn-end arm
+(the quiet family, `SettlementUnknown`, `PeerUnavailable`) into a single
+protocol fault. The drain therefore defers both a request pending at loop exit
+and one arriving mid-drain (the loop's `ServerRequest` arm): the event is
+consumed without a reply, the request stays pending in the connection's
+server-pending map, and the turn-end rule classifies it from the termination
+snapshot the following `close()` preserves. Erroring remains correct only when
+approvals are disabled — there the request is genuinely unowned and must be
+rejected. This amendment narrows, for the terminal drain only, the earlier
+ruling that "a turn end remains a cancellation everywhere": that ruling still
+holds on the recheck pump next to an armed frame, where the coordinator itself
+observes the turn end and cancels; the drain is the one place the runtime would
+otherwise settle the callback before the coordinator's rule can run.
