@@ -1,0 +1,117 @@
+name: Release native
+
+# ADR-134: the versioned native release — DRAFT, dispatch-only.
+#
+# The tag trigger below is deliberately COMMENTED OUT: the JS product is
+# still the release of record and M9 cutover has not happened, so an
+# accidental `nv*` tag must not publish anything. Enabling the trigger is a
+# one-line uncomment that belongs to the M9 cutover slice (SR-4). Until
+# then this workflow only builds artifacts on manual dispatch and creates
+# no GitHub Release.
+#
+# on:
+#   push:
+#     tags:
+#       - 'nv[0-9]+.[0-9]+.[0-9]+'
+#       - 'nv[0-9]+.[0-9]+.[0-9]+-*'
+
+on:
+  workflow_dispatch:
+    inputs:
+      expected_version:
+        description: 'Workspace version this build must report (from Cargo.toml [workspace.package])'
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve the workspace version (the only native version source)
+        id: version
+        run: |
+          VERSION="$(sed -n '/^\[workspace.package\]/,/^\[/s/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)"
+          [ -n "$VERSION" ] || { echo "::error::no [workspace.package] version found"; exit 1; }
+          EXPECTED="${{ github.event.inputs.expected_version }}"
+          if [ -n "$EXPECTED" ] && [ "$VERSION" != "$EXPECTED" ]; then
+            echo "::error::workspace version $VERSION != dispatched expectation $EXPECTED"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: resolve
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+          - os: macos-15
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: release-native-${{ matrix.target }}
+      - name: Build the release binary
+        run: cargo build --release --locked -p hagency
+      - name: Verify the binary reports the workspace version
+        run: |
+          VERSION="$(./target/release/hagency --version | awk '{print $NF}')"
+          [ "$VERSION" = "${{ needs.resolve.outputs.version }}" ] \
+            || { echo "::error::binary reports $VERSION, workspace says ${{ needs.resolve.outputs.version }}"; exit 1; }
+      - name: Stage the release tree and run the residual-Node scan
+        run: |
+          set -euo pipefail
+          VERSION="${{ needs.resolve.outputs.version }}"
+          STAGE="stage/hagency-nv${VERSION}-${{ matrix.target }}"
+          mkdir -p "$STAGE"
+          cp target/release/hagency "$STAGE/"
+          # The scan (ADR-134): no Node entry point in the release tree.
+          if find "$STAGE" -name package.json -o -name package-lock.json -o -type d -name node_modules | grep -q .; then
+            echo "::error::residual Node package files in the release tree"; exit 1
+          fi
+          if find "$STAGE" -type f \( -name '*.js' -o -name '*.mjs' -o -name '*.cjs' \) | grep -q .; then
+            echo "::error::residual JavaScript entry files in the release tree"; exit 1
+          fi
+          if grep -rn 'node ' "$STAGE" --include='*' -l 2>/dev/null | grep -q .; then
+            echo "::error::a shipped wrapper references node"; exit 1
+          fi
+      - name: Upload the per-target artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: hagency-nv${{ needs.resolve.outputs.version }}-${{ matrix.target }}
+          path: stage/
+          if-no-files-found: error
+
+  checksums:
+    needs: [resolve, build]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifacts@v5
+        with:
+          path: dist
+      - name: Compute SHA256SUMS across all targets
+        run: |
+          set -euo pipefail
+          cd dist
+          find . -type f -name 'hagency-nv*' | sort | xargs sha256sum > SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hagency-nv${{ needs.resolve.outputs.version }}-SHA256SUMS
+          path: dist/SHA256SUMS
+          if-no-files-found: error

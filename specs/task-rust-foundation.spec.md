@@ -194,6 +194,24 @@ Scenario: The launchd restart preserves pending state
   And no rotation is applied to the log files because none is configured
   And on the other hosted OSes the named test asserts the not-a-macOS-agent refusal never skipping
 
+Scenario: The binary reports the workspace version
+  Test: native_binary_version_matches_workspace
+  Level: integration
+  Test Double: the built serve binary run with --version beside the workspace manifest
+  Given the workspace version in the root Cargo.toml and a freshly built native binary
+  When the binary is invoked with --version
+  Then the printed version equals the workspace [workspace.package] version exactly
+  And no other version source such as package.json is consulted
+
+Scenario: The release tree contains no Node entry point
+  Test: native_release_entrypoints_scan_finds_no_node
+  Level: integration
+  Test Double: a staged release tree fixture built like the workflow packages it
+  Given a staged native release tree containing the binary its units and its checksums
+  When the scan looks for package.json node_modules directories javascript entry files and node references in shipped wrappers
+  Then the scan finds none and passes
+  And any finding fails the scan never skips
+
 ## Out of Scope
 
 The spec-binding build tool may distinguish native Cargo contracts from Vitest
