@@ -465,10 +465,7 @@ mod trace_tests {
         ] {
             quiet.mark(label);
         }
-        assert_eq!(
-            quiet.as_slice().last(),
-            Some(&"resolved-before-send")
-        );
+        assert_eq!(quiet.as_slice().last(), Some(&"resolved-before-send"));
         assert!(!quiet.as_slice().contains(&"resolved-cancels"));
         // The final verdict's rule: an in-flight, receipt-less, unresolved
         // entry names its fate at a turn end — never a silent completion.

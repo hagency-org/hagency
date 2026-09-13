@@ -777,7 +777,6 @@ fn host_response_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
         .collect()
 }
 
-
 /// Every `owned-dispatch.*` marker file currently present under `work`, so an
 /// expired wait reports what the probe DID emit: a timing miss (the marker
 /// arrives late) is distinguishable from a logic miss (it never comes).
