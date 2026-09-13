@@ -49,11 +49,14 @@
   An acknowledged row auto-resolves on recovery exactly like an open one
   (`resolved_by='system'`, note preserved); a resolved row re-raised
   reopens as a fresh episode with display state reset.
-- Client: the validator grows `status` (four-value), `next`, `note`
-  (import-tested; `assigned` rejected in both status and `next`);
+- Client: the validator grows `status` (four-value), `next`, `note`;
   `transitionAlert`; the `Data.jsx` transition mutator; `data-transition`
   buttons with the acknowledged→resolved walk and the terminal row's empty
   set; the read-only notice retitled (display-state · never enforcement).
+  The validator has NO unit test of its own (`mockup/` has none for
+  `native-api.js`): it is exercised by the browser lane against the real
+  server, and its refusal branches (`assigned` rejected in `status` and
+  `next`, the note bound) are read-verified only.
 - Oracle: `ceiling-vectors.mjs` now EXECUTES the retained
   `lib/alert-store.js` `transition()` (fake clock, sha256-pinned) over the
   five pairs both models share plus the terminal refusal — 6 fixture

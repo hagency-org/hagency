@@ -125,6 +125,9 @@ export async function fetchNative(selected, after = '') {
  * (the retained console's own NEXT_STATUS drift is not ported). */
 const DETAIL_KEYS = ['agent', 'presetId', 'ceilingTokens', 'committedTokens', 'measuredTokens', 'drawnTokens', 'overByTokens'];
 const ALERT_KEYS = ['dedupe_key', 'resource_id', 'summary', 'detail', 'runbook', 'impact', 'recovery_condition', 'occurrences', 'first_seen_ms', 'last_seen_ms', 'resolved', 'severity', 'status', 'next', 'note'];
+// Mirrors hagency_store::ALERT_STATUSES (the one server-owned map): the
+// validator must refuse an unknown state rather than misrender, so this
+// list must move in the same commit as the store's.
 const ALERT_STATUSES = ['open', 'acknowledged', 'resolved', 'suppressed'];
 const validDetail = (v) => (v !== null && typeof v === 'object' && !Array.isArray(v)
   && Object.keys(v).length === DETAIL_KEYS.length && DETAIL_KEYS.every((k) => Object.hasOwn(v, k))

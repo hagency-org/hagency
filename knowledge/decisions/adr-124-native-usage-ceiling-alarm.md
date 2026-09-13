@@ -246,9 +246,15 @@ NO window natively — it is operator-released only (`suppressed→open`); the r
 (`ALERT_SUPPRESS_DEFAULT_MS`) is a clock feature the native sweep honestly lacks, so the retained
 re-over behavior (`alert-store.js:245-248`: a suppressed row reopens on a new occurrence only once its
 `suppressUntil` has passed, staying suppressed inside it) becomes the simpler native rule: the sweep
-NEVER reopens a suppressed row — occurrences ride, the operator releases. An acknowledged (or
+NEVER reopens a suppressed row — occurrences ride, the operator releases. A second re-raise divergence:
+the retained store reopens a resolved row only inside `ALERT_REOPEN_WINDOW_MS` (5 min,
+`lib/alert-store.js:258-265`) and otherwise files a new alert, while native always reopens the same
+dedupe row as a fresh episode. An acknowledged (or
 suppressed) row that recovers auto-resolves exactly like an open one (`resolved_by='system'`), matching
-the retained `autoResolve` (`alert-store.js:341`: any non-resolved status).
+the retained `autoResolve` (`alert-store.js:341`: any non-resolved status). The client validator
+(`mockup/lib/native-api.js`) keeps its own `ALERT_STATUSES` — it must refuse an unknown state rather
+than misrender — which mirrors `hagency_store::ALERT_STATUSES` and must move in the same commit as the
+store's list.
 
 **Display state only.** A transition mutates the alert's render columns (`status`, `note` ≤2048
 operator text, `transitioned_at_ms`/`transitioned_by`, and `resolved_at_ms`/`resolved_by` on the

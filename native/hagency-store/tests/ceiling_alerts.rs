@@ -3,8 +3,10 @@ use common::*;
 use hagency_core::project::Resource;
 use hagency_core::tasks::*;
 use hagency_metering::{Framework, observation::UsageObservation};
-use hagency_store::{AlertTransition, DomainRepository, EffectOutcome, Error, SweepOutcome};
-use rusqlite::{Connection, OptionalExtension};
+use hagency_store::{
+    AlertTransition, DomainRepository, EffectOutcome, Error, SweepOutcome, allowed_transitions,
+};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde_json::json;
 use std::path::PathBuf;
 
@@ -533,6 +535,8 @@ fn native_ceiling_alert_transitions_follow_one_legal_map() {
             let mut alarm = seeded_overrun();
             let sql = Connection::open(state_path(&alarm)).unwrap();
             if from != "open" {
+                // Seeding display state directly is fixture-only: the
+                // transition under test still goes through the store.
                 sql.execute("UPDATE ceiling_alerts SET status=?1", [from])
                     .unwrap();
             }
@@ -690,4 +694,138 @@ fn native_ceiling_alert_transitions_match_javascript() {
             );
         }
     }
+}
+
+/// Migration 025 over populated rows, in `native_usage_migration`'s shape
+/// (tests/usage.rs): rewind a live head-25 database to the 024 table shape
+/// — rebuilt by executing migration 024 verbatim — carrying one open and
+/// one resolved row in 024 columns only, then reopen and let the store
+/// replay 025. The ADD COLUMN defaults and the resolved backfill must land,
+/// the real read must serve the open row, and the sweep must still ride
+/// occurrences on the upgraded row. NOT an idempotency fixture: the second
+/// open runs at head 25 and is a no-op — no ADD COLUMN migration in this
+/// store replays over an already-upgraded table (see 025's own comment).
+#[test]
+fn native_ceiling_alert_schema_upgrade() {
+    let alarm = seeded_overrun();
+    let (key, resource_id, summary, detail, runbook, impact, recovery, first_seen, last_seen): (
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        String,
+        u64,
+        u64,
+    ) = {
+        let sql = Connection::open(state_path(&alarm)).unwrap();
+        sql.query_row(
+            "SELECT dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,first_seen_ms,last_seen_ms FROM ceiling_alerts",
+            [],
+            |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                ))
+            },
+        )
+        .unwrap()
+    };
+    let Alarm { root, db } = alarm;
+    drop(db);
+    let state = root.path().join("state");
+    let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+    sql.execute_batch("DROP TABLE ceiling_alerts;").unwrap();
+    sql.execute_batch(include_str!("../src/migrations/024-ceiling-alerts.sql"))
+        .unwrap();
+    // One open row (the captured overrun, verbatim) and one resolved row,
+    // both in 024 columns only: status/note/transitioned_* do not exist.
+    sql.execute(
+        "INSERT INTO ceiling_alerts(dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms) VALUES(?1,?2,?3,?4,?5,?6,?7,1,?8,?9)",
+        params![
+            key,
+            resource_id,
+            summary,
+            detail,
+            runbook,
+            impact,
+            recovery,
+            first_seen,
+            last_seen
+        ],
+    )
+    .unwrap();
+    sql.execute(
+        "INSERT INTO ceiling_alerts(dedupe_key,resource_id,summary,detail,runbook,impact,recovery_condition,occurrences,first_seen_ms,last_seen_ms,resolved_at_ms,resolved_by) VALUES(?1,?2,?3,?4,?5,?6,?7,1,?8,?9,500_000,'system')",
+        params![
+            format!("{key}:resolved"),
+            resource_id,
+            summary,
+            detail,
+            runbook,
+            impact,
+            recovery,
+            first_seen,
+            last_seen
+        ],
+    )
+    .unwrap();
+    sql.pragma_update(None, "user_version", 24).unwrap();
+    drop(sql);
+    for _ in 0..2 {
+        let db = DomainRepository::open(&state).unwrap();
+        assert_eq!(db.open_ceiling_alerts(100).unwrap().len(), 1);
+    }
+    let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+    let head: u64 = sql
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap();
+    assert_eq!(head, 25);
+    // The backfill: a resolved row serves 'resolved' with an empty map.
+    // The open-alerts read deliberately excludes resolved rows, so this
+    // half is verified on the table the read is served from.
+    let (resolved_status, resolved_note): (String, Option<String>) = sql
+        .query_row(
+            "SELECT status,note FROM ceiling_alerts WHERE resolved_at_ms IS NOT NULL",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(resolved_status, "resolved");
+    assert_eq!(resolved_note, None);
+    assert!(allowed_transitions(&resolved_status).is_empty());
+    // The real read serves the open row over the upgraded columns: the
+    // default landed, the note is absent, the three-way next is served.
+    let mut db = DomainRepository::open(&state).unwrap();
+    let open = &db.open_ceiling_alerts(100).unwrap()[0];
+    assert_eq!(open.status, "open");
+    assert_eq!(open.note, None);
+    assert_eq!(open.occurrences, 1);
+    assert_eq!(
+        allowed_transitions(&open.status),
+        ["acknowledged", "resolved", "suppressed"].as_slice()
+    );
+    // The sweep still updates the upgraded open row (occurrences ride) and
+    // leaves the resolved row alone.
+    let outcome = db.sweep_ceiling_overruns(2_000_000).unwrap();
+    assert_eq!(outcome.updated, 1);
+    let open = &db.open_ceiling_alerts(100).unwrap()[0];
+    assert_eq!(open.status, "open");
+    assert_eq!(open.occurrences, 2);
+    let resolved_status: String = sql
+        .query_row(
+            "SELECT status FROM ceiling_alerts WHERE resolved_at_ms IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(resolved_status, "resolved");
 }

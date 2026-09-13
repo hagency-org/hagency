@@ -184,3 +184,9 @@ Scenario: Operator transitions match the retained store oracle
   Given the fixture's transition vectors computed by executing the retained alert store over the pairs both models share plus the terminal refusal
   When the native store replays each walk
   Then every status resolution actor and occurrence count matches the oracle exactly
+
+Scenario: Migration 025 upgrades populated 024 rows
+  Test: native_ceiling_alert_schema_upgrade
+  Given a live store rewound to the 024 table shape rebuilt verbatim from migration 024 carrying one open and one resolved row in 024 columns only
+  When the repository reopens twice and replays migration 025
+  Then user_version is 25 the resolved row backfills to resolved with an empty next the open row serves open with the full three-way next the note is absent on both and the sweep still rides occurrences on the upgraded open row

@@ -5,8 +5,11 @@
 -- honestly carry (it would need an assignee column and the retained
 -- agent-token authority, which the native boundary does not have). A
 -- transition is display state only — it never enforces, never touches
--- engagements, leases, admission or retries. Idempotent: recovery tests
--- rewind user_version and replay this migration.
+-- engagements, leases, admission or retries. NOT idempotent: recovery
+-- fixtures rebuild the 024 shape (drop this table or recreate it from
+-- migration 024) and rewind user_version before replay; a replay over an
+-- already-upgraded table fails on the duplicate column, and no ADD COLUMN
+-- migration in this store supports that replay.
 ALTER TABLE ceiling_alerts ADD COLUMN status TEXT NOT NULL DEFAULT 'open'
   CHECK(status IN ('open','acknowledged','resolved','suppressed'));
 -- Operator note: free text, bounded like the retained `addNote`
