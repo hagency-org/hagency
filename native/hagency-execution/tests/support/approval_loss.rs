@@ -54,11 +54,14 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
     .unwrap()
     .with_approvals(ApprovalHost::new(2, 1, 20_000, 1500).unwrap())
     .unwrap();
-    crate::approval::diagnostics::reset("dispatch");
     host.approval_fault = Some(fault);
     host
 }
-pub(crate) fn fixture(root: &std::path::Path) -> (DomainStore, RunnerCapability) {
+pub(crate) fn fixture(
+    root: &std::path::Path,
+    dispatch_key: &str,
+) -> (DomainStore, RunnerCapability) {
+    crate::approval::diagnostics::reset(dispatch_key);
     let mut db = DomainRepository::open(&root.join("state")).unwrap();
     db.register(&registration()).unwrap();
     let pool = resource("pool", "seat", 1000);
@@ -133,7 +136,7 @@ pub(crate) fn fixture(root: &std::path::Path) -> (DomainStore, RunnerCapability)
     db.create_canonical_task("task", "session", "Owned receipt loss", now())
         .unwrap();
     db.enqueue_dispatch(&DispatchInput {
-        id: "dispatch".into(),
+        id: dispatch_key.into(),
         session_id: "session".into(),
         task_id: Some("task".into()),
         resources: vec![ResourceLease {
@@ -164,7 +167,7 @@ async fn native_owned_approval_caller_loss() {
         let work = root.path().join("work");
         hagency_store::private::directory(&work).unwrap();
         let work = work.canonicalize().unwrap();
-        let (domain, cap) = fixture(root.path());
+        let (domain, cap) = fixture(root.path(), "caller-loss");
         let mut op = Operation::start(
             domain.clone(),
             cap.clone(),
@@ -283,7 +286,7 @@ async fn native_owned_approval_barriers_pending_receipt() {
         let work = root.path().join("work");
         hagency_store::private::directory(&work).unwrap();
         let work = work.canonicalize().unwrap();
-        let (domain, cap) = fixture(root.path());
+        let (domain, cap) = fixture(root.path(), "barriers-pending-receipt");
         let gate = Arc::new(crate::approval::Gate::default());
         let mut configured = host(&work, fault, "owned-approval-queued");
         configured.approval_gate = Some(gate.clone());
@@ -402,7 +405,7 @@ async fn native_owned_approval_usage_successful_control() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "usage-successful-control");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::BeginGate, "owned-approval-queued-usage");
     configured.approval_gate = Some(gate.clone());
@@ -474,7 +477,7 @@ async fn native_owned_approval_usage_unknown_slot() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "usage-unknown-slot");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::MaintainGate, "owned-approval-usage");
     configured.approval_gate = Some(gate.clone());
@@ -537,7 +540,7 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "acceptance-reconcile-accepted");
     let mut op = Operation::start(
         domain.clone(),
         cap.clone(),
@@ -652,7 +655,7 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "acceptance-reconcile-unrecorded");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::RecheckGate, "owned-approval");
     configured.approval_gate = Some(gate.clone());
@@ -809,7 +812,7 @@ async fn native_owned_approval_in_flight_resolution_completes_write() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "in-flight-resolution-completes-write");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::RecheckGate, "owned-approval-gate-resolve");
     configured.approval_gate = Some(gate.clone());
@@ -885,7 +888,7 @@ async fn native_owned_approval_resolution_before_admission_cancels() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "resolution-before-admission-cancels");
     // RecheckGate without an attached gate is inert: the take() finds None.
     let mut op = Operation::start(
         domain.clone(),
@@ -926,7 +929,7 @@ async fn native_owned_approval_no_second_frame_after_resolution() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "no-second-frame-after-resolution");
     let mut op = Operation::start(
         domain.clone(),
         cap.clone(),
@@ -982,7 +985,7 @@ async fn native_owned_approval_receipt_before_resolution() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "receipt-before-resolution");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::ReceiptGate, "owned-approval");
     configured.approval_gate = Some(gate.clone());
@@ -1086,7 +1089,7 @@ async fn native_owned_approval_resolved_before_first_byte() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "resolved-before-first-byte");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::RecheckGate, "owned-approval-resolve-first");
     configured.approval_gate = Some(gate.clone());
@@ -1192,7 +1195,7 @@ async fn native_owned_approval_peer_gone_before_first_byte() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "peer-gone-before-first-byte");
     // RecheckGate without an attached gate is inert: the take() finds None.
     let mut op = Operation::start(
         domain.clone(),
@@ -1278,7 +1281,7 @@ async fn native_owned_approval_turn_end_untransmitted() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "turn-end-untransmitted");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(
         &work,
@@ -1401,7 +1404,7 @@ async fn native_owned_approval_turn_end_midwrite_uncertain() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "turn-end-midwrite-uncertain");
     // RecheckGate without an attached gate is inert: the take() finds None.
     let mut op = Operation::start(
         domain.clone(),

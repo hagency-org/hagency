@@ -218,7 +218,7 @@ mod tests {
             });
             assert_eq!(scope.is_some(), reusable, "{cwd}");
             let temp = tempfile::tempdir().unwrap();
-            let (domain, cap) = crate::approval_loss::fixture(temp.path());
+            let (domain, cap) = crate::approval_loss::fixture(temp.path(), "approval-path");
             let dispatch = domain.owned_dispatch_scope(cap.clone()).await.unwrap();
             domain
                 .start_owned_dispatch(cap.clone(), dispatch.fingerprint().into())

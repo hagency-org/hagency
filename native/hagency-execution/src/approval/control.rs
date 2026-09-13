@@ -207,7 +207,11 @@ impl ApprovalRun {
                     self.callbacks.context.as_ref().ok_or(Failure::Admission)?,
                 )?;
                 if authorized.terminal? {
-                    return Err(Failure::ApprovalCancelled);
+                    // The turn-end rule is the authority on quiet ends: a
+                    // host-side close with zero accepted bytes already
+                    // classified this turn as completed; the pump must not
+                    // re-map its own arrival into a cancellation.
+                    return Ok(());
                 }
             }
             let ready = !self.callbacks.entries.is_empty()
@@ -277,7 +281,8 @@ impl ApprovalRun {
                         entry.mark("admitted");
                     }
                     if begun.terminal? {
-                        return Err(Failure::ApprovalCancelled);
+                        // Same quiet-end authority as the authorize pump.
+                        return Ok(());
                     }
                 }
             }
@@ -356,16 +361,18 @@ impl ApprovalRun {
                     continue;
                 }
                 checked.output.map_err(|_| Failure::LostAuthority)?;
-                // Deliberate decision (ADR-046 amendment 2026-09-12): a turn
-                // end arriving on this pump while the frame is armed maps to
-                // `ApprovalCancelled`, unlike the four other pumps that map a
-                // turn end to a clean exit. A turn end invalidates
-                // transmission — the wire is closed — so an armed-but-unwritten
-                // frame next to a turn end is a cancellation, and the send is
-                // never started. Only the resolution arm exempts an in-flight
-                // frame; a turn end never does.
+                // Deliberate decision (ADR-046 amendment 2026-09-12), revised
+                // by the approval-loss verdicts: a turn end on this pump is
+                // classified by the turn-end rule, not by this site. When the
+                // rule's cancel arm fired (`ApprovalCancelled` was already
+                // decided by the rule for a non-in-flight unwritten entry)
+                // `?` propagates it; when the rule returned the quiet verdict
+                // for a host-side close with zero accepted bytes, this pump
+                // honors it with a clean exit — never a re-mapped
+                // cancellation, which inverted the in-flight untransmitted
+                // scenario's own subject.
                 if checked.terminal? {
-                    return Err(Failure::ApprovalCancelled);
+                    return Ok(());
                 }
                 #[cfg(any(test, feature = "test-diagnostics"))]
                 if let Some(entry) = self.callbacks.entries.get_mut(&sending.id) {
