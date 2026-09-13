@@ -30,13 +30,8 @@ retained one that no decision named:
 Checked against the installed Codex CLI (0.154.0 on this host,
 `codex app-server --help`): stdio is the default transport (`--listen` default
 `stdio://`), and `--stdio` is documented as an explicit synonym
-("Use stdio as the transport (equivalent to `--listen stdio://`)"). The
-checked-in probe excerpt `native/hagency-execution/tests/fixtures/codex-app-server-help.txt`
-was captured from **codex-cli 0.154.0 on 2026-09-13**, and the selector pins
-that version by strict equality. The pinned protocol spec is Codex 0.153.4
-(`specs/task-rust-codex-protocol.spec.md`) — that pin governs wire envelopes;
-the launch-surface probe pins the version actually captured, and the two are
-deliberately not conflated.
+("Use stdio as the transport (equivalent to `--listen stdio://`)"). The pinned
+protocol spec is Codex 0.153.4 (`specs/task-rust-codex-protocol.spec.md`).
 
 ## Decision
 
