@@ -309,3 +309,111 @@ recovering it would be a new event-log surface, which this amendment does not cr
 **7. `effects` is out of scope.** Bounded to ≤2 rows per engagement by
 `UNIQUE(engagement_id,kind)`, never deleted, and anchored on the engagement rather
 than the command.
+
+## Amendment 2026-09-13 — the ended-engagement record bound (retention Slice 6)
+
+`engagements` (`domain.sql:22-40`) grows one row per accepted admission and nothing
+deletes one: the only bound is `bounded_row(engagements, …)` (`domain.rs:658`), which
+refuses new work rather than reclaiming. The retained product caps the analogous
+record at `ENDED_LIMIT = 500` (`lib/engagement-store.js:56`). This amendment ports
+that cap and states the cascade that makes it safe. It is **phase 4, `engagements`**,
+of the retention sweep tick — **ADR-125's "Retention sweep tick" section**, which
+this amendment cites rather than restates.
+
+**Placement.** Fixed order `messages → peer → execution → engagements`, one period
+`RETENTION_SWEEP_PERIOD = 60 s`, one phase budget `RETENTION_PHASE_BUDGET_MS = 600`,
+one `Job::Run` per phase (**never one transaction for the tick** — this phase's
+cascade is one transaction *for this phase*), and a `Busy`/`OutcomeUnknown` refusal
+that logs `[engagement]` and waits for the next tick. `decisions` is trimmed in-write
+and is not a phase.
+
+**The bound (D-4).** Count-only, cap `ENDED_LIMIT = 500`, ordered `rowid ASC` —
+store-assigned, monotonic and re-admission-correct, since a re-admitted row gets a
+fresh larger `rowid`. The tick contract's D-4, quoted: *"Count-only, cap
+`ENDED_LIMIT = 500`, ordered `rowid ASC`; `ended_at` is advisory metadata, never
+`DEFAULT 0`; a pruned id **can** be re-admitted and starts from `pending`."*
+
+**`ended_at` is metadata on a side table, not a column on `engagements`.** The
+ordering key is `rowid` alone, but the operator's loss must be nameable in the
+receipt, so the ended-at instant is recorded in a new side table:
+
+```sql
+CREATE TABLE IF NOT EXISTS engagement_ends (
+  engagement_id TEXT PRIMARY KEY REFERENCES engagements(id),
+  ended_at      INTEGER NOT NULL
+) STRICT;
+```
+
+The rejected alternative is `ALTER TABLE engagements ADD COLUMN ended_at INTEGER`.
+`engagements` is created in the base schema and **no** fixture and **no**
+`remove_*_schema` helper drops or rebuilds it (`tests/common/mod.rs` has no
+`engagements` handling), so an `ADD COLUMN` would be replayed over an
+already-upgraded table by every fixture that rewinds `user_version` — the failure
+the store's own rule names, quoted from `025-alert-transitions.sql:1-12`: *"a replay
+over an already-upgraded table fails on the duplicate column, and no ADD COLUMN
+migration in this store supports that replay."* Making every rewind fixture rebuild
+`engagements` would be a large, silent change to eleven fixtures this slice does not
+own; the side table costs one `DELETE` in the cascade and no fixture change, because
+`CREATE TABLE IF NOT EXISTS` is replay-idempotent (the `024-alert-ceiling` pattern).
+The side table is deleted in the same transaction as its engagement, before it.
+
+**The candidate predicate is the safety mechanism.** `foreign_keys=ON`
+(`database.rs:120`) refuses a delete while a child exists — but this cascade must
+delete those children first, so the refusal guarantees no orphan and no half-delete
+and **does not** substitute for the pins. An engagement is a candidate only when it
+is terminal (`state IN ('rejected','revoked','failed')`), no custody pin holds
+(P1–P7), and **every child is already gone or is cleared by this slice's own cascade
+in this same tick**.
+
+**P5 is the raw dispatch state pair, never the reporting view.** Quoting the tick
+contract's D-1: *"A row whose dispatch outcome is `outcome_unknown` is retained
+**indefinitely**, including through a dispatch recovery … The pinning pair is P4
+**and** P5, not P5 alone; `unresolved_dispatches` (`009:23-26`) is narrower and is for
+**reporting**, not pinning."* P5 therefore pins on the raw pair —
+`runner_dispatches.state IN ('leased','started','parked','outcome_unknown')`, reached
+through `runner_sessions.engagement_id` — **and not** on membership in
+`unresolved_dispatches`, which is a narrower reporting view that excludes a dispatch
+with a settled stop or a recovery. A pin keyed on the view would prune an engagement
+whose dispatch an unknown-fate recovery left behind; the raw pair cannot.
+
+**Ownership of the shared tables (ADR-125's "Retention sweep tick", ownership
+table).** Slice 6 holds **cascade delete rights** over the reachable set — including
+`owned_task_completions` (**tier 1**, ordered **before** `task_operation_receipts`,
+whose composite FK it names `016:13`, and **before** `final_replies`, `016:10`) and
+`retained_message_archive` (**tier 2**, Slice 1's object). It holds **no bound** over
+any table Slice 2 or Slice 1 owns: those slices state the pins and the windows, and
+this slice's rights fire only inside a candidate engagement's cascade. The
+`owned_task_completions` grant is the fix for the wedge this table caused: it has two
+`NOT NULL` FKs (`016:4`, `016:5`) plus a composite FK to `task_operation_receipts`
+and a `reply_id` FK to `final_replies`, and **no** writer deletes a row of it, so a
+cascade that omitted it would stop at every engagement whose session ever ran an
+owned completion and defer forever.
+
+**`task_outbox` scoping (one sentence, as the contract requires).** This cascade
+deletes `task_outbox` rows **only** whose owning `canonical_tasks` row is itself
+being deleted in the same transaction; the pager's next page (`execution.rs:1079`)
+then skips forward correctly, because the task the events described is gone. That is
+a different operation from the **bound** prune Slice 2 defers (D-6), and the scoping
+is what reconciles the two.
+
+**The receipt.** One `retention_prune_receipts` row with `phase='engagements'`,
+`oldest_ref`/`newest_ref` = `engagements.rowid`, carrying `pruned`, `remaining` and
+`elapsed_ms`, and — in the table's `payload` column, defined in ADR-125's one
+`CREATE TABLE IF NOT EXISTS` — the per-id terminal state `[{id,state,ended_at}]` and
+the per-table child counts. Native keeps no audit event log, so pruning erases the
+engagement's last-known state, and the payload is the receipt's whole reason. The
+row is trimmed by the shared clause with `RETENTION_RECEIPT_LIMIT = 100`.
+
+**What an operator loses, and the two named consequences.** The per-id terminal state
+beyond 500 engagements; the receipt carries it once and does not restore the rows.
+Because engagement ids are deterministic, a pruned id **can** be re-admitted and
+starts from `pending`; and because `usage_sources`/`usage_periods` do not survive the
+cascade, **spend is forgiven at re-admission** (D-11, quoted: *"A pruned engagement's
+`usage_sources`/`usage_periods` do not survive, so a re-admitted (deterministic) id
+starts from zero; safe for admission, named as a consequence."*).
+
+**A retention failure is never a work refusal (D-12).** The tick contract's D-12
+reads, quoted: *"Log and retry next tick; the store's caps (`100 000`, `10 000`,
+`30 000`) refuse at a bound, and retention must not repeat that shape."* A deferred
+engagement reports `remaining > 0`; it never refuses admission or an operator
+command.
