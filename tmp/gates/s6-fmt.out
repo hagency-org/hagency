@@ -1,0 +1,13 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/approval/state.rs:67:
+     #[cfg(any(test, feature = "test-diagnostics"))]
+     pub(super) fn mark(&mut self, label: &'static str) {
+         self.trace.mark(label);
+[31m-        super::diagnostics::phase(
+(B[m[31m-            &self.dispatch,
+(B[m[31m-            &format!("{:?}", self.request.id()),
+(B[m[31m-            label,
+(B[m[31m-        );
+(B[m[32m+        super::diagnostics::phase(&self.dispatch, &format!("{:?}", self.request.id()), label);
+(B[m     }
+     /// ADR-046 ruling for a resolution observed while this entry is live:
+     /// before write acceptance it cancels the callback; after acceptance it

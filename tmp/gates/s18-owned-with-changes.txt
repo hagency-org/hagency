@@ -1,0 +1,8 @@
+test native_owned_control_drop_stops_original_process ... FAILED
+test native_owned_runner_custody_descendants_follow_existing_scope_guarantees ... FAILED
+test native_owned_runner_custody_gated_progress ... FAILED
+test native_owned_runner_custody_stream_close_does_not_stop_child ... FAILED
+test native_owned_runner_failures_eof_timeout_and_noisy_stderr ... FAILED
+test native_owned_runner_failures_mid_write_cancel_retains_cleanup ... FAILED
+test native_owned_runner_lifecycle_real_owned_pipes ... FAILED
+test result: FAILED. 1 passed; 7 failed; 0 ignored; 0 measured; 0 filtered out; finished in 8.02s

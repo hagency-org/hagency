@@ -1,0 +1,17 @@
+    Checking hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+    Checking hagency-media-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-media-store)
+    Checking hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Checking hagency-palpo v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-palpo)
+    Checking hagency-matrix v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix)
+    Checking hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+error: unused variable: `state`
+   --> native/hagency/tests/runner.rs:214:13
+    |
+214 |         let state = self._root.path().join("state");
+    |             ^^^^^ help: if this is intentional, prefix it with an underscore: `_state`
+    |
+    = note: `-D unused-variables` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(unused_variables)]`
+
+error: could not compile `hagency` (test "runner") due to 1 previous error
+warning: build failed, waiting for other jobs to finish...

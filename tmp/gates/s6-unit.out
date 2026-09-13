@@ -1,0 +1,10 @@
+   Compiling hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+   Compiling hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 5.31s
+     Running unittests src/lib.rs (target/debug/deps/hagency_execution-2498075185bbf466)
+
+running 1 test
+test approval::state::trace_tests::native_approval_trace_labels_every_phase ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 19 filtered out; finished in 0.00s
+

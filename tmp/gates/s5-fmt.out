@@ -1,0 +1,12 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/owned_matrix.rs:98:
+         // distinguishable in the artifact.
+         eprintln!(
+             "writer_view={:?} protocol={:?} settlement={:?} epoch={}",
+[31m-            report.canonical_status,
+(B[m[31m-            report.protocol,
+(B[m[31m-            report.settlement,
+(B[m[31m-            observed.execution_epoch,
+(B[m[32m+            report.canonical_status, report.protocol, report.settlement, observed.execution_epoch,
+(B[m         );
+         if stalled {
+             panic!(

@@ -1,0 +1,30 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/approval.rs:69:
+     pub async fn wait(&self) {
+         use std::sync::atomic::Ordering;
+         self.entered.store(true, Ordering::Release);
+[31m-        let until =
+(B[m[31m-            tokio::time::Instant::now() + std::time::Duration::from_millis(Self::OPERATION_BUDGET_MS / 10);
+(B[m[32m+        let until = tokio::time::Instant::now()
+(B[m[32m+            + std::time::Duration::from_millis(Self::OPERATION_BUDGET_MS / 10);
+(B[m         while !self.release.load(Ordering::Acquire) {
+             assert!(
+                 tokio::time::Instant::now() < until,
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/tests/owned/approval_fixture.rs:289:
+     // so a loaded miss says WHICH approval phases happened, not just that a
+     // row is missing.
+     let trace = hagency_execution::diagnostics::dispatch_trace(&f.cap.dispatch_id);
+[31m-    let cancellations =
+(B[m[31m-        hagency_execution::diagnostics::last_cancellation_trace(&f.cap.dispatch_id);
+(B[m[32m+    let cancellations = hagency_execution::diagnostics::last_cancellation_trace(&f.cap.dispatch_id);
+(B[m     let observation = match report.runtime_observation() {
+         Some(observation) => format!("{observation:?}"),
+         None => "none".to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/tests/owned/approval_fixture.rs:297:
+     };
+[31m-    let detail = format!(
+(B[m[31m-        "phases[{trace}]; cancelled[{cancellations}]; runtime[{observation}]"
+(B[m[31m-    );
+(B[m[32m+    let detail = format!("phases[{trace}]; cancelled[{cancellations}]; runtime[{observation}]");
+(B[m     assert_eq!(
+         f.count("SELECT COUNT(*) FROM owner_approvals WHERE state='applied'"),
+         0,

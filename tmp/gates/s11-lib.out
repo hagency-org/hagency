@@ -1,0 +1,14 @@
+   Compiling hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.65s
+     Running unittests src/lib.rs (target/debug/deps/hagency_runtime-d3fd16798792cf34)
+
+running 6 tests
+test codex::session::task_mcp::tests::native_task_mcp_host_configuration ... ok
+test codex::session::task_mcp::tests::native_task_mcp_receive_configuration ... ok
+test codex::approval::tests::native_codex_approval_mapping_one_response_until_resolution ... ok
+test codex::approval::tests::native_codex_approval_mapping_connection_fences ... ok
+test codex::transport::hold_tests::native_transport_hold_keeps_unparsed_input ... ok
+test codex::approval::tests::native_codex_approval_mapping ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+

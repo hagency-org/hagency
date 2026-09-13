@@ -1,0 +1,11 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/src/reader.rs:426:
+     cache: &mut FleetCache,
+ ) -> FleetMetering {
+     let key = fleet_key(agents, home_dir);
+[31m-    if !force
+(B[m[31m-        && let Some(hit) = cache.get(&key, now_ms, cache_ttl_ms)
+(B[m[31m-    {
+(B[m[32m+    if !force && let Some(hit) = cache.get(&key, now_ms, cache_ttl_ms) {
+(B[m         return hit;
+     }
+ 

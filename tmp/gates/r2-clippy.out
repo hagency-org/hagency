@@ -1,0 +1,78 @@
+    Checking hagency-metering v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering)
+error: consider using `sort_by_key`
+   --> native/hagency-metering/src/reader.rs:264:9
+    |
+264 |         stamped.sort_by(|a, b| b.1.cmp(&a.1));
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#unnecessary_sort_by
+    = note: `-D clippy::unnecessary-sort-by` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::unnecessary_sort_by)]`
+help: try
+    |
+264 -         stamped.sort_by(|a, b| b.1.cmp(&a.1));
+264 +         stamped.sort_by_key(|b| std::cmp::Reverse(b.1));
+    |
+
+error: this `if` statement can be collapsed
+   --> native/hagency-metering/src/reader.rs:398:9
+    |
+398 | /         if let Some(value) = &self.value {
+399 | |             if self.key.as_deref() == Some(key) && now_ms.saturating_sub(self.at) < ttl_ms {
+400 | |                 let mut stamped = value.clone();
+401 | |                 stamped.cached = true;
+...   |
+405 | |         }
+    | |_________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#collapsible_if
+    = note: `-D clippy::collapsible-if` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::collapsible_if)]`
+help: collapse nested if block
+    |
+398 ~         if let Some(value) = &self.value
+399 ~             && self.key.as_deref() == Some(key) && now_ms.saturating_sub(self.at) < ttl_ms {
+400 |                 let mut stamped = value.clone();
+...
+403 |                 return Some(stamped);
+404 ~             }
+    |
+
+error: this function has too many arguments (8/7)
+   --> native/hagency-metering/src/reader.rs:414:1
+    |
+414 | / pub fn meter_fleet(
+415 | |     agents: &[Value],
+416 | |     home_dir: &str,
+417 | |     process_cwd: &str,
+...   |
+422 | |     cache: &mut FleetCache,
+423 | | ) -> FleetMetering {
+    | |__________________^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#too_many_arguments
+    = note: `-D clippy::too-many-arguments` implied by `-D warnings`
+    = help: to override `-D warnings` add `#[allow(clippy::too_many_arguments)]`
+
+error: this `if` statement can be collapsed
+   --> native/hagency-metering/src/reader.rs:425:5
+    |
+425 | /     if !force {
+426 | |         if let Some(hit) = cache.get(&key, now_ms, cache_ttl_ms) {
+427 | |             return hit;
+428 | |         }
+429 | |     }
+    | |_____^
+    |
+    = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#collapsible_if
+help: collapse nested if block
+    |
+425 ~     if !force
+426 ~         && let Some(hit) = cache.get(&key, now_ms, cache_ttl_ms) {
+427 |             return hit;
+428 ~         }
+    |
+
+error: could not compile `hagency-metering` (lib test) due to 4 previous errors
+warning: build failed, waiting for other jobs to finish...
+error: could not compile `hagency-metering` (lib) due to 4 previous errors
