@@ -76,3 +76,5 @@ Scenario: The pump refuses without a fresh approval enrollment
 ## Out of Scope
 
 The fail-closed denial policy (D-PC-FC, PC-C1), the public status notice and `PublicFrozen` (PC-C1), the operator observation surface (PC-C2), the oracle vectors (PC-C4), and any change to the existing approval-delivery or approval-store specs' selectors.
+
+The wiring observation: `native_private_approval_delivery_is_wired` is bound by the fixture slice `specs/task-rust-private-approval-delivery-fixture.spec.md` (PC-C0b), which makes the delivery leg observable through a test-only callback-capable probe pinned by the test's own executable path plus a scripted second-identity enrollment against the shared fake peer. This spec keeps its other selector (`native_private_approval_delivery_wiring_refuses_without_enrollment`) and every constraint unchanged.
