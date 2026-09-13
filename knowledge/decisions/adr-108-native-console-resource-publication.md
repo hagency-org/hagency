@@ -71,3 +71,41 @@ native executable serves with an empty runtime PATH. The existing default-off
 browser feature and mandatory CI lane remain; missing prerequisites fail when
 enabled, while listing tests provides no execution evidence. No live service or
 production configuration is changed, and full M7 migration remains open.
+
+---
+
+## Amendment — the account surface (retention MA-S3a)
+
+This adds the **third** management grant, `--manage-account-enrollment`, and a
+bounded account observation. Three plans claim "the fourth console scope"
+(backlog §5.4); the code has two today, so this is the third, and **whichever of
+the three lands first owns the count**. The grant covers reserve+materialize,
+retire and enrol — one class of act over the host's credential namespace, where
+a grant to mint without one to destroy would be weaker than the offline verb it
+mirrors. The `console-access` dispatch becomes 4-way (`main.rs:234-250` is today
+3-way); **no `ConsoleAccount` verb is added** — a subcommand layer on top of
+that same restructure is redundant, and the offline `account` verb already
+surfaces this state on the channel ADR-114 chose.
+
+**Authority asymmetry, stated.** Enrolment binds a concrete non-Clone command
+(`AccountEnrollmentAccess`, accounts.rs:688-730). Reserve+materialize and
+retire do not — plain `&mut DomainRepository` methods whose only offline guard
+is the exclusive owner (bootstrap/accounts.rs:24) — so on the console their
+authority is a session-scope boolean. Acceptable because those routes take only
+bounded scalars, the account identity is store-generated, and the
+credential-binding act is the one that is command-bound. Binding the other two
+is a named follow-up.
+
+**The browser DTO is a new `AccountRow`, and all five routes serialize it —
+never `AccountChoice`.** `AccountChoice` is `Serialize` (accounts.rs:202-212)
+and re-exported (lib.rs:108), one line from a browser response; it also carries
+`authentication`/`quota` that would read as a readiness answer and would break
+the exact-key validator when MA-S3b lands. Only the enrolment mutation takes
+`expected_revision`.
+
+**The unknown window is wider than the offline verb's** (2 s reply bound,
+domain_worker.rs:2393, vs a 5 s preparation deadline, accounts.rs:525), and
+`materialize_account`'s `'uncertain'`-before-`mkdir` ordering leaves the row
+inspectable either way. The printed link lands on `/console/accounts/` (a third
+branch of client.rs:118-126), and the page stays **outside** the five-document
+exception (a non-document with no query string).

@@ -53,3 +53,26 @@ isolation. Part B's retained browser workflow waits for qualified part A API.
 
 Already-pinned hmac sha2 cap-std cap-fs-ext and the existing platform path crate
 are the only dependency graph changes. No crate version is upgraded.
+
+---
+
+## Amendment — part B, and the two surfaces over part A (MA-S3a)
+
+ADR-114:52 records that part B's retained browser workflow "waits for qualified
+part A API". **Part A — part B's stated precondition — is built** (Schema23:
+`account_identity_key`, `managed_accounts`, `resource_accounts`). **Part B is
+therefore owed, and this amendment is it**: a console and CLI surface with
+**no readiness**. `AccountChoice.authentication` stays `"unknown"` and `quota`
+stays `None` (accounts.rs:224-225); the `AccountRow` DTO omits both.
+**Opacity is unchanged**: no live auth inspection, no import, no copy, no
+login, and neither directory existence nor model selection establishes
+readiness. MA-S3b adds the readiness enum when the operator answers D-ADR114.
+
+**The identity triple is the schema's, and none of it is a path.** `023:17`'s
+CHECK names `namespace_identity`, `identity_tuple` and `seat_id` as the columns
+that must exist exactly when a row is live. **None crosses the wire.**
+`identity_tuple` is `canonical::encode` of
+`{version, deployment, namespace:<DirectoryIdentity>, source}`
+(accounts.rs:373-375), and `DirectoryIdentity` is `{platform, volume, object}`
+(directory_identity.rs:8-12) — no path field exists to leak. The wire carries
+the five-key `AccountRow` only: id, preset, role framework, state, revision.

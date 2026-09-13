@@ -53,3 +53,15 @@ managed-profile/account binding derived from actual normalized host credential
 namespace and key scope, consumed by the actual runtime. No new browser account
 ID or random seat substitutes for that prerequisite. A future canonical managed
 preset must own friendly names rather than a second browser metadata store.
+
+---
+
+## Amendment — first-resource enrolment reaches a production path (MA-S3a)
+
+ADR-111's wizard could not complete a first-resource enrolment because no
+production surface constructed `AccountEnrollmentAccess`. This adds one:
+`POST /console/api/accounts/{id}/enrollment` under the new finite account
+scope, constructing the enrolment authority **inside the console** rather than
+opening a second authority. `AccountEnrollmentAccess` remains the only
+constructor of `AccountEnrollmentCommand` (accounts.rs:688-730), so publication
+and configuration still cannot reach it.
