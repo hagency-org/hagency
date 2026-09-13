@@ -110,5 +110,5 @@ pub use domain::{OwnedApprovalScope, OwnedApprovalStatus};
 pub use domain::accounts::{
     ACCOUNT_PROFILE, AccountChoice, AccountEnrollmentAccess, AccountEnrollmentCommand,
     AccountReadiness, AccountReadinessMode, AccountState, DEFAULT_READINESS_TTL, LoginAttempt,
-    LoginOutcome, LoginVerdict, ManagedAccount, ManagedLaunch,
+    LoginOutcome, LoginVerdict, LogoutObservation, LogoutReadiness, ManagedAccount, ManagedLaunch,
 };

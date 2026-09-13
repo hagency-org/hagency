@@ -56,7 +56,7 @@ fn native_account_schema22() {
     domain.approve("schema22-approval", &proof, 1000).unwrap();
     drop(domain);
     let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
-    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE IF EXISTS account_login_observations; DROP TABLE IF EXISTS account_login_attempts; DROP TABLE resource_accounts; DROP TABLE managed_accounts; DROP TABLE account_identity_key; PRAGMA user_version=22;").unwrap();
+    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE IF EXISTS account_login_observations; DROP TABLE IF EXISTS account_login_attempts; DROP TABLE IF EXISTS account_logout_receipts; DROP TABLE resource_accounts; DROP TABLE managed_accounts; DROP TABLE account_identity_key; PRAGMA user_version=22;").unwrap();
     let snapshot = |sql: &rusqlite::Connection| -> Vec<(String, String, String)> {
         sql.prepare("SELECT 'resources',id,config FROM resources UNION ALL SELECT 'seats',id,config FROM seats UNION ALL SELECT 'engagements',id,context FROM engagements ORDER BY 1,2").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().collect::<Result<_,_>>().unwrap()
     };
@@ -69,7 +69,7 @@ fn native_account_schema22() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        28
+        29
     );
     assert_eq!(before, snapshot(&sql));
     drop(sql);

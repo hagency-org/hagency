@@ -2682,11 +2682,17 @@ impl DomainStore {
     }
     /// Retire one account and unpublish its resources through the writer queue;
     /// 512 because the store also walks and unpublishes every bound resource.
+    /// MA-S4: the worker has no logout observation to hand the store — the
+    /// operator's host act reports through the offline CLI, so the worker
+    /// records `unknown` (never a clean-retirement claim it did not observe).
     pub async fn retire_account(&self, id: String) -> Result<crate::AccountChoice, Error> {
         if id.len() > 128 {
             return Err(Error::Capacity);
         }
-        self.call(512, move |db| db.retire_account(&id)).await
+        self.call(512, move |db| {
+            db.retire_account(&id, crate::LogoutObservation::unobserved())
+        })
+        .await
     }
     pub async fn configure_resource(
         &self,

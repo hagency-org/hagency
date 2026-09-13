@@ -1,5 +1,5 @@
 //! Host-owned, fresh Codex namespaces. No auth discovery, import or wire grant.
-use super::{DomainRepository, OwnedClaimProfile, OwnedDispatchScope, serialize};
+use super::{DomainRepository, OwnedClaimProfile, OwnedDispatchScope, graphs, serialize};
 use crate::{
     Error, ResourceConfigurationResult, ResourcePublicationAccess, ResourcePublicationCommand,
     ResourcePublicationRetirement, private, resource_publication_revision,
@@ -662,8 +662,17 @@ impl DomainRepository {
             .find(|choice| choice.id == id)
             .ok_or(Error::Schema)
     }
-    pub fn retire_account(&mut self, id: &str) -> Result<AccountChoice, Error> {
+    pub fn retire_account(
+        &mut self,
+        id: &str,
+        logout: LogoutObservation,
+    ) -> Result<AccountChoice, Error> {
         valid_id(id)?;
+        if logout.detail.len() > 512 {
+            return Err(
+                hagency_core::InvalidInput("logout classification exceeds its bound").into(),
+            );
+        }
         if let Some(binding) = self.accounts.bindings.get(id) {
             binding.retired.store(true, Ordering::Release);
         }
@@ -678,6 +687,46 @@ impl DomainRepository {
             return Err(Error::State);
         }
         tx.execute("UPDATE resources SET config=json_set(config,'$.published',json('false')) WHERE preset_id IN (SELECT preset_id FROM resource_accounts WHERE account_id=?1)",[id])?;
+        // MA-S4 (migration 029): audit the transition in the SAME transaction
+        // as the fence-and-unpublish — the existing order is unchanged; the
+        // receipt row is appended inside the already-Immediate tx. The host
+        // ran the logout; native records only the DERIVED word.
+        let receipt = format!("logout_{}", &random_id("")?[..32]);
+        let retired_at_ms = graphs::now_ms()?;
+        tx.execute(
+            "INSERT INTO account_logout_receipts(id,account_id,retired_at_ms,readiness,logout_detail) \
+             VALUES(?1,?2,?3,?4,?5)",
+            params![
+                receipt,
+                id,
+                retired_at_ms,
+                match logout.readiness {
+                    LogoutReadiness::Observed => "observed",
+                    LogoutReadiness::Unknown => "unknown",
+                },
+                logout.detail
+            ],
+        )?;
+        // A failed or unclassifiable logout must leave the readiness read
+        // `unknown` (MA-S1's own mechanism: the LATEST observation of ANY
+        // outcome decides). So a logout that was not observed writes a newer
+        // `uncertain`/`unknown` observation row, which shadows any prior
+        // `observed` fact and makes `account_readiness` return unknown — the
+        // account is never `ready` and never retired-as-clean.
+        if logout.readiness == LogoutReadiness::Unknown {
+            let shadow = format!("observation_{}", &random_id("")?[..32]);
+            let attempt: u64 = tx.query_row(
+                "SELECT IFNULL(MAX(attempt),0)+1 FROM account_login_observations WHERE account_id=?1",
+                [id],
+                |r| r.get(0),
+            )?;
+            tx.execute(
+                "INSERT INTO account_login_observations\
+                 (id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome) \
+                 VALUES(?1,?2,1,?3,?4,?5,'unknown','logout-unobserved','uncertain')",
+                params![shadow, id, attempt, retired_at_ms, retired_at_ms.saturating_add(DEFAULT_READINESS_TTL)],
+            )?;
+        }
         tx.commit().map_err(|_| Error::OutcomeUnknown)?;
         self.account_choices()?
             .into_iter()
@@ -888,6 +937,39 @@ pub enum LoginOutcome {
     Observed,
     Refused,
     Uncertain,
+}
+
+/// MA-S4: the host-observed logout outcome the operator reports when
+/// retiring an account (ADR-114's MA-S4 amendment). Native never drives the
+/// logout and never reads its bytes; the parent hands over only the derived
+/// classification. Not a wire type (no Serialize).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LogoutObservation {
+    /// The derived readiness word the namespace reached — `Unknown` when the
+    /// logout could not be observed (failure, refusal, unclassifiable), so
+    /// no failed logout is ever recorded as a clean retirement.
+    pub readiness: LogoutReadiness,
+    /// The parent's bounded classification of the logout child's exit, from a
+    /// closed vocabulary — never the provider's verbatim words.
+    pub detail: String,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogoutReadiness {
+    /// The host observed the logout: the namespace is no longer logged in.
+    Observed,
+    /// The logout could not be observed (failure, refusal, unclassifiable).
+    Unknown,
+}
+impl LogoutObservation {
+    /// The honest "no observation" value: a caller that never ran a logout
+    /// (the worker's retire path, the offline CLI arm) reports `unknown` —
+    /// never a clean-retirement claim it did not observe.
+    pub fn unobserved() -> Self {
+        Self {
+            readiness: LogoutReadiness::Unknown,
+            detail: "no logout observed".into(),
+        }
+    }
 }
 fn mode_word(mode: AccountReadinessMode) -> &'static str {
     match mode {

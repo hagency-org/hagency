@@ -228,7 +228,8 @@ fn native_account_retirement() {
         )
         .unwrap();
     assert!(db.publish_resource(cmd).is_err());
-    db.retire_account(&choice.id).unwrap();
+    db.retire_account(&choice.id, LogoutObservation::unobserved())
+        .unwrap();
     assert!(!db.resource_configuration(&resource.id()).unwrap().published);
     assert!(db.managed_account(&choice.id).is_err());
     assert_ne!(
@@ -576,4 +577,142 @@ fn native_account_readiness_matches_retained_detect() {
             "retained {retained} and the native answer disagree"
         );
     }
+}
+
+// ---- MA-S4: account retirement logs out and audits the transition (migration 029).
+
+/// The ADR-014:411 guard applied to the audit row: no credential, token or
+/// session column, and no cell carries a token-shaped byte. Scans the store's
+/// own table over TEXT columns.
+fn assert_no_credential_byte(sql: &rusqlite::Connection, table: &str) {
+    const TOKEN: &str = "sk-live-0123456789abcdef0123456789abcdef";
+    let mut names = sql
+        .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+        .unwrap();
+    let columns: Vec<String> = names
+        .query_map([], |r| r.get(0))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    assert!(
+        columns.iter().all(|name| !name.contains("credential")
+            && !name.contains("token")
+            && !name.contains("session")),
+        "no /credential/-, /token/- or /session/-matching key on {table}"
+    );
+    for column in &columns {
+        let mut statement = sql
+            .prepare(&format!("SELECT {column} FROM {table}"))
+            .unwrap();
+        let cells: Vec<Option<String>> = statement
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        for cell in cells.into_iter().flatten() {
+            assert!(
+                !cell.contains(TOKEN),
+                "a credential byte reached {table}.{column}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_account_retire_logs_out_and_audits() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let choice = prepared(&mut db);
+    // The account is active and its login was observed (MA-S1's fact).
+    login_observed(
+        &mut db,
+        &choice.id,
+        AccountReadinessMode::Subscription,
+        Some(9000),
+        2100,
+    );
+    assert_eq!(
+        db.account_readiness(&choice.id, 2300).unwrap().mode,
+        AccountReadinessMode::Subscription
+    );
+    // The operator ran the provider's own logout in the namespace; native
+    // records the derived outcome and transitions active -> retired in the
+    // same transaction, unpublishing the resources.
+    let retired = db
+        .retire_account(
+            &choice.id,
+            LogoutObservation {
+                readiness: LogoutReadiness::Observed,
+                detail: "logged-out-subscription".into(),
+            },
+        )
+        .unwrap();
+    assert!(matches!(retired.state, AccountState::Retired));
+    // The audit row exists carrying the account id, the transition clock and
+    // the observed readiness word.
+    let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let (account_id, retired_at, readiness): (String, u64, String) = sql
+        .query_row(
+            "SELECT account_id,retired_at_ms,readiness FROM account_logout_receipts WHERE account_id=?1",
+            [&choice.id],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(account_id, choice.id);
+    assert_eq!(readiness, "observed");
+    assert!(retired_at >= 2100, "the transition clock is set");
+    // No credential, token or session byte reaches the audit row.
+    assert_no_credential_byte(&sql, "account_logout_receipts");
+}
+
+#[test]
+fn native_account_retire_logout_failure_is_unknown() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let choice = prepared(&mut db);
+    // A login was observed, so the namespace reads ready before retirement.
+    login_observed(
+        &mut db,
+        &choice.id,
+        AccountReadinessMode::ApiKey,
+        Some(9000),
+        2100,
+    );
+    assert_eq!(
+        db.account_readiness(&choice.id, 2300).unwrap().mode,
+        AccountReadinessMode::ApiKey
+    );
+    // The logout cannot be observed (failure / refusal / unclassifiable).
+    let retired = db
+        .retire_account(
+            &choice.id,
+            LogoutObservation {
+                readiness: LogoutReadiness::Unknown,
+                detail: "logout-failed".into(),
+            },
+        )
+        .unwrap();
+    assert!(matches!(retired.state, AccountState::Retired));
+    // The readiness read is unknown: the newest observation is the uncertain
+    // shadow, so MA-S1's latest-of-any-outcome rule answers unknown.
+    assert_eq!(
+        db.account_readiness(&choice.id, 2400).unwrap().mode,
+        AccountReadinessMode::Unknown,
+        "a failed logout never reads as ready"
+    );
+    // The audit row records the unknown outcome — no clean-retirement claim.
+    let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let (readiness, detail): (String, String) = sql
+        .query_row(
+            "SELECT readiness,logout_detail FROM account_logout_receipts WHERE account_id=?1",
+            [&choice.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(readiness, "unknown");
+    assert_eq!(detail, "logout-failed");
+    // No credential, token or session byte reaches the audit row.
+    assert_no_credential_byte(&sql, "account_logout_receipts");
 }

@@ -1,5 +1,7 @@
 //! Offline account commands acquire the same exclusive owners as serve.
-use hagency_store::{ACCOUNT_PROFILE, AccountChoice, DomainRepository, Repository, private};
+use hagency_store::{
+    ACCOUNT_PROFILE, AccountChoice, DomainRepository, LogoutObservation, Repository, private,
+};
 use std::path::Path;
 
 #[derive(clap::Subcommand)]
@@ -31,6 +33,8 @@ pub fn run(state: &Path, command: Command) -> Result<Vec<AccountChoice>, hagency
             Ok(vec![domain.materialize_account(&prepared.id)?])
         }
         Command::Inspect => domain.account_choices(),
-        Command::Retire { id } => Ok(vec![domain.retire_account(&id)?]),
+        Command::Retire { id } => Ok(vec![
+            domain.retire_account(&id, LogoutObservation::unobserved())?,
+        ]),
     }
 }
