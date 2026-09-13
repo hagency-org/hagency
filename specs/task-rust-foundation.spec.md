@@ -161,6 +161,34 @@ Scenario: Pending state survives a service restart
   Then the pending row is still reported pending or unknown and never resolved or dropped
   And the store stays locked to every other process between the two runs
 
+Scenario: The rendered launchd agent carries the required keys
+  Test: native_launchd_agent_starts_and_reports_ready
+  Level: integration
+  Test Double: fixture harness rendering the plist template and spawning the serve command it names
+  Given the launchd plist template rendered with explicit install and state placeholders
+  When the harness checks its keys and starts the serve command the wrapper execs
+  Then RunAtLoad KeepAlive SuccessfulExit false ThrottleInterval and the log paths are all present
+  And the started command polls to a ready 200 with health 200 from the first response
+
+Scenario: The launchd stop path drains and exits inside the budget
+  Test: native_launchd_agent_stops_cleanly
+  Level: integration
+  Test Double: fixture harness sending SIGTERM to the serve command under the plist wrapper
+  Given a running native service started through the launchd wrapper
+  When the harness sends SIGTERM within the keep-alive-free operator stop window
+  Then ready flips to 503 naming stopped components while health keeps 200
+  And the writer drains and stores close leaving WAL files before exit zero
+  And a zero exit is not restarted by the rendered KeepAlive policy
+
+Scenario: The launchd restart preserves pending state
+  Test: native_launchd_restart_preserves_pending_state
+  Level: integration
+  Test Double: fixture harness seeding an outcome-unknown row then re-running the wrapper
+  Given a seeded pending or outcome-unknown custody row and a first run through the wrapper
+  When the wrapper is stopped and run again on the same state directory
+  Then the pending row is still reported pending or unknown and never resolved or dropped
+  And no rotation is applied to the log files because none is configured
+
 ## Out of Scope
 
 The spec-binding build tool may distinguish native Cargo contracts from Vitest
