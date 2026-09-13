@@ -74,6 +74,7 @@ lifecycle must use the same enabled feature and inspect each actual test count.
 - mockup/scripts/native-console-browser.mjs
 - tests/dashboard-native-usage.test.js
 - knowledge/decisions/adr-107-native-console-usage.md
+- knowledge/decisions/adr-126-native-agent-roster.md
 - specs/task-rust-native-console-usage.spec.md
 - native/README.md
 - docs/agent-knowledge.md
@@ -153,3 +154,23 @@ Scenario: The console engagements document serves with a no-query rule
   Given the staged engagements document in the loader allowlist and key mapping
   When the document is fetched and then with any query parameter
   Then the document body serves without a query and any query is refused as an invalid console request while non-document assets keep the origin rule
+
+Scenario: The agent roster observation omits every private field
+  Test: native_console_agent_roster_observation
+  Given the roster read behind the console authenticate hoop with at least one engagement carrying a live session
+  When the roster is read through a valid session
+  Then every item carries exactly the seven declared keys and no key names a credential home tmux target workspace path or token and no item carries any nested object
+  And an engagement with no session row reports last_activity_ms null rather than zero
+  And the top-level unavailable list names every column native has no source for
+
+Scenario: A foreign origin cannot read the agent roster
+  Test: native_console_agent_roster_refuses_foreign_origin
+  Given a valid console session cookie
+  When the roster is read with a cross-site sec-fetch-site or a foreign host or origin
+  Then the route refuses with console_origin_required and serves no agent item
+
+Scenario: The agent roster page renders under the native browser boundary
+  Test: native_console_agent_roster_browser
+  Given the native console fixture and the built agent page with the native-console-browser feature whose selectors appear in cargo test --list under --all-features exactly as native_console_browser is bound by this spec
+  When real Chromium opens /console/agents without any operator token
+  Then the roster reaches data-native-state ready with no external request and no credential value on screen
