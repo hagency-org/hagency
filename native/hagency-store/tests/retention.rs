@@ -115,11 +115,33 @@ impl Fixture {
         self.db.admit_matrix_event(&event, at).unwrap().sequence
     }
     /// One admitted threaded REPLY through the same real path, its thread
-    /// root bound to the given event id (read 6's caller shape).
-    fn admit_threaded(&mut self, id: &str, at: u64, thread_root: &str) -> u64 {
-        let session = format!("session_{}", self.agent);
+    /// root bound to the given event id (read 6's caller shape). The fixture
+    /// registers a thread-bound verified session beside the room session
+    /// (the `native_verified_ingress_task_activation_existing_thread`
+    /// shape): the admit path compares the event's `thread_root` against
+    /// the session route's, so a threaded event under the room session's
+    /// `thread_root: None` route refuses with `RunnerAuthority` — exactly
+    /// where the two R6 fixtures failed. Returns the sequence AND the
+    /// thread session id: the reply's `session_inputs` row lives under the
+    /// thread session, so the task request must be scoped there too. The
+    /// thread route's `scope_digest` still equals the room route's (the
+    /// digest covers transport/room identity, never the thread binding),
+    /// so read 6's `scope_digest=?3` matching is unchanged.
+    fn admit_threaded(&mut self, id: &str, at: u64, thread_root: &str) -> (u64, String) {
+        let thread_session = format!("session_{}_{}", self.agent, thread_root);
+        self.db
+            .resolve_verified_matrix_session(
+                &SessionBinding {
+                    id: thread_session.clone(),
+                    engagement_id: self.engagement.clone(),
+                    room_id: "!project:example.test".into(),
+                    thread_root: Some(thread_root.into()),
+                },
+                at.saturating_sub(1),
+            )
+            .unwrap();
         let event = MatrixEventObservation {
-            scope: self.db.matrix_ingress_scope(&session).unwrap(),
+            scope: self.db.matrix_ingress_scope(&thread_session).unwrap(),
             event: InboundMessage {
                 server_name: "example.test".into(),
                 room_id: "!project:example.test".into(),
@@ -136,7 +158,8 @@ impl Fixture {
             )]),
             encrypted: false,
         };
-        self.db.admit_matrix_event(&event, at).unwrap().sequence
+        let sequence = self.db.admit_matrix_event(&event, at).unwrap().sequence;
+        (sequence, thread_session)
     }
     fn observation(&self, id: &str, at: u64) -> MatrixEventObservation {
         let scope = self
@@ -695,7 +718,7 @@ async fn native_retained_corpus_threaded_root_resolves_from_archive_by_scope_dig
     for i in 0..99 {
         f.admit(&format!("fill{i}"), 2001 + i);
     }
-    let reply = f.admit_threaded("reply6", 2100, "$root6");
+    let (reply, thread_session) = f.admit_threaded("reply6", 2101, "$root6");
     processed(&f, root, 2500);
     let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 1, "the root is the one past-window row");
@@ -711,10 +734,7 @@ async fn native_retained_corpus_threaded_root_resolves_from_archive_by_scope_dig
     // The verified task request from the reply: read 6 must miss live and
     // hit the archive on the matching scope digest.
     let input = VerifiedTaskRequest {
-        scope: f
-            .db
-            .matrix_ingress_scope(&format!("session_{}", f.agent))
-            .unwrap(),
+        scope: f.db.matrix_ingress_scope(&thread_session).unwrap(),
         request_key: "root6_request".into(),
         source_sequence: reply,
         definition: TaskDefinition {
@@ -722,7 +742,7 @@ async fn native_retained_corpus_threaded_root_resolves_from_archive_by_scope_dig
             ..Default::default()
         },
     };
-    let task = f.db.create_verified_task_intent(&input, 3000).unwrap();
+    let task = f.db.create_verified_task_intent(&input, 3001).unwrap();
     let bound: u64 = f
         .sql()
         .query_row(
@@ -744,7 +764,7 @@ async fn native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch()
     for i in 0..99 {
         f.admit(&format!("fill{i}"), 2001 + i);
     }
-    let reply = f.admit_threaded("reply6miss", 2100, "$root6miss");
+    let (reply, thread_session) = f.admit_threaded("reply6miss", 2101, "$root6miss");
     processed(&f, root, 2500);
     let outcome = f.db.sweep_admitted_corpus(3000, 100, 512).unwrap();
     assert_eq!(outcome.pruned, 1);
@@ -756,10 +776,7 @@ async fn native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch()
         )
         .unwrap();
     let input = VerifiedTaskRequest {
-        scope: f
-            .db
-            .matrix_ingress_scope(&format!("session_{}", f.agent))
-            .unwrap(),
+        scope: f.db.matrix_ingress_scope(&thread_session).unwrap(),
         request_key: "root6miss_request".into(),
         source_sequence: reply,
         definition: TaskDefinition {
@@ -768,7 +785,7 @@ async fn native_retained_corpus_threaded_root_refuses_on_scope_digest_mismatch()
         },
     };
     assert!(matches!(
-        f.db.create_verified_task_intent(&input, 3000),
+        f.db.create_verified_task_intent(&input, 3001),
         Err(Error::RunnerAuthority)
     ));
     assert_eq!(f.count("task_intents"), 0, "the refusal creates nothing");
