@@ -128,6 +128,7 @@ fn native_two_agent_qualification_records_its_evidence() {
         2,
         "the record must carry the DM in BOTH directions"
     );
+    let mut senders: Vec<&str> = Vec::new();
     for (index, dm) in directions.iter().enumerate() {
         assert_digest(&dm["room_id_digest"], "direct message room id");
         let from = dm["from"].as_str().unwrap_or_default();
@@ -139,7 +140,18 @@ fn native_two_agent_qualification_records_its_evidence() {
             dm["plaintext_verified"].as_bool() == Some(true),
             "direct message {index} was not verified end-to-end as plaintext"
         );
+        senders.push(from);
     }
+    // "one per direction" is a set, not two rows (review F1): the two senders
+    // must be distinct — two owner→agent rows would pass the membership check
+    // above but not this.
+    senders.sort_unstable();
+    senders.dedup();
+    assert_eq!(
+        senders,
+        vec!["agent", "owner"],
+        "the record must carry exactly one DM per direction, not two of the same"
+    );
     // The usage rows: the spend attributed to each engagement.
     let usage = evidence["usage"]
         .as_array()

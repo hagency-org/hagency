@@ -36,7 +36,8 @@ sibling spec `specs/task-rust-integration-acceptance.spec.md`.
 - native/hagency/tests/qualification.rs
 - native/hagency/tests/qualification/**
 - docs/design/**
-- specs/task-rust-integration-qualification.spec.md
+- .github/workflows/rust.yml
+- specs/task-r...[credential-redacted].spec.md
 - knowledge/decisions/adr-144-two-agent-integration-acceptance.md
 - docs/progress.md
 

@@ -38,9 +38,13 @@ per subject, with its own boundary; the qualification half is the sibling spec
 - native/hagency-matrix/tests/fixtures/**
 - native/hagency-matrix/tests/**
 - native/hagency/tests/**
-- specs/task-rust-integration-acceptance.spec.md
+- specs/task-r...[credential-redacted].spec.md
 - knowledge/decisions/adr-144-two-agent-integration-acceptance.md
 - docs/progress.md
+
+The SR-2/ADR-133 launchd harness (`native/hagency/tests/service_launchd.rs`)
+is touched in the acceptance-commits lineage for the XML-comment-stripping
+defect review r3 named (F11/F12); the path is already covered above.
 
 ### Forbidden
 - Live services, live models, credentials and deployed state.

@@ -77,10 +77,16 @@ fn assert_plist_contract() {
         "explicit state placeholder, never a guessed default"
     );
     // Comments are stripped before parsing: a directive line named only
-    // inside a comment block never resolves to a value.
+    // inside a comment block never resolves to a value. The span form (the
+    // one the plist template actually uses) puts `-->` on its own line.
     let commented = "<!-- <key>Shadowed</key>\n  <string>no</string> -->\n<key>Real</key>\n<string>yes</string>";
     assert!(plist_value(commented, "Shadowed").is_none());
     assert_eq!(plist_value(commented, "Real").as_deref(), Some("yes"));
+    let spanned = "<!--\n<key>ProgramArguments</key>\n<array>\n<string>ghost</string>\n</array>\n-->\n<key>ProgramArguments</key>\n<array>\n<string>serve</string>\n</array>";
+    assert_eq!(
+        plist_array_strings(spanned, "ProgramArguments"),
+        vec!["serve".to_string()]
+    );
 }
 
 /// Read one scalar plist value by key from the rendered XML — a real
@@ -127,9 +133,12 @@ fn plist_scalar(line: &str) -> Option<String> {
     tag.strip_suffix('/').map(str::to_string)
 }
 
-/// Read the `<array>` of strings following a key (ProgramArguments).
+/// Read the `<array>` of strings following a key (ProgramArguments). Comments
+/// are stripped before the scan, so a `<string>` inside a comment, or a
+/// commented `<key>`/`<array>` pair ahead of the real one, never resolves.
 fn plist_array_strings(plist: &str, key: &str) -> Vec<String> {
-    let lines: Vec<&str> = plist.lines().map(str::trim).collect();
+    let stripped = strip_xml_comments(plist);
+    let lines: Vec<&str> = stripped.lines().map(str::trim).collect();
     let Some(start) = lines
         .iter()
         .position(|l| *l == format!("<key>{key}</key>"))

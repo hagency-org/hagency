@@ -126,7 +126,10 @@ and every homeserver/room identity as a sha256 digest, never a name — then run
 `cargo test -p hagency --test qualification`.
 
 Hosted runners skip exactly this one selector BY NAME in
-`.github/workflows/rust.yml` (the ADR-140 skip-list mechanism, `dad9de14`'s
-shape), never inside the test: they have no real homeserver and will never have
+`.github/workflows/rust.yml` — the same skip-list mechanism the codex
+qualification slice established (ci(native): hosted runners skip the
+operator-run qualification tests by name, never inside a test, with its ADR-140
+amendment "every qualification selector is present on every hosted leg"),
+never inside the test: they have no real homeserver and will never have
 real evidence. A green validating test proves the record's shape and verdicts,
 not that the qualification ran.

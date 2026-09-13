@@ -25,9 +25,15 @@ will never have a real homeserver.
 2. Provision (or point at) a real Palpo homeserver and register two agent
    accounts plus the owner account, each with a second real device where the
    claim needs one.
-3. Start the service against that homeserver with
+3. Start the service against that homeserver: first provision the state dir
+   with `hagency init --state-dir <fresh empty dir>` — `Bootstrap::open`
+   fail-closes unless the dir yields a readable `operator.token`, and only
+   `init` writes it (ADR-127's installer ordering; it refuses a non-empty
+   dir on purpose) — then run
    `hagency serve --state-dir <dir> --listen 127.0.0.1:13300` (the loopback
-   listen is fixed; see ADR-127).
+   listen is fixed; see ADR-127). A real-homeserver lane additionally sets
+   `--palpo-transport`; development legs set `--development-driver` and read
+   `development-driver.json` from the state dir.
 4. From the owner's real client: drive the two agents into ONE shared room,
    open one direct room per agent, hand a task across, observe the approval
    card, answer it, and let both agents spend tokens.
@@ -44,6 +50,10 @@ will never have a real homeserver.
 
 ## Refusals
 
-The record never carries homeserver names, room aliases or credentials —
-identities are sha256 hex digests. A red validating test is the honest state
-until an operator run is recorded; it is never converted to a skip.
+The record never carries homeserver names, room aliases, credentials, bearer
+tokens, client secrets, or any device key material — identities are sha256 hex
+digests, never names. Until an operator run is recorded,
+`native/hagency/qualification/two-agent.json` is a checked-in placeholder and
+the validating test is red on purpose; that is the honest state, never a skip.
+A red validating test proves the record's shape and verdicts, not that the run
+happened.

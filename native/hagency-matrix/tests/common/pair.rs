@@ -35,8 +35,23 @@ impl PairFixture {
         let e_b = db.admit(&proof_b, 1000).unwrap();
         db.approve("approve_a", &proof_a, 1000).unwrap();
         db.approve("approve_b", &proof_b, 1000).unwrap();
-        for _ in [e_a.id.as_str(), e_b.id.as_str()] {
-            let effect = db.claim_effect().unwrap().unwrap();
+        // Drive each engagement's provision effect explicitly — claim it,
+        // assert the state we just drove (Started), bind it to its own
+        // engagement, then settle it — instead of assuming the claim loop's
+        // shape. The hosted evidence (probe/lane-c run 34761248905) showed a
+        // blind "claim twice" loop asserting a state the leg never reached;
+        // here every state is asserted only after being driven, and a leg
+        // that cannot produce an effect for its OWN engagement fails by
+        // name instead of by order.
+        for engagement in [e_a.id.as_str(), e_b.id.as_str()] {
+            let effect = db.claim_effect().unwrap().unwrap_or_else(|| {
+                panic!("no pending provision effect for engagement {engagement}")
+            });
+            assert_eq!(
+                effect.engagement_id, engagement,
+                "the claimed effect must belong to its own engagement"
+            );
+            assert_eq!(effect.state, EffectState::Started);
             db.observe_effect(
                 &effect.id,
                 effect.fence,

@@ -1,7 +1,7 @@
 #![allow(dead_code)]
 use hagency_core::replies::*;
 use hagency_matrix::{CancellationToken, HostConfig, HostIdentity, HostRoom, Limits};
-use hagency_store::{DomainRepository, DomainStore, EffectOutcome};
+use hagency_store::{DomainRepository, DomainStore, EffectOutcome, EffectState};
 use serde_json::{Value, json};
 use std::{collections::BTreeMap, fmt::Debug, future::Future, sync::Arc, time::Duration};
 use tokio::{

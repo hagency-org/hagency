@@ -121,16 +121,16 @@ jobs:
       - run: node native/scripts/approval-vectors.mjs --check
       - run: node native/scripts/check-rust-spec-bindings.mjs
       - id: native-tests
-        # ADR-140/ADR-144's operator-run qualification tests fail (never skip
-        # inside a test) while their evidence records are placeholders — by
-        # design. Hosted runners have no codex binary, no real Palpo
-        # homeserver and no real owner client, and will never have real
-        # evidence, so the suite here explicitly skips those selectors BY
-        # NAME; the selectors stay present for the spec-binding gate's --list
-        # inventory, the skip is recorded in this workflow (never inside a
-        # test), and the operator runs them on a qualified host per ADR-140
-        # and the ADR-144 runbook.
-        run: cargo test --workspace --all-targets --locked --no-fail-fast -- --skip native_codex_real_app_server --skip native_two_agent_qualification_records_its_evidence
+        # ADR-144's operator-run qualification test fails (never skips inside
+        # a test) while its evidence record is a placeholder — by design.
+        # Hosted runners have no real Palpo homeserver and no real owner
+        # client, and will never have real evidence, so the suite here skips
+        # that ONE selector BY NAME; the selector stays present for the
+        # spec-binding gate's --list inventory, the skip is recorded in this
+        # workflow (never inside a test), and the operator runs it on a
+        # qualified host per the ADR-144 runbook. The codex qualification
+        # skip is the ADR-140 slice's own, recorded in its own commit.
+        run: cargo test --workspace --all-targets --locked --no-fail-fast -- --skip native_two_agent_qualification_records_its_evidence
       - name: Qualify default Windows media storage with fresh process restoration
         if: ${{ !cancelled() && runner.os == 'Windows' }}
         shell: pwsh
