@@ -10,16 +10,18 @@ tags: [active, rust, approval, reissue, fail-closed]
 Bind PC-C5 under D-PC-C5 in force (permanent-uncertain): an undeliverable
 private card is never silently re-sent under the same request id, no fresh
 card is minted by any in-product path, and the old request's fate is
-**permanent-uncertain** — `state = uncertain` is terminal for that request
-id and is served by PC-C2's status projection, reading the denial-reason
+**permanent-uncertain** — the stored row reads `state='decided'` with
+`choice='deny'` (PC-C1's word), and "permanent-uncertain" is the **fate the
+operator is told** (no re-issue, terminal for that request id), not the
+stored state word. The fate is read from the row plus the denial-reason
 receipt row PC-C1's migration 031 defines. A future visible re-issue is a
 **new** request id linking the old one; it does not land here.
 
 ## Constraints
 
 ### Must
-- Leave `state = uncertain` terminal for an undeliverable request id: no code path transitions it to a fresh card, re-queues the send, or re-sends the same packet.
-- Read the permanent-uncertain fate from the same row and receipt every other surface serves: `owner_approvals.state`/`choice` plus the kind-deny receipt row PC-C1 mints (`approval_verdict_receipts.denial_reason`, joined by `request_id`), so PC-C2's status projection shows one fact.
+- Leave the store row terminal for an undeliverable request id — `state='decided'` with `choice='deny'`, the word PC-C1 writes — and state "permanent-uncertain" as the fate: no code path transitions it to a fresh card, re-queues the send, or re-sends the same packet. The stored `state=uncertain` word is the `applying → uncertain` recovery sweep's, never a failed send's.
+- Read the fate from the store-side read alone — the existing `ApprovalSummary` (`hagency-core/src/approvals.rs:97-102`, carrying `state`/`choice`) plus the kind-deny receipt row PC-C1 mints (`approval_verdict_receipts.denial_reason`, joined by `request_id`) — so PC-C2's status projection renders one fact when it reads the same row; no new `DomainStore` wrapper is added.
 - State the linkage rule for any future re-issue: a new request id under the same context, whose record links the old id and marks the old one permanent-uncertain — recorded here so a later slice cannot silently mint a retry.
 
 ### Must Not
@@ -49,8 +51,8 @@ Scenario: An undeliverable card is permanently visible as uncertain, never silen
   Level: integration
   Test Double: a fixture approval whose delivery failed and whose denial receipt was minted by PC-C1's leg
   Given an undeliverable approval whose send failed and was denied
-  When the re-issue decision is read through the store and the status projection
-  Then the row reads state uncertain with choice deny and the denial reason naming the failed send
+  When the fate is read through the store's ApprovalSummary and the denial receipt row
+  Then the row reads state decided with choice deny and the denial reason naming the failed send — the permanent-uncertain fate is what the operator is told, not the stored word
   And no path mints a fresh card, re-queues the send, or re-sends the packet
   And the same row and receipt are the only source — one fact across every surface
 

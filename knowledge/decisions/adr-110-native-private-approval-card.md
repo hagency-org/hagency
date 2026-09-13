@@ -75,12 +75,16 @@ unchanged.*
 same request id** — the no-packet-reconstruction rule above already forbids
 rebuilding a packet, and D-PC-FC's deny transition (ADR-137) already records
 the send failure — and **no fresh card is minted** by any in-product path.
-The old request's fate is terminal and visible: `state = uncertain` is
-permanent for that request id, served by PC-C2's status projection exactly
-as any other undeliverable row, with the delivery observation as the
-operator's remedy. This records the status quo this ADR already decided
-rather than opening a new repair surface before the observation (PC-C2)
-that would justify one exists.
+The old request's fate is terminal and visible: the stored row reads
+`state='decided'` with `choice='deny'` — the word D-PC-FC's deny transition
+(ADR-137) writes — and "permanent-uncertain" is the **fate the operator is
+told** (no re-issue, terminal for that request id), served by PC-C2's status
+projection exactly as any other undeliverable row, with the delivery
+observation as the operator's remedy. The stored `state=uncertain` word is
+the `applying → uncertain` recovery sweep's, never a failed send's. This
+records the status quo this ADR already decided rather than opening a new
+repair surface before the observation (PC-C2) that would justify one
+exists.
 
 **A re-issue, if one ever lands, is a NEW request id.** Nothing in this
 decision forbids a future visible re-issue: that follow-on mints a **new**
