@@ -104,3 +104,67 @@ The domain writer commits bounded graph definitions and node tasks together. Gra
 ## Alternatives Considered
 
 Keeping graph progress only in the creator's runtime would lose durable scheduling intent. Allowing nested graph creation or unbounded definitions through this command would bypass the recorded finite authority boundary.
+
+## Amendment 2026-09-13 — the graph-side receipt family in the execution bound (retention Slice 2)
+
+Schema 010's `graph_commands` is this ADR's object: `(dispatch_id, call_id)` →
+`digest`/`response`, the graph tool call's replay receipt, written under the same
+per-dispatch cap as the dispatch receipt family. Nothing deletes a row of it
+(`grep -rn "DELETE FROM graph_commands" native/` returns nothing on `9ef8e684`).
+This amendment is the graph half of the retention work whose dispatch half is
+ADR-053's 2026-09-13 amendment; the tick it cites is **ADR-125's "Retention sweep
+tick" section**, and the phase is the same phase 3, `execution`.
+
+**1. The prunable set from this schema.** `graph_commands` rows for a **candidate
+dispatch** — the same candidate ADR-053's amendment defines:
+`runner_dispatches.state IN ('completed','superseded')` **and**
+`capability_hash IS NULL` **and** the dispatch not listed by `unresolved_dispatches`
+— pruned oldest-first, keeping the newest `EXECUTION_RETENTION_DISPATCHES = 500`
+settled dispatches, under `EXECUTION_RETENTION_ROWS = 100_000` per-table backstop
+and `EXECUTION_RETENTION_BATCH = 64` dispatches per tick. `graph_commands` is keyed
+by `(dispatch_id, call_id)` and has no child, so it drains with its dispatch and in
+no other way.
+
+**2. What this amendment does *not* prune, and why.** `task_graphs`, `graph_nodes`
+and `graph_dependencies` are **not** execution evidence: they are the durable graph
+definition and its pinned dependency edges, and a `graph_nodes` row carries the
+`message_sequence` that pins a peer message (ADR-127's object). None of them is a
+candidate here. `graph_nodes` is also Slice 7's release surface, and this slice must
+not touch it. So this phase deletes **no** row of this ADR's three definition tables.
+
+**3. `canonical_tasks` is never pruned by this slice.** A canonical task is durable
+completion authority, and its lifecycle gate is a named product decision of the tick
+contract (D-10), quoted: *"The gate is
+`json_extract(canonical_tasks.config,'$.status')='done'`, whose writer is
+`finish_task_clock` (`owned_completion.rs:83-131`) and which is **terminal**
+(`execution.rs:458-460`); `task_intents.state='closed'` has **no production writer**
+and is never a release."* That gate pins message and task inputs in Slice 1's phase;
+it is not a release for a task row, and no phase in this sweep deletes one. A
+`canonical_tasks` row leaves only inside Slice 6's engagement cascade (ADR-095's
+amendment), where its owning engagement is the parent being removed.
+
+**4. `task_outbox` is out of scope for the bound (D-6).** The tick contract's D-6
+reads, quoted: *"Not pruned by Slice 2: `delivered` is never set, the pager is
+production, a bound needs a real acknowledgement path first."* The table is this
+ADR's (schema 003 admits the outbox for graph-node task delivery), the pager
+`task_events(after,limit)` is production (`execution.rs:1079-1083`), and no writer
+sets `delivered`. Slice 2 holds **pin only**; the cascade delete inside a candidate
+engagement is Slice 6's, and the scoping sentence that reconciles the two is in
+ADR-095's amendment. A bound needs a real acknowledgement path first — stated here so
+the deferral is this ADR's decision, not an omission.
+
+**5. Receipt, not archive.** The phase writes one `retention_prune_receipts` row with
+`phase='execution'` and `oldest_ref`/`newest_ref` = `runner_dispatches.id` (the
+dispatch is the unit, not the call). No supported surface reads a `graph_commands`
+row after its dispatch is settled — the table exists so a replayed graph tool call
+answer its own `call_id` — so the loss is direct-SQLite inspection only, bounded at
+500 settled dispatches. The contract's D-5, quoted: *"One read per slice, no page
+work: `retention_status` ({corpus_rows, ceiling, over_by}),
+`execution_retention_status`, `engagement_retention_status`, plus the peer phase's
+`remaining` and the shared receipt row. `remaining > 0` is the standing over-ceiling
+report."*
+
+**6. Never a work refusal (D-12).** The tick contract's D-12 reads, quoted: *"Log and
+retry next tick; the store's caps (`100 000`, `10 000`, `30 000`) refuse at a bound,
+and retention must not repeat that shape."* An over-window corpus reports
+`remaining > 0`; it never refuses a graph command, a node or a task.
