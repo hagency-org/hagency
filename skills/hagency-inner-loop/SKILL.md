@@ -152,6 +152,39 @@ the existing octoloop receipt/goal-close protocol where applicable. Never
 edit backend state or manufacture an ACK to force completion. Stop only
 processes owned by this job when authorized; keep unrelated panes and sessions.
 
+### Reconcile execution returns before closeout
+
+For a monitor or observer with persisted native tool returns, run
+`scripts/native-handle-summary.mjs` against **your own exact handle** before
+reporting its terminal status. The directory contains one readonly JSON file
+per actual exec/poll return, with `request_started_ms`, `request_returned_ms`,
+the untouched `request` and `result` objects, and the SHA256 of `result.output`
+as `output_sha256`. Persist the initial resumable return and every later
+empty-input poll. Retain failed records; never manufacture a missing return.
+
+```sh
+node scripts/native-handle-summary.mjs --records "$HANDLE_RECORDS" --session-id "$NATIVE_HANDLE"
+```
+
+An observed nonzero terminal exits 1, even if the agent previously believed
+the process was waiting. Exit 0 describes an observed zero execution exit,
+not acceptance of the job. Exit 2 means `terminal_not_observed`: re-poll your
+existing handle or inspect authoritative state; it does not mean running,
+stopped or timed out. Exit 3 rejects incomplete/corrupt/changed evidence.
+Read the summary before composing task status, then reconcile it with the
+monitor report or observer outcome. A claim/ready file cannot override a
+later terminal return. Distinguish process exit time from the later return
+delivery time if an approval held native tool delivery.
+
+The reader performs no process control and prints no command or output bodies.
+Only the public observer codes `window_missed_checkpoint`, `observer_timeout`
+and `action_outcome_unknown` may be copied as a diagnostic reason; arbitrary
+output strings are omitted. Empty polls may omit `chars` or set it to `""`.
+It reads at most 10,000 records, 2 MiB per file and 32 MiB total. It checks the
+observed directory/file identities before returning, but cannot authenticate
+same-user writers or prove an omitted record never existed. Keep exclusive
+ownership and retain the underlying evidence. `full_acceptance` stays false.
+
 ## Bound native goal controls
 
 Use `scripts/native-control.mjs` for inspection, one pause/resume of an

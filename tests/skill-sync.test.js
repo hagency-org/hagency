@@ -29,6 +29,7 @@ beforeEach(() => {
   }
   copyFileSync(path.resolve('skills/hagency-inner-loop/scripts/run-stage-release.mjs'), path.join(checkout, 'skills/hagency-inner-loop/scripts/run-stage-release.mjs'));
   copyFileSync(path.resolve('skills/hagency-inner-loop/scripts/native-stage-evidence.mjs'), path.join(checkout, 'skills/hagency-inner-loop/scripts/native-stage-evidence.mjs'));
+  copyFileSync(path.resolve('skills/hagency-inner-loop/scripts/native-handle-summary.mjs'), path.join(checkout, 'skills/hagency-inner-loop/scripts/native-handle-summary.mjs'));
   copyFileSync(path.resolve('skills/hagency-inner-loop/native/darwin-process-metadata.c'), path.join(checkout, 'skills/hagency-inner-loop/native/darwin-process-metadata.c'));
   writeFileSync(path.join(fakeBin, 'date'), '#!/usr/bin/env bash\necho fixed\n', { mode: 0o755 });
 });
@@ -42,6 +43,17 @@ function sync(...args) {
 }
 
 describe('skill directory synchronization', () => {
+  test('skill sync refuses missing native handle summary before modifying client links', () => {
+    sync();
+    const snapshot = () => clients.map(client => ({ target: readlinkSync(skillAt(client)), inode: lstatSync(skillAt(client)).ino }));
+    const before = snapshot();
+    rmSync(path.join(checkout, 'skills/hagency-inner-loop/scripts/native-handle-summary.mjs'));
+    let failure;
+    try { sync(); } catch (error) { failure = error; }
+    expect(failure?.status).toBe(1);
+    expect(failure.stderr).toContain('scripts/native-handle-summary.mjs');
+    expect(snapshot()).toEqual(before);
+  });
   test('linked native control CLIs execute while library imports stay inert', () => {
     sync();
     for (const client of clients) {
