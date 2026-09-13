@@ -170,3 +170,10 @@ them, and the client's exact-key conjunction (`native-api.js:10-11` at
 `:176-178`) must move with it. Server keys, `RoleRow` and the validator are
 therefore one commit; the failure mode is a schema error (a 503), never a
 silent widening.
+
+**The page's readiness attribute is the F4-corrected one.** The component's
+phase carrier is `data-native-resource-state` (`NativeResources.jsx:58`); the
+pre-correction `data-native-state` does not exist on this component, and any
+builder asserting it builds a test that can never pass. The existing
+`native_console_resource_observations` selector carries this assertion in its
+extension.

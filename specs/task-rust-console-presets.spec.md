@@ -33,8 +33,7 @@ ADR-111's.
 
 ### Allowed Changes
 - native/hagency-store/src/domain.rs
-- native/hagency-store/src/domain/role_publications.rs
-- native/hagency-store/tests/role_publications.rs
+- native/hagency-store/tests/catalog_publication.rs
 - native/hagency/src/console/resources.rs
 - native/hagency/tests/console/resources.rs
 - mockup/components/NativeResources.jsx
@@ -69,6 +68,17 @@ Scenario: The catalogue omits every profile field native does not persist
   When the resources read is served
   Then no role or resource row carries a name rateCapPerDay apiBaseUrl apiKeySet or extraArgs key
   And no byte of the response contains a stored key value
+
+Scenario: The roles table keeps the eight-key set exactly and the page reaches ready
+  Test: native_console_resource_observations
+  Level: integration
+  Test Double: the native console fixture and the built resources page
+  Given the native console fixture and the built resources page
+  When the resources page loads
+  Then every role row satisfies the exact eight-key validator in native-api.js:176-178
+  And the page reaches data-native-resource-state ready and never the pre-correction data-native-state
+  # the EXISTING selector (tests/console/resources.rs:130), extended here; the F4-corrected
+  # attribute is the component's own (NativeResources.jsx:58)
 
 ## Out of Scope
 
