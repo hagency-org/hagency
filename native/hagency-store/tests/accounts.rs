@@ -490,8 +490,21 @@ fn native_account_login_records_no_credential_byte() {
             columns.iter().all(|name| !name.contains("credential")),
             "no key matches /credential/ on {table}"
         );
-        // No CELL carries the token bytes.
+        // No CELL carries the token bytes. The guard is about string
+        // bytes, so only TEXT columns are scanned — `account_generation`
+        // and the millisecond columns are INTEGER by design, and reading
+        // them as strings is a type error, not a redaction gap.
         for column in &columns {
+            let declared: String = sql
+                .query_row(
+                    &format!("SELECT type FROM pragma_table_info('{table}') WHERE name=?1"),
+                    [column],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            if declared != "TEXT" {
+                continue;
+            }
             let mut statement = sql
                 .prepare(&format!("SELECT {column} FROM {table}"))
                 .unwrap();

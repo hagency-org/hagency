@@ -697,24 +697,34 @@ impl DomainRepository {
     /// promotes, and an expired fact stays on disk as history.
     pub fn account_readiness(&self, id: &str, now: u64) -> Result<AccountReadiness, Error> {
         valid_id(id)?;
-        let row: Option<(String, u64, u64)> = self
+        // The LATEST observation of ANY outcome decides: a newer `refused`
+        // or `uncertain` receipt is newer information than an older
+        // `observed` fact and must shadow it ("a refused login never reads
+        // as ready" — accounts.rs's own scenario). Only when the latest row
+        // is `observed` AND unexpired does it answer with its mode;
+        // otherwise the answer degrades to unknown. A read never writes and
+        // never promotes: the expired/refused row stays on disk as history.
+        let row: Option<(String, u64, u64, String)> = self
             .db
             .query_row(
-                "SELECT mode,observed_at_ms,expires_at_ms FROM account_login_observations \
-                 WHERE account_id=?1 AND account_generation=1 AND outcome='observed' \
-                 AND expires_at_ms>?2 \
+                "SELECT mode,observed_at_ms,expires_at_ms,outcome FROM account_login_observations \
+                 WHERE account_id=?1 AND account_generation=1 \
                  ORDER BY observed_at_ms DESC, attempt DESC LIMIT 1",
-                params![id, now],
-                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+                [id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
             )
             .optional()?;
         Ok(match row {
-            None => AccountReadiness::unknown(now),
-            Some((mode, observed_at_ms, expires_at_ms)) => AccountReadiness {
-                mode: parse_mode(&mode)?,
-                observed_at_ms,
-                expires_at_ms,
-            },
+            Some((mode, observed_at_ms, expires_at_ms, outcome))
+                if outcome == "observed" && expires_at_ms > now =>
+            {
+                AccountReadiness {
+                    mode: parse_mode(&mode)?,
+                    observed_at_ms,
+                    expires_at_ms,
+                }
+            }
+            _ => AccountReadiness::unknown(now),
         })
     }
 
