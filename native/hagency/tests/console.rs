@@ -15,6 +15,8 @@ mod configuration;
 mod engagements;
 #[path = "console/fixture.rs"]
 mod fixture;
+#[path = "console/origin.rs"]
+mod origin;
 #[path = "console/project_sides.rs"]
 mod project_sides;
 #[path = "console/resources.rs"]
