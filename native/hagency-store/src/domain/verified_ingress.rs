@@ -489,18 +489,48 @@ impl DomainRepository {
             // Read 6 (A2): the root may have been pruned while its session
             // route survives; the archive answers the same lookup by the
             // same identity.
-            let (encoded, root_session):(String,String)=match found {
-                Some(row) => row,
-                None => tx.query_row(
-                    "SELECT config,source_session_id FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2 AND scope_digest=?3",
-                    params![source_route.engagement_id,key,scope_digest(&source_route)?],
-                    |r| Ok((r.get(0)?, r.get(1)?)),
-                ).optional()?.ok_or(Error::RunnerAuthority)?,
-            };
+            let (encoded, root_session, archived): (String, String, Option<(u64, String, String)>) =
+                match found {
+                    Some(row) => (row.0, row.1, None),
+                    None => {
+                        let row: (String, String, u64, String, String) = tx.query_row(
+                        "SELECT config,source_session_id,sequence,source_key,digest FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2 AND scope_digest=?3",
+                        params![source_route.engagement_id,key,scope_digest(&source_route)?],
+                        |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?)),
+                    ).optional()?.ok_or(Error::RunnerAuthority)?;
+                        (row.0, row.1, Some((row.2, row.3, row.4)))
+                    }
+                };
             let root: Message = serde_json::from_str(&encoded)?;
             if root.thread_root.is_some() || root.event_id != *source.thread_root.as_ref().unwrap()
             {
                 return Err(Error::RunnerAuthority);
+            }
+            // The P8' inverse (design v3 §8c(ii) note): an archive row is
+            // dropped when its pair is re-admitted live. Read 6's caller
+            // binds the root as `task_intents.root_sequence` and a
+            // `task_inputs.message_sequence` — both RESTRICT children of
+            // `admitted_messages` — so the archived root is re-admitted
+            // live (same sequence, provenance pair restored) in THIS
+            // transaction and the archive row is dropped; the intent then
+            // pins the live row exactly as a first-admission intent would.
+            // The FK is the guard: if the archived config's sequence ever
+            // diverged from the row's, the bind below fails loudly and the
+            // whole transaction rolls back.
+            if let Some((sequence, source_key, digest)) = archived {
+                tx.execute(
+                    "INSERT INTO admitted_messages(sequence,source_key,digest,config) VALUES(?1,?2,?3,?4)",
+                    params![sequence, source_key, digest, encoded],
+                )?;
+                tx.execute(
+                    "INSERT INTO matrix_ingress_events(engagement_id,source_key,message_sequence,source_session_id,scope_digest,digest,config) \
+                     SELECT engagement_id,source_key,sequence,source_session_id,scope_digest,digest,config FROM retained_message_archive WHERE sequence=?1",
+                    [sequence],
+                )?;
+                tx.execute(
+                    "DELETE FROM retained_message_archive WHERE sequence=?1",
+                    [sequence],
+                )?;
             }
             (root, root_session)
         } else {
