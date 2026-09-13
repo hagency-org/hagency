@@ -968,7 +968,7 @@ fn native_reply_routes_schema_ten_does_not_invent_legacy_privacy() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        25
+        26
     );
     assert_eq!(
         sql.query_row(

@@ -1,8 +1,56 @@
 //! Internal authenticated-adapter ingress and per-session input ownership.
 use super::{DomainRepository, bounded_row, execution, serialize};
 use crate::Error;
-use hagency_core::{canonical, messages::*, project::identifier, tasks::*};
+use hagency_core::{JSON_SAFE_MAX, canonical, messages::*, project::identifier, tasks::*};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use serde::Serialize;
+
+/// Installed-corpus floor (ADR-125): every configured ceiling is clamped up to
+/// this, mirroring the retained `Math.max(100, …)` guard (`backend-v2.js:236`).
+pub const MESSAGE_RETENTION_FLOOR: u64 = 100;
+/// Receipt trim bound (tick contract §3.1): `RETENTION_RECEIPT_LIMIT = 100`,
+/// applied by the same writer that inserts a receipt row.
+const RETENTION_RECEIPT_LIMIT: u64 = 100;
+
+/// Counters one corpus sweep tick produced — a sibling of `SweepOutcome`
+/// (`ceiling_alerts.rs`). `elapsed_ms` is the tick's own wall-clock duration,
+/// measured around its `Immediate` transaction; it is the input to the tick
+/// contract's batch-reduction rule, so a phase that does not report it cannot
+/// be reduced.
+#[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
+pub struct CorpusSweepOutcome {
+    pub pruned: u64,
+    pub archived: u64,
+    pub remaining: u64,
+    pub elapsed_ms: u64,
+}
+
+/// The ONE console/CLI read for the corpus bound (ADR-125 §5): size against
+/// the ceiling. No page work in this slice; `over_by > 0` is the standing
+/// over-ceiling report while the batch catches up.
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct RetentionStatus {
+    pub corpus_rows: u64,
+    pub ceiling: u64,
+    pub over_by: u64,
+}
+
+/// The ingress identity half of an archive row: engagement, scope digest,
+/// event digest and source session. `engagement_id`/`source_session_id` may
+/// be absent only for non-ingress admissions.
+type IngressIdentity = (
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+);
+
+fn bounded(value: u64) -> Result<u64, Error> {
+    if value > JSON_SAFE_MAX {
+        return Err(Error::Capacity);
+    }
+    Ok(value)
+}
 
 pub(super) fn find_session(
     db: &Connection,
@@ -259,6 +307,218 @@ impl DomainRepository {
         // Dispatches contain at most 100 events and 64 KiB. The indexed page below
         // also preserves the bound when a later migration raises the dispatch cap.
         self.db.prepare("SELECT CASE WHEN s.matrix_generation>0 THEN i.config ELSE m.config END,i.wake FROM dispatch_inputs d JOIN admitted_messages m ON m.sequence=d.message_sequence JOIN runner_dispatches r ON r.id=d.dispatch_id JOIN runner_sessions s ON s.id=r.session_id JOIN session_inputs i ON i.session_id=r.session_id AND i.message_sequence=m.sequence WHERE d.dispatch_id=?1 AND m.sequence>?2 ORDER BY m.sequence LIMIT ?3")?.query_map(params![cap.dispatch_id,after,limit],|r|Ok((r.get::<_,String>(0)?,r.get::<_,bool>(1)?)))?.map(|row|{let(config,wake)=row?;Ok(InboxItem{message:serde_json::from_str(&config)?,wake})}).collect()
+    }
+    /// The corpus bound's periodic sweep (ADR-125): one `Immediate`
+    /// transaction per tick. A row is a candidate only when EVERY pin clause
+    /// is false — P1 recency (newest `ceiling` rows by sequence), P2/P3'
+    /// unprocessed `session_inputs` (`processed_at IS NULL` covers the
+    /// claimed subset: `dispatch_id` is never cleared after processing, so a
+    /// pin on it alone would pin forever), P4/P5 dispatch custody read from
+    /// `runner_dispatches.state` directly (live states plus `outcome_unknown`;
+    /// the `unresolved_dispatches` view is for reporting, never pinning —
+    /// tick contract D-1), P6'/P7' open-task custody gated on the canonical
+    /// task's own terminal state (`json_extract(config,'$.status')<>'done'`,
+    /// written by `finish_task_clock` and irreversible — never
+    /// `task_intents.state`, whose `closed` value has no production writer),
+    /// P9/P10 attachment custody. Provenance is NOT a pin: it moves with the
+    /// message into `retained_message_archive` (which carries
+    /// `engagement_id`/`source_key`/`wake`) and is deleted in the same
+    /// transaction. Child-first delete order is load-bearing — there is no
+    /// `ON DELETE CASCADE` anywhere. Never returns `Invalid` for an
+    /// over-ceiling corpus and never fails the transaction to "protect" a
+    /// row: a pinned row is simply not a candidate.
+    pub fn sweep_admitted_corpus(
+        &mut self,
+        now: u64,
+        ceiling: u64,
+        batch: u64,
+    ) -> Result<CorpusSweepOutcome, Error> {
+        let ceiling = bounded(ceiling.max(MESSAGE_RETENTION_FLOOR))?;
+        let batch = bounded(batch)?;
+        let started = std::time::Instant::now();
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // P1 window: everything at or below (max - ceiling) is past the
+        // recency pin; the subquery keeps the window correct while the batch
+        // catches up.
+        let candidates: Vec<u64> = {
+            let mut statement = tx.prepare(
+                "SELECT m.sequence FROM admitted_messages m
+                 WHERE m.sequence <= (SELECT IFNULL(MAX(sequence),0) FROM admitted_messages) - ?1
+                   AND NOT EXISTS(SELECT 1 FROM session_inputs si
+                        WHERE si.message_sequence=m.sequence AND si.processed_at IS NULL)
+                   AND NOT EXISTS(SELECT 1 FROM dispatch_inputs di JOIN runner_dispatches d
+                        ON d.id=di.dispatch_id WHERE di.message_sequence=m.sequence
+                        AND d.state IN ('queued','leased','started','parked','outcome_unknown'))
+                   AND NOT EXISTS(SELECT 1 FROM task_intents i JOIN canonical_tasks t
+                        ON t.id=i.task_id WHERE i.root_sequence=m.sequence
+                        AND json_extract(t.config,'$.status')<>'done')
+                   AND NOT EXISTS(SELECT 1 FROM task_inputs ti JOIN canonical_tasks t
+                        ON t.id=ti.task_id WHERE ti.message_sequence=m.sequence
+                        AND json_extract(t.config,'$.status')<>'done')
+                   AND NOT EXISTS(SELECT 1 FROM matrix_attachments a
+                        WHERE a.message_sequence=m.sequence)
+                   AND NOT EXISTS(SELECT 1 FROM session_attachment_visibility v
+                        WHERE v.message_sequence=m.sequence)
+                 ORDER BY m.sequence LIMIT ?2",
+            )?;
+            let rows = statement
+                .query_map(params![ceiling, batch], |row| row.get::<_, i64>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(statement);
+            rows.into_iter()
+                .map(|v| u64::try_from(v).map_err(|_| Error::Schema))
+                .collect::<Result<Vec<_>, _>>()?
+        };
+        let mut pruned = 0u64;
+        let mut archived = 0u64;
+        let mut oldest: Option<u64> = None;
+        let mut newest: Option<u64> = None;
+        for sequence in &candidates {
+            bounded(*sequence)?;
+            // (i) the archive row: the message plus its ingress identity plus
+            // the source session's wake, so the receipt caller can reconstruct
+            // its answer on a live miss. A non-ingress admission archives with
+            // a NULL identity and wake 0 — nothing reads those back.
+            let ingress: Option<IngressIdentity> = tx
+                .query_row(
+                    "SELECT engagement_id,scope_digest,digest,source_session_id \
+                     FROM matrix_ingress_events WHERE message_sequence=?1",
+                    [sequence],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )
+                .optional()?;
+            let row: (String, String) = tx.query_row(
+                "SELECT source_key,config FROM admitted_messages WHERE sequence=?1",
+                [sequence],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?;
+            let wake: bool = match &ingress {
+                Some((_, _, _, Some(session))) => tx
+                    .query_row(
+                        "SELECT wake FROM session_inputs WHERE session_id=?1 AND message_sequence=?2",
+                        params![session, sequence],
+                        |r| r.get(0),
+                    )
+                    .optional()?
+                    .unwrap_or(false),
+                _ => false,
+            };
+            let digest = match &ingress {
+                Some((_, _, Some(digest), _)) => digest.clone(),
+                _ => row.1.clone(),
+            };
+            tx.execute(
+                "INSERT INTO retained_message_archive\
+                 (sequence,engagement_id,source_key,scope_digest,digest,config,source_session_id,wake,pruned_at_ms) \
+                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+                params![
+                    sequence,
+                    ingress.as_ref().and_then(|i| i.0.clone()),
+                    row.0,
+                    ingress.as_ref().and_then(|i| i.1.clone()),
+                    digest,
+                    row.1,
+                    ingress.as_ref().and_then(|i| i.3.clone()),
+                    wake,
+                    bounded(now)?
+                ],
+            )?;
+            archived += 1;
+            // (ii) children first — every RESTRICT FK would otherwise abort
+            // the tick. A task_intents row whose root is pruned belongs to a
+            // done task (P6' released it); task_inputs likewise (P7').
+            tx.execute(
+                "DELETE FROM session_inputs WHERE message_sequence=?1",
+                [sequence],
+            )?;
+            tx.execute(
+                "DELETE FROM dispatch_inputs WHERE message_sequence=?1",
+                [sequence],
+            )?;
+            tx.execute(
+                "DELETE FROM task_inputs WHERE message_sequence=?1",
+                [sequence],
+            )?;
+            tx.execute(
+                "DELETE FROM task_intents WHERE root_sequence=?1",
+                [sequence],
+            )?;
+            // (iii) the provenance row moves with the message (P8').
+            tx.execute(
+                "DELETE FROM matrix_ingress_events WHERE message_sequence=?1",
+                [sequence],
+            )?;
+            // (iv) the parent.
+            tx.execute(
+                "DELETE FROM admitted_messages WHERE sequence=?1",
+                [sequence],
+            )?;
+            pruned += 1;
+            if oldest.is_none() {
+                oldest = Some(*sequence);
+            }
+            newest = Some(*sequence);
+        }
+        // The archive's own prune, oldest-first, in the same tick: bounded to
+        // the same ceiling, so content older than about two ceilings is gone
+        // (ADR-125's named window decision).
+        tx.execute(
+            "DELETE FROM retained_message_archive WHERE sequence IN (\
+             SELECT sequence FROM retained_message_archive ORDER BY sequence DESC LIMIT -1 OFFSET ?1)",
+            [ceiling],
+        )?;
+        let corpus: u64 =
+            tx.query_row("SELECT COUNT(*) FROM admitted_messages", [], |r| r.get(0))?;
+        let remaining = corpus.saturating_sub(ceiling);
+        // One receipt row per tick when the phase did work (pruned>0 or
+        // remaining>0); a zero-work tick writes nothing. The same writer
+        // trims to RETENTION_RECEIPT_LIMIT (tick contract §3.1).
+        if pruned > 0 || remaining > 0 {
+            tx.execute(
+                "INSERT INTO retention_prune_receipts\
+                 (phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms) \
+                 VALUES('messages',?1,?2,?3,?4,?5,?6)",
+                params![
+                    pruned,
+                    oldest.map(|v| v.to_string()).unwrap_or_default(),
+                    newest.map(|v| v.to_string()).unwrap_or_default(),
+                    remaining,
+                    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2),
+                    bounded(now)?
+                ],
+            )?;
+            tx.execute(
+                "DELETE FROM retention_prune_receipts WHERE sequence NOT IN (\
+                 SELECT sequence FROM retention_prune_receipts \
+                 ORDER BY sequence DESC LIMIT ?1)",
+                [RETENTION_RECEIPT_LIMIT],
+            )?;
+        }
+        tx.commit()?;
+        Ok(CorpusSweepOutcome {
+            pruned,
+            archived,
+            remaining,
+            elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2),
+        })
+    }
+    /// The ONE read for the console/CLI (ADR-125 §5): corpus size against the
+    /// clamped ceiling. It pages no messages and computes no pin sets. The
+    /// ceiling is the configured one (bootstrap default
+    /// `MESSAGE_RETENTION_CEILING`), clamped up to the floor here — the same
+    /// `Math.max(100, …)` guard as `backend-v2.js:236`.
+    pub fn retention_status(&self, ceiling: u64) -> Result<RetentionStatus, Error> {
+        let ceiling = bounded(ceiling.max(MESSAGE_RETENTION_FLOOR))?;
+        let corpus: u64 = self
+            .db
+            .query_row("SELECT COUNT(*) FROM admitted_messages", [], |r| r.get(0))?;
+        Ok(RetentionStatus {
+            corpus_rows: corpus,
+            ceiling,
+            over_by: corpus.saturating_sub(ceiling),
+        })
     }
 }
 

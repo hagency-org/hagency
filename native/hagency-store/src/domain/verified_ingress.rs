@@ -204,6 +204,21 @@ impl DomainRepository {
             "SELECT scope_digest,digest,config,source_session_id,message_sequence FROM matrix_ingress_events WHERE engagement_id=?1 AND source_key=?2",
             params![route.engagement_id,source], |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
         ).optional()?;
+        // Live miss → the archive answers by the same identity (ADR-125 P8':
+        // provenance moves with the message, so the receipt lookup outlives
+        // the live row). `wake` is reconstructed from the archive row because
+        // the `session_inputs` child was pruned with the message.
+        let prior = match prior {
+            Some(row) => Some(row),
+            None => self
+                .db
+                .query_row(
+                    "SELECT scope_digest,digest,config,source_session_id,message_sequence FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
+                    params![route.engagement_id,source],
+                    |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?)),
+                )
+                .optional()?,
+        };
         let Some((scope, digest, config, session, sequence)) = prior else {
             return Ok(None);
         };
@@ -213,11 +228,25 @@ impl DomainRepository {
         if digest != canonical::digest(&json!([input.event, input.mentions, input.encrypted]))? {
             return Err(Error::Conflict);
         }
-        let (wake, stored): (bool, String) = self.db.query_row(
-            "SELECT wake,config FROM session_inputs WHERE session_id=?1 AND message_sequence=?2",
-            params![session, sequence],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
+        let (wake, stored): (bool, String) = match self
+            .db
+            .query_row(
+                "SELECT wake,config FROM session_inputs WHERE session_id=?1 AND message_sequence=?2",
+                params![session, sequence],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?
+        {
+            // A pruned message's `session_inputs` child was deleted with it;
+            // the archive row carries both halves (A4), so the guard keeps
+            // its meaning against the archived config.
+            Some(row) => row,
+            None => self.db.query_row(
+                "SELECT wake,config FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
+                params![route.engagement_id, source],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )?,
+        };
         if stored != config {
             return Err(Error::Conflict);
         }
@@ -279,10 +308,40 @@ impl DomainRepository {
             params![source, digest],
             |r| r.get(0),
         )?;
+        // Read 3's archive half (A3): the live read carries no engagement
+        // filter because it runs inside the engagement transaction; the
+        // archive is global, so its divergence probe is scoped to the pair —
+        // a stale archive row from another engagement must not shadow this
+        // one.
+        let different = different
+            || tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2 AND digest<>?3)",
+                params![route.engagement_id, source, digest],
+                |r| r.get(0),
+            )?;
         if different {
             return Err(Error::Conflict);
         }
         let prior:Option<(String,String,String,String)>=tx.query_row("SELECT scope_digest,digest,config,source_session_id FROM matrix_ingress_events WHERE engagement_id=?1 AND source_key=?2",params![route.engagement_id,source],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+        // Read 4's archive half (P8'): the provenance row moved with the
+        // message, so an exact redelivery of a pruned admission is answered
+        // from the archive and a divergent one is refused above.
+        let archived = prior.is_none()
+            && tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2)",
+                params![route.engagement_id, source],
+                |r| r.get(0),
+            )?;
+        let prior = match prior {
+            Some(row) => Some(row),
+            None => tx
+                .query_row(
+                    "SELECT scope_digest,digest,config,source_session_id FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
+                    params![route.engagement_id, source],
+                    |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+                )
+                .optional()?,
+        };
         let had_receipt = prior.is_some();
         let (message, created) = if let Some((scope, old, encoded, original_session)) = prior {
             if original_session != route.session_id {
@@ -309,6 +368,27 @@ impl DomainRepository {
         };
         super::attachments::record(&tx, &route, &message, attachment, had_receipt)?;
         let prior:Option<(bool,String)>=tx.query_row("SELECT wake,config FROM session_inputs WHERE session_id=?1 AND message_sequence=?2",params![route.session_id,message.sequence],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+        // A4's admission-path duty: an exact redelivery of a PRUNED admission
+        // is already durably recorded in the archive. The `session_inputs`
+        // child was deleted with the message, so re-inserting it would hit
+        // the RESTRICT FK — return the archived receipt instead, exactly the
+        // shape the `session_inputs`-hit early return below produces.
+        if prior.is_none() && archived {
+            let wake: bool = tx.query_row(
+                "SELECT wake FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2",
+                params![route.engagement_id, source],
+                |r| r.get(0),
+            )?;
+            let result = MatrixIngressReceipt {
+                sequence: message.sequence,
+                session_id: route.session_id.clone(),
+                wake,
+                created: false,
+                projected: false,
+            };
+            tx.commit()?;
+            return Ok(result);
+        }
         if let Some((wake, encoded)) = prior {
             if encoded != serialize(&message)? {
                 return Err(Error::Conflict);
@@ -405,7 +485,18 @@ impl DomainRepository {
         }
         let (root, root_session) = if let Some(root) = &source.thread_root {
             let key = canonical::digest(&json!([source.server_name, source.room_id, root]))?;
-            let (encoded, root_session):(String,String)=tx.query_row("SELECT config,source_session_id FROM matrix_ingress_events WHERE engagement_id=?1 AND source_key=?2 AND scope_digest=?3 AND EXISTS(SELECT 1 FROM current_matrix_routes r WHERE r.session_id=matrix_ingress_events.source_session_id)",params![source_route.engagement_id,key,scope_digest(&source_route)?],|r|Ok((r.get(0)?,r.get(1)?))).optional()?.ok_or(Error::RunnerAuthority)?;
+            let found: Option<(String,String)>=tx.query_row("SELECT config,source_session_id FROM matrix_ingress_events WHERE engagement_id=?1 AND source_key=?2 AND scope_digest=?3 AND EXISTS(SELECT 1 FROM current_matrix_routes r WHERE r.session_id=matrix_ingress_events.source_session_id)",params![source_route.engagement_id,key,scope_digest(&source_route)?],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
+            // Read 6 (A2): the root may have been pruned while its session
+            // route survives; the archive answers the same lookup by the
+            // same identity.
+            let (encoded, root_session):(String,String)=match found {
+                Some(row) => row,
+                None => tx.query_row(
+                    "SELECT config,source_session_id FROM retained_message_archive WHERE engagement_id=?1 AND source_key=?2 AND scope_digest=?3",
+                    params![source_route.engagement_id,key,scope_digest(&source_route)?],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                ).optional()?.ok_or(Error::RunnerAuthority)?,
+            };
             let root: Message = serde_json::from_str(&encoded)?;
             if root.thread_root.is_some() || root.event_id != *source.thread_root.as_ref().unwrap()
             {
