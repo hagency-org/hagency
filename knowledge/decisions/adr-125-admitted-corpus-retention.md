@@ -281,7 +281,7 @@ separate transactions.
 | Table | Pin owner (owns the bound / states the release proof) | Delete rights |
 |---|---|---|
 | `runner_attempts` | **Slice 2** — pinned unconditionally until a clock bound exists that both late paths enforce | **Slice 6** — cascade, tier 1 |
-| `task_outbox` | **Slice 2** — out of scope for the prune (`delivered` is never set; the pager is production) | **Slice 6** — cascade, tier 1, **scoped to rows whose owning task is deleted in the same transaction** |
+| `task_outbox` | **Slice 2** — out of scope for the prune (`delivered` is never set; the pager `task_events` is unread in production) | **Slice 6** — cascade, tier 1, **scoped to rows whose owning task is deleted in the same transaction**, honouring the `canonical_tasks` FK |
 | `task_inputs` | **Slice 1** — pinned while the canonical task is not `done` | **Slice 6** — cascade, tier 1 |
 | `session_inputs` | **Slice 1** — unprocessed or claimed-but-unprocessed | **Slice 6** — cascade, tier 1 |
 | `dispatch_inputs` | **Slice 1** — live or `outcome_unknown` dispatch | **Slice 6** — cascade, tier 1 |
@@ -320,8 +320,14 @@ waiting for a reviewer.
   `remaining` and the shared receipt row. `remaining > 0` is the standing
   over-ceiling report."*
 - **D-6 — `task_outbox` is out of scope.** *"Not pruned by Slice 2: `delivered` is
-  never set, the pager is production, a bound needs a real acknowledgement path
-  first."*
+  never set — no writer ever sets it — and the pager `task_events` is unread in
+  production (zero production callers; the cursor is caller-supplied and persisted
+  nowhere), so a bound needs a real acknowledgement path first, named as a
+  retained-product gap and not designed here."* The premise an earlier form of this
+  decision carried — that `task_events` pages a production surface — is false and is
+  corrected here; the conclusion (out of scope for the prune) survives it. The
+  cascade delete of `task_outbox` rows whose owning `canonical_tasks` row is deleted in
+  the same transaction is Slice 6's, **tier 1**, honouring the `canonical_tasks` FK.
 - **D-7 — Every `runner_attempts` row is pinned.** *"Until a clock bound exists that
   both late paths enforce; named as an explicit non-goal, not an accident."*
 - **D-8 — The 'newest 1 accepted output' residue.** *"One accepted `runner_outputs`

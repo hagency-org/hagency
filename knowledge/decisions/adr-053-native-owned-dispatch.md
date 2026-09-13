@@ -336,15 +336,24 @@ comparison, **not** a sweeper input; nothing expires a `held` row on a clock. Th
 is therefore unbounded in time until a settler runs. That is the honest statement and
 it is a named follow-up, not a concealed one.
 
-**6. `task_outbox` is out of scope for the prune (D-6).** The tick contract's D-6
-reads, quoted: *"Not pruned by Slice 2: `delivered` is never set, the pager is
-production, a bound needs a real acknowledgement path first."* On this tree no writer
-sets `delivered` and `task_events(after,limit)` pages a production surface by
-`sequence` (`execution.rs:1079-1083`), so a bound prune would leave a sequence gap
-indistinguishable from a quiet period. Slice 2 holds **pin only** on this table; the
-cascade delete of rows whose owning task is itself being deleted is Slice 6's
-operation (ADR-095's amendment), and the scoping that reconciles the two is stated
-there.
+**6. `task_outbox` is out of scope for the prune (D-6).** The tick contract's D-6,
+restated: *"Not pruned by Slice 2: the pager `task_events` is unread in production,
+and a bound needs a real acknowledgement path first."* An earlier form of this item
+justified the deferral by calling `task_events` a **production** surface; that premise
+is false and is corrected here. The reader `task_events(after,limit)`
+(`execution.rs:1079-1083`) is public API with **no production caller**: the async
+wrapper `DomainStore::task_events` (`domain_worker.rs:2308`) has zero callers in the
+tree, the sync method is called only by `tests/tasks.rs:361-364`, the cursor
+(`sequence>?1`) is caller-supplied and persisted nowhere, and `delivered` is
+vestigial — no writer ever sets it (no `UPDATE task_outbox` under `native/`), so the
+`delivered=0` conjunct and `task_outbox_pending(delivered,sequence)` are dead weight.
+The conclusion survives: **out of scope for the prune**, because a bound prune's
+sequence gap is indistinguishable from a quiet period only to a pager that ships with
+a persisted cursor, and no such pager exists today. Slice 2 holds **pin only** on this
+table; the cascade delete of rows whose owning task is itself being deleted is Slice
+6's operation, **tier 1**, honouring the `canonical_tasks` FK (ADR-095's amendment),
+and the scoping that reconciles the two is stated there. A real acknowledgement path
+is a named retained-product gap, not designed by this slice.
 
 **7. Receipt, not archive.** The phase writes one `retention_prune_receipts` row with
 `phase='execution'`, `oldest_ref`/`newest_ref` = `runner_dispatches.id`, per the tick

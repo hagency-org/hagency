@@ -143,15 +143,19 @@ it is not a release for a task row, and no phase in this sweep deletes one. A
 `canonical_tasks` row leaves only inside Slice 6's engagement cascade (ADR-095's
 amendment), where its owning engagement is the parent being removed.
 
-**4. `task_outbox` is out of scope for the bound (D-6).** The tick contract's D-6
-reads, quoted: *"Not pruned by Slice 2: `delivered` is never set, the pager is
-production, a bound needs a real acknowledgement path first."* The table is this
-ADR's (schema 003 admits the outbox for graph-node task delivery), the pager
-`task_events(after,limit)` is production (`execution.rs:1079-1083`), and no writer
-sets `delivered`. Slice 2 holds **pin only**; the cascade delete inside a candidate
-engagement is Slice 6's, and the scoping sentence that reconciles the two is in
-ADR-095's amendment. A bound needs a real acknowledgement path first — stated here so
-the deferral is this ADR's decision, not an omission.
+**4. `task_outbox` is out of scope for the bound (D-6).** The tick contract's D-6,
+restated: *"Not pruned by Slice 2: `delivered` is never set, the pager is unread in
+production, a bound needs a real acknowledgement path first."* An earlier form of this
+item called `task_events(after,limit)` a **production** surface; that premise is false
+and is corrected here. The table is this ADR's (schema 003 admits the outbox for
+graph-node task delivery), its reader (`execution.rs:1079-1083`) has **no production
+caller** (the async wrapper has zero callers in the tree, the sync method is called
+only by `tests/tasks.rs:361-364`, and the cursor is caller-supplied and persisted
+nowhere), and no writer sets `delivered`. Slice 2 holds **pin only**; the cascade
+delete inside a candidate engagement is Slice 6's, **tier 1**, honouring the
+`canonical_tasks` FK, and the scoping sentence that reconciles the two is in ADR-095's
+amendment. A real acknowledgement path is a named retained-product gap — stated here
+so the deferral is this ADR's decision, not an omission.
 
 **5. Receipt, not archive.** The phase writes one `retention_prune_receipts` row with
 `phase='execution'` and `oldest_ref`/`newest_ref` = `runner_dispatches.id` (the
