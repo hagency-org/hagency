@@ -1,5 +1,6 @@
 'use client';
 import PageHead from '@/components/PageHead';
+import NativeStatusStrip from '@/components/NativeStatusStrip';
 import TechnicalDetails from '@/components/TechnicalDetails';
 import ResourceAgents from '@/components/ResourceAgents';
 import { NativeAccessNotice } from '@/components/NativeUsage';
@@ -45,7 +46,7 @@ export default function NativeResources() {
   const { phase, selected, resources = [], roles = [], budget, action } = data;
   const number = (n) => n == null ? t('nu.unknown') : n.toLocaleString();
   return <>
-    <PageHead title={t('rs.title')} sub={t('nr.sub')} />
+    <PageHead title={t('rs.title')} sub={t('nr.sub')}><NativeStatusStrip /></PageHead>
     <p className="muted">{t('nr.localOnly')}</p>
     {['ready', 'stale'].includes(phase) && <div className="btn-row"><a className="btn primary" href={`/console/resources/new/${selected ? `?source_resource_id=${selected}` : ''}`}>{t('nc.create')}</a></div>}
     {phase === 'loading' && <p role="status">{t('nr.loading')}</p>}

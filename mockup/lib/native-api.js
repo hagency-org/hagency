@@ -82,6 +82,24 @@ async function request(path, options = {}) {
     throw new Error('native_unavailable');
   } finally { clearTimeout(timer); }
 }
+/* ADR-145: the readiness payload consumed as-is — exact key set and count
+ * only, no state-word enumeration in the client (one vocabulary, the
+ * server's; unknown state words render as text, never error). Same-origin
+ * top-level /ready, never under /console and never /health. */
+export function validateReadiness(v) {
+  const word = (s, max) => typeof s === 'string' && s.length <= max;
+  if (!object(v, ['status', 'implementation', 'components']) || !word(v.status, 32) || !word(v.implementation, 32)
+    || !Array.isArray(v.components) || v.components.length > 64
+    || v.components.some((c) => !object(c, ['name', 'state']) || !word(c.name, 64) || !word(c.state, 64))) throw new Error('invalid_native_response');
+  return v;
+}
+export async function fetchReadiness(signal) {
+  /* Top-level same-origin route (outside the console router); a 503 still
+   * carries the payload, a network failure rejects — the strip's unknown. */
+  const response = await fetch('/ready', { credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal });
+  const value = await response.json();
+  return validateReadiness(value);
+}
 export function resourceView(location) { return /^\/console\/resources\/?$/.test(location.pathname); }
 export function selection(location, field = 'engagement_id') {
   const query = new URLSearchParams(location.search);

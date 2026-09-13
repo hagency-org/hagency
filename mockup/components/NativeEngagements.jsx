@@ -16,6 +16,8 @@
  * which is exactly what renders here.
  */
 import { useMemo, useState } from 'react';
+import PageHead from '@/components/PageHead';
+import NativeStatusStrip from '@/components/NativeStatusStrip';
 import { useT } from '@/components/Prefs';
 import { useData } from '@/components/Data';
 import { fmtTokens } from '@/lib/mock-data';
@@ -60,6 +62,7 @@ export default function NativeEngagements() {
     <div data-native-state={phase} aria-busy={refreshing === true}>
       {refreshing && <p role="status">{t('nu.refreshing')}</p>}
 
+      <PageHead title={t('nav.engagements')}><NativeStatusStrip /></PageHead>
       <h2 style={{ marginTop: 0 }}>{t('nav.engagements')}<span className="note"> {t('ng.readonly')}</span></h2>
 
       {/* One strip: the state split of this page. */}
