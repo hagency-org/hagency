@@ -409,8 +409,17 @@ impl DomainRepository {
                 Some((_, _, Some(digest), _)) => digest.clone(),
                 _ => row.1.clone(),
             };
+            // S4 (store review): the archive is keyed UNIQUE(engagement_id,
+            // source_key) and `admitted_messages.source_key` is not globally
+            // unique across engagements, so a same-pair re-archive — a
+            // non-ingress admission colliding with an archived ingress row
+            // of the same engagement, or a live provenance row an earlier
+            // partial path already moved — would abort the whole tick on
+            // the UNIQUE. The archive is a keyed overwrite, never a refusal:
+            // the newer row is the truth, and the sweep must never fail its
+            // transaction to protect a row.
             tx.execute(
-                "INSERT INTO retained_message_archive\
+                "INSERT OR REPLACE INTO retained_message_archive\
                  (sequence,engagement_id,source_key,scope_digest,digest,config,source_session_id,wake,pruned_at_ms) \
                  VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)",
                 params![
@@ -426,9 +435,17 @@ impl DomainRepository {
                 ],
             )?;
             archived += 1;
-            // (ii) children first — every RESTRICT FK would otherwise abort
-            // the tick. A task_intents row whose root is pruned belongs to a
-            // done task (P6' released it); task_inputs likewise (P7').
+            // (ii) children first, in FK order — no ON DELETE exists
+            // anywhere, so every child of `admitted_messages` must be gone
+            // before the parent or a RESTRICT FK aborts the tick. The full
+            // referencing set is seven tables: `session_inputs`,
+            // `dispatch_inputs`, `task_intents(root_sequence)`,
+            // `task_inputs`, `matrix_ingress_events` (deleted below), and
+            // `matrix_attachments` / `session_attachment_visibility` —
+            // NEVER deleted, because P9/P10 pin any row that references
+            // them, so a candidate cannot carry either child. That coupling
+            // is load-bearing: the delete list's completeness depends on
+            // the pin list's, asserted by the attachment-custody test.
             tx.execute(
                 "DELETE FROM session_inputs WHERE message_sequence=?1",
                 [sequence],
@@ -472,11 +489,20 @@ impl DomainRepository {
         let corpus: u64 =
             tx.query_row("SELECT COUNT(*) FROM admitted_messages", [], |r| r.get(0))?;
         let remaining = corpus.saturating_sub(ceiling);
+        tx.commit()?;
+        // R4 (impl review): the sample is taken AFTER the commit, so the
+        // number the batch-reduction rule consumes — and the receipt row
+        // carries — includes the commit's own cost and any SQLite lock
+        // wait, not only the in-transaction work.
+        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2);
         // One receipt row per tick when the phase did work (pruned>0 or
         // remaining>0); a zero-work tick writes nothing. The same writer
-        // trims to RETENTION_RECEIPT_LIMIT (tick contract §3.1).
+        // trims to RETENTION_RECEIPT_LIMIT (tick contract §3.1). Written
+        // after the prune transaction so its elapsed_ms is the committed
+        // tick's full wall-clock; the receipt is diagnostic, never a
+        // participant in the prune's atomicity.
         if pruned > 0 || remaining > 0 {
-            tx.execute(
+            self.db.execute(
                 "INSERT INTO retention_prune_receipts\
                  (phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms) \
                  VALUES('messages',?1,?2,?3,?4,?5,?6)",
@@ -485,23 +511,22 @@ impl DomainRepository {
                     oldest.map(|v| v.to_string()).unwrap_or_default(),
                     newest.map(|v| v.to_string()).unwrap_or_default(),
                     remaining,
-                    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2),
+                    elapsed_ms,
                     bounded(now)?
                 ],
             )?;
-            tx.execute(
+            self.db.execute(
                 "DELETE FROM retention_prune_receipts WHERE sequence NOT IN (\
                  SELECT sequence FROM retention_prune_receipts \
                  ORDER BY sequence DESC LIMIT ?1)",
                 [RETENTION_RECEIPT_LIMIT],
             )?;
         }
-        tx.commit()?;
         Ok(CorpusSweepOutcome {
             pruned,
             archived,
             remaining,
-            elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2),
+            elapsed_ms,
         })
     }
     /// The ONE read for the console/CLI (ADR-125 §5): corpus size against the
