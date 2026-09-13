@@ -37,7 +37,9 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
         // every one of its waits from this value, never its own literal.
         (
             "HAGENCY_OPERATION_BUDGET_MS".into(),
-            crate::approval::Gate::OPERATION_BUDGET_MS.to_string().into(),
+            crate::approval::Gate::OPERATION_BUDGET_MS
+                .to_string()
+                .into(),
         ),
     ]);
     if let Some(system) = std::env::var_os("SystemRoot") {

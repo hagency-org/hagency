@@ -418,7 +418,10 @@ mod trace_tests {
         ] {
             written.mark(label);
         }
-        assert_eq!(written.as_slice().last(), Some(&"turn-ended-ignored-written"));
+        assert_eq!(
+            written.as_slice().last(),
+            Some(&"turn-ended-ignored-written")
+        );
         let mut cancelling = PhaseTrace::new();
         for label in ["acknowledged", "resolved-before-write", "resolved-cancels"] {
             cancelling.mark(label);

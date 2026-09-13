@@ -293,8 +293,8 @@ pub(super) fn unconfirmed(f: &Fixture) {
     );
 }
 pub(super) async fn marker(f: &Fixture, extension: &str) {
-    let until = tokio::time::Instant::now()
-        + Duration::from_millis(super::limits().operation_ms / 10) * 2;
+    let until =
+        tokio::time::Instant::now() + Duration::from_millis(super::limits().operation_ms / 10) * 2;
     while !f.work.join(format!("owned-dispatch.{extension}")).exists() {
         assert!(
             tokio::time::Instant::now() < until,
