@@ -47,7 +47,7 @@ type IngressIdentity = (
     Option<String>,
 );
 
-fn bounded(value: u64) -> Result<u64, Error> {
+pub(super) fn bounded(value: u64) -> Result<u64, Error> {
     if value > JSON_SAFE_MAX {
         return Err(Error::Capacity);
     }

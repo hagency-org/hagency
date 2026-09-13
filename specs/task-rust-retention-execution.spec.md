@@ -66,41 +66,37 @@ Scenario: Settled dispatch evidence is pruned inside its window
   When the execution phase runs
   Then its output and receipt-family rows are gone and a receipt records the prune
   And the newest accepted output row per dispatch and fence survives
+  Test: native_execution_prune_keeps_the_window_and_writes_a_receipt
 
 Scenario: A held completion pins its whole dispatch
   Given a settled dispatch whose completion state is held
   When the execution phase runs
   Then that dispatch and every receipt it carries remain
+  Test: native_execution_prune_retains_the_held_completion_evidence
 
 Scenario: An unresolved dispatch is never a candidate
   Given a dispatch in outcome_unknown
   When the execution phase runs
   Then its attempt output and receipt rows remain
   And after a recovery copies the linkage the original still remains
+  Test: native_execution_prune_retains_unsettled_and_unknown_fate_dispatches
 
 Scenario: The attempt row is never pruned and the late path still authenticates
   Given a settled dispatch with an attempt row
   When the execution phase runs
   Then the attempt row remains and record_late_output still authenticates against it
+  Test: native_execution_prune_leaves_the_attempt_anchor
 
 Scenario: The receipt is bounded and the phase logs its cost
   Given more than 100 execution receipts
   When the phase writes one more
   Then the receipt table holds at most 100 rows
   And the row carries pruned remaining elapsed_ms and at_ms
+  Test: native_execution_prune_receipt_is_bounded_and_logs_its_cost
 
 ## Out of Scope
 
-**Owed test selectors (parked, not bound).** Every selector below is owed: none
-is a `#[test] fn` on the integration base `review/retention-1`, so binding it as a
-`Test:` line would bind a name that does not exist and the spec-binding gate would
-fail. Each scenario above therefore stands **unbound** — its name, its given, its
-when and its then are kept — and the selector it will carry once its slice's code
-lands on `288a9c5c` is parked here. Integration moves a line back to a
-`Test:` under its scenario when that selector exists.
-
-- owed `native_execution_prune_keeps_the_window_and_writes_a_receipt` — scenario "Settled dispatch evidence is pruned inside its window"
-- owed `native_execution_prune_retains_the_held_completion_evidence` — scenario "A held completion pins its whole dispatch"
-- owed `native_execution_prune_retains_unsettled_and_unknown_fate_dispatches` — scenario "An unresolved dispatch is never a candidate"
-- owed `native_execution_prune_leaves_the_attempt_anchor` — scenario "The attempt row is never pruned and the late path still authenticates"
-- owed `native_execution_prune_receipt_is_bounded_and_logs_its_cost` — scenario "The receipt is bounded and the phase logs its cost"
+The five scenario selectors are bound above as `Test:` lines; none remains
+owed. The `final_reply_inspections` and `notice_send_inspections` tables key
+on a reply/notice, not a dispatch, and their pin is a named follow-up (the
+ADR-053 amendment's item 7), not this slice's work.

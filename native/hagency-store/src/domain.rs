@@ -34,6 +34,10 @@ mod execution;
 mod graphs;
 mod matrix_routes;
 mod messages;
+pub use execution::{
+    EXECUTION_RETENTION_BATCH, EXECUTION_RETENTION_DISPATCHES, EXECUTION_RETENTION_ROWS,
+    ExecutionPruneOutcome,
+};
 pub use messages::{CorpusSweepOutcome, MESSAGE_RETENTION_FLOOR, RetentionStatus};
 mod notice_custody;
 mod owned_completion;
@@ -596,7 +600,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 29,
+                version: 30,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -634,6 +638,10 @@ impl DomainRepository {
                     (
                         29,
                         include_str!("migrations/029-account-logout-receipt.sql"),
+                    ),
+                    (
+                        30,
+                        include_str!("migrations/030-execution-retention.sql"),
                     ),
                 ],
                 sql: include_str!("domain.sql"),

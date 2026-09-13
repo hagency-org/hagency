@@ -443,6 +443,10 @@ const RETENTION_MESSAGES_BATCH: u64 = 512;
 /// The `peer` phase's initial batch (ADR-125 peer phase, tick contract §2.3): the
 /// same 512 hypothesis, its own deadline is the budget.
 const RETENTION_PEER_BATCH: u64 = 512;
+/// The `execution` phase's initial batch (tick contract §2.3's hypothesis for
+/// this phase): 64 dispatches per tick, each dispatch's rows removed in the
+/// phase's one transaction; the deadline is the budget.
+const RETENTION_EXECUTION_BATCH: u64 = 64;
 
 /// The ceiling-overrun sweep loop (ADR-124 slice b): hourly in production
 /// because the condition is standing — an agent past its ceiling at 09:00 is
@@ -510,6 +514,7 @@ pub fn start_ceiling_sweep(
 pub enum RetentionSweepTick {
     Swept(hagency_store::CorpusSweepOutcome),
     PeerSwept(hagency_store::PeerSweepOutcome),
+    ExecutionSwept(hagency_store::ExecutionPruneOutcome),
     Refused(&'static str),
 }
 
@@ -522,6 +527,7 @@ pub enum RetentionSweepTick {
 struct RetentionBatches {
     messages: u64,
     peer: u64,
+    execution: u64,
 }
 
 impl Default for RetentionBatches {
@@ -529,6 +535,7 @@ impl Default for RetentionBatches {
         Self {
             messages: RETENTION_MESSAGES_BATCH,
             peer: RETENTION_PEER_BATCH,
+            execution: RETENTION_EXECUTION_BATCH,
         }
     }
 }
@@ -658,6 +665,46 @@ pub fn start_retention_sweep(
                 Err(error) => {
                     tracing::warn!(
                         "[retention] peer phase failed: {error}; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("failed")
+                }
+            };
+            let _ = sender.send(tick);
+            // Phase 3 of the tick: `execution` (ADR-125, the ADR-053/031
+            // amendments) — the per-dispatch execution corpus bound. One
+            // sequential `Job::Run` after `peer`, its own `Immediate`
+            // transaction in the store, its own per-phase batch hypothesis.
+            let tick = match domain.prune_execution_corpus(now, batches.execution).await {
+                Ok(outcome) => {
+                    if outcome.elapsed_ms > RETENTION_PHASE_BUDGET_MS {
+                        batches.execution = (batches.execution / 2).max(1);
+                    } else if batches.execution < RETENTION_EXECUTION_BATCH {
+                        batches.execution = (batches.execution * 2).min(RETENTION_EXECUTION_BATCH);
+                    }
+                    tracing::info!(
+                        "[retention] execution phase: pruned {} remaining {} elapsed_ms {} batch {}",
+                        outcome.pruned,
+                        outcome.remaining,
+                        outcome.elapsed_ms,
+                        batches.execution
+                    );
+                    RetentionSweepTick::ExecutionSwept(outcome)
+                }
+                Err(hagency_store::Error::Busy) => {
+                    tracing::warn!(
+                        "[retention] execution phase refused: busy; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("busy")
+                }
+                Err(hagency_store::Error::OutcomeUnknown) => {
+                    tracing::warn!(
+                        "[retention] execution phase outcome unknown; waiting for the next tick"
+                    );
+                    RetentionSweepTick::Refused("outcome_unknown")
+                }
+                Err(error) => {
+                    tracing::warn!(
+                        "[retention] execution phase failed: {error}; waiting for the next tick"
                     );
                     RetentionSweepTick::Refused("failed")
                 }

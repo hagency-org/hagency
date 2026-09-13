@@ -4,6 +4,7 @@ use crate::Error;
 use hagency_core::conversations::StoredSession;
 use hagency_core::{JSON_SAFE_MAX, canonical, project::identifier, tasks::*};
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
+use serde::Serialize;
 use serde_json::{Value, json};
 
 fn load_session(db: &Connection, id: &str, allow_quarantine: bool) -> Result<StoredSession, Error> {
@@ -1081,5 +1082,272 @@ impl DomainRepository {
             return Err(hagency_core::InvalidInput("event page must be 1..100").into());
         }
         self.db.prepare("SELECT sequence,task_id,kind,task FROM task_outbox WHERE delivered=0 AND sequence>?1 ORDER BY sequence LIMIT ?2")?.query_map(params![after,limit],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get::<_,String>(3)?)))?.map(|row|{let(sequence,task_id,kind,value)=row?;Ok(TaskEvent{sequence,task_id,kind,task:serde_json::from_str(&value)?})}).collect()
+    }
+}
+
+/// Counters one execution-corpus prune tick produced (ADR-053/031 amendments,
+/// ADR-125 tick contract) — a sibling of `CorpusSweepOutcome` (`messages.rs`)
+/// and `PeerSweepOutcome` (`peers.rs`); the per-phase report itself is the
+/// shared receipt row with `phase='execution'`. `elapsed_ms` is the tick's
+/// own wall-clock duration, measured around its `Immediate` transaction
+/// (tick contract §2.5).
+#[derive(Debug, Default, Clone, Serialize, PartialEq, Eq)]
+pub struct ExecutionPruneOutcome {
+    pub pruned: u64,
+    pub remaining: u64,
+    pub elapsed_ms: u64,
+}
+
+/// The bound for the per-dispatch execution corpus (ADR-053 amendment §3):
+/// the newest `EXECUTION_RETENTION_DISPATCHES` settled dispatches keep their
+/// evidence; everything older is a candidate. Count-driven — the per-dispatch
+/// caps (128 outputs/fence, 4096 receipts/dispatch) cannot bound the corpus.
+pub const EXECUTION_RETENTION_DISPATCHES: u64 = 500;
+/// Per-tick batch hypothesis for this phase (tick contract §2.3): 64
+/// dispatches, each dispatch's rows removed in the phase's one transaction.
+pub const EXECUTION_RETENTION_BATCH: u64 = 64;
+/// The per-table backstop (ADR-053 amendment §3): the dispatch-count window
+/// alone cannot bound a table (500 dispatches × the 4096/dispatch receipt cap
+/// exceeds it), so a table standing over this figure widens the candidate set
+/// to the oldest pinned-free settled dispatches — the window's survivors
+/// drain oldest-first too, batch-capped, and the overage reports through
+/// `remaining` so later ticks keep draining.
+pub const EXECUTION_RETENTION_ROWS: u64 = 100_000;
+
+/// "The dispatch still carries prunable evidence", as a WHERE fragment on the
+/// `runner_dispatches d` alias: any output row beyond the D-8 residue (the
+/// newest accepted row per fence never counts), any receipt not named by a
+/// completion, or any receipt-family row. A fully drained dispatch carries
+/// only its residue and its pinned rows, so it is NEITHER a candidate nor
+/// part of the over-window corpus — without this clause a drained dispatch
+/// would stay a window-overflow candidate forever, `remaining` would never
+/// reach 0, and every tick would rewrite the same zero-work receipt.
+const CARRIES_EVIDENCE: &str = "(
+    EXISTS(SELECT 1 FROM runner_outputs o WHERE o.dispatch_id=d.id AND o.sequence NOT IN (\
+        SELECT MAX(x.sequence) FROM runner_outputs x WHERE x.dispatch_id=d.id AND x.accepted=1 GROUP BY x.fence))
+    OR EXISTS(SELECT 1 FROM task_operation_receipts r WHERE r.dispatch_id=d.id AND NOT EXISTS (\
+        SELECT 1 FROM owned_task_completions c WHERE c.dispatch_id=r.dispatch_id AND c.call_id=r.call_id))
+    OR EXISTS(SELECT 1 FROM graph_commands g WHERE g.dispatch_id=d.id)
+    OR EXISTS(SELECT 1 FROM final_reply_calls fr WHERE fr.dispatch_id=d.id)
+    OR EXISTS(SELECT 1 FROM conversation_operations co WHERE co.dispatch_id=d.id)
+    OR EXISTS(SELECT 1 FROM usage_receipts ur JOIN usage_sources us ON us.id=ur.source_id WHERE us.dispatch_id=d.id)
+)";
+
+impl DomainRepository {
+    /// The `execution` phase of the retention tick (ADR-125 phase 3): bound
+    /// the per-dispatch execution corpus. One `Immediate` transaction per
+    /// tick; the caller (the sweep task) owns period, batch and the refusal
+    /// policy. A dispatch is a candidate only when the settled-verdict pair
+    /// holds (`state IN ('completed','superseded')` — disjoint from
+    /// `outcome_unknown` by the 003 enum — AND `capability_hash IS NULL`, the
+    /// settlement marker every live-state exit writes) AND it is not listed
+    /// by `unresolved_dispatches` (belt-and-braces; the state pair is the
+    /// release proof, tick contract D-1). For a candidate dispatch the phase
+    /// deletes its `runner_outputs` minus the D-8 residue (the newest ONE
+    /// accepted row per `(dispatch_id, fence)` survives, bounded, never
+    /// expiring), its `task_operation_receipts` minus any row an
+    /// `owned_task_completions` row names (the composite FK makes the pin
+    /// load-bearing), and its receipt-family rows (`graph_commands`,
+    /// `final_reply_calls`, `conversation_operations`, and `usage_receipts`
+    /// through `usage_sources`). `runner_attempts` is NEVER pruned (D-7:
+    /// both late paths authenticate against the attempt row with no clock)
+    /// and `task_outbox` is out of scope (D-6: `delivered` is never set, so
+    /// a bound prune is indistinguishable from a quiet period). The whole
+    /// dispatch is pinned while any of its owned completions is `held`
+    /// (settled only by publish or an observed owned failure — never a
+    /// clock). Nothing is archived: no supported surface reads the pruned
+    /// content. Never fails the transaction to "protect" a row: a pinned row
+    /// is simply not a candidate.
+    pub fn prune_execution_corpus(
+        &mut self,
+        now: u64,
+        batch: u64,
+    ) -> Result<ExecutionPruneOutcome, Error> {
+        let batch = super::messages::bounded(batch)?;
+        let started = std::time::Instant::now();
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // The window: settled dispatches ordered by rowid (insertion order =
+        // settlement order; the table has no sequence column), keeping the
+        // newest EXECUTION_RETENTION_DISPATCHES. Candidates are the batch's
+        // worth of older ones, minus any dispatch a held completion pins.
+        //
+        // The per-table backstop: the dispatch-count window alone cannot
+        // bound a table (500 dispatches × the 4096/dispatch receipt cap
+        // exceeds EXECUTION_RETENTION_ROWS), so a table standing over the
+        // backstop widens the candidate set to the OLDEST pinned-free
+        // settled dispatches — the window's survivors drain oldest-first
+        // too, batch-capped. The overage reports through `remaining` (the
+        // largest per-table surplus this tick), so a persistent overage
+        // keeps draining on later ticks.
+        let backstop_over: bool = [
+            "runner_outputs",
+            "task_operation_receipts",
+            "graph_commands",
+            "final_reply_calls",
+            "conversation_operations",
+            "usage_receipts",
+        ]
+        .iter()
+        .map(|table| {
+            tx.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| {
+                r.get::<_, u64>(0)
+            })
+        })
+        .collect::<Result<Vec<u64>, _>>()?
+        .into_iter()
+        .any(|count| count > EXECUTION_RETENTION_ROWS);
+        let candidates: Vec<String> = {
+            let mut statement = tx.prepare(&format!(
+                "SELECT d.id FROM runner_dispatches d
+                 WHERE d.state IN ('completed','superseded')
+                   AND d.capability_hash IS NULL
+                   AND NOT EXISTS(SELECT 1 FROM unresolved_dispatches u WHERE u.id=d.id)
+                   AND NOT EXISTS(SELECT 1 FROM owned_task_completions c
+                        WHERE c.dispatch_id=d.id AND c.state='held')
+                   AND {CARRIES_EVIDENCE}
+                 ORDER BY d.rowid LIMIT ?1"
+            ))?;
+            // The evidence clause is in the WHERE, not a post-filter: a
+            // drained dispatch (only its D-8 residue and completion-pinned
+            // receipts left) is neither a candidate nor part of the
+            // over-window corpus — without it a drained dispatch would stay
+            // a window-overflow candidate forever, `remaining` would never
+            // reach 0, and every tick would rewrite the same receipt.
+            let rows = statement
+                .query_map([batch], |row| row.get::<_, String>(0))?
+                .collect::<Result<Vec<_>, _>>()?;
+            drop(statement);
+            if backstop_over {
+                // A table over the backstop: every pinned-free settled
+                // dispatch is a candidate; the batch cap alone applies.
+                rows
+            } else {
+                // Keep the newest EXECUTION_RETENTION_DISPATCHES settled
+                // dispatches: rank candidates among the settled corpus and
+                // drop any inside the window. The rank counts only
+                // evidence-carrying dispatches (the candidate query's own
+                // predicate, aliased here), so a drained dispatch neither
+                // appears nor holds a rank slot.
+                let mut kept = Vec::with_capacity(rows.len());
+                for id in rows {
+                    let rank: u64 = tx.query_row(
+                        &format!(
+                            "SELECT COUNT(*) FROM runner_dispatches s
+                             WHERE s.state IN ('completed','superseded')
+                               AND s.capability_hash IS NULL
+                               AND s.rowid > (SELECT rowid FROM runner_dispatches WHERE id=?1)
+                               AND {}",
+                            CARRIES_EVIDENCE.replace("d.", "s.")
+                        ),
+                        [&id],
+                        |r| r.get(0),
+                    )?;
+                    if rank >= EXECUTION_RETENTION_DISPATCHES {
+                        kept.push(id);
+                    }
+                }
+                kept
+            }
+        };
+        let mut pruned = 0u64;
+        let mut oldest: Option<String> = None;
+        let mut newest: Option<String> = None;
+        for dispatch in &candidates {
+            // D-8 residue: keep the newest ONE accepted output row per
+            // (dispatch_id, fence), even inside a pruned dispatch.
+            tx.execute(
+                "DELETE FROM runner_outputs WHERE dispatch_id=?1 AND sequence NOT IN (\
+                 SELECT MAX(sequence) FROM runner_outputs o \
+                 WHERE o.dispatch_id=?1 AND o.accepted=1 GROUP BY o.fence)",
+                [dispatch],
+            )?;
+            // The composite FK from owned_task_completions makes this pin
+            // load-bearing: a receipt a completion names cannot be deleted
+            // while the completion exists.
+            tx.execute(
+                "DELETE FROM task_operation_receipts WHERE dispatch_id=?1 AND NOT EXISTS (\
+                 SELECT 1 FROM owned_task_completions c \
+                 WHERE c.dispatch_id=task_operation_receipts.dispatch_id \
+                   AND c.call_id=task_operation_receipts.call_id)",
+                [dispatch],
+            )?;
+            tx.execute(
+                "DELETE FROM graph_commands WHERE dispatch_id=?1",
+                [dispatch],
+            )?;
+            tx.execute(
+                "DELETE FROM final_reply_calls WHERE dispatch_id=?1",
+                [dispatch],
+            )?;
+            tx.execute(
+                "DELETE FROM conversation_operations WHERE dispatch_id=?1",
+                [dispatch],
+            )?;
+            // usage_receipts keys on its usage_sources row, whose
+            // UNIQUE(dispatch_id,fence) serves the lookup — the sources row
+            // is Slice 6's, this phase deletes the receipts only.
+            tx.execute(
+                "DELETE FROM usage_receipts WHERE source_id IN (\
+                 SELECT id FROM usage_sources WHERE dispatch_id=?1)",
+                [dispatch],
+            )?;
+            pruned += 1;
+            if oldest.is_none() {
+                oldest = Some(dispatch.clone());
+            }
+            newest = Some(dispatch.clone());
+        }
+        // Over-window report: evidence-carrying settled dispatches beyond
+        // the newest-500 window (the candidate predicate's own corpus — a
+        // drained dispatch is not over anything).
+        let settled: u64 = tx.query_row(
+            &format!(
+                "SELECT COUNT(*) FROM runner_dispatches d \
+                 WHERE d.state IN ('completed','superseded') \
+                   AND d.capability_hash IS NULL AND {CARRIES_EVIDENCE}"
+            ),
+            [],
+            |r| r.get(0),
+        )?;
+        let remaining = settled.saturating_sub(EXECUTION_RETENTION_DISPATCHES);
+        // One receipt row per tick when the phase did work (pruned>0 or
+        // remaining>0); a zero-work tick writes nothing. The same writer
+        // trims to RETENTION_RECEIPT_LIMIT (tick contract §3.1). The
+        // receipt's `elapsed_ms` sample is taken immediately before the
+        // commit and therefore EXCLUDES the commit's own cost and any lock
+        // wait; the batch-reduction rule consumes the OUTCOME's post-commit
+        // sample below, which includes both.
+        let elapsed_ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2);
+        if pruned > 0 || remaining > 0 {
+            tx.execute(
+                "INSERT INTO retention_prune_receipts\
+                 (phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms) \
+                 VALUES('execution',?1,?2,?3,?4,?5,?6)",
+                params![
+                    pruned,
+                    oldest.unwrap_or_default(),
+                    newest.unwrap_or_default(),
+                    remaining,
+                    elapsed_ms,
+                    super::messages::bounded(now)?
+                ],
+            )?;
+            tx.execute(
+                "DELETE FROM retention_prune_receipts WHERE sequence NOT IN (\
+                 SELECT sequence FROM retention_prune_receipts \
+                 ORDER BY sequence DESC LIMIT ?1)",
+                [super::messages::RETENTION_RECEIPT_LIMIT],
+            )?;
+        }
+        tx.commit()?;
+        Ok(ExecutionPruneOutcome {
+            pruned,
+            remaining,
+            // The OUTCOME's sample is post-commit: commit and lock-wait cost
+            // included, the number the batch-reduction rule consumes.
+            elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX / 2),
+        })
     }
 }

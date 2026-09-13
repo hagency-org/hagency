@@ -2660,6 +2660,20 @@ impl DomainStore {
         self.call(weight(&0u64)?, move |db| db.peer_retention_status())
             .await
     }
+    /// The `execution` phase of the retention tick (ADR-125 phase 3): the
+    /// per-dispatch execution corpus bound. Takes the clock and batch from
+    /// the caller — the loop owns the cadence, the caller owns the policy,
+    /// exactly the split the two phases above use.
+    pub async fn prune_execution_corpus(
+        &self,
+        now: u64,
+        batch: u64,
+    ) -> Result<crate::ExecutionPruneOutcome, Error> {
+        self.call(weight(&(&now, &batch))?, move |db| {
+            db.prune_execution_corpus(now, batch)
+        })
+        .await
+    }
     /// Open ceiling alerts for the operator read (ADR-124 slice b).
     pub async fn open_ceiling_alerts(&self, limit: u32) -> Result<Vec<CeilingAlert>, Error> {
         self.call(weight(&limit)?, move |db| db.open_ceiling_alerts(limit))
