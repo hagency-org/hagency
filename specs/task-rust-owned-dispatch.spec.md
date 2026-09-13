@@ -46,6 +46,7 @@ one bounded operation, while keeping production workspace and sandbox qualificat
 - native/hagency/src/runner.rs
 - knowledge/decisions/adr-053-native-owned-dispatch.md
 - knowledge/decisions/adr-139-native-codex-launch-surface.md
+- knowledge/decisions/adr-140-real-codex-sandbox-qualification.md
 - specs/task-rust-owned-dispatch.spec.md
 - docs/**
 
@@ -142,6 +143,35 @@ Scenario: The bare argv still yields stdio on the pinned Codex CLI
   Then stdio remains the default transport or an exact equivalent of the default
   And a pinned CLI whose default transport is no longer stdio fails the probe and reopens ADR-139
   And the captured excerpt is from codex-cli 0.154.0 captured 2026-09-13 pinned by strict version equality
+
+Scenario: A real app-server write inside the sandbox succeeds
+  Test: native_codex_real_app_server_sandbox_write_inside
+  Level: integration
+  Feature: real-codex
+  Test Double: real pinned codex app-server child on a host with the binary
+  Given the real-codex feature and HAGENCY_CODEX_QUALIFY_BIN pointing at the pinned executable
+  When the owned session requests a write inside the host workspace
+  Then the write completes and the sandboxed filesystem observes the change
+  And the operator record cites the log path pinned codex version and commit under test
+
+Scenario: A real app-server write outside the sandbox is refused
+  Test: native_codex_real_app_server_sandbox_refuses_outside
+  Level: integration
+  Feature: real-codex
+  Test Double: real pinned codex app-server child on a host with the binary
+  Given the same session and a path outside the writable workspace
+  When the owned session requests a write outside the sandbox
+  Then the request is refused with the app-server sandbox error and no file appears
+  And the refusal does not fail the task or infer a completion outcome
+
+Scenario: The typed sandbox policy echoes back through the offline peer
+  Test: native_codex_probe_sandbox_policy_echo
+  Level: integration
+  Test Double: offline app-server fixture peer replaying an initialize response
+  Given a typed initialize request with the default workspace-write and on-request approval policy
+  When the peer echoes its observed sandbox and approval configuration back
+  Then the echo matches the requested policy exactly or the mismatch is named
+  And no echo is treated as evidence of effective OS sandboxing
 
 ## Out of Scope
 
