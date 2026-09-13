@@ -195,11 +195,16 @@ async fn native_console_account_routes_carry_no_identity() {
         &format!("/console/api/accounts/{}/enrollment", active.id),
         &manager,
     )
-    .json(&json!({"model":"gpt-5.6-sol","reasoning":"medium","expected_revision":active.revision}))
+    .json(&json!({"model":"gpt-5.6-sol","reasoning":"medium","expectedRevision":active.revision}))
     .send(&service)
     .await;
-    assert_eq!(enrolled.status_code, Some(StatusCode::OK));
-    bodies.push(enrolled.take_string().await.unwrap());
+    let body = enrolled.take_string().await.unwrap_or_default();
+    assert_eq!(
+        enrolled.status_code,
+        Some(StatusCode::OK),
+        "enrollment refused: {body}"
+    );
+    bodies.push(body);
     for raw in &bodies {
         assert_no_identity(raw, &seeded);
         // Raw-byte search: sound only for the alphanumeric seat and preset.
@@ -269,11 +274,16 @@ async fn native_console_account_mutations_require_the_scope() {
     assert_eq!(row["state"], "active", "prepare advances the row");
     // Enrolment: the only body that carries an expected revision.
     let mut enrolled = command(&format!("/console/api/accounts/{id}/enrollment"), &manager)
-        .json(&json!({"model":"gpt-5.6-sol","reasoning":"medium","expected_revision":row["revision"].as_str().unwrap()}))
+        .json(&json!({"model":"gpt-5.6-sol","reasoning":"medium","expectedRevision":row["revision"].as_str().unwrap()}))
         .send(&service)
         .await;
-    assert_eq!(enrolled.status_code, Some(StatusCode::OK));
-    let retired_row: Value = serde_json::from_str(&enrolled.take_string().await.unwrap()).unwrap();
+    let enrolled_body = enrolled.take_string().await.unwrap_or_default();
+    assert_eq!(
+        enrolled.status_code,
+        Some(StatusCode::OK),
+        "enrollment refused: {enrolled_body}"
+    );
+    let retired_row: Value = serde_json::from_str(&enrolled_body).unwrap();
     let retired_row = &retired_row["account"];
     assert_eq!(retired_row["id"], id.as_str());
     // Retire: no body, no expected revision — the row leaves active.

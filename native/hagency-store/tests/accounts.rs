@@ -278,7 +278,10 @@ async fn native_console_account_wrappers_mirror_the_store() {
         .await
         .unwrap();
     assert!(matches!(materialized.state, AccountState::Active));
-    assert_ne!(materialized.id, reserved.id);
+    // Materialize returns the SAME account id it was given: the id is stable
+    // across the preparing -> active transition (the wrapper does not mint a
+    // second reservation). Only the revision moves.
+    assert_eq!(materialized.id, reserved.id);
     // The revision digests {version,id,state,ordinal,profile}, so the state
     // transition preparing -> active must move it.
     assert_ne!(materialized.revision, reserved.revision);
