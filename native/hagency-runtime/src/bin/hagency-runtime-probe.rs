@@ -11,15 +11,33 @@ use std::{
 };
 
 fn pulse(marker: &Path) -> io::Result<()> {
-    // F3: the terminal lifetime is driven by the HOST's stdin close
-    // (ownership stop), with the full budget (plus half again) as the outer
-    // ceiling — never a fraction of the budget. `harness_wait() * 4` was
-    // ten seconds of a twenty-five second operation, so a loaded host could
-    // still reach its first write after the probe had left (the hosted
-    // `Io("stdin write")` + `accepted_bytes: 0` class). Callers that hold
-    // the `StdinLock` must drop it before calling — the reading thread
-    // takes its own lock.
-    hold_until_stdin_closed(marker, operation_budget_ms())
+    // The custody lifetime: the full operation budget plus half again as the
+    // ceiling — never a fraction of the budget (`harness_wait() * 4` was ten
+    // seconds of a twenty-five second operation, so a loaded host could
+    // still reach its first write after the probe had left). But it must NOT
+    // be driven by stdin EOF: three fixtures run this path with the host's
+    // pipe ends already dropped (`drop(pipes)`) or with `Stdio::null()` (the
+    // `pulse` subcommand's children), where EOF is immediate and the test
+    // proves ownership exactly by the child SURVIVING the stream close. The
+    // ownership stop signals the process, so the signal — not the pipe —
+    // ends this hold.
+    let until = Instant::now() + Duration::from_millis(operation_ceiling_ms());
+    let mut file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(marker.with_extension("pulse"))?;
+    while Instant::now() < until {
+        file.write_all(b"x")?;
+        file.flush()?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    Ok(())
+}
+/// The outer ceiling every hold shares: the operation budget plus half
+/// again. Derived, never a literal, so a budget change rescales the fixture.
+fn operation_ceiling_ms() -> u64 {
+    let budget = operation_budget_ms();
+    budget + budget / 2
 }
 /// The operation budget the host grants, in ms. The host builders pass it on
 /// the same env channel as `HAGENCY_OFFLINE_MODE`; the 25 s default matches
@@ -111,7 +129,7 @@ fn gated_pulse(marker: &Path) -> io::Result<()> {
     // the harness's `harness_wait() * 2` shape doubled: the TEST must
     // release us, and a test that cannot observe our pulse within a fifth
     // of the whole operation is itself broken — while the LIFETIME after
-    // it is the host's close, like every terminal path.
+    // it is the shared custody ceiling, like every terminal path.
     let until = Instant::now() + harness_wait() * 2;
     while !marker.with_extension("release").is_file() {
         if Instant::now() >= until {
@@ -121,7 +139,13 @@ fn gated_pulse(marker: &Path) -> io::Result<()> {
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    hold_until_stdin_closed(marker, operation_budget_ms())
+    let until = Instant::now() + Duration::from_millis(operation_ceiling_ms());
+    while Instant::now() < until {
+        file.write_all(b"x")?;
+        file.flush()?;
+        std::thread::sleep(Duration::from_millis(20));
+    }
+    Ok(())
 }
 fn read(reader: &mut impl BufRead, marker: &Path) -> io::Result<Value> {
     let mut bytes = Vec::new();
