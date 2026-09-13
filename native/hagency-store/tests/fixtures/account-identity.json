@@ -245,5 +245,38 @@
       "canonical": "{\"deployment\":\"0123456789abcdef0123456789abcdef\",\"namespace\":{\"object\":[255,17,17,17,17,17,17,17,17,17,17,17,17,17,17,17],\"platform\":\"windows-v1\",\"volume\":\"fffffffffffffffe\"},\"source\":\"codex_default_namespace\",\"version\":\"native-namespace-v1\"}",
       "seat": "seat_native_74f1e4a79dbd5dab4fb324f6c39fc0e073dc419411abf50f5ecb37e197fe5691"
     }
-  ]
+  ],
+  "readiness": [
+    {
+      "retained": "absent",
+      "native": {
+        "mode": "unknown"
+      }
+    },
+    {
+      "retained": "unusable",
+      "native": {
+        "mode": "unknown"
+      }
+    },
+    {
+      "retained": "needs_auth",
+      "native": {
+        "mode": "unknown"
+      }
+    },
+    {
+      "retained": "ready",
+      "native": {
+        "mode": "subscription"
+      }
+    },
+    {
+      "retained": "ready",
+      "native": {
+        "mode": "api_key"
+      }
+    }
+  ],
+  "backendSha256": "c1baf3c3c0ec556422c86e6671112298d76008184ee7a18055cb951f79997c53"
 }

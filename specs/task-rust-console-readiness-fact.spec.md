@@ -87,7 +87,6 @@ Scenario: No credential byte reaches any wire or fixture
   Then no token byte and no /credential/-matching key appears in any of them
 
 Scenario: Dispatch requires an observed, unexpired account
-  Test: native_dispatch_requires_ready_account
   Level: integration
   Test Double: actual isolated files and SQLite
   Given an owned scope bound to an account whose readiness is unknown or expired

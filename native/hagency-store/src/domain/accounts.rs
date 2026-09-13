@@ -684,6 +684,248 @@ impl DomainRepository {
             .find(|choice| choice.id == id)
             .ok_or(Error::Schema)
     }
+
+    // ---- MA-S1: the observed provider-login readiness fact (ADR-114
+    // amendment, migration 028). Observation, never inference: the ONLY
+    // writer of a readiness fact is a login receipt settled by the host;
+    // no code path reads an auth file, a token file or a listing. The
+    // receipt types carry no Serialize — they are not wire types (the
+    // console DTO is MA-S3b's).
+
+    /// The read-time answer. `Unknown` covers no-fact, wrong generation,
+    /// non-`observed` outcome and expiry alike — a read never writes, never
+    /// promotes, and an expired fact stays on disk as history.
+    pub fn account_readiness(&self, id: &str, now: u64) -> Result<AccountReadiness, Error> {
+        valid_id(id)?;
+        let row: Option<(String, u64, u64)> = self
+            .db
+            .query_row(
+                "SELECT mode,observed_at_ms,expires_at_ms FROM account_login_observations \
+                 WHERE account_id=?1 AND account_generation=1 AND outcome='observed' \
+                 AND expires_at_ms>?2 \
+                 ORDER BY observed_at_ms DESC, attempt DESC LIMIT 1",
+                params![id, now],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .optional()?;
+        Ok(match row {
+            None => AccountReadiness::unknown(now),
+            Some((mode, observed_at_ms, expires_at_ms)) => AccountReadiness {
+                mode: parse_mode(&mode)?,
+                observed_at_ms,
+                expires_at_ms,
+            },
+        })
+    }
+
+    /// Allocate the one login attempt BEFORE the effect: the row is
+    /// committed before the caller spawns anything, so an interrupted or
+    /// signalled login leaves `attempting` and open-time reconciliation
+    /// settles it as `uncertain` — never as `observed` (the
+    /// SQLite-before-effect ordering `materialize_account` uses).
+    pub fn begin_account_login(&mut self, id: &str, now: u64) -> Result<LoginAttempt, Error> {
+        valid_id(id)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let state: Option<String> = tx
+            .query_row(
+                "SELECT state FROM account_login_attempts WHERE account_id=?1",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if state.as_deref() == Some("attempting") {
+            return Err(Error::State);
+        }
+        let attempt: u64 = tx.query_row(
+            "SELECT IFNULL(MAX(attempt),0)+1 FROM account_login_observations WHERE account_id=?1",
+            [id],
+            |r| r.get(0),
+        )?;
+        let deadline = now.saturating_add(LOGIN_DEADLINE_MS);
+        // OR REPLACE: reconciliation settles a stale attempt in place, so
+        // the account's single attempts row already exists — the attempt
+        // NUMBER still comes from the observations ledger above.
+        tx.execute(
+            "INSERT OR REPLACE INTO account_login_attempts(account_id,attempt,started_at_ms,deadline_ms,state,receipt_id) \
+             VALUES(?1,?2,?3,?4,'attempting',NULL)",
+            params![id, attempt, now, deadline],
+        )?;
+        tx.commit()?;
+        Ok(LoginAttempt {
+            account_id: id.to_owned(),
+            attempt,
+        })
+    }
+
+    /// Settle the allocated attempt with the parent's classification of the
+    /// child's exit (§5.3's state machine). Runs after the child exits; the
+    /// receipt row and the settle commit together.
+    pub fn settle_account_login(
+        &mut self,
+        attempt: LoginAttempt,
+        verdict: LoginVerdict,
+        now: u64,
+    ) -> Result<AccountReadiness, Error> {
+        if verdict.provider_state.len() > 512 {
+            return Err(
+                hagency_core::InvalidInput("provider classification exceeds its bound").into(),
+            );
+        }
+        if verdict.outcome == LoginOutcome::Observed
+            && verdict.mode == AccountReadinessMode::Unknown
+            && verdict.provider_state.is_empty()
+        {
+            return Err(hagency_core::InvalidInput(
+                "an observed verdict must carry a discriminating mode or classification",
+            )
+            .into());
+        }
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let open: Option<u64> = tx
+            .query_row(
+                "SELECT attempt FROM account_login_attempts WHERE account_id=?1 AND state='attempting'",
+                [&attempt.account_id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if open != Some(attempt.attempt) {
+            return Err(Error::State);
+        }
+        let id = format!("observation_{}", &random_id("")?[..32]);
+        let expires_at_ms = verdict
+            .expires_at_ms
+            .unwrap_or(now.saturating_add(DEFAULT_READINESS_TTL));
+        let mode = mode_word(verdict.mode);
+        tx.execute(
+            "INSERT INTO account_login_observations\
+             (id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome) \
+             VALUES(?1,?2,1,?3,?4,?5,?6,?7,?8)",
+            params![
+                id,
+                attempt.account_id,
+                attempt.attempt,
+                now,
+                expires_at_ms,
+                mode,
+                verdict.provider_state,
+                outcome_word(verdict.outcome)
+            ],
+        )?;
+        tx.execute(
+            "UPDATE account_login_attempts SET state='settled',receipt_id=?2 WHERE account_id=?1",
+            params![attempt.account_id, id],
+        )?;
+        tx.commit()?;
+        Ok(AccountReadiness {
+            mode: verdict.mode,
+            observed_at_ms: now,
+            expires_at_ms,
+        })
+    }
+}
+
+/// The bounded default lifetime of a fact whose provider reports no expiry.
+/// A product number, named here because the design deliberately left it to
+/// the implementing brief: 24 hours, marked `default-ttl`-shaped by the
+/// caller's classification word.
+pub const DEFAULT_READINESS_TTL: u64 = 24 * 60 * 60 * 1000;
+/// The attempt window the host allocates when it begins a login.
+pub const LOGIN_DEADLINE_MS: u64 = 10 * 60 * 1000;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AccountReadinessMode {
+    Subscription,
+    ApiKey,
+    Unknown,
+}
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountReadiness {
+    pub mode: AccountReadinessMode,
+    pub observed_at_ms: u64,
+    pub expires_at_ms: u64,
+}
+impl AccountReadiness {
+    fn unknown(now: u64) -> Self {
+        Self {
+            mode: AccountReadinessMode::Unknown,
+            observed_at_ms: now,
+            expires_at_ms: now,
+        }
+    }
+}
+/// The host-side attempt handle. Not a wire type (no Serialize): it exists
+/// only between `begin_account_login` and `settle_account_login`.
+#[derive(Debug, Clone)]
+pub struct LoginAttempt {
+    account_id: String,
+    attempt: u64,
+}
+/// The parent's classification of the login child's exit, from a closed
+/// vocabulary — never the provider's verbatim words, never a credential.
+#[derive(Debug, Clone)]
+pub struct LoginVerdict {
+    pub mode: AccountReadinessMode,
+    pub provider_state: String,
+    pub outcome: LoginOutcome,
+    pub expires_at_ms: Option<u64>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LoginOutcome {
+    Observed,
+    Refused,
+    Uncertain,
+}
+fn mode_word(mode: AccountReadinessMode) -> &'static str {
+    match mode {
+        AccountReadinessMode::Subscription => "subscription",
+        AccountReadinessMode::ApiKey => "api_key",
+        AccountReadinessMode::Unknown => "unknown",
+    }
+}
+fn parse_mode(word: &str) -> Result<AccountReadinessMode, Error> {
+    Ok(match word {
+        "subscription" => AccountReadinessMode::Subscription,
+        "api_key" => AccountReadinessMode::ApiKey,
+        _ => AccountReadinessMode::Unknown,
+    })
+}
+fn outcome_word(outcome: LoginOutcome) -> &'static str {
+    match outcome {
+        LoginOutcome::Observed => "observed",
+        LoginOutcome::Refused => "refused",
+        LoginOutcome::Uncertain => "uncertain",
+    }
+}
+/// Open-time reconciliation (§3): the previous process is gone, so any
+/// attempt still `attempting` did not settle — it becomes an `uncertain`
+/// fact and the attempt is settled. `uncertain` is never promoted by a
+/// later read; only a new login receipt can supersede it.
+pub(super) fn reconcile_login_attempts(
+    tx: &rusqlite::Transaction<'_>,
+    now: u64,
+) -> Result<(), Error> {
+    let stale: Vec<(String, u64)> = tx
+        .prepare("SELECT account_id,attempt FROM account_login_attempts WHERE state='attempting'")?
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))?
+        .collect::<Result<Vec<_>, _>>()?;
+    for (account_id, attempt) in stale {
+        let id = format!("observation_{}", &random_id("")?[..32]);
+        tx.execute(
+            "INSERT INTO account_login_observations\
+             (id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome) \
+             VALUES(?1,?2,1,?3,?4,?5,'unknown','interrupted','uncertain')",
+            params![id, account_id, attempt, now, now.saturating_add(DEFAULT_READINESS_TTL)],
+        )?;
+        tx.execute(
+            "UPDATE account_login_attempts SET state='settled',receipt_id=?2 WHERE account_id=?1",
+            params![account_id, id],
+        )?;
+    }
+    Ok(())
 }
 /// Separate trusted-host enrollment authority. Existing configuration/publication
 /// grants cannot construct this consuming command.

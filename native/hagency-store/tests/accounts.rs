@@ -303,3 +303,264 @@ async fn native_console_account_wrappers_mirror_the_store() {
     );
     store.shutdown().await.unwrap();
 }
+
+// ---- MA-S1: the observed provider-login readiness fact (migration 028).
+
+/// Settle one observed login through the store's own receipt path.
+fn login_observed(
+    db: &mut DomainRepository,
+    id: &str,
+    mode: AccountReadinessMode,
+    expires_at_ms: Option<u64>,
+    now: u64,
+) -> AccountReadiness {
+    let attempt = db.begin_account_login(id, now).unwrap();
+    db.settle_account_login(
+        attempt,
+        LoginVerdict {
+            mode,
+            provider_state: match mode {
+                AccountReadinessMode::Subscription => "logged-in-subscription".into(),
+                AccountReadinessMode::ApiKey => "logged-in-api-key".into(),
+                AccountReadinessMode::Unknown => "not-logged-in".into(),
+            },
+            outcome: LoginOutcome::Observed,
+            expires_at_ms,
+        },
+        now + 100,
+    )
+    .unwrap()
+}
+
+#[test]
+fn native_account_login_readiness() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let choice = prepared(&mut db);
+    // No observation: the answer is unknown — never a filesystem-derived
+    // guess (D1: directory existence establishes nothing).
+    assert_eq!(
+        db.account_readiness(&choice.id, 2000).unwrap().mode,
+        AccountReadinessMode::Unknown
+    );
+    // The only writer of a readiness fact is a settled login receipt.
+    let settled = login_observed(
+        &mut db,
+        &choice.id,
+        AccountReadinessMode::Subscription,
+        Some(9000),
+        2100,
+    );
+    assert_eq!(settled.mode, AccountReadinessMode::Subscription);
+    let after = db.account_readiness(&choice.id, 2300).unwrap();
+    assert_eq!(after.mode, AccountReadinessMode::Subscription);
+    assert_eq!(after.observed_at_ms, 2200);
+    assert_eq!(after.expires_at_ms, 9000);
+    // A refused login is a fact too — but not a usable one.
+    let attempt = db.begin_account_login(&choice.id, 2400).unwrap();
+    db.settle_account_login(
+        attempt,
+        LoginVerdict {
+            mode: AccountReadinessMode::Unknown,
+            provider_state: "plan-refused".into(),
+            outcome: LoginOutcome::Refused,
+            expires_at_ms: None,
+        },
+        2500,
+    )
+    .unwrap();
+    assert_eq!(
+        db.account_readiness(&choice.id, 2600).unwrap().mode,
+        AccountReadinessMode::Unknown,
+        "a refused login never reads as ready"
+    );
+}
+
+#[test]
+fn native_account_login_interrupted_is_uncertain() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let choice = prepared(&mut db);
+    // The attempt is allocated and committed; the process dies before the
+    // child settles (the SQLite-before-effect ordering materialise uses).
+    let _ = db.begin_account_login(&choice.id, 2100).unwrap();
+    drop(db);
+    let mut db = DomainRepository::open(&state).unwrap();
+    // Reconciliation settled the attempt as `uncertain`...
+    let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let (attempt_state, outcome): (String, String) = sql
+        .query_row(
+            "SELECT a.state,o.outcome FROM account_login_attempts a \
+             JOIN account_login_observations o ON o.id=a.receipt_id WHERE a.account_id=?1",
+            [&choice.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (attempt_state.as_str(), outcome.as_str()),
+        ("settled", "uncertain")
+    );
+    // ... and `uncertain` is never usable: the read answers unknown.
+    assert_eq!(
+        db.account_readiness(&choice.id, 2200).unwrap().mode,
+        AccountReadinessMode::Unknown
+    );
+    // A later read never promotes it; only a new login receipt can.
+    assert_eq!(
+        db.account_readiness(&choice.id, 2300).unwrap().mode,
+        AccountReadinessMode::Unknown
+    );
+    // The interrupted attempt does not block the next login.
+    let settled = login_observed(
+        &mut db,
+        &choice.id,
+        AccountReadinessMode::ApiKey,
+        None,
+        2400,
+    );
+    assert_eq!(settled.mode, AccountReadinessMode::ApiKey);
+}
+
+#[test]
+fn native_account_readiness_expires_to_unknown() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let choice = prepared(&mut db);
+    login_observed(
+        &mut db,
+        &choice.id,
+        AccountReadinessMode::ApiKey,
+        Some(5000),
+        2100,
+    );
+    assert_eq!(
+        db.account_readiness(&choice.id, 4999).unwrap().mode,
+        AccountReadinessMode::ApiKey
+    );
+    // Expiry is a read-time test: at the boundary the answer degrades.
+    assert_eq!(
+        db.account_readiness(&choice.id, 5000).unwrap().mode,
+        AccountReadinessMode::Unknown
+    );
+    // ... and the expired row stays on disk as history: a read never
+    // writes, never promotes, never deletes.
+    let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let (outcome, expires): (String, u64) = sql
+        .query_row(
+            "SELECT outcome,expires_at_ms FROM account_login_observations WHERE account_id=?1",
+            [&choice.id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((outcome.as_str(), expires), ("observed", 5000));
+}
+
+#[test]
+fn native_account_login_records_no_credential_byte() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = DomainRepository::open(&state).unwrap();
+    let choice = prepared(&mut db);
+    // The provider's own output carried a token-shaped string; the parent
+    // classifies it into the closed vocabulary and nothing else crosses.
+    // The token itself never enters any argument the store accepts.
+    const TOKEN: &str = "sk-live-0123456789abcdef0123456789abcdef";
+    login_observed(
+        &mut db,
+        &choice.id,
+        AccountReadinessMode::ApiKey,
+        Some(9000),
+        2100,
+    );
+    let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    for table in ["account_login_observations", "account_login_attempts"] {
+        // No COLUMN name matches /credential/ (ADR-014:411's guard).
+        let mut names = sql
+            .prepare(&format!("SELECT name FROM pragma_table_info('{table}')"))
+            .unwrap();
+        let columns: Vec<String> = names
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert!(
+            columns.iter().all(|name| !name.contains("credential")),
+            "no key matches /credential/ on {table}"
+        );
+        // No CELL carries the token bytes.
+        for column in &columns {
+            let mut statement = sql
+                .prepare(&format!("SELECT {column} FROM {table}"))
+                .unwrap();
+            let cells: Vec<Option<String>> = statement
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            for cell in cells.into_iter().flatten() {
+                assert!(
+                    !cell.contains(TOKEN),
+                    "a credential byte reached {table}.{column}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_account_readiness_matches_retained_detect() {
+    // The retained oracle (native/scripts/account-vectors.mjs): the retained
+    // probeFramework state machine is mirrored with its citations and the
+    // fixture records, per vector, the retained verdict and the native
+    // answer for the same tree. The agreement being pinned: retained
+    // 'ready' (a usable namespace) corresponds to an OBSERVED native fact
+    // whose mode discriminates subscription from api_key; every other
+    // retained state corresponds to native unknown — the retained caveat
+    // (backend-v2.js:13541) says existence is not a session, and native
+    // refuses the inference the other way too.
+    let fixture: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/account-identity.json")).unwrap();
+    let vectors = fixture["readiness"].as_array().unwrap();
+    assert!(
+        vectors.len() >= 5,
+        "the oracle covers every retained state and both modes"
+    );
+    for vector in vectors {
+        let retained = vector["retained"].as_str().unwrap();
+        let expected: &str = vector["native"]["mode"].as_str().unwrap();
+        let root = tempfile::tempdir().unwrap();
+        let state = root.path().join("state");
+        let mut db = DomainRepository::open(&state).unwrap();
+        let choice = prepared(&mut db);
+        if retained == "ready" {
+            // The vector's mode is the login receipt's classification.
+            let mode = match expected {
+                "subscription" => AccountReadinessMode::Subscription,
+                "api_key" => AccountReadinessMode::ApiKey,
+                other => {
+                    panic!("retained 'ready' must pair with a discriminating mode, got {other}")
+                }
+            };
+            login_observed(&mut db, &choice.id, mode, Some(9000), 2100);
+        }
+        let answer = db.account_readiness(&choice.id, 3000).unwrap();
+        let actual = match answer.mode {
+            AccountReadinessMode::Subscription => "subscription",
+            AccountReadinessMode::ApiKey => "api_key",
+            AccountReadinessMode::Unknown => "unknown",
+        };
+        assert_eq!(
+            actual, expected,
+            "native answer for retained state {retained}"
+        );
+        // The agreement itself, both directions.
+        assert_eq!(
+            retained == "ready",
+            answer.mode != AccountReadinessMode::Unknown,
+            "retained {retained} and the native answer disagree"
+        );
+    }
+}
