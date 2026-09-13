@@ -51,7 +51,7 @@ that still carries custody is ever a candidate.
 ## Boundaries
 
 ### Allowed Changes
-- native/hagency-store/src/migrations/<head-of-slice-1>-engagement-retention.sql
+- native/hagency-store/src/migrations/NNN-engagement-retention.sql (NNN is allocated from the backlog's migration ledger, section 0.2, when the slice is implemented; it is not the Slice 1 head)
 - native/hagency-store/src/domain.rs
 - native/hagency-store/src/lib.rs
 - native/hagency-store/tests/retention_engagements.rs
