@@ -60,3 +60,8 @@ separate actual client, encrypted delivery and executable integration gates.
 Two separately awaited reads lose coherent scope. An ordinary Agent notice
 would give the approval bot invented task/session authority. A public DTO would
 leak owner room and operation details. None is used.
+
+*Cross-reference (PC-C1): the card send's fail-closed denial and the redacted
+public status notice are ADR-137's (`adr-137-private-approval-send-fail-closed.md`);
+this record's card boundary and no-packet-reconstruction rule govern that send
+unchanged.*

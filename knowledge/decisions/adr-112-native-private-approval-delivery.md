@@ -96,3 +96,7 @@ one-shot `ApprovalRequests` from its single `&mut` window, and the pump running
 on the service runtime owns the receiver; close observes the bounded
 original-owner semantics (`OutcomeUnknown` retained) beside the ordinary
 collector.
+
+*Cross-reference (PC-C1): a failed private send denies the pending request
+with a named reason (D-PC-FC, in force) — ADR-137's record; this record's
+`Accepted` semantics and custody stages are unchanged by it.*
