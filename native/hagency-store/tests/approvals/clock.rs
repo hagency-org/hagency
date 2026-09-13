@@ -221,28 +221,14 @@ async fn native_approval_consumption_clock_after_lock() {
                     "applying"
                 );
             }
-            // The consume-after-lock word follows the action's authority state,
-            // not a blanket settled-state word. For `decided_request` and
-            // `pending_request` the row reached `applying` (asserted above), so
-            // the state machine names the settled-state word `already_consumed`
-            // (spec: "the consume refuses already_consumed / not_consumable
-            // instead of the generic authority word"). For `capability` the
-            // dispatch capability expired at :172-174, so the authority check
-            // refuses first with `RunnerAuthority` before the state machine ever
-            // sees the applying row.
-            let expected = if action == "capability" {
-                "RunnerAuthority"
-            } else {
-                "AlreadyConsumed"
-            };
-            let result = store.consume_owner_approval(cap, pending.id).await;
-            let got = match &result {
-                Err(Error::AlreadyConsumed) => "AlreadyConsumed",
-                Err(Error::RunnerAuthority) => "RunnerAuthority",
-                Err(_) => "other_error",
-                Ok(_) => "Ok(application)",
-            };
-            assert_eq!(got, expected, "{action}: consume-after-lock word mismatch");
+            // The row reached `applying` (asserted above): the design names the
+            // settled-state word `already_consumed`, not the generic authority
+            // refusal (spec: "the consume refuses already_consumed / not_consumable
+            // instead of the generic authority word").
+            assert!(matches!(
+                store.consume_owner_approval(cap, pending.id).await,
+                Err(Error::AlreadyConsumed)
+            ));
             store.shutdown().await.unwrap();
             break;
         }
