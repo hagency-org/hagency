@@ -20,6 +20,7 @@ permissions carry the controls; a read-only session renders none enabled.
 
 ### Must
 - Mint `Scope::AgentLifecycle` only through the operator-authenticated `/api/native/v1/console/access` under ADR-107's issuance rules verbatim: one issuance per second, one outstanding ticket at a time, replacement invalidating the preceding, exchanged before the next is minted; the CLI flag `--manage-agent-lifecycle` is mutually exclusive with both existing management flags, declared and asserted pairwise.
+- Add exactly one new public store surface — `stop_dispatch_for_agent` on `DomainStore`/`DomainRepository` (`domain_worker.rs` wrapping `conversation_lifecycle.rs`): the read-plus-stop entry that resolves the named engagement's dispatch (live set or unsettled `dispatch_stops` row) and fences it. It is the **only** store surface this slice adds; `fence_dispatch` stays `pub(super)`, and `settle_conversation_stop` remains uncallable from runtime-facing commands.
 - Scope the grant to a session's `Grant` — the existing caps govern (at most 4 concurrent sessions, absolute 15-minute lifetime, no rolling expiry); the scope adds no longer-lived credential.
 - Make start an at-most-once ensure: refused with a named code when the agent is already live, spawning nothing (ADR-053's fixed launcher rule).
 - Make stop idempotent through the resolution predicate — live set (`queued`,`leased`,`started`,`parked`) or an unsettled `dispatch_stops` row, newest by id — fencing only the resolved dispatch, never `retire`'s session cascade, and serving the five-key wire object (`stopped`, `stop_pending`, `dispatch_id`, `fence`, `state`) with refusals in the console's existing `{"ok":false,"code":…}` envelope.
@@ -40,6 +41,8 @@ permissions carry the controls; a read-only session renders none enabled.
 - native/hagency/src/main.rs
 - native/hagency/src/console/authority.rs
 - native/hagency/src/console/agents.rs
+- native/hagency-store/src/domain_worker.rs
+- native/hagency-store/src/domain/conversation_lifecycle.rs
 - mockup/app/agents/page.jsx
 - mockup/lib/i18n.js
 - native/hagency/tests/console/agents.rs
@@ -47,12 +50,12 @@ permissions carry the controls; a read-only session renders none enabled.
 - native/hagency/tests/cli.rs
 - native/hagency/tests/console/browser.rs
 - specs/task-rust-console-agent-lifecycle.spec.md
-- knowledge/decisions/adr-130-native-agent-lifecycle-stop.md
+- knowledge/decisions/adr-130-native-agent-lifecycle-authority.md
 - docs/progress.md
 
 ### Forbidden
 - Live services, live agents, credentials and deployed state.
-- native/hagency-store/src/domain/conversation_lifecycle.rs (the fence kernel and settlement stay the store's own); native/hagency/src/console/resources.rs; mockup/app/api/**.
+- native/hagency/src/console/resources.rs; mockup/app/api/**; every other hagency-store file (the two licensed store paths carry exactly one new public entry — `stop_dispatch_for_agent`, F1's fix — and the fence kernel and settlement stay the store's own).
 
 ## Acceptance Criteria
 
@@ -104,6 +107,21 @@ Scenario: The roster page renders lifecycle controls only from served permission
   Then the read-only roster shows no enabled lifecycle control
   And the scoped roster shows the controls enabled from the served permissions booleans
   And no external request leaves the page
+
+## Decisions
+
+**Stop's widening to `retire`'s session cascade is a later slice.** The route
+fences only the resolved dispatch — the one the named engagement resolves —
+and does not reuse `retire`'s session-keyed walk, which also closes child
+conversations (`conversation_lifecycle.rs:125-150`). Widening is a deliberate
+future decision with its own review, not a default; the cost (sibling
+dispatches keep running) is accepted now.
+
+**One new public store entry, named.** `stop_dispatch_for_agent`
+(`DomainStore` wrapper in `domain_worker.rs`, over the domain file) is the
+slice's entire store surface (F1's fix): the selector's resolution and the
+fence travel through it, and nothing else on the store becomes reachable from
+the console crate.
 
 ## Out of Scope
 
