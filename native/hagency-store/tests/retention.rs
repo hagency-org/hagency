@@ -513,10 +513,12 @@ async fn native_retained_corpus_parity_with_javascript() {
     let fixture: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/corpus-retention-vectors.json")).unwrap();
     let vectors = &fixture["vectors"];
-    // (d) (wiring review, O-1): the fixture's sha pin is asserted HERE, so a
-    // drifted backend-v2.js fails the Rust test even before CI's
-    // `corpus-retention-vectors.mjs --check` step runs. The digest matches
-    // the oracle's `sha()`: utf-8 bytes, CRLF folded to LF.
+    // The fixture's sha pin (provenance, not enforcement): it records the
+    // retained backend-v2.js bytes the vectors were derived against — the
+    // file the port never edits. The digest matches the oracle's `sha()`:
+    // utf-8 bytes, CRLF folded to LF. A mismatch means the fixture was
+    // regenerated against a different retained file than this tree carries
+    // (e.g. a merge moved one side); regenerate the fixture to re-derive.
     {
         use sha2::{Digest, Sha256};
         let source =
@@ -528,8 +530,9 @@ async fn native_retained_corpus_parity_with_javascript() {
         assert_eq!(
             pinned,
             &format!("{digest:x}"),
-            "the fixture's backendSha256 pin is stale: regenerate with \
-             `node native/scripts/corpus-retention-vectors.mjs`"
+            "the fixture's backendSha256 provenance pin does not match the \
+             retained backend-v2.js on this tree; regenerate with `node \
+             native/scripts/corpus-retention-vectors.mjs`"
         );
     }
     let limit = vectors["observedLimit"].as_u64().unwrap();

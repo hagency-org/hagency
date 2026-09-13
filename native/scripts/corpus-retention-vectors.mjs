@@ -1,121 +1,53 @@
-// Corpus retention oracle (ADR-125): the retained JavaScript computes the
-// shared subset of the prune plan; the Rust vector fixture records it.
+// Corpus retention vectors (ADR-125). Slice 1 briefly added test-only
+// export hooks to backend-v2.js so this oracle could EXECUTE the retained
+// planMessagePrune; that broke the rule the hosted run enforced
+// (ceiling-vectors.mjs pins backend-v2.js's sha — the port never edits the
+// retained file, byte for byte). Restored: this script does not import the
+// retained backend and needs no hooks from it.
 //
-// THE ORACLE'S HONEST LIMIT (F5): the retained predicate has ONE keep-set —
-// unread agents (`collectUnreadRetainedMessageIds`) plus router-uncopied
-// messages. Native splits that into P2 (per-session unprocessed) and P3'
-// (claimed-but-unprocessed), and adds P4..P10 (dispatch custody, unknown
-// fate, open tasks, attachments, provenance-moves-with-the-message), which
-// have NO retained counterpart at all. So this vector pins only the SHARED
-// subset — recency vs inbox membership, and archive membership (A2: the
-// retained `archivedMessageExists` vs the native archive read agree on
-// "already durably recorded"). It can pass while P2..P10 diverge; those are
-// pinned by the native store tests (native/hagency-store/tests/retention.rs),
-// the same split the ceiling slice used.
+// WHERE THE VECTORS COME FROM: the retained code HAS corpus retention
+// (backend-v2.js:3367-3386 planMessagePrune, :3325-3341 the keep-set
+// collectors), but it is not exported, and the port may not edit the file
+// to export it. So the arithmetic below MIRRORS the retained lines with
+// their citations — the same convention ceiling-vectors.mjs uses at its
+// lines 73 and 136 — derived from ADR-125's stated rules:
 //
-// `backend-v2.js` needs exactly one external package at module-eval time
-// (`express`; every other import is a Node builtin), and it is used only to
-// build the route table — no server runs on import (startServer fires only
-// when the module is the entry point). This sandbox has no node_modules and
-// no network, so the ONE bare specifier is resolved to a stub through
-// `node:module`'s `registerHooks` before the dynamic import. The stub only
-// answers route registration; nothing it registers ever executes. The prune
-// planner, the unread index and the retention hooks are the real module's
-// own code — the arithmetic under test is not stubbed.
+//   backend-v2.js:3367-3386, mirrored:
+//     if (list.length <= MESSAGE_RETENTION_LIMIT) -> retained=all, pruned=[];
+//     retainFrom = max(0, list.length - MESSAGE_RETENTION_LIMIT);
+//     keep = i >= retainFrom || unreadKeepIds.has(id) || routerKeepIds.has(id);
+//   backend-v2.js:236, mirrored:
+//     MESSAGE_RETENTION_LIMIT = max(100, parseInt(env) || 5000);
 //
-// The seed is written to the module's own persisted store BEFORE import, and
-// the corpus size depends on the retention limit, so the limit is PINNED via
-// `AGENT_MESSAGE_RETENTION_LIMIT` before import (not merely observed): the
-// vector's expected counts are exact, and the observed limit is asserted
-// equal to the pinned one so a drifted env cannot pass unnoticed. The
-// keep-set hook is read in the same step as `planMessagePrune` with no await
-// between (both depend on live cursors/inboxes). The backend source is
-// sha-pinned so a drifted oracle fails --check instead of re-blessing
-// different arithmetic.
-import { readFileSync, writeFileSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+// The keep-set inputs (unread agents' inboxes, router-uncopied thread
+// sources) are SEEDED directly — the seed IS the keep-set, so the mirrored
+// planner computes the partition over it exactly as the retained planner
+// would over its own globals. Native's extra clauses (P2..P10) have no
+// retained counterpart and are pinned by the store tests, not here — the
+// same honest split as before.
+//
+// PROVENANCE PIN: backendSha256 records the retained file's sha at the
+// time the vectors were derived, so a reviewer can tell WHICH retained
+// bytes the mirror was checked against. It is not drift enforcement: the
+// retained file may legitimately change without these vectors changing,
+// because the vectors derive from the mirrored rules (re-checked by
+// review), not from executing the file. The Rust parity test asserts this
+// same value.
+import { readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { registerHooks } from 'node:module';
-import os from 'node:os';
-import path from 'node:path';
 
 const sha = (p) => createHash('sha256').update(readFileSync(new URL(p, import.meta.url), 'utf-8').replaceAll('\r\n', '\n')).digest('hex');
 const backendSha256 = sha('../../backend-v2.js');
 
-// The pinned limit: small enough that the vector stays cheap, above the
-// floor the env guard enforces (`Math.max(100, parseInt(env) || 5000)`).
+// The pinned limit (backend-v2.js:236's floor): small enough that the
+// vector stays cheap, above the floor the env guard enforces.
 const LIMIT = 120;
 
-// The full bare-specifier stub set. `backend-v2.js` and its relative import
-// graph pull nine external packages at module-eval time (express, zod,
-// another-json, better-sqlite3, markdown-it, sanitize-html, the Matrix
-// crypto SDK and the two MCP SDK entry points); every other import is a Node
-// builtin. None of the nine is on the prune path — they are the HTTP layer,
-// the MCP server, the fleet sqlite cache, markdown rendering and attachment
-// crypto — so stubbing them cannot change `planMessagePrune`, the unread
-// index or the cursors. Defaults are callables; `z` returns itself from any
-// access or call so schema builders chain.
-const callable = () => {
-  const fn = () => callable();
-  return new Proxy(fn, {
-    get: (target, key) => {
-      if (key === Symbol.toPrimitive) return () => 'stub';
-      return callable();
-    },
-    apply: () => callable(),
-  });
-};
-const stubSource = (named) => `
-  const express = () => {
-    const app = {};
-    for (const method of ['use','set','get','post','put','delete','patch','all','listen','param','engine']) {
-      app[method] = () => app;
-    }
-    return app;
-  };
-  express.json = () => (req, res, next) => next();
-  express.urlencoded = () => (req, res, next) => next();
-  express.static = () => (req, res, next) => next();
-  const stubDefault = ${named.has('__defaultExpress') ? 'express' : 'undefined'};
-  ${[...named].filter((n) => n !== '__defaultExpress').map((n) => `export const ${n} = callable();`).join('\n')}
-  export default stubDefault === undefined ? callable() : stubDefault;
-`;
-const namedBySpecifier = new Map([
-  ['express', new Set(['__defaultExpress'])],
-  ['@matrix-org/matrix-sdk-crypto-nodejs', new Set(['Attachment', 'EncryptedAttachment'])],
-  ['@modelcontextprotocol/sdk/server/mcp.js', new Set(['McpServer'])],
-  ['@modelcontextprotocol/sdk/server/stdio.js', new Set(['StdioServerTransport'])],
-  ['zod', new Set(['z'])],
-  ['another-json', new Set([])],
-  ['better-sqlite3', new Set([])],
-  ['markdown-it', new Set([])],
-  ['sanitize-html', new Set([])],
-]);
-const stubUrls = new Map(
-  [...namedBySpecifier].map(([specifier, named]) => [
-    specifier,
-    `data:text/javascript;charset=utf-8,${encodeURIComponent(
-      `const callable = ${callable.toString()};${stubSource(named)}`,
-    )}`,
-  ]),
-);
-// One-shot process: the hook lives and dies with this script, so there is no
-// unregister step (this Node build's registerHooks returns no unregistrar).
-registerHooks({
-  resolve(specifier, context, nextResolve) {
-    const stub = stubUrls.get(specifier);
-    if (stub) return { url: stub, shortCircuit: true };
-    return nextResolve(specifier, context);
-  },
-});
-
-// Seed shape: two agent records; the corpus is seeded through the module's
-// own persisted store so its `messages` global IS the corpus — the keep-set
-// hook reads module globals, not the planner's `rows` argument, so seeding
-// disk (not just the argument) is load-bearing. Old rows carry no
-// `to`/`group`/`mentions`, so the unread index never sees them and no
-// keep-set member holds them (the pruned half); newer rows are routed to a
-// live agent (unread while its cursor sits at 0), and one group-mention row
-// rides at the tail.
+// Seed shape, unchanged from the executable-oracle era: two agent records;
+// 40 old rows no unread inbox ever holds (the pruned half), LIMIT rows
+// routed to a live agent with its cursor at 0 (unread — the keep-set),
+// and one group-mention row at the tail. The seed IS the keep-set input
+// the retained collectors would read from their globals.
 const T0 = 1_750_000_000_000;
 const OLD_UNREFERENCED = 40;
 const message = (i, extra = {}) => ({
@@ -130,52 +62,46 @@ for (let i = 0; i < OLD_UNREFERENCED; i += 1) seed.push(message(i));
 for (let i = 0; i < LIMIT; i += 1) seed.push(message(OLD_UNREFERENCED + i, { to: 'alpha' }));
 seed.push(message(OLD_UNREFERENCED + LIMIT, { group: 'group_x', mentions: ['beta'] }));
 
-let backend;
-{
-  const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'corpus-retention-oracle-'));
-  mkdirSync(path.join(runtimeDir, 'data'), { recursive: true });
-  const writeJson = (name, value) =>
-    writeFileSync(path.join(runtimeDir, 'data', name), JSON.stringify(value, null, 2));
-  writeJson('agents.json', {
-    alpha: { name: 'alpha', kind: 'agent', framework: 'codex' },
-    beta: { name: 'beta', kind: 'agent', framework: 'codex' },
-  });
-  writeJson('cursors.json', {});
-  writeJson('messages.json', seed);
-  writeJson('groups.json', {});
-  writeJson('servers.json', {});
-  writeJson('agent_runtime.json', {});
-  writeJson('alerts.json', []);
-  writeJson('framework-presets.json', []);
-  writeJson('supervisor_state.json', { agents: {}, selectionCursor: 0 });
-  writeJson('local_activity_sweep.json', { selectionCursor: 0 });
-  writeFileSync(path.join(runtimeDir, 'data', '.msg_counter'), '0');
+// The keep-set the seed implies (the retained collectors' semantics,
+// backend-v2.js:3325-3333 mirrored): every message routed `to` an agent
+// whose cursor has not passed it is unread; the group-mention row rides
+// the tail inside the recency window anyway; router-uncopied is empty
+// (no thread-session sources in this seed).
+const unreadKeepIds = new Set(
+  seed.filter((m) => typeof m.to === 'string' && m.to === 'alpha').map((m) => m.id),
+);
+const routerKeepIds = new Set();
 
-  process.env.AGENT_MESSAGE_RETENTION_LIMIT = String(LIMIT);
-  process.env.HAGENCY_RUNTIME_DIR = runtimeDir;
-  backend = await import(`../../backend-v2.js?oracle=${Date.now()}-${Math.random()}`);
-  rmSync(runtimeDir, { recursive: true, force: true });
-}
-
-const {
-  planMessagePruneForTest: planMessagePrune,
-  messageRetentionLimitForTest,
-  retentionKeepIdsForTest,
-} = backend.__backendV2TestInternals;
-if (typeof planMessagePrune !== 'function' || typeof retentionKeepIdsForTest !== 'function') {
-  throw new Error('backend-v2 test internals are missing the retention hooks');
-}
-const limit = messageRetentionLimitForTest;
-if (!Number.isInteger(limit) || limit < 100) throw new Error(`observed limit is not floor-bounded: ${limit}`);
-if (limit !== LIMIT) throw new Error(`observed limit ${limit} != pinned ${LIMIT}: the seed no longer matches the env guard`);
+// The mirrored planner (backend-v2.js:3367-3386). `seed` arrives in
+// insertion order, which IS ts order (monotone ts), matching the retained
+// caller's `messages` array.
+const planMessagePrune = (rows) => {
+  const list = Array.isArray(rows) ? rows : [];
+  if (list.length <= LIMIT) {
+    return { retained: list, pruned: [] };
+  }
+  const retainFrom = Math.max(0, list.length - LIMIT);
+  const retained = [];
+  const pruned = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const msg = list[i];
+    const keep = i >= retainFrom || (typeof msg?.id === 'string'
+      && (unreadKeepIds.has(msg.id) || routerKeepIds.has(msg.id)));
+    if (keep) retained.push(msg);
+    else pruned.push(msg);
+  }
+  return { retained, pruned };
+};
 
 const plan = planMessagePrune(seed);
-const keepIds = retentionKeepIdsForTest();
 
 const vectors = {
   backendSha256,
-  observedLimit: limit,
-  keep: keepIds,
+  observedLimit: LIMIT,
+  keep: {
+    unread: [...unreadKeepIds],
+    routerUncopied: [...routerKeepIds],
+  },
   total: seed.length,
   prunedCount: plan.pruned.length,
   retainedCount: plan.retained.length,
@@ -203,5 +129,5 @@ if (process.argv.includes('--check')) {
   console.log('corpus-retention-vectors.json matches the oracle');
 } else {
   writeFileSync(fixturePath, fixture);
-  console.log(`wrote ${fixturePath.pathname} (limit=${limit}, pruned=${vectors.prunedCount})`);
+  console.log(`wrote ${fixturePath.pathname} (limit=${LIMIT}, pruned=${vectors.prunedCount})`);
 }
