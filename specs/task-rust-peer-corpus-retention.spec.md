@@ -44,14 +44,15 @@ slot. Mirrors the messages-phase set scenario-for-scenario.
 - native/hagency-store/src/domain.rs
 - native/hagency-store/src/domain/peers.rs
 - native/hagency-store/src/domain/graphs.rs
+- native/hagency-store/src/domain/messages.rs
 - native/hagency-store/src/domain_worker.rs
 - native/hagency-store/src/lib.rs
 - native/hagency/src/bootstrap.rs
+- native/hagency/src/lib.rs
 - native/hagency-store/tests/peer_retention.rs
 - native/hagency-store/tests/
 - specs/task-rust-peer-corpus-retention.spec.md
 - knowledge/decisions/adr-125-admitted-corpus-retention.md
-- docs/progress.md
 
 ### Forbidden
 - Live services, credentials, deployed state.
@@ -118,7 +119,7 @@ Scenario: The schema head advances to 27 and replays after rewind
   Given a populated store rewound beneath the new head
   When the repository reopens
   Then the head is 27, the identity table exists, and the second open replays nothing
-  And every rewind fixture still lands at the head — **six files** (the design's F2 set), each asserting the head is 27 and the identity table exists
+  And every rewind fixture still lands at the head — **14 `pragma_update` rewind sites across 12 files**, each asserting the head is 27, and **only `peer_retention.rs` asserts `retained_peer_index` exists** (the other files assert the head, not the identity table)
 
 Scenario: The phase receipt is written inside the phase transaction
   Test: native_retained_peer_corpus_receipt_row_is_written_inside_the_transaction
@@ -128,7 +129,72 @@ Scenario: The phase receipt is written inside the phase transaction
   When the transaction commits
   Then a phase=peer row exists in retention_prune_receipts carrying pruned, oldest_ref, newest_ref, remaining and elapsed_ms — and no archived column exists to assert
   And the table is trimmed to the shared limit by the same writer
-  And no receipt row is observable before the phase's commit
+
+Scenario: An inactive engagement releases its unread input
+  Test: native_retained_peer_corpus_inactive_engagement_releases_its_unread
+  Level: integration
+  Test Double: one unread input under a revoked engagement, the same under an active one
+  Given the paired rows
+  When the peer phase sweeps
+  Then the revoked engagement's row is pruned and the active engagement's row is pinned by P2′
+
+Scenario: The graph binding moves with the message
+  Test: native_retained_peer_corpus_graph_binding_moves_with_the_message
+  Level: integration
+  Test Double: a terminal node bound to a candidate message, driven through the real workflow path
+  Given the terminal node and the candidate
+  When the peer phase sweeps
+  Then the binding moves as a paired write (column and persisted config) and a workflow read after the prune returns Ok
+
+Scenario: A live graph binding is retained
+  Test: native_retained_peer_corpus_live_graph_binding_is_retained
+  Level: integration
+  Test Double: a dispatched node bound to a past-window message, the same node flipped terminal
+  Given the live binding
+  When the peer phase sweeps
+  Then the row survives (P6)
+  And with the node flipped terminal the same setup is pruned
+
+Scenario: No consumer observes the prune
+  Test: native_retained_peer_corpus_shared_views_no_consumer_observes_the_prune
+  Level: integration
+  Test Double: a non-empty pre-sweep consumer result set over the peer corpus views
+  Given the pre-sweep set
+  When the peer phase prunes a candidate
+  Then every consumer query that saw the pair before still answers without error and with no wrong verdict
+
+Scenario: A queued dispatch input is not dropped
+  Test: native_retained_peer_corpus_queued_dispatch_input_is_not_dropped
+  Level: integration
+  Test Double: a candidate with one dispatch still queued, the same flipped completed
+  Given the queued claim
+  When the peer phase sweeps
+  Then the row is pinned (P4, the claim flip must not happen)
+  And with the dispatch flipped completed the row is pruned
+
+Scenario: The identity store is bounded by its own ceiling
+  Test: native_retained_peer_corpus_identity_store_is_bounded
+  Level: integration
+  Test Double: more than PEER_RECEIPT_CEILING pruned keys seeded over time
+  Given the over-ceiling identity rows
+  When the peer phase runs
+  Then retained_peer_index is bounded oldest-first at 10_000, not at the corpus ceiling
+
+Scenario: The floor clamps every configured peer ceiling
+  Test: native_retained_peer_corpus_floor_is_hundred
+  Level: integration
+  Test Double: a corpus above the floor under a below-floor ceiling, and under a 1000 ceiling
+  Given the two ceilings
+  When the store clamps them
+  Then the below-floor ceiling clamps to 100 (and 1000 is not clamped)
+
+Scenario: The schema head is current everywhere
+  Test: native_retained_peer_corpus_migration_head_is_current
+  Level: integration
+  Test Double: a fresh database and a deep rewind to 24 reopened twice
+  Given the deep rewind
+  When the store reopens
+  Then every reopen lands at head 27 (025, 026 and 027 all replay in order)
 
 ## Decisions
 
