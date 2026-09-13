@@ -5,13 +5,16 @@
 //! from it, so a route the server does not serve can never appear as a
 //! control. Mirrors `usage.rs`: recheck after the store answers, the same
 //! store-error mapping shape, no-store (from the boundary), statement-time
-//! `at_ms`.
+//! `at_ms`. A transition is an operator triage act behind the CONFIGURE
+//! scope (brief 28): the same finite-ticket scope the resource
+//! configuration writes require, refused with the console's missing-scope
+//! word before any store read, with the SESSION's identity as the actor.
 //!
 //! `severity` and `status` are DERIVED, never stored: every
 //! `agent_ceiling_overrun` ingest is a `warning` (`backend-v2.js:9422-9447`
 //! passes `severity: 'warning'`), and this read is open-rows-only by
 //! construction (`resolved_at_ms IS NULL`), so `status` is always `"open"`.
-use super::{Error, body, failed, recheck, usage::query};
+use super::{Error, Session, body, console, failed, recheck, usage::query};
 use crate::{refusal, resources::domain};
 use hagency_store::{
     ALERT_STATUSES, AlertTransition, CeilingAlert, MAX_OPEN_CEILING_ALERTS, allowed_transitions,
@@ -26,7 +29,7 @@ pub(super) fn router() -> Router {
 }
 
 /// The wire item: the store's `CeilingAlert` plus the two derived fields.
-/// Exactly these thirteen keys — the client validator's exact-key list must
+/// Exactly these fifteen keys — the client validator's exact-key list must
 /// match this set or the page never reaches ready.
 #[derive(Serialize)]
 struct ConsoleAlert {
@@ -69,13 +72,23 @@ fn console_alert(alert: CeilingAlert) -> ConsoleAlert {
     }
 }
 
-/// The operator transition body: `to` plus optional display provenance.
+/// The console transition body: `to` plus optional display provenance.
+/// The ACTOR is the session's identity, fixed by the server — the body has
+/// no `actor` field and an exact-key parse (below) refuses one as unknown
+/// input. The operator bearer route (`crate::alerts`) keeps its bounded
+/// optional `actor` per ADR-124.
 #[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TransitionBody {
     to: String,
-    actor: Option<String>,
     note: Option<String>,
 }
+
+/// The server-fixed actor for every console transition: the session's
+/// identity IS the console boundary (a console session carries no display
+/// name), so provenance names the boundary, never client input. The
+/// operator bearer route keeps its bounded optional `actor` (ADR-124).
+const SESSION_ACTOR: &str = "console";
 
 /// One display-state transition through the console session. Refusals are
 /// named with the alerts vocabulary; `bad_transition` stays the store's own
@@ -88,6 +101,28 @@ async fn transition(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     };
     if key.is_empty() || key.len() > 256 || query(req, &[], 0).is_err() {
         failed(res, Error::Invalid);
+        return;
+    }
+    // Brief 28 (F1): a transition is an operator triage act behind the
+    // CONFIGURE scope — the same finite-ticket scope the resource
+    // configuration writes require — refused with the console's
+    // missing-scope word BEFORE any body parse or store read. The
+    // `sec-fetch-site`/`origin` mutation guards are already inherited:
+    // the route mounts under the `authenticate` hoop, whose `current`
+    // enforces `same_origin(req, depot, method != GET)` (console.rs).
+    let Ok(session) = depot.get_typed::<Session>() else {
+        failed(res, Error::Unauthorized);
+        return;
+    };
+    let allowed = match console(depot).and_then(|c| c.0.authority.can_configure(session)) {
+        Ok(allowed) => allowed,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    if !allowed {
+        failed(res, Error::ConfigurationForbidden);
         return;
     }
     let headers_ok = req.headers().get_all("content-type").iter().count() == 1
@@ -123,7 +158,9 @@ async fn transition(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         .transition_ceiling_alert(AlertTransition {
             key: key.clone(),
             to,
-            actor: input.actor.unwrap_or_default(),
+            // Brief 28 (F3): the actor is the SESSION's identity, fixed by
+            // the server — never a body field.
+            actor: SESSION_ACTOR.to_owned(),
             note: input.note,
             now,
         })
@@ -135,6 +172,10 @@ async fn transition(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     match result {
         Ok(alert) => res.render(Json(serde_json::json!({
             "at_ms": now,
+            // The reply shares the list read's envelope, so the same
+            // validator governs it; the session that just transitioned
+            // holds the scope by construction.
+            "permissions": {"configureResource": true},
             "alerts": [console_alert(alert)],
         }))),
         Err(hagency_store::Error::Invalid(_)) => {
@@ -185,6 +226,23 @@ async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     match result {
         Ok(rows) => {
+            // Serve the session's capability, as the resources read does:
+            // the page hides the triage controls without the configure
+            // scope (brief 28) — one concept, one key.
+            let permission = console(depot).and_then(|c| {
+                c.0.authority.can_configure(
+                    depot
+                        .get_typed::<Session>()
+                        .map_err(|_| Error::Unauthorized)?,
+                )
+            });
+            let configure = match permission {
+                Ok(v) => v,
+                Err(error) => {
+                    failed(res, error);
+                    return;
+                }
+            };
             // Statement time, as the operator route does: the retained
             // GET /api/alerts has no clock parameter to honor.
             let at_ms = std::time::SystemTime::now()
@@ -193,7 +251,11 @@ async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                 .and_then(|d| u64::try_from(d.as_millis()).ok())
                 .unwrap_or_default();
             let alerts: Vec<_> = rows.into_iter().map(console_alert).collect();
-            res.render(Json(serde_json::json!({"at_ms": at_ms, "alerts": alerts})));
+            res.render(Json(serde_json::json!({
+                "at_ms": at_ms,
+                "permissions": {"configureResource": configure},
+                "alerts": alerts,
+            })));
         }
         Err(error) => store_error(res, error),
     }

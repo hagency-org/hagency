@@ -190,3 +190,15 @@ Scenario: Migration 025 upgrades populated 024 rows
   Given a live store rewound to the 024 table shape rebuilt verbatim from migration 024 carrying one open and one resolved row in 024 columns only
   When the repository reopens twice and replays migration 025
   Then user_version is 25 the resolved row backfills to resolved with an empty next the open row serves open with the full three-way next the note is absent on both and the sweep still rides occurrences on the upgraded open row
+
+Scenario: The console transition requires the configure scope
+  Test: native_console_alert_transition_requires_scope
+  Given an authenticated read-only console session and one open alert
+  When the transition route is posted and then a configuration-scoped session posts it
+  Then the read-only session is refused with resource_configuration_scope_required before any store read with the row and transition provenance unchanged and the scoped session succeeds
+
+Scenario: The console transition actor is the session
+  Test: native_console_alert_transition_actor_is_the_session
+  Given a configuration-scoped console session and one open alert
+  When a body carrying actor is posted and then a body without it
+  Then the actor body is refused as invalid_console_request by the exact-key rule and the recorded transitioned_by is the session identity never client input

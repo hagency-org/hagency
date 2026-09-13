@@ -1,15 +1,17 @@
 'use client';
 
 /*
- * Native alerts: a READ-ONLY triage list over /console/api/alerts.
+ * Native alerts: a triage list over /console/api/alerts.
  *
- * The native store has no operator close path (ADR-124), so this surface
- * renders no transition buttons — controls that would 404 lie. What it does
- * show is everything an operator needs to ACT elsewhere: the four actionable
- * fields (owner/impact/runbook/recovery condition), the raw figures, and the
- * repeat count. `severity`/`status` are server-derived constants for this
- * alert type, which is why there is no status filter — every row here is
- * open by construction, and the sweep is what resolves them.
+ * The transition buttons render ONLY from the served `next` array (the
+ * ADR-124 amendment's one server-owned map) and only when the served
+ * session holds the configure scope (brief 28) — the same
+ * `permissions.configureResource` key the resources page uses. A
+ * read-only session sees the four actionable fields (owner/impact/runbook/
+ * recovery condition), the raw figures and the repeat count, with no
+ * controls that would be refused. `severity`/`status` are server-derived
+ * for this alert type, which is why there is no status filter — every row
+ * here is open by construction, and the sweep is what resolves them.
  */
 import { useMemo, useState } from 'react';
 import Severity from '@/components/Severity';
@@ -140,14 +142,22 @@ export default function NativeAlerts() {
               </dl>
 
               {/* The buttons come ONLY from the served `next` array (the
-                * one server-owned map) — a transition the server refuses is
-                * never offered as a control, and a terminal row offers
-                * none. Display state only: nothing here enforces. */}
+                 * one server-owned map) — a transition the server refuses is
+                 * never offered as a control, and a terminal row offers
+                 * none. They render only when the SERVED session holds the
+                 * configure scope (brief 28), the same permission key the
+                 * resources page uses — a read-only session is offered no
+                 * controls that would be refused, only the notice naming
+                 * the explicit management link. Display state only:
+                 * nothing here enforces. */}
               <div className="btn-row" style={{ marginTop: 14 }}>
-                {selected.next.length === 0 && (
+                {data.permissions?.configureResource === false && (
+                  <span className="dim" style={{ fontSize: 12 }}>{t('al.triageReadOnly')}</span>
+                )}
+                {data.permissions?.configureResource && selected.next.length === 0 && (
                   <span className="dim" style={{ fontSize: 12 }}>{t('al.noTransitions', { s: selected.status })}</span>
                 )}
-                {selected.next.map((to) => (
+                {data.permissions?.configureResource && selected.next.map((to) => (
                   <button
                     key={to}
                     className="btn"

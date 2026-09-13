@@ -115,17 +115,28 @@ try {
     await page.goto(`${config.base}/console/usage/?engagement_id=${config.engagement}`);
     await page.locator('[data-native-state="ready"]').waitFor();
   }
-  // The alerts page — the operator close path (ADR-124 amendment): the
-  // seeded overrun (100 committed, ceiling lowered to 50, swept in seed())
-  // transitions through the REAL buttons, which render only from the served
-  // `next` array. Both lanes; the seed is shared. Returns to the usage page
-  // afterwards so the logout assertions below run against the page they
-  // were written for.
+  // The alerts page — the operator close path (ADR-124 amendment). Brief 28
+  // adds the read-only arm first: this lane's original link is a READ-ONLY
+  // session, so the triage buttons must be ABSENT and the notice naming the
+  // configuration management link rendered — the same hide rule the
+  // resources page applies without `can_configure`. The scoped link then
+  // walks the REAL buttons, which render only from the served `next` array.
+  // Both lanes; the seed is shared. Returns to the usage page afterwards so
+  // the logout assertions below run against the page they were written for.
   await page.goto(`${config.base}/console/alerts/`);
   await page.locator('[data-native-state="ready"]').waitFor();
   assert.match(await page.locator('main').innerText(), /has drawn 100 against a ceiling of 50/);
   assert.match(await page.locator('main').innerText(), /raise the ceiling on preset private_alert_pool/);
   assert((await page.locator('tbody tr[aria-selected]').count()) >= 1, 'the seeded alert row renders and is selectable');
+  assert((await page.locator('[data-transition]').count()) === 0, 'a read-only session is offered no triage controls');
+  assert.match(await page.locator('main').innerText(), /This session can read alerts|此会话可以查看告警/);
+  // The scoped session: exchange its ticket, then the walk is unchanged.
+  // Present in the in-process lane; the executable lane reuses the read-only
+  // walk because its link is minted by the real subcommand.
+  if (config.scopedUrl) await page.goto(config.scopedUrl);
+  await page.locator('[data-native-state="ready"]').waitFor();
+  await page.goto(`${config.base}/console/alerts/`);
+  await page.locator('[data-native-state="ready"]').waitFor();
   // The open row offers exactly the served map: acknowledge, resolve, suppress.
   const buttons = page.locator('[data-transition]');
   assert(await buttons.count() === 3, 'the open row serves exactly three transitions');

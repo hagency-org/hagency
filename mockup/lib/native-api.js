@@ -105,9 +105,13 @@ export async function fetchNative(selected, after = '') {
   const report = chosen === null ? null : validateReport(await request(`/api/engagements/${chosen}/usage`), chosen);
   return { ...list, selected: chosen, report };
 }
-/* The console's open ceiling alerts. Exactly thirteen keys per alert — the
+/* The console's open ceiling alerts. Exactly fifteen keys per alert — the
  * server's ConsoleAlert set — because the exact-key contract is how a stale
- * server or client fails loudly instead of rendering half a page. `detail`
+ * server or client fails loudly instead of rendering half a page. The
+ * ENVELOPE additionally carries `permissions.configureResource` (brief 28):
+ * the alerts read serves the session's capability the way the resources
+ * read does, and the page hides the triage buttons without the configure
+ * scope. `detail`
  * is the parsed payload object OR a truncated JSON string (the retained
  * truncatePayload rule, alert-store.js:61-64, ported at the store): the
  * object arm carries exactly the seven payload keys; the string arm accepts
@@ -134,7 +138,9 @@ const validDetail = (v) => (v !== null && typeof v === 'object' && !Array.isArra
   && DETAIL_KEYS.every((k) => k === 'measuredTokens' ? (v[k] === null || number(v[k])) : (k === 'agent' || k === 'presetId' ? text(v[k], 256) : number(v[k]))))
   || text(v, 4096);
 export function validateAlerts(v) {
-  if (!object(v, ['at_ms', 'alerts']) || !number(v.at_ms) || !Array.isArray(v.alerts) || v.alerts.length > 200
+  if (!object(v, ['at_ms', 'permissions', 'alerts']) || !number(v.at_ms)
+    || !object(v.permissions, ['configureResource']) || typeof v.permissions.configureResource !== 'boolean'
+    || !Array.isArray(v.alerts) || v.alerts.length > 200
     || v.alerts.some((a) => !object(a, ALERT_KEYS)
       || !text(a.dedupe_key, 256) || !id(a.resource_id) || !text(a.summary, 2048)
       || !validDetail(a.detail) || !text(a.runbook, 2048) || !text(a.impact, 2048) || !text(a.recovery_condition, 2048)

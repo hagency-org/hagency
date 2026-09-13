@@ -186,14 +186,16 @@ warning (`backend-v2.js:9422-9447`), and the store read is open-rows-only by
 construction. This is why the native page has one open-count strip and no
 status filter where the retained page has five.
 
-**No actions.** The native store has no operator close path (the lost-ceiling
-asymmetry above), so the console renders no transition buttons and delete
-stays refused — controls that would 404 lie. An operator close path, if ever
-added, is its own reviewed slice with its own authority; until then the
-console shows the four actionable fields and the raw figures, and resolution
-is what the sweep does when the draw recovers.
+**Actions come from the served map.** The operator close path is the brief-25
+amendment below: the console renders transition buttons ONLY from each row's
+served `next` array — a transition the server refuses is never offered as a
+control — and, since brief 28, only for a session holding the configure
+scope; a read-only session sees the four actionable fields and the raw
+figures with no controls that would be refused. Delete stays refused, display
+state is never enforcement, and resolution remains what the sweep does when
+the draw recovers.
 
-**Validator contract.** The wire item carries exactly thirteen keys; the
+**Validator contract.** The wire item carries exactly fifteen keys; the
 client validator's exact-key list must match or the page never reaches ready
 (a stale server or client fails loudly instead of rendering half a page).
 `detail` is the parsed payload object OR a truncated JSON string (the
@@ -269,3 +271,21 @@ behind the single writer, refusing `bad_transition`/`not_found`/bounds like ever
 in both models plus the shared terminal refusal; native's additional pairs are pinned by its own
 store test. `tests/alert-store.test.js:59-78`'s suppressed-stays-suppressed half is encoded; the
 window-expiry half is the named non-goal above.
+
+## Amendment: the console transition is scoped and session-authored (brief 28)
+
+The console route `POST /console/api/alerts/{key}/transition` mounted under the session
+`authenticate` hoop only, so a read-only session could write display state. A transition is an
+operator triage act: it now requires the **configure** scope (`Authority::can_configure`, the same
+finite-ticket scope the resource configuration writes require — ADR-108/111 ticket model; no new
+scope added), refused with the console's existing missing-scope word
+(`resource_configuration_scope_required`) before any body parse or store read. The
+`sec-fetch-site`/`origin` mutation guards were already inherited — the route's `authenticate` hoop
+calls `current`, which enforces `same_origin(req, depot, method != GET)`. The **actor** is the
+session's identity, fixed by the server (`SESSION_ACTOR = "console"`: the session carries no display
+name, so provenance names the boundary); the body's `actor` field is removed and an exact-key parse
+(`deny_unknown_fields`) refuses a body carrying it as `invalid_console_request`. The operator bearer
+route KEEPS its bounded optional `actor` per this ADR's operator-close-path amendment. The list read
+now serves `permissions.configureResource` (the same key the resources read serves), and the page
+hides the triage buttons without it — matching the resources page's notice pattern for a missing
+`can_configure`.

@@ -8286,3 +8286,37 @@ client qualification and ongoing identity/key management remain separate.
   coding agent runs on Windows). The hosted windows-2025 lane keeps running for
   its diagnostics but no longer blocks the run; the approval product lineage
   lands on the Ubuntu and macOS verdicts, and the Windows VM work is paused.
+
+## 2026-09-12 — The console alert transition is scoped and session-authored (brief 28)
+
+- F1: `POST /console/api/alerts/{key}/transition` now requires the
+  CONFIGURE scope (`Authority::can_configure` — the same finite-ticket
+  scope the resource configuration writes require), refused with the
+  console's existing missing-scope word
+  (`resource_configuration_scope_required`) BEFORE any body parse or
+  store read. The `sec-fetch-site`/`origin` mutation guards were already
+  inherited: the route's `authenticate` hoop calls `current`, which
+  enforces `same_origin(req, depot, method != GET)` (console.rs) — no new
+  guard needed.
+- F3: the actor is the SESSION's identity, fixed by the server
+  (`SESSION_ACTOR = "console"` — the session carries no display name, so
+  provenance names the boundary). The body's `actor` field is removed;
+  the exact-key parse (`deny_unknown_fields`) refuses a body carrying one
+  as `invalid_console_request`. The operator bearer route keeps its
+  bounded optional `actor` (ADR-124 amendment, named in the ADR note).
+- F2/F4: all three "thirteen keys" claims corrected to fifteen
+  (`ConsoleAlert` struct comment, `native-api.js` `ALERT_KEYS` comment,
+  ADR-124 validator contract); the NativeAlerts header comment and the
+  ADR "no actions" prose corrected to describe the served-map buttons.
+- The list read now serves `permissions.configureResource` (the same key
+  the resources read serves); the page hides the triage buttons without
+  it and shows a notice naming the configuration management link — the
+  same shape as the resources page's missing-`can_configure` notice.
+  Tests: `native_console_alert_transition_requires_scope` (read-only
+  refused with the named word, store row and provenance asserted
+  unchanged; scoped session succeeds) and
+  `native_console_alert_transition_actor_is_the_session` (actor body
+  refused by the exact-key rule; `transitioned_by` asserted the session
+  identity); spec scenarios bound in the alarm spec; the browser lane
+  gains the read-only arm (buttons absent, notice rendered) and mints a
+  scoped link for the unchanged walk.
