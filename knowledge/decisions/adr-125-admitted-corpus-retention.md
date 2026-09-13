@@ -354,6 +354,38 @@ waiting for a reviewer.
   property, two stops."*
 
 
+### The implementation shape
+
+**The loop carries per-phase state.** The tick's batch is a vector, one hypothesis
+per phase (the table above), not one scalar: a phase that reduces its batch never
+reduces another's. The tick's observation enum is phase-tagged, so a receiver can
+tell two phases apart. *(Depends on the builder's edits commit — see below.)*
+
+**The tick is observable and abortable.** The receiver the loop publishes to is
+threaded into the served app exactly as the ceiling sweep's is, so `/health`
+reports liveness and a test can await a single tick; and the task's handle is read
+on close, so the sweep is aborted at shutdown as `ceiling_sweep` is. *(Depends on
+the builder's edits commit — see below.)*
+
+**What the broken-out slice is held to, and what it does not yet meet.** The
+brief-45 wiring review read the landed Slice 1 wiring and found it faithful to this
+contract clause-for-clause **except** on the two clauses above and one diagnostic:
+the loop's batch is one scalar capped by the `messages` const, so a phase could not
+carry its own hypothesis; the tick's `watch` receiver is dropped (`let _ =
+retention_tick;`), so the loop has no liveness or observation hook; and the
+per-tick log names `pruned` where this contract's measurement is `consumed`. The
+two sentences above hold **only once the builder's edits commit lands them**
+(per-phase batch state, a phase-tagged observation enum, the receiver threaded into
+the served app, and the handle read on close). Until that commit the loop is
+single-phase, its batch is one scalar, its receiver is dropped and its handle is
+never read — this ADR does not claim a shape the tree does not have.
+
+**The split is a named residue, not a claimed conformance.** The reduction rule's
+**split** response (a phase at batch 1 still over its share) is **not implemented
+by Slice 1**; this contract names it as an unimplemented residue so a later reader
+does not mistake it for wired behaviour. Nothing else in the reduction rule is
+affected.
+
 ## Consequences
 
 Good, because the fastest-growing surface in the store gains a bound that
