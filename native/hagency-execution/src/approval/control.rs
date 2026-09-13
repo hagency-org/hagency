@@ -26,12 +26,16 @@ use tokio::time::Instant;
 /// `accepted_bytes == 0` — never defaulted from an absent snapshot
 /// (absence means no writer was installed or the transport was already torn
 /// down: "we do not know", not "we know nothing left").
-fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bool) -> Failure {
+fn send_failure(
+    error: hagency_runtime::codex::session::Error,
+    zero_accepted: bool,
+    armed: bool,
+) -> Failure {
     match error {
         hagency_runtime::codex::session::Error::Transport(
             hagency_runtime::codex::transport::Error::Io(_)
             | hagency_runtime::codex::transport::Error::PeerEof,
-        ) if zero_accepted => Failure::PeerUnavailable,
+        ) if zero_accepted || !armed => Failure::PeerUnavailable,
         hagency_runtime::codex::session::Error::Transport(
             hagency_runtime::codex::transport::Error::Io(_)
             | hagency_runtime::codex::transport::Error::PeerEof
@@ -46,17 +50,22 @@ fn send_failure(error: hagency_runtime::codex::session::Error, zero_accepted: bo
 /// classifier, with the same evidence rule. The `zero_accepted` fact is
 /// read from the runner's termination snapshot here — an OBSERVED
 /// `accepted_bytes == 0` (the frame never left), never a default from an
-/// absent snapshot (absence means no writer was installed or the transport
-/// was already torn down: unknown, not zero).
+/// absent snapshot. The `armed` fact (Q3) comes from the coordinator's
+/// entry state — a frame is armed when an entry holds its prepared frame or
+/// is in flight — NEVER from the absence of a write observation: a
+/// never-armed entry with a peer-side cause (`PeerEof` with no writer ever
+/// installed) is in the zero-byte class too, while an armed entry with no
+/// snapshot (the host's `stop()` took the custody) stays uncertain.
 pub(super) fn send_failure_with_termination(
     runner: &hagency_runtime::owned::OwnedSession,
+    armed: bool,
     error: hagency_runtime::codex::session::Error,
 ) -> Failure {
     let zero_accepted = runner
         .transport_termination()
         .and_then(|termination| termination.unconfirmed_write.as_ref())
         .is_some_and(|write| write.accepted_bytes == 0);
-    send_failure(error, zero_accepted)
+    send_failure(error, zero_accepted, armed)
 }
 
 impl ApprovalRun {
@@ -372,18 +381,16 @@ impl ApprovalRun {
                 )
                 .await?
                 .map_err(|error| {
-                    // The classifier (H2/H3): peer-gone `Io`/`PeerEof` with an
-                    // OBSERVED zero-byte snapshot is `PeerUnavailable`; any
-                    // accepted byte is the uncertain `SettlementUnknown`;
-                    // host-side `Closed`/`HostClosed` and genuine protocol
-                    // errors never carry the peer-gone verdict. The accepted
-                    // count lives in the transport's termination snapshot —
-                    // absence is not evidence of zero.
-                    let zero_accepted = runner
-                        .transport_termination()
-                        .and_then(|termination| termination.unconfirmed_write.as_ref())
-                        .is_some_and(|write| write.accepted_bytes == 0);
-                    send_failure(error, zero_accepted)
+                    // The classifier (H2/H3+Q3), one evidence path: the send
+                    // site's frame is armed BY DEFINITION (it is the frame
+                    // being sent), so the verdict differs only on the
+                    // transport's own zero-byte observation. Peer-gone causes
+                    // with an observed zero — or a never-armed entry — are
+                    // the named refusal; any accepted byte is the uncertain
+                    // `SettlementUnknown`; host-side `Closed`/`HostClosed`
+                    // and genuine protocol errors never carry the peer-gone
+                    // verdict.
+                    send_failure_with_termination(runner, true, error)
                 })?;
                 match step {
                     PreparedUpdate::Update(update, observation) => {
@@ -592,7 +599,8 @@ mod send_failure_tests {
 
     #[test]
     fn native_never_transmitted_frame_is_peer_unavailable() {
-        // Only the peer-gone causes, only with OBSERVED zero bytes.
+        // Only the peer-gone causes, only with OBSERVED zero bytes, on an
+        // ARMED frame (a snapshot exists implies a writer was installed).
         for cause in [
             transport::Error::Io("stdin write"),
             transport::Error::Io("stdin flush"),
@@ -601,15 +609,30 @@ mod send_failure_tests {
             transport::Error::PeerEof,
         ] {
             assert_eq!(
-                send_failure(session::Error::Transport(cause), true),
+                send_failure(session::Error::Transport(cause), true, true),
                 Failure::PeerUnavailable,
                 "peer-gone {cause:?} with an observed zero-byte snapshot must be the named refusal"
+            );
+        }
+        // Q3's widened class: a NEVER-ARMED entry (no prepared frame, no
+        // in-flight flag — the read-side `PeerEof` with no writer ever
+        // installed) is in the zero-byte class even without a snapshot,
+        // because there is no frame whose fate could be unknown.
+        for cause in [
+            transport::Error::Io("stdout read"),
+            transport::Error::Io("stderr read"),
+            transport::Error::PeerEof,
+        ] {
+            assert_eq!(
+                send_failure(session::Error::Transport(cause), false, false),
+                Failure::PeerUnavailable,
+                "peer-gone {cause:?} with no frame ever armed is the named refusal, not a coin flip"
             );
         }
         // Host-side causes are never "peer gone", even with zero bytes.
         for host_side in [transport::Error::Closed, transport::Error::HostClosed] {
             assert_eq!(
-                send_failure(session::Error::Transport(host_side), true),
+                send_failure(session::Error::Transport(host_side), true, true),
                 Failure::SettlementUnknown,
                 "host-side {host_side:?} must not carry the peer-gone verdict"
             );
@@ -630,18 +653,18 @@ mod send_failure_tests {
             transport::Error::Closed,
         ] {
             assert_eq!(
-                send_failure(session::Error::Transport(cause), false),
+                send_failure(session::Error::Transport(cause), false, true),
                 Failure::SettlementUnknown,
                 "{cause:?} with bytes accepted is uncertain, never silent"
             );
         }
         // A genuine protocol error is never re-labelled, at any offset.
         assert_eq!(
-            send_failure(session::Error::Transport(transport::Error::Capacity), true),
+            send_failure(session::Error::Transport(transport::Error::Capacity), true, true),
             Failure::Protocol
         );
         assert_eq!(
-            send_failure(session::Error::Transport(transport::Error::Capacity), false),
+            send_failure(session::Error::Transport(transport::Error::Capacity), false, false),
             Failure::Protocol
         );
     }
