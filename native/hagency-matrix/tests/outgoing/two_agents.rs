@@ -25,12 +25,21 @@ fn pair_config(pair: &PairFixture, agent: &HostIdentity, dm: &str, endpoint: &st
 }
 /// Answer bootstrap traffic for one agent — whoami as ITS OWN identity,
 /// empty syncs, room state (encrypted or plain per the leg) — until the
-/// peer falls quiet.
+/// peer falls quiet. The collector's config carries TWO rooms (the shared
+/// room and this agent's direct room), so it issues TWO /state requests;
+/// the script must answer BOTH before it may go quiet — a quiet window
+/// between them lets `common::scripted`'s biased select return the
+/// collector's Ok with the DM room unpublished (the :181 early-return
+/// panic). The room is keyed on the target; a DM always answers the
+/// invite-only + encrypted shape.
 async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity, encrypted: bool) {
+    let mut states_served = 0usize;
     loop {
         let request = tokio::select! {
             request = fake.next() => request,
-            _ = tokio::time::sleep(Duration::from_millis(300)) => return,
+            // Only fall quiet once both rooms' /state have been answered; a
+            // shorter window can fire between the shared and DM legs.
+            _ = tokio::time::sleep(Duration::from_millis(if states_served >= 2 { 300 } else { 2000 })) => return,
         };
         if request.target.contains("/account/whoami") {
             request.json(200, who(agent));
@@ -43,6 +52,7 @@ async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity, encrypte
             // observation the store refuses (RunnerAuthority at
             // matrix_routes.rs:123 via the first-observation invalidate).
             let is_dm = request.target.contains("dm-");
+            states_served += 1;
             request.json(
                 200,
                 if is_dm || encrypted {
