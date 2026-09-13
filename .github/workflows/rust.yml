@@ -129,8 +129,9 @@ jobs:
         # spec-binding gate's --list inventory, the skip is recorded in this
         # workflow (never inside a test), and the operator runs it on a
         # qualified host per the ADR-144 runbook. The codex qualification
-        # skip is the ADR-140 slice's own, recorded in its own commit.
-        run: cargo test --workspace --all-targets --locked --no-fail-fast -- --skip native_two_agent_qualification_records_its_evidence
+        # skip (ADR-140, native_codex_real_app_server) is the same class and
+        # rides the same line; both stay present for the --list inventory.
+        run: cargo test --workspace --all-targets --locked --no-fail-fast -- --skip native_codex_real_app_server --skip native_two_agent_qualification_records_its_evidence
       - name: Qualify default Windows media storage with fresh process restoration
         if: ${{ !cancelled() && runner.os == 'Windows' }}
         shell: pwsh
