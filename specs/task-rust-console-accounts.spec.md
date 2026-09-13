@@ -53,9 +53,11 @@ main.rs, which was the gap.
 - native/hagency/tests/console/browser.rs
 - native/hagency/tests/cli.rs
 - mockup/lib/native-api.js
+- mockup/lib/i18n.js
 - mockup/components/NativeAccounts.jsx
 - mockup/app/accounts/page.jsx
 - mockup/scripts/build-native-console.mjs
+- mockup/scripts/native-console-accounts-browser.mjs
 - specs/task-rust-console-accounts.spec.md
 - knowledge/decisions/adr-108-native-console-resource-publication.md
 - knowledge/decisions/adr-111-native-console-resource-configuration.md

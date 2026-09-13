@@ -309,11 +309,13 @@ async fn enrollment(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         c.0.authority.account(
             session(depot)?,
             &managed,
-            input.expected_revision,
-            input.model,
-            input.reasoning,
-            None,
-            Instant::now() + Duration::from_secs(5),
+            super::authority::AccountEnrollmentInput {
+                revision: input.expected_revision,
+                model: input.model,
+                reasoning: input.reasoning,
+                ceiling: None,
+                deadline: Instant::now() + Duration::from_secs(5),
+            },
         )
     }) {
         Ok(command) => command,

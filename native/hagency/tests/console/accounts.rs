@@ -47,6 +47,30 @@ fn read(cookie: &str, path: &str) -> salvo::test::RequestBuilder {
 /// raw-byte search (sound only for the alphanumeric seat and preset ids).
 fn assert_no_identity(raw: &str, seeded: &[String]) {
     let value: Value = serde_json::from_str(raw).expect("decoded response");
+    // The exact-five-keys clause, asserted server-side: `AccountRow` is
+    // Serialize-only (no deny_unknown_fields on the wire), so a sixth field
+    // added later must fail HERE, not only in the client validator (D4).
+    fn assert_keys_exact(account: &Value, raw: &str) {
+        let mut keys: Vec<&str> = account
+            .as_object()
+            .unwrap_or_else(|| panic!("account object, not {account}"))
+            .keys()
+            .map(String::as_str)
+            .collect();
+        keys.sort_unstable();
+        let mut expected = ["id", "ordinal", "revision", "profile", "state"];
+        expected.sort_unstable();
+        assert_eq!(
+            keys, expected,
+            "account object must carry exactly the five declared keys: {raw}"
+        );
+    }
+    if let Some(account) = value.get("account") {
+        assert_keys_exact(account, raw);
+    }
+    if let Some(accounts) = value.get("accounts").and_then(Value::as_array) {
+        accounts.iter().for_each(|a| assert_keys_exact(a, raw));
+    }
     fn walk(value: &Value, seeded: &[String], raw: &str) {
         match value {
             Value::String(s) => {
@@ -212,14 +236,37 @@ async fn native_console_account_mutations_require_the_scope() {
         before,
         "no account row changed state"
     );
-    // With the scoped session the same prepare succeeds and the row advances;
-    // only the enrolment body carries an expected revision.
+    // With the scoped session the SAME three calls succeed and the row state
+    // advances; only the enrolment body carries an expected revision.
     let manager = management(&service).await;
-    let prepared = command("/console/api/accounts", &manager)
+    let mut prepared = command("/console/api/accounts", &manager)
         .json(&json!({"profile":ACCOUNT_PROFILE}))
         .send(&service)
         .await;
     assert_eq!(prepared.status_code, Some(StatusCode::OK));
+    let prepared: Value = serde_json::from_str(&prepared.take_string().await.unwrap()).unwrap();
+    let row = &prepared["account"];
+    let id = row["id"].as_str().unwrap().to_owned();
+    assert_eq!(row["state"], "active", "prepare advances the row");
+    // Enrolment: the only body that carries an expected revision.
+    let mut enrolled = command(&format!("/console/api/accounts/{id}/enrollment"), &manager)
+        .json(&json!({"model":"gpt-5.6-sol","reasoning":"medium","expected_revision":row["revision"].as_str().unwrap()}))
+        .send(&service)
+        .await;
+    assert_eq!(enrolled.status_code, Some(StatusCode::OK));
+    let retired_row: Value = serde_json::from_str(&enrolled.take_string().await.unwrap()).unwrap();
+    let retired_row = &retired_row["account"];
+    assert_eq!(retired_row["id"], id.as_str());
+    // Retire: no body, no expected revision — the row leaves active.
+    let mut retired = command(&format!("/console/api/accounts/{id}/retire"), &manager)
+        .send(&service)
+        .await;
+    assert_eq!(retired.status_code, Some(StatusCode::OK));
+    let retired: Value = serde_json::from_str(&retired.take_string().await.unwrap()).unwrap();
+    assert_eq!(
+        retired["account"]["state"], "retired",
+        "retire advances the row"
+    );
     f.close().await;
 }
 #[tokio::test]

@@ -52,6 +52,17 @@ struct State {
 }
 pub(super) struct Authority(Mutex<State>, ResourcePublicationRetirement);
 pub(super) struct Session([u8; 32]);
+/// The bounded enrolment inputs, grouped so the authority's constructor
+/// stays reviewable — the request's five scalars travel as one value
+/// (the hosted lanes' `too_many_arguments` limit is a shape signal, not
+/// a lint to allow).
+pub(super) struct AccountEnrollmentInput {
+    pub(super) revision: String,
+    pub(super) model: String,
+    pub(super) reasoning: Option<String>,
+    pub(super) ceiling: Option<Ceiling>,
+    pub(super) deadline: Instant,
+}
 
 fn secret() -> Result<String, Error> {
     let mut bytes = [0; 32];
@@ -276,11 +287,7 @@ impl Authority {
         &self,
         session: &Session,
         managed: &ManagedAccount,
-        revision: String,
-        model: String,
-        reasoning: Option<String>,
-        ceiling: Option<Ceiling>,
-        deadline: Instant,
+        input: AccountEnrollmentInput,
     ) -> Result<AccountEnrollmentCommand, Error> {
         let state = self.0.lock().map_err(|_| Error::Unavailable)?;
         if state.retired {
@@ -296,7 +303,14 @@ impl Authority {
             return Err(Error::AccountForbidden);
         };
         access
-            .prepare(managed, revision, model, reasoning, ceiling, deadline)
+            .prepare(
+                managed,
+                input.revision,
+                input.model,
+                input.reasoning,
+                input.ceiling,
+                input.deadline,
+            )
             .map_err(|e| match e {
                 hagency_store::Error::Busy => Error::Busy,
                 hagency_store::Error::LocalAuthority => Error::Unauthorized,
