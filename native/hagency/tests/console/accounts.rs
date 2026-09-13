@@ -56,10 +56,13 @@ fn read(cookie: &str, path: &str) -> salvo::test::RequestBuilder {
 /// The identity negative, twice over different value classes: the decoded
 /// walk (sound for the tuple, which JSON-escapes on the wire) and the
 /// raw-byte search (sound only for the alphanumeric seat and preset ids).
-fn assert_no_identity(raw: &str, seeded: &[String]) {
+/// `credential` carries the MA-S3b byte-level negatives over the RIGHT value
+/// class: the credential home path, a token-shaped value, the credential-
+/// present file answer and any probe output — never the readiness word.
+fn assert_no_identity(raw: &str, seeded: &[String], credential: &[&str]) {
     let value: Value = serde_json::from_str(raw).expect("decoded response");
-    // The exact-five-keys clause, asserted server-side: `AccountRow` is
-    // Serialize-only (no deny_unknown_fields on the wire), so a sixth field
+    // The exact-six-keys clause, asserted server-side: `AccountRow` is
+    // Serialize-only (no deny_unknown_fields on the wire), so a seventh field
     // added later must fail HERE, not only in the client validator (D4).
     fn assert_keys_exact(account: &Value, raw: &str) {
         let mut keys: Vec<&str> = account
@@ -69,11 +72,16 @@ fn assert_no_identity(raw: &str, seeded: &[String]) {
             .map(String::as_str)
             .collect();
         keys.sort_unstable();
-        let mut expected = ["id", "ordinal", "revision", "profile", "state"];
+        let mut expected = ["id", "ordinal", "readiness", "revision", "profile", "state"];
         expected.sort_unstable();
         assert_eq!(
             keys, expected,
-            "account object must carry exactly the five declared keys: {raw}"
+            "account object must carry exactly the six declared keys: {raw}"
+        );
+        let readiness = account["readiness"].as_str().expect("readiness word");
+        assert!(
+            ["subscription", "api_key", "unknown"].contains(&readiness),
+            "readiness must be the observed mode or unknown: {raw}"
         );
     }
     if let Some(account) = value.get("account") {
@@ -82,12 +90,21 @@ fn assert_no_identity(raw: &str, seeded: &[String]) {
     if let Some(accounts) = value.get("accounts").and_then(Value::as_array) {
         accounts.iter().for_each(|a| assert_keys_exact(a, raw));
     }
+    // Byte-level negatives over the credential value class, on the raw
+    // response: a seeded credential-shaped byte never crosses, whatever
+    // object it was stored on.
+    for forbidden in credential {
+        assert!(
+            !raw.contains(forbidden),
+            "credential value leaked: {forbidden}"
+        );
+    }
     fn walk(value: &Value, seeded: &[String], raw: &str) {
         match value {
             Value::String(s) => {
                 for secret in seeded {
                     assert!(!s.contains(secret.as_str()), "identity leaked: {raw}");
-                    assert_ne!(s, secret.as_str(), "identity leaked: {raw}");
+                    assert_ne!(s, secret.as_str(), "identity leaked: {raw}")
                 }
             }
             Value::Object(map) => {
@@ -206,7 +223,7 @@ async fn native_console_account_routes_carry_no_identity() {
     );
     bodies.push(body);
     for raw in &bodies {
-        assert_no_identity(raw, &seeded);
+        assert_no_identity(raw, &seeded, &["credential-present", "/.codex", "sk-"]);
         // Raw-byte search: sound only for the alphanumeric seat and preset.
         assert!(!raw.contains(seeded[0].as_str()), "seat id leaked");
         assert!(!raw.contains(seeded[3].as_str()), "preset id leaked");
@@ -334,5 +351,250 @@ async fn native_console_account_prepare_interrupted_is_unknown() {
             .iter()
             .any(|a| a["id"] == reserved.id)
     );
+    f.close().await;
+}
+
+/// MA-S3b: the DTO carries exactly the six declared keys, the readiness word
+/// is the observed mode or unknown, and no credential byte — the credential
+/// home path, the credential-present file answer, a token-shaped value or any
+/// probe output — ever crosses, over the right value class. The readiness
+/// word is served; nothing from the credential value class is.
+#[tokio::test]
+async fn native_console_account_dto_matches_retained_redaction() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let base = now();
+    // Four readiness shapes on the real store rows, seeded through the same
+    // raw second connection the identity negative already uses (the store
+    // half's own tests cover the receipt-path writer). The probe-output
+    // marker carries no `credential` byte — migration 028's CHECK forbids
+    // one in provider_state — so the credential negative is anchored at the
+    // schema level and re-asserted here on the response bytes.
+    async fn materialize(f: &Fixture) -> hagency_store::AccountChoice {
+        let reserved = f
+            .domain
+            .reserve_account(ACCOUNT_PROFILE.to_owned())
+            .await
+            .unwrap();
+        f.domain
+            .materialize_account(reserved.id.clone())
+            .await
+            .unwrap()
+    }
+    let live = materialize(&f).await;
+    let expired = materialize(&f).await;
+    let uncertain = materialize(&f).await;
+    let absent = materialize(&f).await;
+    let probe_live = "probe-output-ALPHA9f2";
+    let probe_expired = "probe-output-BRAVO7c1";
+    let probe_uncertain = "probe-output-CHARLIEd4";
+    {
+        let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+        let seed = |suffix: &str,
+                    account: &str,
+                    observed: u64,
+                    expires: u64,
+                    mode: &str,
+                    provider: &str,
+                    outcome: &str| {
+            sql.execute(
+                "INSERT INTO account_login_observations \
+                 (id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome) \
+                 VALUES (?1,?2,1,1,?3,?4,?5,?6,?7)",
+                rusqlite::params![format!("observation_{suffix}"), account, observed, expires, mode, provider, outcome],
+            )
+            .unwrap();
+        };
+        // observed + unexpired -> the mode word.
+        seed(
+            "0a1b2c3d4e5f0a1b2c3d4e5f0a1b2c3d",
+            &live.id,
+            base,
+            base + 3_600_000,
+            "subscription",
+            probe_live,
+            "observed",
+        );
+        // observed but already expired -> unknown.
+        seed(
+            "1b2c3d4e5f0a1b2c3d4e5f0a1b2c3d4e",
+            &expired.id,
+            base,
+            base,
+            "api_key",
+            probe_expired,
+            "observed",
+        );
+        // uncertain -> unknown (an interrupted login is never an answer).
+        seed(
+            "2c3d4e5f0a1b2c3d4e5f0a1b2c3d4e5f",
+            &uncertain.id,
+            base,
+            base + 3_600_000,
+            "unknown",
+            probe_uncertain,
+            "uncertain",
+        );
+        // absent: no row at all -> unknown.
+    }
+    let service = f.service();
+    let cookie = session(&service).await;
+    let mut bodies: Vec<String> = Vec::new();
+    let list: Value;
+    {
+        let mut response = read(&cookie, "/console/api/accounts").send(&service).await;
+        assert_eq!(response.status_code, Some(StatusCode::OK));
+        let raw = response.take_string().await.unwrap();
+        list = serde_json::from_str(&raw).unwrap();
+        bodies.push(raw);
+    }
+    for id in [&live.id, &expired.id, &uncertain.id, &absent.id] {
+        let mut response = read(&cookie, &format!("/console/api/accounts/{id}"))
+            .send(&service)
+            .await;
+        assert_eq!(response.status_code, Some(StatusCode::OK));
+        bodies.push(response.take_string().await.unwrap());
+    }
+    // The readiness word per shape, read from the list.
+    let word = |id: &str| -> String {
+        list["accounts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|a| a["id"] == id)
+            .unwrap_or_else(|| panic!("account {id} in list"))["readiness"]
+            .as_str()
+            .unwrap()
+            .to_owned()
+    };
+    assert_eq!(word(&live.id), "subscription");
+    assert_eq!(word(&expired.id), "unknown");
+    assert_eq!(word(&uncertain.id), "unknown");
+    assert_eq!(word(&absent.id), "unknown");
+    // Byte-level negatives over the credential value class: the readiness
+    // word crosses, the credential class never does.
+    let credential_class = [
+        probe_live,
+        probe_expired,
+        probe_uncertain,
+        "/.codex",
+        "credential-present",
+        "sk-",
+        "provider_state",
+    ];
+    for raw in &bodies {
+        assert_no_identity(raw, &[], &credential_class);
+        assert!(
+            !raw.contains("authentication"),
+            "AccountChoice never served"
+        );
+        assert!(!raw.contains("quota"), "AccountChoice never served");
+    }
+    f.close().await;
+}
+
+/// MA-S3b: the readiness word is observed, never asserted. The
+/// observed-unexpired fact reports its mode; expired and uncertain report
+/// unknown; a read performs no filesystem, directory, model or network
+/// check and writes nothing — the stored fact is byte-identical afterwards.
+#[tokio::test]
+async fn native_console_account_readiness_is_observed_not_asserted() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let base = now();
+    async fn materialize(f: &Fixture) -> hagency_store::AccountChoice {
+        let reserved = f
+            .domain
+            .reserve_account(ACCOUNT_PROFILE.to_owned())
+            .await
+            .unwrap();
+        f.domain
+            .materialize_account(reserved.id.clone())
+            .await
+            .unwrap()
+    }
+    let observed = materialize(&f).await;
+    let expired = materialize(&f).await;
+    let uncertain = materialize(&f).await;
+    let probe = "probe-output-DELTA5e8";
+    {
+        let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+        let seed = |suffix: &str,
+                    account: &str,
+                    observed_at: u64,
+                    expires: u64,
+                    mode: &str,
+                    outcome: &str| {
+            sql.execute(
+                "INSERT INTO account_login_observations \
+                 (id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome) \
+                 VALUES (?1,?2,1,1,?3,?4,?5,?6,?7)",
+                rusqlite::params![format!("observation_{suffix}"), account, observed_at, expires, mode, probe, outcome],
+            )
+            .unwrap();
+        };
+        seed(
+            "3d4e5f0a1b2c3d4e5f0a1b2c3d4e5f0a",
+            &observed.id,
+            base,
+            base + 3_600_000,
+            "api_key",
+            "observed",
+        );
+        seed(
+            "4e5f0a1b2c3d4e5f0a1b2c3d4e5f0a1b",
+            &expired.id,
+            base,
+            base,
+            "subscription",
+            "observed",
+        );
+        seed(
+            "5f0a1b2c3d4e5f0a1b2c3d4e5f0a1b2c",
+            &uncertain.id,
+            base,
+            base + 3_600_000,
+            "unknown",
+            "uncertain",
+        );
+    }
+    let service = f.service();
+    let cookie = session(&service).await;
+    let count = || -> i64 {
+        rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3"))
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM account_login_observations", [], |r| {
+                r.get(0)
+            })
+            .unwrap()
+    };
+    let before = count();
+    let word = |id: &str, body: &Value| -> String {
+        let accounts = body.get("accounts");
+        match accounts {
+            Some(list) => list
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["id"] == id)
+                .unwrap()["readiness"]
+                .as_str()
+                .unwrap()
+                .to_owned(),
+            None => body["account"]["readiness"].as_str().unwrap().to_owned(),
+        }
+    };
+    // The observed-unexpired fact reports its mode on both reads.
+    let mut single = read(&cookie, &format!("/console/api/accounts/{}", observed.id))
+        .send(&service)
+        .await;
+    let single_body: Value = serde_json::from_str(&single.take_string().await.unwrap()).unwrap();
+    assert_eq!(word(&observed.id, &single_body), "api_key");
+    // Expired and uncertain degrade to unknown; no read computes or probes.
+    let mut list = read(&cookie, "/console/api/accounts").send(&service).await;
+    let list_body: Value = serde_json::from_str(&list.take_string().await.unwrap()).unwrap();
+    assert_eq!(word(&expired.id, &list_body), "unknown");
+    assert_eq!(word(&uncertain.id, &list_body), "unknown");
+    // A read never writes and never promotes: the observation ledger is
+    // unchanged (no new row, no settled promotion) after every read.
+    assert_eq!(count(), before, "a read never writes a fact");
     f.close().await;
 }

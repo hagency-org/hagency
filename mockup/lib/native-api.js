@@ -354,15 +354,18 @@ export async function configureResource(resource, create, changes) {
   return value;
 }
 
-/* The console account surface (MA-S3a). Exactly five keys per row — the
- * server's AccountRow — and no readiness, login or identity value; the
- * validator's exact-key list is the same one-way contract every other read
- * carries. States are the store's four public words. */
+/* The console account surface (MA-S3b). Exactly six keys per row — the
+ * server's AccountRow: id, ordinal, state, revision, profile, readiness —
+ * and no login or identity value; the validator's exact-key list is the
+ * same one-way contract every other read carries. `readiness` is the
+ * recorded observation's mode (`subscription`/`api_key`), else `unknown`;
+ * no credential byte or probe output ever crosses. */
 const ACCOUNT_STATES = ['preparing', 'active', 'uncertain', 'retired'];
-const validAccount = (a) => !(!object(a, ['id', 'ordinal', 'state', 'revision', 'profile'])
+const ACCOUNT_READINESS = ['subscription', 'api_key', 'unknown'];
+const validAccount = (a) => !(!object(a, ['id', 'ordinal', 'state', 'revision', 'profile', 'readiness'])
   || !id(a.id) || !Number.isSafeInteger(a.ordinal) || a.ordinal < 1 || a.ordinal > 16
   || !ACCOUNT_STATES.includes(a.state) || !revision(a.revision)
-  || a.profile !== 'codex-default-namespace-v1');
+  || a.profile !== 'codex-default-namespace-v1' || !ACCOUNT_READINESS.includes(a.readiness));
 export function validateAccounts(v) {
   if (!object(v, ['at_ms', 'accounts', 'next_after']) || !number(v.at_ms) || !Array.isArray(v.accounts)
     || v.accounts.length > 16 || !(v.next_after === null || id(v.next_after))

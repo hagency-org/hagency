@@ -34,9 +34,14 @@ pub(super) fn router() -> Router {
         .push(Router::with_path("accounts/{id}/enrollment").post(enrollment))
 }
 
-/// The browser DTO: exactly five keys (id, ordinal, state, revision,
-/// profile). None of the identity triple (`namespace_identity`,
+/// The browser DTO: exactly six keys (id, ordinal, state, revision,
+/// profile, readiness). None of the identity triple (`namespace_identity`,
 /// `identity_tuple`, `seat_id`) and no preset association crosses the wire.
+/// `readiness` is MA-S1's observed fact read at serve time (the latest
+/// observed, unexpired mode, else `unknown`); the console computes nothing
+/// and serves no fix pointer — the login is the operator's own host act
+/// (D-ADR114 observe). No credential home path, no credential-present file
+/// answer, no token-shaped byte, no probe output ever crosses.
 #[derive(Serialize)]
 struct AccountRow {
     id: String,
@@ -44,16 +49,31 @@ struct AccountRow {
     state: hagency_store::AccountState,
     revision: String,
     profile: String,
+    readiness: &'static str,
 }
 impl AccountRow {
-    fn from_choice(choice: AccountChoice) -> Self {
-        Self {
+    /// Serve-time read of the recorded fact: a read never writes and never
+    /// promotes; expired and `uncertain` degrade to `unknown` inside the
+    /// store's own rule.
+    async fn from_choice(
+        store: &hagency_store::DomainStore,
+        choice: AccountChoice,
+        now: u64,
+    ) -> Result<Self, hagency_store::Error> {
+        let answer = store.account_readiness(choice.id.clone(), now).await?;
+        let readiness = match answer.mode {
+            hagency_store::AccountReadinessMode::Subscription => "subscription",
+            hagency_store::AccountReadinessMode::ApiKey => "api_key",
+            hagency_store::AccountReadinessMode::Unknown => "unknown",
+        };
+        Ok(Self {
             id: choice.id,
             ordinal: choice.ordinal,
             state: choice.state,
             revision: choice.revision,
             profile: choice.profile,
-        }
+            readiness,
+        })
     }
 }
 fn failure(res: &mut Response, error: hagency_store::Error) {
@@ -98,14 +118,17 @@ fn account_id(req: &Request) -> Result<String, Error> {
 async fn one_row(
     store: &hagency_store::DomainStore,
     id: &str,
+    now: u64,
 ) -> Result<AccountRow, hagency_store::Error> {
-    store
+    let Some(choice) = store
         .account_choices()
         .await?
         .into_iter()
         .find(|choice| choice.id == id)
-        .map(AccountRow::from_choice)
-        .ok_or(hagency_store::Error::NotFound)
+    else {
+        return Err(hagency_store::Error::NotFound);
+    };
+    AccountRow::from_choice(store, choice, now).await
 }
 fn statement_time() -> Result<u64, Error> {
     std::time::SystemTime::now()
@@ -137,7 +160,16 @@ async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
                     return;
                 }
             };
-            let rows: Vec<AccountRow> = choices.into_iter().map(AccountRow::from_choice).collect();
+            let mut rows: Vec<AccountRow> = Vec::with_capacity(choices.len());
+            for choice in choices {
+                match AccountRow::from_choice(&store, choice, at).await {
+                    Ok(row) => rows.push(row),
+                    Err(error) => {
+                        failure(res, error);
+                        return;
+                    }
+                }
+            }
             super::resources::bounded(
                 res,
                 &serde_json::json!({"at_ms":at,"accounts":rows,"next_after":null}),
@@ -161,7 +193,14 @@ async fn single(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let Some(store) = domain(depot, res) else {
         return;
     };
-    let result = one_row(&store, &id).await;
+    let at = match statement_time() {
+        Ok(at) => at,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    let result = one_row(&store, &id, at).await;
     if let Err(error) = recheck(depot) {
         failed(res, error);
         return;
@@ -210,11 +249,18 @@ async fn prepare(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         failed(res, error);
         return;
     }
+    let at = match statement_time() {
+        Ok(at) => at,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
     match result {
-        Ok(choice) => super::resources::bounded(
-            res,
-            &serde_json::json!({"account":AccountRow::from_choice(choice)}),
-        ),
+        Ok(choice) => match AccountRow::from_choice(&store, choice, at).await {
+            Ok(row) => super::resources::bounded(res, &serde_json::json!({"account":row})),
+            Err(error) => failure(res, error),
+        },
         Err(error) => failure(res, error),
     }
 }
@@ -244,11 +290,18 @@ async fn retire(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         failed(res, error);
         return;
     }
+    let at = match statement_time() {
+        Ok(at) => at,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
     match result {
-        Ok(choice) => super::resources::bounded(
-            res,
-            &serde_json::json!({"account":AccountRow::from_choice(choice)}),
-        ),
+        Ok(choice) => match AccountRow::from_choice(&store, choice, at).await {
+            Ok(row) => super::resources::bounded(res, &serde_json::json!({"account":row})),
+            Err(error) => failure(res, error),
+        },
         Err(error) => failure(res, error),
     }
 }
@@ -327,7 +380,8 @@ async fn enrollment(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     // Phase 3 (store): the write and the read-back.
     let result = async {
         store.enroll_account_resource(command).await?;
-        one_row(&store, &id).await
+        let at = statement_time().map_err(|_| hagency_store::Error::Unavailable)?;
+        one_row(&store, &id, at).await
     }
     .await;
     if let Err(error) = recheck(depot) {

@@ -2663,6 +2663,19 @@ impl DomainStore {
     pub async fn account_choices(&self) -> Result<Vec<crate::AccountChoice>, Error> {
         self.call(256, |db| db.account_choices()).await
     }
+    /// MA-S3b serve-time read wrapper: the account surface holds this
+    /// worker handle, and the console's DTO needs the same read the store
+    /// exposes (`DomainRepository::account_readiness`). Plumbing only —
+    /// no fact change; the read-time rule (latest observed, unexpired
+    /// shadowing) stays the repository's.
+    pub async fn account_readiness(
+        &self,
+        id: String,
+        now: u64,
+    ) -> Result<crate::AccountReadiness, Error> {
+        self.call(256, move |db| db.account_readiness(&id, now))
+            .await
+    }
     pub async fn managed_account(&self, id: String) -> Result<crate::ManagedAccount, Error> {
         if id.len() > 128 {
             return Err(Error::Capacity);
