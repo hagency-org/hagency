@@ -32,6 +32,29 @@ async function rosterWalk(page) {
   assert((await page.locator('main button').count()) === 1, 'Refresh is the only control — no lifecycle, no mutation');
 }
 
+/* The project-sides walk (ADR-132): the page renders the six-key side
+ * cards with the SERVER-OWNED unavailable list verbatim, and no
+ * credential value can appear on screen — the validator refuses any key
+ * set other than the declared one and no declared key is a credential. */
+async function projectSidesWalk(page) {
+  await page.goto(`${config.base}/console/project-sides/`);
+  await page.locator('[data-native-state="ready"]').waitFor();
+  const text = await page.locator('main').innerText();
+  assert.match(text, /example\.test/, 'the side card renders, keyed by server name');
+  assert.match(text, /read-only — the fleet registrations|只读 —— 车队注册及其项目/);
+  assert.match(text, /!reception:example\.test/, 'the reception room id renders as ordinary data');
+  assert.match(text, /project_one/, 'the joined project renders');
+  assert.match(text, /!project:example\.test/, 'the project room id renders');
+  // The server's own gap list, verbatim: credential_kind and owner are
+  // NAMED as unknown rather than invented.
+  assert.match(text, /credential_kind/);
+  assert.match(text, /owner/);
+  assert(!/as_token|hs_token|asToken|hsToken/.test(text), 'no credential word on screen');
+  assert(!/@owner:example\.test/.test(text), 'the owner mxid stays withheld');
+  assert(!/!private:example\.test/.test(text), 'the owner DM room stays withheld');
+  assert((await page.locator('main button').count()) === 1, 'Refresh is the only control');
+}
+
 const browser = await chromium.launch({ executablePath: process.env.HAGENCY_BROWSER_CHROME ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome', headless: true,
   args: ['--disable-background-networking', '--disable-component-update', '--no-default-browser-check'] });
 if (config.roster) {
@@ -54,6 +77,30 @@ if (config.roster) {
     assert(!/private_|operator\.token/.test(await page.locator('main').innerText()), 'no credential value on screen');
     assert.deepEqual(failures, []);
     console.log('PASS native agent roster browser');
+  } finally { await browser.close(); }
+  process.exit(0);
+}
+if (config.sides) {
+  // The project-sides-only lane (ADR-132 browser scenario): the same
+  // read-only ticket the usage walk exchanges, one page, no operator
+  // token in the browser, and no credential value on screen.
+  try {
+    const context = await browser.newContext({ serviceWorkers: 'block' });
+    const page = await context.newPage();
+    const failures = []; const urls = [];
+    page.on('pageerror', (error) => failures.push(error.message));
+    await context.route('**/*', async (route) => {
+      const url = new URL(route.request().url()); urls.push(url.toString());
+      if (url.origin !== config.base) { failures.push('unexpected external request'); await route.abort(); }
+      else await route.continue();
+    });
+    await page.goto(config.url);
+    await page.locator('[data-native-state="ready"]').waitFor();
+    await projectSidesWalk(page);
+    assert(urls.every((url) => !url.includes('access=')), 'no ticket value in a request URL');
+    assert(!/private_|operator\.token/.test(await page.locator('main').innerText()), 'no credential value on screen');
+    assert.deepEqual(failures, []);
+    console.log('PASS native project-sides browser');
   } finally { await browser.close(); }
   process.exit(0);
 }
@@ -250,6 +297,9 @@ try {
   // The roster page in the full walk too: the same seven-column projection
   // under the same session, bilingually asserted by rosterWalk.
   await rosterWalk(page);
+  // The project-sides page likewise: the six-key side cards, the server's
+  // gap list, and the credential negatives — bilingual via the walk.
+  await projectSidesWalk(page);
   await page.goto(`${config.base}/console/usage/?engagement_id=${config.engagement}`);
   await page.locator('[data-native-state="ready"]').waitFor();
   const storage = await page.evaluate(() => ({ local: Object.fromEntries(Object.entries(localStorage)), session: Object.fromEntries(Object.entries(sessionStorage)) }));

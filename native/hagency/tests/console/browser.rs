@@ -779,3 +779,57 @@ async fn native_console_agent_roster_browser() {
     serving.await.unwrap().unwrap();
     f.close().await;
 }
+
+#[tokio::test]
+async fn native_console_project_side_browser() {
+    let address = address();
+    let f = Fixture::new(address, Some(&built()));
+    hagency_store::private::write_new(
+        &f.root.path().join("state/operator.token"),
+        TOKEN.as_bytes(),
+    )
+    .unwrap();
+    let acceptor = TcpListener::new(address).try_bind().await.unwrap();
+    let server = Server::new(acceptor);
+    let handle = server.handle();
+    let serving = tokio::spawn(server.try_serve(f.app.clone().router()));
+    // The harness owns the ticket — the driver receives only a URL and
+    // mints nothing itself; one outstanding ticket at a time.
+    let url = hagency::console::client::access(&f.root.path().join("state"), address)
+        .await
+        .unwrap();
+    let mut child = Command::new(node())
+        .arg(script())
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("actual browser tooling must exist");
+    child
+        .stdin
+        .take()
+        .unwrap()
+        .write_all(
+            format!(
+                "{}\n",
+                json!({"base":format!("http://{address}"),"url":url,"sides":true})
+            )
+            .as_bytes(),
+        )
+        .await
+        .unwrap();
+    let output = child.wait_with_output().await.unwrap();
+    assert!(
+        output.status.success(),
+        "real project-sides browser assertions failed: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("PASS native project-sides browser"),
+        "the project-sides lane reported no pass marker"
+    );
+    handle.stop_graceful(Some(Duration::from_secs(2)));
+    serving.await.unwrap().unwrap();
+    f.close().await;
+}

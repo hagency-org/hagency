@@ -13,6 +13,8 @@ mod configuration;
 mod engagements;
 #[path = "console/fixture.rs"]
 mod fixture;
+#[path = "console/project_sides.rs"]
+mod project_sides;
 #[path = "console/resources.rs"]
 mod resources;
 #[path = "console/status_strip.rs"]

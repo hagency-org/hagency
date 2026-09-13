@@ -8366,3 +8366,46 @@ client qualification and ongoing identity/key management remain separate.
   reproduces at the lane base `05e7bf5b` (verified on a detached checkout),
   so it is this environment's refusal class, reported once, not retried;
   the orchestrator runs the store-backed targets at integration.
+## 2026-09-13 — The native project-side observation is a bounded projection (ADR-132)
+
+- Two commits as the ADR sizes it. First the store read: `project_sides()` —
+  a bounded `SELECT`-named `LEFT JOIN`-equivalent over `registrations`
+  (heads, `json_extract` of `serverName`/`representativeMxid`/
+  `receptionRoomId`/`generation`) joined to `projects` (capped 64 per side,
+  fleet cap 1024), with the `DomainStore` wrapper and `lib.rs` re-export.
+  The side fields are extracted by path, never by parsing the whole config
+  and stripping, so a credential-shaped value seeded into a registration
+  config has no path into the projection; a corrupt generation path fails
+  `Error::Schema`. Store tests pin the join, the 64-cap, the withheld
+  owner fields, and the token-shaped forward guard.
+- Then the console route: `GET /console/api/project-sides` behind the
+  existing `authenticate` hoop, no scope — exactly six keys (`id`,
+  `representative`, `generation`, `reception_room_id`, `registered`,
+  `projects[] = {id, room_id}`), `registered` COMPUTED against the config's
+  own generation rather than assumed, `owner_mxid`/`owner_room_id`
+  withheld (ADR-112), and a server-owned `unavailable` list naming the
+  thirteen retained columns native has no source for. The tests assert the
+  negatives on the RAW body bytes and over every decoded JSON string value
+  (`as_token`, `hs_token`, both camelCase spellings, plus the seeded
+  token-shaped values) — a forward guard that passes trivially today and
+  is not a safety proof, as the ADR states.
+- The page `/console/project-sides/` (deliberately separate from the
+  retained `/projects`, whose invites/whitelist/contributions have no
+  native source) stages through `build-native-console.mjs` with the
+  `assets.rs` mime arm, key map and alias; the required key
+  `/console/usage/` and the five-document exception are unchanged — the
+  page serves as a non-document taking no query string. `np.*` strings in
+  both dictionaries; the exact-key client validator refuses any key set
+  other than the declared one. The rail row stays out (a retained-file
+  edit, named as a follow-up).
+- Tests: `native_console_project_side_projection_omits_credentials`,
+  `native_console_project_side_refuses_foreign_origin`, and the
+  feature-gated `native_console_project_side_browser` (harness owns the
+  ticket; the driver mints nothing). Selector listing verified through the
+  rust spec-binding inventory (no missing).
+- Sandbox gates: fmt, clippy `-p hagency --all-targets
+  --features native-console-browser -- -D warnings`, `node --check` on the
+  touched scripts, bindings inventory — all pass. Store-backed and console
+  fixtures cannot execute here (EPERM/SQLite and the pre-proven
+  `Err(Assets)` classes, each reported once); the orchestrator runs them at
+  integration.

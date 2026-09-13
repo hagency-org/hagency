@@ -207,6 +207,34 @@ export async function fetchAgents() {
   return validateAgents(await request('/api/agents'));
 }
 export function agentsView(location) { return /^\/console\/agents\/?$/.test(location.pathname); }
+
+/* The project-sides read (ADR-132): one row per fleet registration — the
+ * id IS the server name (ADR-016) — with EXACTLY six keys and projects
+ * entries of exactly {id, room_id}. The exact-key contract is the privacy
+ * guard: no credential key exists in either set, so a server that grew
+ * one (as_token, hs_token, anything credential-shaped) fails the whole
+ * read rather than rendering. `owner` fields are absent by design
+ * (ADR-112); the unavailable list is SERVER-OWNED and rendered verbatim —
+ * unknown is never zero and never invented. `registered` is "this
+ * registration row exists at the fleet's current generation", not an
+ * access verdict. */
+const SIDE_KEYS = ['id', 'representative', 'generation', 'registered', 'reception_room_id', 'projects'];
+const room = (v) => typeof v === 'string' && v.length <= 256;
+export function validateProjectSides(v) {
+  if (!object(v, ['at_ms', 'unavailable', 'sides']) || !number(v.at_ms)
+    || !Array.isArray(v.unavailable) || v.unavailable.length > 32 || v.unavailable.some((n) => !text(n, 64))
+    || !Array.isArray(v.sides) || v.sides.length > 1024
+    || v.sides.some((s) => !object(s, SIDE_KEYS)
+      || !text(s.id, 255) || !text(s.representative, 255) || !number(s.generation)
+      || typeof s.registered !== 'boolean' || !room(s.reception_room_id)
+      || !Array.isArray(s.projects) || s.projects.length > 64
+      || s.projects.some((p) => !object(p, ['id', 'room_id']) || !text(p.id, 128) || !room(p.room_id)))) throw new Error('invalid_native_response');
+  return v;
+}
+export async function fetchProjectSides() {
+  return validateProjectSides(await request('/api/project-sides'));
+}
+export function projectSidesView(location) { return /^\/console\/project-sides\/?$/.test(location.pathname); }
 export async function transitionAlert(key, to, note) {
   /* One display-state transition through the console session. The reply is
    * the SAME envelope the list read serves (one row), so the same validator

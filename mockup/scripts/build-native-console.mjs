@@ -21,8 +21,9 @@ await mkdir(join(staged, 'app', 'alerts'), { recursive: true, mode: 0o700 });
 await mkdir(join(staged, 'app', 'engagements'), { recursive: true, mode: 0o700 });
 await mkdir(join(staged, 'app', 'accounts'), { recursive: true, mode: 0o700 });
 await mkdir(join(staged, 'app', 'agents'), { recursive: true, mode: 0o700 });
+await mkdir(join(staged, 'app', 'project-sides'), { recursive: true, mode: 0o700 });
 for (const name of ['components', 'lib', 'package.json', 'jsconfig.json', 'next.config.mjs']) await cp(join(source, name), join(staged, name), { recursive: true });
-for (const name of ['layout.jsx', 'globals.css', 'usage/page.jsx', 'resources/page.jsx', 'resources/new/page.jsx', 'alerts/page.jsx', 'engagements/page.jsx', 'accounts/page.jsx', 'agents/page.jsx']) await cp(join(source, 'app', name), join(staged, 'app', name));await mkdir(join(work, 'lib'), { mode: 0o700 });
+for (const name of ['layout.jsx', 'globals.css', 'usage/page.jsx', 'resources/page.jsx', 'resources/new/page.jsx', 'alerts/page.jsx', 'engagements/page.jsx', 'accounts/page.jsx', 'agents/page.jsx', 'project-sides/page.jsx']) await cp(join(source, 'app', name), join(staged, 'app', name));
 /*
  * ADR-145 build-time constants, staged inside the mkdtemp tree before
  * `next build` — no repo path is generated and nothing enters
