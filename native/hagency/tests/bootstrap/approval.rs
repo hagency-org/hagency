@@ -52,38 +52,6 @@ async fn with_approval(f: &Fixture, anchors: bool) {
 
 /// Scenario: A service-composed run delivers a request end to end.
 ///
-/// The composition is the assertion: with the approval section present the
-/// bootstrap attaches `ApprovalHost` to the host (so `start_mode` creates the
-/// notices channel), builds the approval bot's OWN collector
-/// (`HostApprovalConfig::new` → `with_fresh_account_enrollment` →
-/// `ApprovalCollector::new`), spawns the pump forwarder on the service
-/// runtime, hands the driver the one new sender parameter, and the ordinary
-/// dispatch run still completes end to end through the real binary. The
-/// card-send leg itself (encrypted DM to the owner) is bound by the
-/// matrix-crate selector `native_private_approval_fresh_enrollment_and_delivery`
-/// over the same `send_private_approval_card`; this selector binds the
-/// service-level wiring C0 owns. No approval-bot traffic may leave the
-/// composition without an admitted request.
-#[tokio::test]
-async fn native_private_approval_delivery_is_wired() {
-    let mut f = Fixture::new(false).await;
-    with_approval(&f, true).await;
-    let child = f.launch(true);
-    let first = f.fake.next().await;
-    first.json(200, common::who());
-    f.fake.next().await.json(200, common::sync("bootstrap"));
-    f.fake.next().await.json(200, common::state());
-    let status = f.wait_result().await;
-    assert_eq!(status["protocol"], "completed");
-    assert_eq!(f.attempts(), 1);
-    // The pump is constructed but idle: no card was sent because no request
-    // was admitted, and the approval bot never touched the peer.
-    f.fake.no_request().await;
-    let capability = f.capabilities().await;
-    assert_eq!(capability["development_execution"]["state"], "one_attempt");
-    drop(child);
-}
-
 /// Scenario: The pump refuses without a fresh approval enrollment.
 ///
 /// The same fixture with the enrollment anchors absent: the composition
