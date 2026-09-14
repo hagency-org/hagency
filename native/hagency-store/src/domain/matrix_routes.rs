@@ -338,6 +338,21 @@ impl DomainRepository {
                 "unsafe snapshot {}",
                 hagency_core::canonical::digest(&serde_json::json!(input))?
             );
+            // A first unsafe observation has no prior scope row to invalidate;
+            // `invalidate` would surface it as an authority word. The safety
+            // predicate owns this refusal instead: refuse by its name, create
+            // no row (the transaction is dropped uncommitted), and leave the
+            // room free to be observed safely at generation 1 later.
+            let prior_exists: bool = tx
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM matrix_room_scopes WHERE server_name=?1 AND room_id=?2)",
+                    params![c.registration.server_name, &input.room_id],
+                    |r| r.get(0),
+                )
+                .unwrap_or(false);
+            if !prior_exists {
+                return Err(Error::UnsafeSnapshot(reason));
+            }
             invalidate(&tx, &c, &input.room_id, input.generation, &reason, now)?;
             tx.commit()?;
             return Ok(());

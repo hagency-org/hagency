@@ -48,6 +48,8 @@ pub enum Error {
     AlreadyConsumed,
     #[error("approval is not consumable in its settled state")]
     NotConsumable,
+    #[error("room snapshot is unsafe and was refused: {0}")]
+    UnsafeSnapshot(String),
     #[error("session or resource requires inspected recovery")]
     Quarantined,
     #[error("invalid input: {0}")]

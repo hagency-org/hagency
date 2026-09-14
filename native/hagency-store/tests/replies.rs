@@ -1286,3 +1286,59 @@ fn native_reply_sending_inspection() {
     assert_eq!(count(&f.sql(), "final_reply_inspections"), 1);
     assert!(f.db.validate_final_reply_send(&claim, 2003).is_err());
 }
+
+/// ADR-047 amendment: a room's FIRST observation, when its snapshot fails the
+/// safety predicate, is refused with the named safety reason — never the
+/// authority word `RunnerAuthority` that `invalidate`'s missing-prior-row
+/// fallback used to surface — and no `matrix_room_scopes` row is created. A
+/// later SAFE observation of the same room at generation 1 proceeds normally:
+/// the unsafe first look left nothing behind.
+#[test]
+fn native_matrix_first_unsafe_snapshot_is_refused_by_name() {
+    let mut f = Fixture::new(false, None);
+    let before = count(&f.sql(), "matrix_room_scopes");
+    // Unsafe: the sender is absent from the joined set (invalid members).
+    let mut unsafe_observation = f.room.clone();
+    unsafe_observation.room_id = "!unsafe:example.test".into();
+    unsafe_observation.joined = BTreeSet::from([
+        "@owner:example.test".into(),
+        "@stranger:example.test".into(),
+    ]);
+    match f.db.observe_matrix_room(&unsafe_observation, 2001) {
+        Err(Error::UnsafeSnapshot(reason)) => {
+            assert!(
+                reason.starts_with("unsafe snapshot "),
+                "the refusal names the safety reason, got {reason:?}"
+            );
+        }
+        other => panic!("first unsafe snapshot refused with {other:?}"),
+    }
+    assert_eq!(
+        count(&f.sql(), "matrix_room_scopes"),
+        before,
+        "the refused first observation created no scope row"
+    );
+    // The same room, observed safely afterwards, is accepted at generation 1.
+    let mut safe = unsafe_observation;
+    safe.privacy = RoomPrivacy::Direct {
+        human_mxid: "@owner:example.test".into(),
+    };
+    safe.joined = BTreeSet::from(["@worker:example.test".into(), "@owner:example.test".into()]);
+    safe.invite_only = true;
+    safe.encrypted = true;
+    f.db.observe_matrix_room(&safe, 2002).unwrap();
+    assert_eq!(
+        count(&f.sql(), "matrix_room_scopes"),
+        before + 1,
+        "the later safe observation at generation 1 created the row"
+    );
+    let (generation, available): (u64, bool) = f
+        .sql()
+        .query_row(
+            "SELECT generation,available FROM matrix_room_scopes WHERE room_id='!unsafe:example.test'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((generation, available), (1, true));
+}

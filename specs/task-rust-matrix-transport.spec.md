@@ -102,21 +102,18 @@ Scenario: Native schema upgrade retains older state
   Then original identities and custody remain intact and missing structure fails visibly
 
 Scenario: A room's first unsafe snapshot is refused by name
-  Owed Selector: native_matrix_first_unsafe_snapshot_is_refused_by_name (parked — the name is owed by the store change and binds only when it lands; no Test: line here yet)
+  Test: native_matrix_first_unsafe_snapshot_is_refused_by_name
   Given a room never observed before
   When its first observation fails the safety predicate
   Then the refusal names the safety reason (not RunnerAuthority) and no room scope row is created
 
 ## Decisions
 
-**The first-unsafe-snapshot refusal is parked, not bound.** The current
-behaviour — `invalidate`'s `prior.ok_or(Error::RunnerAuthority)` at
-`matrix_routes.rs:123` when the unsafe snapshot is the room's first
-observation — is the defect ADR-047's amendment records; the named safety
-refusal requires the store change, and a builder binds
-`native_matrix_first_unsafe_snapshot_is_refused_by_name` when that change
-lands. The scenario above carries no `Test:` line so the checker does not
-expect it today.
+**The first-unsafe-snapshot refusal is bound.** The store change landed:
+a first unsafe observation refuses with `Error::UnsafeSnapshot` (the safety
+predicate's own word bound to the observation digest) and creates no scope
+row, so a later safe observation of the same room proceeds at generation 1.
+The selector below is bound in the store's replies tests.
 
 ## Out of Scope
 
