@@ -2851,6 +2851,15 @@ impl DomainStore {
         })
         .await
     }
+    pub async fn provisioning_registration_for_engagement(
+        &self,
+        engagement_id: String,
+    ) -> Result<hagency_core::authority::Registration, Error> {
+        self.call(weight(&engagement_id)?, move |db| {
+            db.provisioning_registration_for_engagement(&engagement_id)
+        })
+        .await
+    }
     pub async fn provisioning_owner_room(
         &self,
         owner_mxid: String,

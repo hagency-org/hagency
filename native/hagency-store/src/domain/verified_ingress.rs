@@ -193,6 +193,26 @@ impl DomainRepository {
         Ok(serde_json::from_str(&encoded)?)
     }
 
+    /// The registration for an engagement — used by the collector to learn the
+    /// reception room id (which it must fetch but never publish).
+    pub fn provisioning_registration_for_engagement(
+        &self,
+        engagement_id: &str,
+    ) -> Result<hagency_core::authority::Registration, Error> {
+        identifier(engagement_id, 128)?;
+        let encoded: String = self
+            .db
+            .query_row(
+                "SELECT r.config FROM engagements e JOIN registrations r \
+                 ON r.fleet_id=e.fleet_id AND r.generation=e.generation WHERE e.id=?1",
+                [engagement_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or(Error::NotFound)?;
+        Ok(serde_json::from_str(&encoded)?)
+    }
+
     /// The enrolled owner-DM room for a requesting owner, recorded by the
     /// approval collector at enrollment. An owner with no enrolled room is
     /// refused fail-closed before `admit`.
