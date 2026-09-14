@@ -90,7 +90,20 @@ async fn native_file_service_restart() {
             f.respond(request).await;
             continue;
         }
-        let status = f.capabilities().await["development_execution"].clone();
+        // One bounded status probe per iteration (glm5's shape): the loop is
+        // the only retry, so an unanswered probe never blinds the fake
+        // Matrix server past the child's operation budget — the hosted
+        // starvation window that failed this test as 0 vs 1.
+        let status = match f.probe_capabilities().await {
+            Some(value) => value["development_execution"].clone(),
+            None => {
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "injected domain failure was not observed"
+                );
+                continue;
+            }
+        };
         if matches!(
             status["state"].as_str(),
             Some("outcome_unknown" | "unavailable")

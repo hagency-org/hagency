@@ -400,7 +400,19 @@ impl Fixture {
             if let Ok(bytes) = fs::read(self.work.join("file-mcp.receipt")) {
                 return serde_json::from_slice(&bytes).unwrap();
             }
-            let status = self.capabilities().await["development_execution"].clone();
+            // One bounded status probe per iteration (glm5's shape): the loop
+            // is the only retry, so an unanswered probe never blinds the fake
+            // Matrix server past the child's operation budget.
+            let status = match self.probe_capabilities().await {
+                Some(value) => value["development_execution"].clone(),
+                None => {
+                    assert!(
+                        tokio::time::Instant::now() < deadline,
+                        "actual file workflow did not deliver"
+                    );
+                    continue;
+                }
+            };
             assert!(
                 !matches!(
                     status["state"].as_str(),
@@ -748,6 +760,51 @@ impl Fixture {
         self.sql()
             .query_row("SELECT COUNT(*) FROM runner_attempts", [], |r| r.get(0))
             .unwrap()
+    }
+    /// One bounded status probe (glm5's shape, received_files bda97cd1): a
+    /// single connect plus one read bounded by the existing 2s read budget.
+    /// Returns None instead of retrying — callers that need the served-
+    /// bootstrap contract keep using `capabilities()`; polling loops use
+    /// this so an unanswered probe never blinds the fake Matrix server
+    /// past the child's operation budget. The loop is the only retry.
+    pub(super) async fn probe_capabilities(&self) -> Option<Value> {
+        let mut stream = tokio::net::TcpStream::connect(self.address).await.ok()?;
+        let token = String::from_utf8(
+            private::read_secret(&self.state_dir.join("operator.token")).unwrap(),
+        )
+        .unwrap();
+        stream
+            .write_all(format!("GET /api/native/v1/capabilities HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n", self.address, token).as_bytes())
+            .await
+            .ok()?;
+        let mut bytes = Vec::new();
+        tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut bytes))
+            .await
+            .ok()?
+            .ok()?;
+        let response = String::from_utf8(bytes).ok()?;
+        if !response.starts_with("HTTP/1.1 200") {
+            return None;
+        }
+        let value: Value = serde_json::from_str(response.split_once("\r\n\r\n")?.1).ok()?;
+        let mut observation = self.observation.get();
+        observation.status = match value["development_execution"]["state"].as_str() {
+            Some("disabled") => "disabled",
+            Some("configured") => "configured",
+            Some("refreshing") => "refreshing",
+            Some("enrolling") => "enrolling",
+            Some("claiming") => "claiming",
+            Some("registering") => "registering",
+            Some("running") => "running",
+            Some("completed") => "completed",
+            Some("unavailable") => "unavailable",
+            Some("outcome_unknown") => "outcome_unknown",
+            Some("no_work") => "no_work",
+            Some("closed") => "closed",
+            _ => "other",
+        };
+        self.observation.set(observation);
+        Some(value)
     }
     pub async fn capabilities(&self) -> Value {
         let until = tokio::time::Instant::now() + STARTUP_WATCHDOG;
