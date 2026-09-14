@@ -116,6 +116,24 @@ impl Fixture {
                 )
                 .unwrap();
             let result = db.enroll_account_resource(command).unwrap();
+            // MA-S2 (ADR-053 amendment): the readiness gate consumes the bound
+            // account only when its login fact (MA-S1, migration 028) is
+            // observed and unexpired. A managed bootstrap over an unobserved
+            // account parks instead of running. Record the fact through the
+            // store's own readiness path — exactly what a real deployment
+            // writes when its login child exits — never a gate bypass.
+            let attempt = db.begin_account_login(choice.id.as_str(), now()).unwrap();
+            db.settle_account_login(
+                attempt,
+                hagency_store::LoginVerdict {
+                    mode: hagency_store::AccountReadinessMode::Subscription,
+                    provider_state: "logged-in-subscription".into(),
+                    outcome: hagency_store::LoginOutcome::Observed,
+                    expires_at_ms: Some(now() + 3_600_000),
+                },
+                now(),
+            )
+            .unwrap();
             account_id = Some(choice.id);
             db.resource_configuration(&result.resource_id).unwrap()
         } else {
