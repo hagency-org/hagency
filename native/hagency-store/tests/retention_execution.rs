@@ -25,6 +25,16 @@ impl Fixture {
         let root = tempfile::tempdir().unwrap();
         let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
         db.register(&registration()).unwrap();
+        // The parents the planted engagements reference, through the store's
+        // public entry points (the decisions fixture's pattern): `put_resource`
+        // creates the `resources` row `pool`, and `admit` writes the
+        // `projects` row `project_one` alongside its own pending engagement.
+        // That seed engagement sits outside the execution corpus — the phase
+        // reads `runner_dispatches`, never `engagements`.
+        let pool = resource("pool", "seat", 1000);
+        db.put_resource(&pool).unwrap();
+        let seed = request("seed", "seed", &pool, 100);
+        db.admit(&proof(&seed), 1000).unwrap();
         Self { root, db }
     }
     fn sql(&self) -> Connection {
@@ -51,10 +61,13 @@ fn plant_dispatch(
     plain_outputs: u64,
 ) {
     let fleet = registration().fleet_id;
+    // `put_resource` derives the row's id from the preset (`resource_…`), so
+    // the planted engagements reference the same id the catalog wrote.
+    let pool = resource("pool", "seat", 1000).id();
     sql.execute(
         "INSERT INTO engagements(id,fleet_id,generation,request_id,digest,context,evidence,project_id,name,resource_id,tokens,state,projection) \
-         VALUES(?1,?2,1,?1,'{}','{}','{}','project_one','Agent','pool',10,'active','{}')",
-        params![format!("eng_{id}"), fleet],
+         VALUES(?1,?2,1,?1,'{}','{}','{}','project_one',?3,?4,10,'active','{}')",
+        params![format!("eng_{id}"), fleet, format!("agent_{id}"), pool],
     )
     .unwrap();
     sql.execute(
@@ -85,14 +98,14 @@ fn plant_dispatch(
     .unwrap();
     for n in 0..accepted_outputs {
         sql.execute(
-            "INSERT INTO runner_outputs(dispatch_id,fence,output,accepted) VALUES(?1,1,'{}',1)",
+            "INSERT INTO runner_outputs(dispatch_id,fence,output,accepted) VALUES(?1,1,?2,1)",
             params![id, n.to_string()],
         )
         .unwrap();
     }
     for n in 0..plain_outputs {
         sql.execute(
-            "INSERT INTO runner_outputs(dispatch_id,fence,output,accepted) VALUES(?1,1,'{}',0)",
+            "INSERT INTO runner_outputs(dispatch_id,fence,output,accepted) VALUES(?1,1,?2,0)",
             params![id, n.to_string()],
         )
         .unwrap();
@@ -240,7 +253,17 @@ fn native_execution_prune_retains_the_held_completion_evidence() {
         );
     }
     // The completion's composite FK names the receipt, and its state is
-    // 'held': both pins sit on the same row.
+    // 'held': both pins sit on the same row. The `task_id` FK needs the
+    // canonical task first (the retention fixture's planted-task pattern).
+    sql.execute(
+        "INSERT INTO canonical_tasks(id,session_id,config) VALUES(?1,?2,?3)",
+        params![
+            "task_held",
+            "sess_dispatch_held",
+            json!({"id":"task_held","title":"T","status":"completed"}).to_string()
+        ],
+    )
+    .unwrap();
     sql.execute(
         "INSERT INTO owned_task_completions(id,dispatch_id,fence,task_id,execution_epoch,fingerprint,call_id,digest,body,route,deadline,state,created_at,updated_at) \
          VALUES('held_1','dispatch_held',1,'task_held',1,'fp','call','dg','body','{}',100,'held',1,1)",

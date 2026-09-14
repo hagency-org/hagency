@@ -639,10 +639,7 @@ impl DomainRepository {
                         29,
                         include_str!("migrations/029-account-logout-receipt.sql"),
                     ),
-                    (
-                        30,
-                        include_str!("migrations/030-execution-retention.sql"),
-                    ),
+                    (30, include_str!("migrations/030-execution-retention.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[

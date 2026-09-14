@@ -1301,12 +1301,18 @@ impl DomainRepository {
         }
         // Over-window report: evidence-carrying settled dispatches beyond
         // the newest-500 window (the candidate predicate's own corpus — a
-        // drained dispatch is not over anything).
+        // drained dispatch is not over anything, and a pinned one is not
+        // actionable: counting it would write the same zero-work receipt
+        // every tick while the pin holds).
         let settled: u64 = tx.query_row(
             &format!(
                 "SELECT COUNT(*) FROM runner_dispatches d \
                  WHERE d.state IN ('completed','superseded') \
-                   AND d.capability_hash IS NULL AND {CARRIES_EVIDENCE}"
+                   AND d.capability_hash IS NULL \
+                   AND NOT EXISTS(SELECT 1 FROM unresolved_dispatches u WHERE u.id=d.id) \
+                   AND NOT EXISTS(SELECT 1 FROM owned_task_completions c \
+                        WHERE c.dispatch_id=d.id AND c.state='held') \
+                   AND {CARRIES_EVIDENCE}"
             ),
             [],
             |r| r.get(0),
