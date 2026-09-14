@@ -50,6 +50,11 @@ pub(crate) enum Fault {
     /// Hold after the transport returns its write receipt and before the
     /// acceptance observation, so a resolution can be driven in that window.
     ReceiptGate,
+    /// Hold after the recheck pump has returned and before the send's first
+    /// byte, with NO wire read during the hold — the window in which a peer
+    /// can leave so that the send path itself, not the pump's read, is the
+    /// observer of the loss.
+    SendGate,
 }
 
 #[cfg(test)]

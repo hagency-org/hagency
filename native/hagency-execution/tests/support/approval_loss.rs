@@ -802,11 +802,16 @@ fn markers_present(work: &std::path::Path) -> String {
 }
 /// The middle case (design §3a): the host is held at the recheck gate with
 /// `in_flight` set and the frame armed but unwritten; the fixture then emits
-/// the resolution for that in-flight id. The write must still complete — a
-/// resolution must not cancel a frame committed to the transport. Fails on
-/// the pre-change predicate (`write.is_none()` alone cancels).
+/// the resolution for that in-flight id, and the host is released only after
+/// the resolution is on the wire, so it is parsed before the first byte.
+/// ADR-046's rule for a pre-send resolution is the quiet path: the armed
+/// frame is dropped, the entry stays in flight, nothing is cancelled and no
+/// frame is written (the once-and-order rule of the runtime forbids the
+/// write after a resolution). A resolution parsed after the receipt is the
+/// `receipt_before_resolution` scenario below. Fails on the pre-change
+/// predicate (`write.is_none()` alone cancels).
 #[tokio::test]
-async fn native_owned_approval_in_flight_resolution_completes_write() {
+async fn native_owned_approval_in_flight_resolution_takes_the_quiet_path() {
     use std::sync::{Arc, atomic::Ordering};
     let root = tempfile::tempdir().unwrap();
     let work = root.path().join("work");
@@ -840,10 +845,39 @@ async fn native_owned_approval_in_flight_resolution_completes_write() {
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    // The host is in flight at the gate; release both halves. The probe now
-    // emits the resolution BEFORE the write, which is the state under test.
-    gate.release.store(true, Ordering::Release);
+    // The host is in flight at the gate. Release the probe first and wait
+    // until its resolution is on the wire, THEN release the host: the
+    // resolution is parsed before the first byte on every run, never a race
+    // between the probe's write and the host's first write step.
     std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let resolved = work.join("owned-dispatch.approval-resolved");
+    let end = tokio::time::Instant::now() + harness_wait() * 2;
+    while !resolved.exists() {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe never announced its resolution; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
+    // The host leaves the gate and the send site's guard retires the armed
+    // frame. Observe that mark before telling the probe to end its turn: a
+    // turn end parsed during the hold reaches the pump first and the drive
+    // ends on it, which is the turn-end scenario, not this one.
+    let end = tokio::time::Instant::now() + harness_wait();
+    loop {
+        let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+        if trace.contains("resolved-before-send") {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < end,
+            "the pre-send quiet arm did not fire after the gate release; trace: {trace}"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    std::fs::write(work.join("owned-dispatch.approval-continue"), b"continue").unwrap();
     let report = op.wait().await.unwrap();
     assert_eq!(
         report.protocol,
@@ -853,23 +887,50 @@ async fn native_owned_approval_in_flight_resolution_completes_write() {
         report.runtime_observation(),
         crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
-    // Self-describing on macOS (the brief-26 run could only report the bare
-    // variant): the phase trace names which `LostAuthority` source fired —
-    // a `checked` phase followed by a store refusal indicts the recheck
-    // pump's barriers guard; a clean `checked → write-started` followed by
-    // the failure indicts the grant/entry match or the acknowledge path.
-    // The write must complete; any uncertainty the platform reports beside
-    // that completion is a different scenario's contract (midwrite, below).
-    assert!(
-        report.failure.is_none(),
-        "{:?} {:?}; trace: {}; cancelled: {}",
+    // The quiet path is not a cancellation and not an uncertainty: the
+    // in-flight guard ignored the resolution for the armed frame, the send
+    // site's quiet arm retired it, the later turn end found a known fate,
+    // no frame reached the wire, nothing was accepted, and the entry stayed
+    // in flight so it was never re-selected.
+    let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+    // The retained owner's cleanup reports unknown on macOS (the supervisor
+    // cannot prove `whole_tree_stopped` there; the same platform-aware
+    // outcome as the resolved-before-first-byte scenario) — an equality, so
+    // any other failure is still refused on every platform.
+    let expected = if cfg!(target_os = "macos") {
+        Some(Failure::CleanupUnknown)
+    } else {
+        None
+    };
+    assert_eq!(
         report.failure,
+        expected,
+        "{:?}; trace: {trace}; cancelled: {}",
         report.runtime_observation(),
-        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id),
         crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
-    assert_eq!(host_response_frames(&work).len(), 1);
-    assert_eq!(probe_read_frames(&work).len(), 1);
+    let position = |mark: &str| {
+        trace
+            .find(mark)
+            .unwrap_or_else(|| panic!("{mark} missing from trace: {trace}"))
+    };
+    assert!(
+        position("in-flight") < position("resolved-ignored-in-flight")
+            && position("resolved-ignored-in-flight") < position("resolved-before-send")
+            && position("resolved-before-send") < position("turn-ended-ignored-in-flight"),
+        "trace order: {trace}"
+    );
+    assert!(
+        !trace.contains("resolved-cancels") && !trace.contains("turn-ended-cancels"),
+        "the in-flight frame was cancelled; trace: {trace}"
+    );
+    assert!(
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id).is_empty(),
+        "cancelled: {}",
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert_eq!(host_response_frames(&work).len(), 0, "trace: {trace}");
+    assert_eq!(probe_read_frames(&work).len(), 0, "trace: {trace}");
     let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
     assert_eq!(
         sql.query_row(
@@ -878,7 +939,7 @@ async fn native_owned_approval_in_flight_resolution_completes_write() {
             |r| r.get::<_, u64>(0)
         )
         .unwrap(),
-        1
+        0
     );
 }
 
@@ -1185,24 +1246,35 @@ async fn native_owned_approval_resolved_before_first_byte() {
 }
 
 /// A frame whose peer vanished before its first byte is never uncertain
-/// (design Q4): the `owned-approval-eof` probe exits right after its
-/// callback, so the armed response frame's first write fails with zero
-/// bytes accepted. The verdict names the refusal (`PeerUnavailable`), the
-/// observation carries the arm and `accepted_bytes == 0`, and no accepted
-/// row is manufactured — distinct from both `Protocol` (malformed bytes)
-/// and the reconcile's uncertainty (a written frame's lost acknowledgement).
+/// (design Q4), in an order that holds on every run: the owner's verdict is
+/// recorded, the host passes its recheck and is held at the send gate — a
+/// pure hold, no wire read — then the `owned-approval-eof-gated` probe
+/// exits, and the test proves the exit (the probe's process-lifetime lock
+/// on the `alive` marker becomes acquirable) before releasing the host. The
+/// send path is therefore the first observer of the loss: its first write
+/// fails with zero bytes accepted, the verdict names the refusal
+/// (`PeerUnavailable`), the observation carries the arm with
+/// `accepted_bytes == 0`, and no accepted row is manufactured — distinct
+/// from both `Protocol` (malformed bytes) and the reconcile's uncertainty (a
+/// written frame's lost acknowledgement). The earlier shape (the probe
+/// exiting right after its callback) let a loaded host observe the exit
+/// before the verdict was recorded and refuse the verdict itself
+/// (`RunnerAuthority`).
 #[tokio::test]
 async fn native_owned_approval_peer_gone_before_first_byte() {
+    use std::sync::{Arc, atomic::Ordering};
     let root = tempfile::tempdir().unwrap();
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
     let (domain, cap) = fixture(root.path(), "peer-gone-before-first-byte");
-    // RecheckGate without an attached gate is inert: the take() finds None.
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(&work, Fault::SendGate, "owned-approval-eof-gated");
+    configured.approval_gate = Some(gate.clone());
     let mut op = Operation::start(
         domain.clone(),
         cap.clone(),
-        host(&work, Fault::RecheckGate, "owned-approval-eof"),
+        configured,
         Limits {
             operation_ms: 25_000,
             response_ms: 1500,
@@ -1215,6 +1287,39 @@ async fn native_owned_approval_peer_gone_before_first_byte() {
         .unwrap()
         .unwrap();
     choose(&domain, notice.request_id).await;
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "host did not reach the send gate; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // The frame is armed and held before its first byte; now the peer goes,
+    // and its going is proven before the host is released: the probe holds
+    // an exclusive lock on `alive` for its whole life, so the lock is
+    // acquirable exactly when the process is gone.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let alive = std::fs::OpenOptions::new()
+        .write(true)
+        .open(work.join("owned-dispatch.alive"))
+        .unwrap();
+    let end = tokio::time::Instant::now() + harness_wait();
+    loop {
+        match alive.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {}
+            Err(std::fs::TryLockError::Error(error)) => panic!("alive lock: {error}"),
+        }
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe did not exit after its release; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
     let report = op.wait().await.unwrap();
     assert_eq!(
         report.failure,
@@ -1235,18 +1340,11 @@ async fn native_owned_approval_peer_gone_before_first_byte() {
         ),
         "{observation:?}"
     );
-    // A never-armed entry has no write custody at all — `write: None` is the
-    // honest observation for it (Q3: the armed fact lives in the entry
-    // state, never in a write snapshot's absence). When a snapshot IS
-    // present it must show zero accepted bytes for the never-transmitted
-    // verdict.
-    match observation.write {
-        None => {}
-        Some(write) => {
-            assert_eq!(write.accepted_bytes, 0, "{observation:?}");
-            assert_eq!(write.total_bytes, 51, "{observation:?}");
-        }
-    }
+    // The send path observed the loss, so its write custody IS present and
+    // shows the never-transmitted frame: zero accepted of the whole frame.
+    let write = observation.write.as_ref().expect("send-site write custody");
+    assert_eq!(write.accepted_bytes, 0, "{observation:?}");
+    assert_eq!(write.total_bytes, 51, "{observation:?}");
     // Never transmitted: no frame reached the wire and no row was accepted.
     assert!(host_response_frames(&work).is_empty());
     assert!(!work.join("owned-dispatch.approval-bytes").exists());

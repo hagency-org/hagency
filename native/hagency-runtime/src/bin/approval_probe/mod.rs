@@ -102,6 +102,28 @@ pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::R
     if mode == "owned-approval-eof" {
         return Ok(false);
     }
+    if mode == "owned-approval-eof-gated" {
+        // The peer-gone-before-first-byte case, ordered: the host must have
+        // recorded the owner's verdict and be holding the armed frame at its
+        // send gate BEFORE this peer leaves, or the verdict races the host's
+        // own observation of the exit (a loaded host observed the exit first
+        // and refused the verdict with `RunnerAuthority`). So: hold an
+        // exclusive lock on the `alive` marker for the life of this process
+        // (the OS releases it at exit — the test's proof that the peer is
+        // gone before it releases the host), announce the callback is
+        // delivered, hold for the test's release, then exit with nothing on
+        // the wire. The lock handle is forgotten, never dropped, so the lock
+        // outlives every early return and ends with the process itself.
+        let alive = OpenOptions::new()
+            .create(true)
+            .truncate(true)
+            .write(true)
+            .open(marker.with_extension("alive"))?;
+        alive.lock()?;
+        std::mem::forget(alive);
+        gate(marker)?;
+        return Ok(false);
+    }
     if mode == "owned-approval-resolve" {
         // Cancellation: the probe must resolve without reading a response —
         // that is its subject — so the handshake is explicit both ways and
@@ -178,27 +200,23 @@ pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::R
     if mode == "owned-approval-gate-resolve" {
         // Host is held at the recheck gate: in_flight is set and the frame is
         // armed but not yet committed to the OS. Emit the resolution for the
-        // in-flight id, then let the host write: the write must still arrive.
+        // in-flight id and say so; the test releases the host only after this
+        // marker, so the resolution is parsed before the first byte and the
+        // host takes ADR-046's quiet path for a pre-send resolution: the
+        // armed frame is dropped, the entry stays in flight, nothing is
+        // cancelled and no frame is written. The probe therefore reads no
+        // frame here (a read would wait for bytes the rule never sends).
+        // It must not end its turn either until the host has left the gate
+        // and retired the frame: a turn end parsed during the hold reaches
+        // the pump before the quiet arm and the drive ends on it. So the
+        // probe holds for the test's continue marker — written once the
+        // pump's own `resolved-before-send` mark is observed — and only
+        // then returns into the parent's terminal turn.
         announce(marker, "approval-ready")?;
         await_release(marker, "approval-release")?;
         resolved("approval-1")?;
-        let response = read(reader, marker)?;
-        let id = response["id"].as_str().ok_or(io::ErrorKind::InvalidData)?;
-        if !id.starts_with("approval-")
-            || response.get("method").is_some()
-            || !matches!(
-                response["result"]["decision"].as_str(),
-                Some("accept" | "decline")
-            )
-        {
-            return Err(io::Error::other("invalid approval response"));
-        }
-        append_bytes(marker, &response)?;
-        fs::write(
-            marker.with_extension("approval-continued"),
-            b"actual responses received",
-        )?;
-        // Return into the parent's terminal turn so the operation completes.
+        announce(marker, "approval-resolved")?;
+        await_release(marker, "approval-continue")?;
         return Ok(true);
     }
     if mode == "owned-approval-admitted-resolve-count" {

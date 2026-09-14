@@ -119,11 +119,12 @@ Scenario: Pending control preserves exact ordered usage observations
   When domain receipts are delayed or refused
   Then the original usage slot and ordered facts remain retained with explicit unknown status and no fabricated observations
 
-Scenario: An in-flight approval frame survives its own resolution
-  Test: native_owned_approval_in_flight_resolution_completes_write
-  Given a host held at the recheck gate with the prepared frame committed to the transport
-  When the fixture emits the resolution for that in-flight id before the write lands
-  Then the bounded write completes and is recorded and the operation reports no failure
+Scenario: An in-flight resolution parsed before the first byte takes the quiet path
+  Test: native_owned_approval_in_flight_resolution_takes_the_quiet_path
+  Given a host held at the recheck gate with the prepared frame armed but not yet committed to the transport
+  When the fixture emits the resolution for that in-flight id and the host is released only after it is on the wire
+  Then the host drops the armed frame on the pre-send quiet arm, cancels nothing, writes no frame and records no acceptance, and the operation completes with no failure beyond the retained owner's platform cleanup outcome
+  And a resolution parsed after the write receipt is the receipt-before-resolution scenario, never this one
 
 Scenario: Pre-admission resolution still cancels with the named variant
   Test: native_owned_approval_resolution_before_admission_cancels

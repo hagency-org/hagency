@@ -396,6 +396,14 @@ impl ApprovalRun {
                     }
                     continue;
                 }
+                #[cfg(test)]
+                if self.callbacks.fault == Some(super::Fault::SendGate)
+                    && let Some(gate) = self.callbacks.gate.take()
+                {
+                    // A pure hold: nothing reads the wire here, so a peer
+                    // that leaves during it is first observed by the send.
+                    gate.wait().await;
+                }
                 let step = crate::operation::bounded(
                     runner.send_prepared_approval(&mut sending.prepared),
                     cancel,
