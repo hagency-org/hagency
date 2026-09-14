@@ -345,7 +345,7 @@ impl Inner {
                         )
                         .await?
                         .success()?;
-                    let observation = self.room(configured, raw)?;
+                    let (observation, _facts) = self.room(configured, raw)?;
                     snapshots.insert(configured.room_id.clone(), observation.clone());
                     observation
                 };

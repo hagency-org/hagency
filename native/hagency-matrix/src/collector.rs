@@ -347,7 +347,7 @@ impl Inner {
                 .success()?;
             // Representable unsafe membership/privacy must reach the domain's
             // shared-room invalidation path rather than becoming a local-only error.
-            let observation = self.room(target, state)?;
+            let (observation, _facts) = self.room(target, state)?;
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
             }
@@ -476,7 +476,7 @@ impl Inner {
         &self,
         target: &HostRoom,
         value: Value,
-    ) -> Result<MatrixRoomObservation, Error> {
+    ) -> Result<(MatrixRoomObservation, RoomAuthorityFacts), Error> {
         let events = value.as_array().ok_or(Error::Wire)?;
         if events.len() > self.config.limits.events {
             return Err(Error::Capacity);
@@ -485,6 +485,7 @@ impl Inner {
         let mut joined = BTreeSet::new();
         let mut invite_only = false;
         let mut encrypted = false;
+        let mut facts = RoomAuthorityFacts::default();
         for event in events {
             let kind = event
                 .get("type")
@@ -532,11 +533,43 @@ impl Inner {
                     }
                     encrypted = true;
                 }
+                // ADR-095 mapping: verification-time-only authority facts read
+                // from the same /state the scope snapshot already observes, and
+                // carried in memory (never stored, no migration).
+                "m.room.power_levels" => {
+                    if !key.is_empty() {
+                        return Err(Error::Wire);
+                    }
+                    facts.default_power =
+                        content.get("users_default").and_then(Value::as_i64).ok_or(Error::Wire)?;
+                    facts.invite_power =
+                        content.get("invite").and_then(Value::as_i64).ok_or(Error::Wire)?;
+                    let users = content.get("users").and_then(Value::as_object).ok_or(Error::Wire)?;
+                    for (mxid, level) in users {
+                        matrix_user(mxid, &self.config.identity.server_name)
+                            .map_err(|_| Error::Wire)?;
+                        facts
+                            .powers
+                            .insert(mxid.clone(), level.as_i64().ok_or(Error::Wire)?);
+                    }
+                }
+                "m.room.name" => {
+                    if !key.is_empty() {
+                        return Err(Error::Wire);
+                    }
+                    facts.name = content.get("name").and_then(Value::as_str).map(str::to_owned);
+                }
+                "com.hagency.project.binding.v1" => {
+                    if !key.is_empty() {
+                        return Err(Error::Wire);
+                    }
+                    facts.binding = Some(Value::Object(content.clone()));
+                }
                 _ => {}
             }
         }
         let t = &self.config.identity.transport;
-        Ok(MatrixRoomObservation {
+        let observation = MatrixRoomObservation {
             engagement_id: t.engagement_id.clone(),
             registration_generation: t.registration_generation,
             transport_generation: t.generation,
@@ -546,7 +579,8 @@ impl Inner {
             joined,
             invite_only,
             encrypted,
-        })
+        };
+        Ok((observation, facts))
     }
 }
 
