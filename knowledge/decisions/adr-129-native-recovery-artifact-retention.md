@@ -216,3 +216,74 @@ maintainer command; no schema change, no new table, no receipt row. Should
 implementation discover one anyway (it is not expected), it takes the next
 ledger number, **032**, per the serial chain (028 MA-S1's, 029 MA-S4's, 030
 MA-S2's, 031 PC-C1's).
+
+---
+
+## Deferral of the retained lane (2026-09-14)
+
+The retained Node lane's slice — `specs/task-rust-artifact-retention-node.spec.md`,
+the five retained `Test:` sentences for log rotation and the media-cache
+sweep — is **not implementable as written**. Two structural mismatches, read
+from the tree, not from the prose:
+
+**Mismatch 1 — no linkage maps a media-cache entry to a delivery's terminal
+state.** `MEDIA_FETCH_CACHE_DIR` and `buildMediaCachePath` (files keyed by
+`sha1(source)[..16]`) exist only in `lib/mcp-server-core.js`; the backend
+(`backend-v2.js`) has zero references to the cache directory, and the
+delivery records a sweep would consult carry no cache source:
+`lib/delivery-queue.js` stores a message id and a queue path, the journal
+stores only pending/committed state, and the `delivery-event` rows carry
+`source`/`messageId`/`path`/`stage`/`result` — none a media-cache source.
+So nothing maps a cache entry to a delivery's terminal state, and the
+spec's Must-Not ("no store schema change"), its Forbidden list and this
+ADR's "no migration" all exclude inventing that linkage as a table or
+schema.
+
+**Mismatch 2 — the rotation scenarios assume readers and a producer that do
+not exist.** `archivedMessageExists` (`backend-v2.js:4581-4586`) reads only
+the live `messages-archive.jsonl` and never scans rotations; there is no
+Node rotation producer (the only `rotate_file_if_needed`, in the bash
+`bin/hagency-maintain`, targets different logs). `backend-v2.js` is itself
+licensed in the spec's Allowed Changes, but licensing a reader file is not
+the same as authorizing a rotation-scanning rewrite plus a whole-file
+rotation writer, and the spec's Forbidden list plus this ADR's "no
+migration" leave the producer's surface unnamed.
+
+**The two honest options for the operator.**
+
+**(A) Amend the spec to license the missing surfaces, and keep the lane.**
+License the `backend-v2.js` readers to scan rotations (and a rotation
+producer that writes whole-row rotations), plus a **sidecar cache-index
+file** — no schema, no migration — written by the MCP process and read by
+the sweep, carrying `sha1(source)[..16] → delivery terminal state`. The
+risk is named and owned: **two processes, one file, its own custody** — the
+sidecar needs the same atomic-replace and torn-tail discipline this ADR
+already applies to the four jsonl files, and its writer (MCP) is a
+different process from its reader (the sweep), so a lost update must be
+tolerated, never treated as a delivery verdict.
+
+**(B) Drop the retained lane from the migration's scope** and record the
+gap as a retained-product limitation: the media cache stays on its current
+behaviour (no TTL/cap sweep tied to delivery state) and the four jsonl logs
+do not rotate, both documented as not-implemented the way §4 already
+documents the macOS `newsyslog` and Windows wrapper gaps.
+
+**Recommendation: (A), with a bounded scope.** The media-cache cap is a real
+boundedness property — an unbounded cache is a live disk-fill risk during
+the whole retained-to-native transition — and the rotation reader gap is
+small and confined to files already under the spec's Allowed Changes. The
+sidecar index's two-process custody is nameable and containable with the
+same atomic-replace discipline already used for the jsonl files, and it is
+a filesystem artefact, not a migration. (B) is the correct fallback only if
+the operator judges that new cross-process machinery in the retiring
+retained product is worse than an unbounded cache for the transition's
+duration — in which case the limitation is recorded, not silently shipped.
+
+**Spec selector posture.** The five retained `Test:` sentences were left as
+`Test:` lines, not converted to `Owed Selector:` lines: the spec carries the
+`node` tag, which the Rust binding checker defers, and its own
+"Out of Scope (owed by Node…)" note already records that these names are
+executable only by the retained Vitest suite and never listed by the Rust
+gate — so neither the Rust checker nor the retained runner reports them as
+owed today. The deferral is recorded here in the ADR, not by parking the
+spec's sentences.
