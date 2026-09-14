@@ -524,7 +524,6 @@ impl Inner {
                 return Err(Error::Cancelled);
             }
             let observation = event.observation();
-            let observation = event.observation();
             let attachment = event.attachment_observation()?;
             // Historical read can only acknowledge an exact existing commit. It cannot
             // admit or project the event through stale or replacement authority.
