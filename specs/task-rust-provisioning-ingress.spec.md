@@ -72,7 +72,7 @@ Scenario: A provider-approved request provisions an engagement through the produ
   Given an intake event with kind com.hagency.engagement.request.v1 whose body carries the retained request fields (requestId = a native-valid request_id distinct from the event id, source_event_id = the event id, project, projectRoomId, role, requester, requestedTokens, ratePerDay, agent, context)
   When the intake hook assembles the ProjectRequest and the three RoomObservations from the collector's SDK facts and calls verify_request then DomainStore::admit
   Then admit runs exactly once and the engagement exists with its minted en_ id — the provider verdict is observed afterwards as the separate approve step, never folded into the mint
-  Production caller: hagency_matrix::intake::Inner::provision -> hagency_store::domain_worker::DomainRepository::admit
+  Production caller: hagency_matrix::intake::Inner::provision
 
 Scenario: An identical duplicate provisioning request replays the prior admission
   Test: native_provisioning_ingress_replays_an_identical_duplicate
@@ -81,7 +81,7 @@ Scenario: An identical duplicate provisioning request replays the prior admissio
   Given a request already admitted for a request_id (the requester's native-valid idempotency key)
   When the identical event is delivered again
   Then the prior admission is returned and counted replayed — no second engagement row is minted
-  Production caller: hagency_matrix::intake::Inner::provision -> hagency_store::domain_worker::DomainRepository::admit
+  Production caller: hagency_matrix::intake::Inner::provision
 
 Scenario: A same-key different-content request is refused as a conflict and quarantined
   Test: native_provisioning_ingress_refuses_a_conflicting_request_by_the_same_key
@@ -90,7 +90,7 @@ Scenario: A same-key different-content request is refused as a conflict and quar
   Given a request already admitted for a request_id whose content digest differs
   When the conflicting event is delivered
   Then the ingress refuses it as a conflict on the same request_id key and quarantines it — no second engagement row is minted
-  Production caller: hagency_matrix::intake::Inner::provision -> hagency_store::domain_worker::DomainRepository::admit
+  Production caller: hagency_matrix::intake::Inner::provision
 
 Scenario: An unverified or unenrolled provisioning request is refused before admit
   Test: native_provisioning_ingress_refuses_unverified_before_admit
@@ -99,7 +99,7 @@ Scenario: An unverified or unenrolled provisioning request is refused before adm
   Given a request whose room snapshots, powers, binding or sender do not satisfy verify_request, or whose owner has no enrolled owner room in the store
   When the intake hook assembles the observation
   Then it is refused before admit runs with a named reason — an unverified request and an unenrolled owner both fail closed — and no engagement row exists
-  Production caller: hagency_matrix::intake::Inner::provision -> hagency_store::domain_worker::DomainRepository::admit
+  Production caller: hagency_matrix::intake::Inner::provision
 
 ## Decisions
 
