@@ -2870,6 +2870,12 @@ impl DomainStore {
         })
         .await
     }
+    pub async fn provisioning_engagement_exists(&self, id: String) -> Result<bool, Error> {
+        self.call(weight(&id)?, move |db| {
+            db.provisioning_engagement_exists(&id)
+        })
+        .await
+    }
     pub async fn admit(&self, proof: VerifiedRequest, now: u64) -> Result<Engagement, Error> {
         self.call(
             weight(&(

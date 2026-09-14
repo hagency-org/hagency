@@ -255,6 +255,16 @@ impl DomainRepository {
                 .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
         })
     }
+    /// Whether an engagement id already exists — the provisioning ingress uses
+    /// this to count an identical duplicate as a replay, not a mint.
+    pub fn provisioning_engagement_exists(&self, id: &str) -> Result<bool, Error> {
+        identifier(id, 128)?;
+        Ok(self.db.query_row(
+            "SELECT EXISTS(SELECT 1 FROM engagements WHERE id=?1)",
+            [id],
+            |r| r.get(0),
+        )?)
+    }
     /// Host-only snapshot for one current intake target. A returned route is
     /// copied into authenticated custody, then checked again by admission.
     pub fn matrix_intake_route(&self, session: &str) -> Result<ReplyRoute, Error> {
