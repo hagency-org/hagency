@@ -859,7 +859,20 @@ impl Bootstrap {
         )
         .map_err(|_| Failure::Startup)?;
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: domain_entered");
-        let repository = DomainRepository::open(&state).map_err(|_| Failure::Startup)?;
+        let mut repository = DomainRepository::open(&state).map_err(|_| Failure::Startup)?;
+        // G6 (wiring audit): the receive-inbox plan names a workspace no
+        // production path creates — `register_workspace` is the only
+        // `workspace_resources` INSERT outside `recover_dispatch`, and the
+        // plan's dispatch (enqueued by `select_receive_inbox`) references
+        // that row. Register it before the first claim; a plan whose
+        // workspace is missing from the map is already refused at config
+        // load (config.rs), so this is the plan's named workspace, never a
+        // widened set.
+        if let Some(plan) = prepared.as_ref().and_then(|p| p.receive_inbox.as_ref()) {
+            repository
+                .register_workspace(&plan.workspace_id)
+                .map_err(|_| Failure::Registration)?;
+        }
         prepared = prepared
             .map(|mut prepared| {
                 if let Some(id) = prepared.managed_account.take() {

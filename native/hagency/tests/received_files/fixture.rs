@@ -408,7 +408,11 @@ impl Fixture {
         .unwrap();
         db.create_canonical_task("task", "session", "Read original encrypted input", now())
             .unwrap();
-        db.register_workspace("work").unwrap();
+        // G6: the receive-inbox plan names a workspace that only the production
+        // bootstrap may create (`register_workspace`). The fixture deliberately
+        // does NOT pre-register it — the service's own startup must write the
+        // row before `select_receive_inbox` enqueues the dispatch (whose
+        // `dispatch_resources` row FK-references `workspace_resources`).
         // No enqueue, input, attachment, capability or Started fixture write.
         drop(db);
         let source = root.path().join("independent-sender");
