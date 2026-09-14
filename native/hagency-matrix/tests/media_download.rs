@@ -514,9 +514,25 @@ async fn native_matrix_media_deadline_cancel() {
             result = &mut run => panic!("download resolved before the request: {:?}", error(result)),
         };
         expect_media_get(&request);
+        // The bound this variant is expected to fire is derived from the hold
+        // point, never re-literalised: holding the headers fires the headers
+        // bound, holding the body fires the body_idle bound.
+        let (fired, bound) = if hold_after == 0 {
+            ("headers", timing.headers)
+        } else {
+            ("body_idle", timing.body_idle)
+        };
         let (gate, release) = oneshot::channel();
         request.hold(pieces, hold_after, release);
-        let failure = error(run.await);
+        // Bound the await so a future bound regression FAILS the job instead of
+        // hanging it: the expected bound times a small factor (derived, never a
+        // literal), and the expiry names the bound that should have fired.
+        let failure = match timeout(bound.saturating_mul(10), &mut run).await {
+            Ok(result) => error(result),
+            Err(_) => panic!(
+                "the {fired} bound ({bound:?}) was expected to fire but the download did not resolve"
+            ),
+        };
         assert_eq!(
             failure,
             Failure::Transport(Error::Timeout),
