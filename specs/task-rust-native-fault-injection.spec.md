@@ -23,7 +23,7 @@ those records' outcomes.
 
 ### Must
 - Inject disk-full on the store portably: SQLite's `max_page_count` pragma (or an equivalent engine-level limit) — never a real tmpfs or filesystem fill; the limit is set, the write is attempted, the failure is observed, and the limit is restored.
-- Assert the disk-full outcome as the store yields it today: the write returns `Error::Sqlite` carrying the engine's database-full/disk message, no partial row survives, the store remains readable afterwards, and the readiness word reports the failure honestly — never a silent success and never a torn write.
+- Assert the disk-full outcome as the store yields it today: the write returns `Error::Sqlite` carrying the engine's database-full/disk message, never swallowed, no partial row survives, the store remains readable and writable within the limit afterwards — never a silent success and never a torn write.
 - Inject a partial upload on the outbound adapter against the shared fake peer: a transfer interrupted mid-body, so the outcome cannot be proven delivered.
 - Assert the partial-upload outcome: the store records the publication state **`unknown`** (ADR-037's started-claims-become-unknown; ADR-078/083's upload custody), the original fence is retained, and no runtime gains transport authority from it.
 - Inject a server rejection on the outbound adapter: the fake peer serves a definitive rejection response.
@@ -39,6 +39,8 @@ those records' outcomes.
 
 ### Allowed Changes
 - native/hagency-store/tests/ (the disk-full injection)
+- native/hagency-store/src/repository.rs (one documented unconditional test seam: `open_with_page_limit(path, max_pages)`)
+- native/hagency-store/src/domain.rs (the same seam, exposing it on the domain constructor)
 - native/hagency-matrix/tests/ (the outbound injections against the fake peer)
 - native/hagency/tests/
 - native/scripts/
@@ -47,7 +49,7 @@ those records' outcomes.
 
 ### Forbidden
 - Live services, live homeservers, credentials, deployed state.
-- native/hagency-store/src/** (the store's behavior is asserted, not changed — this includes not introducing a named capacity error); native/hagency-matrix/src/**.
+- native/hagency-store/src/** except the one licensed seam above (the store's behavior is otherwise asserted, not changed — this includes not introducing a named capacity error); native/hagency-matrix/src/**.
 
 ## Acceptance Criteria
 
@@ -58,7 +60,7 @@ Scenario: The store fails closed on an injected disk-full write
   Given a live store at its current size with the disk-full limit injected
   When a write is attempted past the limit
   Then the write returns Error::Sqlite carrying the engine's database-full/disk message and no partial row survives
-  And the store remains readable afterwards and the readiness word reports the failure honestly
+  And the store remains readable and writable within the limit afterwards
   And the limit is restored afterwards — never a real filesystem fill
 
 Scenario: A partial upload on the outbound adapter is recorded unknown
@@ -82,12 +84,22 @@ Scenario: A server rejection on the outbound adapter is recorded rejected
 
 **The disk-full word is the engine's, and a named capacity error is a
 follow-on, not this slice.** `max_page_count` exhaustion surfaces from
-rusqlite as `Error::Sqlite` with the engine's message — and this slice's
-Allowed Changes forbid `src/**`, so no named capacity word can be
-introduced here. If a dedicated `Capacity` error word is the right product
-surface for an honest disk-full refusal, that is a separate store slice
-with its own migration-free src change and its own review; this spec
-asserts the failure as it exists today.
+rusqlite as `Error::Sqlite` with the engine's message — and a named
+capacity word would need a store change this slice does not license. If a
+dedicated `Capacity` error word is the right product surface for an honest
+disk-full refusal, that is a separate store slice with its own review;
+this spec asserts the failure as it exists today.
+
+**The one licensed store seam, documented and unconditional.** The
+integration test cannot reach the writer connection otherwise
+(`Repository.db` and `DomainRepository.db` are `pub(crate)` with no public
+pragma surface, and a `#[cfg(test)]` window is invisible to the crate's
+integration tests) — so exactly one seam is licensed: an unconditional
+constructor variant `open_with_page_limit(path, max_pages)` that applies
+`PRAGMA max_page_count` on the writer connection, default path unchanged,
+no production caller, the same posture ADR-053's bounded-spawn amendment
+records for its stall double. Everything else under `src/**` stays
+forbidden.
 
 **Injection is engine-level, always.** Disk-full is `max_page_count`, not a
 filesystem fill: the fault must be portable to every CI lane and must not
