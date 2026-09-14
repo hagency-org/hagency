@@ -46,7 +46,7 @@ workflow — is recorded in this spec and in ADR-134's note.
 ## Acceptance Criteria
 
 Scenario: The documented upgrade procedure continues live state
-  Owed Selector: native_upgrade_procedure_continues_state (parked — the name is owed by the implementing slice and binds only when it lands; no Test: line here yet)
+  Test: native_upgrade_procedure_continues_state
   Level: integration
   Test Double: two local builds of the same tree at workspace versions N and N+1, installed by the documented procedure over one state dir
   Given version N installed with live state — at least one admitted engagement and one recorded store row at a recorded head
@@ -55,7 +55,7 @@ Scenario: The documented upgrade procedure continues live state
   And the readiness word returns
 
 Scenario: The procedure's rollback step restores the previous version on the same state
-  Owed Selector: native_upgrade_rollback_restores_previous (parked — binds with the slice above; no Test: line here yet)
+  Test: native_upgrade_rollback_restores_previous
   Level: integration
   Test Double: the same two-version fixture after the upgrade scenario
   Given version N+1 running on the upgraded state

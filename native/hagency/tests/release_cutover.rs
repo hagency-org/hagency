@@ -8,6 +8,7 @@ use std::{
     net::TcpStream,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
+    sync::Mutex,
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
@@ -15,6 +16,7 @@ use std::{
 use hagency_core::tasks::{DispatchInput, SessionBinding};
 use hagency_store::EffectOutcome;
 use serde_json::json;
+use sha2::{Digest, Sha256};
 
 #[path = "../../hagency-store/tests/common/mod.rs"]
 mod domain;
@@ -99,8 +101,11 @@ fn workspace_version() -> String {
     panic!("workspace package version not found");
 }
 fn reported_version() -> String {
-    let output = Command::new(binary()).arg("--version").output().unwrap();
-    assert!(output.status.success(), "--version must succeed");
+    artifact_version(&binary())
+}
+fn artifact_version(artifact: &Path) -> String {
+    let output = Command::new(artifact).arg("--version").output().unwrap();
+    assert!(output.status.success(), "artifact --version must succeed");
     String::from_utf8(output.stdout)
         .unwrap()
         .split_whitespace()
@@ -219,8 +224,11 @@ fn init_state(root: &Path) -> PathBuf {
     state
 }
 fn spawn_service(state: &Path) -> Running {
+    spawn_artifact(&binary(), state)
+}
+fn spawn_artifact(artifact: &Path, state: &Path) -> Running {
     let addr = free_loopback();
-    let child = Command::new(binary())
+    let child = Command::new(artifact)
         .args([
             "serve",
             "--state-dir",
@@ -274,6 +282,216 @@ fn term_then_observe_exit(running: &mut Running, budget: Duration) -> bool {
         }
         thread::sleep(Duration::from_millis(50));
     }
+}
+
+// ---- Upgrade-procedure fixture (O5): two local builds, N and N+1 ----
+
+static BUILD_LOCK: Mutex<()> = Mutex::new(());
+
+fn workspace_root() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../..")
+}
+/// The same tree at workspace version N+1 (the patch segment bumped by one):
+/// a real local build, not the release workflow and not a runtime override.
+/// The version constant is the one `hagency --version` reads, so the artifact
+/// is named and reports exactly as ADR-134's procedure assumes.
+fn next_version() -> String {
+    let mut parts: Vec<u64> = workspace_version()
+        .split('.')
+        .map(|p| p.parse().expect("numeric workspace version segment"))
+        .collect();
+    let last = parts.last_mut().expect("version has a patch segment");
+    *last += 1;
+    parts
+        .iter()
+        .map(|p| p.to_string())
+        .collect::<Vec<_>>()
+        .join(".")
+}
+fn artifact_name(version: &str) -> String {
+    format!("hagency-v{version}")
+}
+fn copy_tree(src: &Path, dst: &Path) {
+    fs::create_dir_all(dst).unwrap();
+    // Preserve directory permissions: init creates the state dir 0o700, and
+    // private::directory refuses a dir with group/other bits set. A plain
+    // create_dir_all (0o755) would make a restored state dir fail Startup.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = fs::symlink_metadata(src).unwrap().permissions().mode();
+        fs::set_permissions(dst, fs::Permissions::from_mode(mode)).unwrap();
+    }
+    for entry in fs::read_dir(src).unwrap() {
+        let entry = entry.unwrap();
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        if from.is_dir() {
+            copy_tree(&from, &to);
+        } else {
+            fs::copy(&from, &to).unwrap();
+        }
+    }
+}
+fn patch_workspace_version(manifest: &Path, version: &str) {
+    let text = fs::read_to_string(manifest).unwrap();
+    let mut patched = String::new();
+    let mut in_package = false;
+    for line in text.lines() {
+        let token = line.trim();
+        if token.starts_with('[') {
+            in_package = token == "[workspace.package]";
+            patched.push_str(line);
+            patched.push('\n');
+            continue;
+        }
+        if in_package && token.starts_with("version") {
+            patched.push_str(&format!("version = \"{version}\"\n"));
+            continue;
+        }
+        patched.push_str(line);
+        patched.push('\n');
+    }
+    fs::write(manifest, patched).unwrap();
+}
+fn collect_native_files(dir: &Path, root: &Path, out: &mut Vec<String>) {
+    for entry in fs::read_dir(dir).unwrap() {
+        let entry = entry.unwrap();
+        let path = entry.path();
+        let rel = path
+            .strip_prefix(root)
+            .unwrap()
+            .to_string_lossy()
+            .into_owned();
+        if path.is_dir() {
+            collect_native_files(&path, root, out);
+        } else {
+            out.push(rel);
+        }
+    }
+}
+/// Content address over the copied inputs (root manifests + the whole
+/// `native/**` source set), so a changed workspace or source rebuilds while
+/// the 3x gate repeats and the second test reuse the same artifact.
+fn source_fingerprint() -> String {
+    let root = workspace_root();
+    let mut files = vec![
+        "Cargo.toml".to_string(),
+        "Cargo.lock".to_string(),
+        "rust-toolchain.toml".to_string(),
+        // hagency-core's non-test source includes this workspace-root file;
+        // a changed copy rebuilds, an absent one fails the build honestly.
+        "lib/role-capacity.json".to_string(),
+    ];
+    collect_native_files(&root.join("native"), &root, &mut files);
+    files.sort();
+    let mut hasher = Sha256::new();
+    for rel in &files {
+        hasher.update(rel.as_bytes());
+        hasher.update(fs::read(root.join(rel)).unwrap());
+    }
+    format!("{:x}", hasher.finalize())
+}
+/// Build the N+1 artifact once, offline and locked, under a process mutex so
+/// both tests and the gate repeats share a single build. The stamp is the
+/// source fingerprint; a matching stamp with the artifact present skips the
+/// sync-and-build.
+fn next_artifact() -> PathBuf {
+    let _guard = BUILD_LOCK.lock().unwrap();
+    let root = workspace_root();
+    let src = root.join("target/upgrade-next-src");
+    let target = root.join("target/upgrade-next-target");
+    let artifact = target.join("debug/hagency");
+    let stamp = target.join(".source-fingerprint");
+    let fingerprint = source_fingerprint();
+    let cached = fs::read_to_string(&stamp)
+        .map(|s| s == fingerprint)
+        .unwrap_or(false);
+    if artifact.is_file() && cached {
+        return artifact;
+    }
+    if src.exists() {
+        fs::remove_dir_all(&src).unwrap();
+    }
+    fs::create_dir_all(&src).unwrap();
+    for file in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
+        fs::copy(root.join(file), src.join(file)).unwrap();
+    }
+    // The one non-test include that escapes `native/**`: the source path
+    // `../../../lib/role-capacity.json` resolves to the copy root's lib/.
+    fs::create_dir_all(src.join("lib")).unwrap();
+    fs::copy(
+        root.join("lib/role-capacity.json"),
+        src.join("lib/role-capacity.json"),
+    )
+    .unwrap();
+    copy_tree(&root.join("native"), &src.join("native"));
+    patch_workspace_version(&src.join("Cargo.toml"), &next_version());
+    let status = Command::new(env!("CARGO"))
+        .arg("build")
+        .arg("--offline")
+        .arg("-p")
+        .arg("hagency")
+        .arg("--bin")
+        .arg("hagency")
+        .env("CARGO_TARGET_DIR", &target)
+        .env("CARGO_HOME", root.join(".cargo-home"))
+        .current_dir(&src)
+        .status()
+        .expect("N+1 build spawns");
+    assert!(
+        status.success(),
+        "the N+1 build must succeed (offline, locked)"
+    );
+    fs::write(stamp, fingerprint).unwrap();
+    assert!(
+        artifact.is_file(),
+        "the N+1 artifact must exist after build"
+    );
+    artifact
+}
+fn user_version(state: &Path) -> i64 {
+    rusqlite::Connection::open(state.join("domain.sqlite3"))
+        .unwrap()
+        .pragma_query_value(None, "user_version", |r| r.get(0))
+        .unwrap()
+}
+fn assert_pending_survives(state: &Path) {
+    let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let row: (String, i64) = db
+        .query_row(
+            "SELECT state,fence FROM runner_dispatches WHERE id='dispatch'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(row, ("queued".into(), 0));
+    let resolved: i64 = db
+        .query_row(
+            "SELECT COUNT(*) FROM runner_outputs WHERE dispatch_id='dispatch'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(resolved, 0, "no row may be resolved by the procedure");
+}
+/// Render the unit from the deploy template (a read-only input), naming the
+/// versioned artifact in ExecStart so unit and binary cannot disagree — the
+/// same substitution SR-1's installer performs.
+fn render_unit(artifact: &Path, state: &Path) -> String {
+    let template = fs::read_to_string(
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../deploy/hagency-native.service"),
+    )
+    .expect("unit template present");
+    let install_dir = artifact.parent().unwrap().to_string_lossy();
+    let basename = artifact.file_name().unwrap().to_string_lossy();
+    template
+        .replace(
+            "__INSTALL_DIR__/hagency",
+            &format!("{install_dir}/{basename}"),
+        )
+        .replace("__STATE_DIR__", &state.to_string_lossy())
+        .replace("__USER__", "tester")
 }
 
 #[test]
@@ -553,4 +771,152 @@ fn native_cutover_dryrun_pending_preserved_across_restart() {
             .unwrap();
         assert_eq!(resolved, 0, "no row may be resolved by the stop-start pair");
     }
+}
+
+// ---- O5: the upgrade procedure and its rollback (ADR-134/135) ----
+
+fn install_dir(root: &Path) -> PathBuf {
+    root.join("install")
+}
+/// Stage the version-N artifact into the install dir under its ADR-134 name,
+/// so unit, binary and artifact cannot disagree silently. Version N's build is
+/// the cargo-test build itself (CARGO_BIN_EXE_hagency, already at the
+/// workspace version); the copy only names it for coexistence with N+1.
+fn stage_n(root: &Path) -> PathBuf {
+    let dir = install_dir(root);
+    fs::create_dir_all(&dir).unwrap();
+    let dest = dir.join(artifact_name(&workspace_version()));
+    fs::copy(binary(), &dest).unwrap();
+    dest
+}
+/// Stage the version-N+1 artifact (the real second local build) into the same
+/// install dir, so both versioned artifacts coexist exactly as the procedure
+/// assumes.
+fn stage_next(root: &Path) -> PathBuf {
+    let dir = install_dir(root);
+    fs::create_dir_all(&dir).unwrap();
+    let dest = dir.join(artifact_name(&next_version()));
+    fs::copy(next_artifact(), &dest).unwrap();
+    dest
+}
+/// A post-upgrade write recorded under N+1 whose state-restore rollback must
+/// discard it: a second queued dispatch in the already-registered session and
+/// task, no re-registration.
+fn seed_second_pending_dispatch(state: &Path) {
+    let mut db = hagency_store::DomainRepository::open(state).unwrap();
+    db.enqueue_dispatch(&DispatchInput {
+        id: "dispatch2".into(),
+        session_id: "session".into(),
+        task_id: Some("task".into()),
+        resources: vec![],
+        payload: json!({"instruction":"post-upgrade write the rollback discards"}),
+    })
+    .unwrap();
+}
+
+#[test]
+fn native_upgrade_procedure_continues_state() {
+    let root = tempfile::tempdir().unwrap();
+    let n_artifact = stage_n(root.path());
+    let next = stage_next(root.path());
+    // Step 0: version identity before any service start.
+    assert_eq!(artifact_version(&n_artifact), workspace_version());
+    assert_eq!(artifact_version(&next), next_version());
+    // Step 1: fresh state (init refuses a non-empty dir, writes operator.token).
+    let state = init_state(root.path());
+    assert!(state.join("operator.token").is_file());
+    let head_before = user_version(&state);
+    // A written row: the admitted engagement and a queued dispatch, via the
+    // store's own API (the runbook's pending row).
+    seed_pending_dispatch(&state);
+    // Step 2: the unit names the versioned N artifact.
+    let unit_n = render_unit(&n_artifact, &state);
+    assert!(
+        unit_n.contains(&artifact_name(&workspace_version())),
+        "the unit names N's versioned artifact"
+    );
+    // Step 3: start and gate on /ready (never /health alone).
+    let mut running = spawn_artifact(&n_artifact, &state);
+    wait_ready(&running);
+    assert_eq!(http_status(&running.addr, "/health"), Some(200));
+    // Step 6 stop contract, then the upgrade: replace the artifact, restart.
+    assert!(term_then_observe_exit(
+        &mut running,
+        Duration::from_secs(20)
+    ));
+    let unit_next = render_unit(&next, &state);
+    assert!(
+        unit_next.contains(&artifact_name(&next_version())),
+        "the unit now names N+1's versioned artifact"
+    );
+    let mut upgraded = spawn_artifact(&next, &state);
+    wait_ready(&upgraded);
+    // Step 7: preservation — the store head, the written row, the readiness
+    // word, and the reported version (changed N -> N+1).
+    assert_eq!(user_version(&state), head_before);
+    assert_pending_survives(&state);
+    assert_eq!(http_status(&upgraded.addr, "/ready"), Some(200));
+    assert_eq!(artifact_version(&next), next_version());
+    assert!(term_then_observe_exit(
+        &mut upgraded,
+        Duration::from_secs(20)
+    ));
+}
+
+#[test]
+fn native_upgrade_rollback_restores_previous() {
+    let root = tempfile::tempdir().unwrap();
+    let n_artifact = stage_n(root.path());
+    let next = stage_next(root.path());
+    let state = init_state(root.path());
+    let head_before = user_version(&state);
+    seed_pending_dispatch(&state); // row X, before the rollback point
+    let backup = root.path().join("backup-state");
+    copy_tree(&state, &backup);
+    // Install N, start, gate; then upgrade to N+1 and gate.
+    let mut running = spawn_artifact(&n_artifact, &state);
+    wait_ready(&running);
+    assert_eq!(artifact_version(&n_artifact), workspace_version());
+    assert!(term_then_observe_exit(
+        &mut running,
+        Duration::from_secs(20)
+    ));
+    let mut upgraded = spawn_artifact(&next, &state);
+    wait_ready(&upgraded);
+    assert_eq!(artifact_version(&next), next_version());
+    assert!(term_then_observe_exit(
+        &mut upgraded,
+        Duration::from_secs(20)
+    ));
+    // A post-upgrade write under N+1, which a state-restore rollback discards.
+    seed_second_pending_dispatch(&state);
+    // Rollback: stop (already stopped), restore the state copy, re-point the
+    // unit at N, restart — the runbook's R1 step.
+    fs::remove_dir_all(&state).unwrap();
+    copy_tree(&backup, &state);
+    let unit_n = render_unit(&n_artifact, &state);
+    assert!(unit_n.contains(&artifact_name(&workspace_version())));
+    let mut restored = spawn_artifact(&n_artifact, &state);
+    wait_ready(&restored);
+    // Version N runs again on the same state; no re-init, no data loss.
+    assert_eq!(artifact_version(&n_artifact), workspace_version());
+    assert_eq!(user_version(&state), head_before);
+    assert_pending_survives(&state); // row X readable
+    assert!(state.join("operator.token").is_file()); // never re-initialized
+    let second: i64 = rusqlite::Connection::open(state.join("domain.sqlite3"))
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM runner_dispatches WHERE id='dispatch2'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        second, 0,
+        "the post-upgrade write must be discarded by the restore"
+    );
+    assert!(term_then_observe_exit(
+        &mut restored,
+        Duration::from_secs(20)
+    ));
 }
