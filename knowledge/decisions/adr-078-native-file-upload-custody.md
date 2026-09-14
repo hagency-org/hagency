@@ -135,3 +135,15 @@ The existing domain writer owns exact request and stage commitments plus histori
 ## Alternatives Considered
 
 Reading a changed source on retry or treating restored ciphertext as proof that POST never happened would discard original custody. Storing a digest cannot replace the actual metadata needed by a future file-event owner.
+
+---
+
+## Note: the adapter mapping was absent, now required (2026-09-14)
+
+`mark_upload_uncertain` (which retains the original fence) had **no
+production caller** — only tests invoked it, so a partial body or failed
+EOF was never mapped to the `unknown` word this record decides. That
+adapter mapping is now **required**: the upload path must call
+`mark_upload_uncertain` when it observes the interruption. The
+fault-injection slice licenses the upload path and binds the
+partial-upload scenario that proves it.

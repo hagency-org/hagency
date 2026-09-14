@@ -75,3 +75,14 @@ The response retains bounded body bytes, their digest and checked MediaId under 
 ## Alternatives Considered
 
 Reserializing the URI would lose whitespace and escape identity. Exposing printable or serializable response evidence would expand private custody into public data without authorization.
+
+---
+
+## Note: the adapter mapping was absent, now required (2026-09-14)
+
+A partial body or failed EOF never acquired authority by this record's
+rule, but no adapter actually recorded the `unknown` outcome when it
+observed one — the mapping was absent. That adapter mapping is now
+**required** (the word was already decided; the producer was missing), and
+the fault-injection slice binds the partial-upload scenario against the
+real adapter.

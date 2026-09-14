@@ -160,3 +160,18 @@ The custody writer preserves exact receipts and frozen publication identities ac
 ## Alternatives Considered
 
 Adopting fixture bindings or replacing registration identity through a token rotation would merge distinct authorities. Splitting domain invariants into custody storage would also violate their existing single-writer ownership.
+
+---
+
+## Note: the adapter mapping was absent, now required (2026-09-14)
+
+The custody words this record decides (`unknown` for a started claim whose
+outcome cannot be proven, `rejected` for a definitive server rejection)
+existed only in the store's `publication_result` — no production adapter
+mapped a real fault to them: the palpo adapter constructed only
+`PublicationResponse::Accepted` and returned `Err(Error::Wire)` on a
+4xx/5xx or partial body without issuing `Command::Publication`. That
+adapter mapping is now **required** — the words were already decided; the
+producer was the missing half. The fault-injection slice
+(`specs/task-rust-native-fault-injection.spec.md`) licenses the adapter and
+binds the two outbound scenarios that prove it.

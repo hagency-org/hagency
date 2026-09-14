@@ -24,10 +24,10 @@ those records' outcomes.
 ### Must
 - Inject disk-full on the store portably: SQLite's `max_page_count` pragma (or an equivalent engine-level limit) — never a real tmpfs or filesystem fill; the limit is set, the write is attempted, the failure is observed, and the limit is restored.
 - Assert the disk-full outcome as the store yields it today: the write returns `Error::Sqlite` carrying the engine's database-full/disk message, never swallowed, no partial row survives, the store remains readable and writable within the limit afterwards — never a silent success and never a torn write.
-- Inject a partial upload on the outbound adapter against the shared fake peer: a transfer interrupted mid-body, so the outcome cannot be proven delivered.
-- Assert the partial-upload outcome: the store records the publication state **`unknown`** (ADR-037's started-claims-become-unknown; ADR-078/083's upload custody), the original fence is retained, and no runtime gains transport authority from it.
-- Inject a server rejection on the outbound adapter: the fake peer serves a definitive rejection response.
-- Assert the rejection outcome: the store records the publication state **`rejected`** (`repository.rs:616-625` maps `PublicationResponse::Rejected` to `"rejected"`), never retried silently, never reported delivered.
+- Drive the real outbound adapter against the shared fake peer for a partial upload: the fake peer closes after a partial body or a failed EOF, so the outcome cannot be proven delivered.
+- Assert the partial-upload outcome: the adapter observes the interruption and issues `Unknown` (via `mark_upload_uncertain`'s production caller), the store records the publication state **`unknown`** with the original fence retained, and no runtime gains transport authority from it.
+- Drive the real outbound adapter against the shared fake peer for a server rejection: the fake peer answers 4xx/5xx with a definitive cause.
+- Assert the rejection outcome: the adapter issues `PublicationResponse::Rejected` carrying the server's cause, the store records the publication state **`rejected`**, and nothing is re-sent under the same id — never retried silently, never reported delivered.
 
 ### Must Not
 - Do not use real filesystem fills, tmpfs mounts or disk partitioning — the injection is engine-level and portable.
@@ -41,7 +41,11 @@ those records' outcomes.
 - native/hagency-store/tests/ (the disk-full injection)
 - native/hagency-store/src/repository.rs (one documented unconditional test seam: `open_with_page_limit(path, max_pages)`)
 - native/hagency-store/src/domain.rs (the same seam, exposing it on the domain constructor)
-- native/hagency-matrix/tests/ (the outbound injections against the fake peer)
+- native/hagency-palpo/src/adapter.rs (the outbound adapter issuing `Command::Publication` with `Rejected`/`Unknown`)
+- native/hagency-palpo/tests/
+- native/hagency-matrix/src/outgoing.rs, native/hagency-matrix/src/sdk/outgoing.rs (the file-publication adapter)
+- native/hagency-matrix/src/upload/operation.rs (the upload path's `mark_upload_uncertain` production caller)
+- native/hagency-matrix/tests/
 - native/hagency/tests/
 - native/scripts/
 - specs/task-rust-native-fault-injection.spec.md
@@ -49,7 +53,7 @@ those records' outcomes.
 
 ### Forbidden
 - Live services, live homeservers, credentials, deployed state.
-- native/hagency-store/src/** except the one licensed seam above (the store's behavior is otherwise asserted, not changed — this includes not introducing a named capacity error); native/hagency-matrix/src/**.
+- native/hagency-store/src/** except the one licensed seam above (the store's behavior is otherwise asserted, not changed — this includes not introducing a named capacity error); native/hagency-matrix/src/** except the two adapter/upload paths licensed above; native/hagency-palpo/src/** except `adapter.rs`.
 
 ## Acceptance Criteria
 
@@ -66,19 +70,20 @@ Scenario: The store fails closed on an injected disk-full write
 Scenario: A partial upload on the outbound adapter is recorded unknown
   Owed Selector: native_outbound_partial_upload_is_recorded_unknown (parked — binds with this slice; no Test: line here yet)
   Level: integration
-  Test Double: the shared fake peer with a transfer interrupted mid-body
-  Given an outbound upload interrupted after bytes have crossed
+  Test Double: the real outbound adapter driven against the shared fake peer, which closes after a partial body or a failed EOF
+  Given the real adapter with an upload the fake peer interrupts mid-body or ends with a failed EOF
   When the adapter observes the interruption
-  Then the publication state reads unknown and the original fence is retained
+  Then the adapter issues Unknown — mark_upload_uncertain's production caller — and the publication state reads unknown with the original fence retained
   And no runtime gains transport authority from the unknown outcome
 
 Scenario: A server rejection on the outbound adapter is recorded rejected
   Owed Selector: native_outbound_server_rejection_is_recorded_rejected (parked — binds with this slice; no Test: line here yet)
   Level: integration
-  Test Double: the shared fake peer serving a definitive rejection response
-  Given an outbound send the peer definitively rejects
-  When the rejection is observed
-  Then the publication state reads rejected — never retried silently and never reported delivered
+  Test Double: the real outbound adapter driven against the shared fake peer, which answers 4xx/5xx with a definitive cause
+  Given the real adapter with a send the fake peer rejects with a 4xx/5xx cause
+  When the adapter observes the rejection
+  Then the adapter issues PublicationResponse::Rejected carrying the server's cause and the publication state reads rejected
+  And nothing is re-sent under the same id — never retried silently and never reported delivered
 
 ## Decisions
 
