@@ -42,7 +42,9 @@ those records' outcomes.
 - native/hagency-store/src/repository.rs (one documented unconditional test seam: `open_with_page_limit(path, max_pages)`)
 - native/hagency-store/src/domain.rs (the same seam, exposing it on the domain constructor)
 - native/hagency-palpo/src/adapter.rs (the outbound adapter issuing `Command::Publication` with `Rejected`/`Unknown`)
+- native/hagency-palpo/src/lib.rs (the adapter error type and its retryable classification)
 - native/hagency-palpo/tests/
+- native/hagency-store/src/outbound/repository.rs (the pending/publication selection path and `BeginPublication`'s state handling)
 - native/hagency-matrix/src/outgoing.rs, native/hagency-matrix/src/sdk/outgoing.rs (the file-publication adapter)
 - native/hagency-matrix/src/upload/operation.rs (the upload path's `mark_upload_uncertain` production caller)
 - native/hagency-matrix/tests/
@@ -53,7 +55,7 @@ those records' outcomes.
 
 ### Forbidden
 - Live services, live homeservers, credentials, deployed state.
-- native/hagency-store/src/** except the one licensed seam above (the store's behavior is otherwise asserted, not changed — this includes not introducing a named capacity error); native/hagency-matrix/src/** except the two adapter/upload paths licensed above; native/hagency-palpo/src/** except `adapter.rs`.
+- native/hagency-store/src/** except the one licensed disk-full seam and the outbound repository selection path above (the store's behavior is otherwise asserted, not changed — this includes not introducing a named capacity error or a reason column); native/hagency-matrix/src/** except the two adapter/upload paths licensed above; native/hagency-palpo/src/** except `adapter.rs` and `lib.rs`.
 
 ## Acceptance Criteria
 
@@ -76,15 +78,16 @@ Scenario: A partial upload on the outbound adapter is recorded unknown
   Then the adapter issues Unknown — mark_upload_uncertain's production caller — and the publication state reads unknown with the original fence retained
   And no runtime gains transport authority from the unknown outcome
 
-Scenario: A server rejection on the outbound adapter is recorded rejected
+Scenario: A server rejection on the outbound adapter is recorded rejected and terminal
   Test: native_outbound_server_rejection_is_recorded_rejected
   Level: integration
-  Test Double: the real outbound adapter driven against the shared fake peer, which answers 4xx/5xx with a definitive cause
-  Given the real adapter with a send the fake peer rejects with a 4xx/5xx cause
-  When the adapter observes the rejection
-  Then the adapter issues PublicationResponse::Rejected carrying the server's cause and the publication state reads rejected
-  And nothing is re-sent under the same id — never retried silently and never reported delivered
-  And a 409 whose code is sequence_conflict or stale_lease stays retryable and does not finalize to rejected — every other 4xx/5xx finalizes to rejected
+  Test Double: the real outbound adapter driven against the shared fake peer, plus a later publication cycle
+  Given the real adapter with a send the fake peer answers with a definitive 4xx (not 401/403, not 409 sequence_conflict/stale_lease, not 429)
+  When the adapter observes the rejection and the production loop advances a later cycle
+  Then the adapter issues PublicationResponse::Rejected and the publication state reads rejected once — never rewritten to unknown by a later BeginPublication
+  And the adapter returns a non-retryable error so the production loop terminates that publication
+  And a later cycle re-selects only non-rejected pending rows — nothing is re-sent under the same id on any later cycle
+  And a 409 with code sequence_conflict or stale_lease stays non-final (row pending, re-begun on a later cycle or restart, never written rejected); 5xx and 429 are transient (no rejected write, the loop's backoff/retry per ADR-037's uncertain/lost-response posture); 401/403 keep their unauthorized class
 
 ## Decisions
 
@@ -111,14 +114,31 @@ forbidden.
 filesystem fill: the fault must be portable to every CI lane and must not
 depend on the runner's disk layout.
 
-**The 409 retryable exception, preserved.** The existing custody test
-`native_outbound_http_publication_frozen_restart_and_rotation` pins that a
-409 carrying `code: sequence_conflict` (and the `stale_lease` shape already
-distinguished in `adapter.rs:147`) is a **retryable** custody conflict, not
-a finalized rejection — the frozen publication is re-sent and then succeeds.
-So "every other 4xx/5xx finalizes to `rejected`" is the rule, and those two
-codes are the named exception that stays retryable and never writes
-`rejected`.
+**The rejection classification, by class.** The retryable set is
+`Retryable = Busy | Timeout | Transport | Remote(429 | 500..=599)`
+(`hagency-palpo/src/lib.rs:55-60`), so the classes split as:
+
+- **409 `sequence_conflict`/`stale_lease`** — non-final: the row stays
+  `pending`, re-begun on a later cycle or restart, never written `rejected`.
+  (The code's `stale_lease` arm already keeps it out of the reject write.)
+- **5xx and 429** — transient: no `rejected` write; the loop's existing
+  backoff/retry carries it, matching ADR-037's uncertain/lost-response
+  posture.
+- **401/403** — keep their `unauthorized` class.
+- **every other 4xx** — definitive: `rejected` is written **once**, the
+  adapter returns a non-retryable error so the loop terminates that
+  publication, the pending selection excludes `rejected` rows, and nothing
+  is re-sent under the same id on any later cycle (the Then asserts a later
+  cycle, not one step).
+
+**The cause, conditional on the schema.** `PublicationResponse::Rejected`
+is today a unit variant with no cause slot (`hagency-store/src/outbound.rs:143-148`),
+and `publication_result` writes only the bare word (`repository.rs:616-626`).
+So: **the server's status and code are retained in the rejected row when
+the outbound table has a reason column; otherwise carried in the adapter's
+error and log — no migration.** This slice does not license a schema change,
+so the word alone is the store-side record until a reason column lands in a
+separate slice.
 
 ## Out of Scope
 
