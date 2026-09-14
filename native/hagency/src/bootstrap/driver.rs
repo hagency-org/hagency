@@ -330,7 +330,49 @@ async fn run(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failure> {
             }
     };
     status.result(&report);
+    // G8 (wiring audit): the console stop route fences a dispatch — it writes
+    // an unsettled `dispatch_stops` row and parks the dispatch `outcome_unknown`
+    // — but never settles it; `settle_conversation_stop` stays the host's
+    // (conversation_lifecycle.rs:152-157). After the owned operation resolves
+    // (the process is stopped and inspected), the host settles every pending
+    // stop with the observed report as evidence. The settle is idempotent and
+    // fence-checked by the store; a refusal leaves the row pending for the next
+    // pass and is never a run failure.
+    settle_pending_stops(
+        domain,
+        format!(
+            "host inspected stop: protocol={:?} cleanup={:?} failure={:?}",
+            report.protocol, report.cleanup, report.failure
+        ),
+    )
+    .await;
     Ok(Some(report))
+}
+
+/// The host's one settle sweep (G8): after the owned operation resolved and the
+/// process was inspected, settle every dispatch fenced by the console stop
+/// route (`stop_dispatch_for_agent`) with the observed report as evidence. The
+/// evidence string is recorded verbatim, never treated as proof; the store
+/// re-checks the fence and the `outcome_unknown` state before settling.
+async fn settle_pending_stops(domain: &DomainStore, evidence: String) {
+    let pending = match domain
+        .pending_conversation_stops(String::new(), 100)
+        .await
+    {
+        Ok(pending) => pending,
+        Err(error) => {
+            tracing::warn!("[stop] pending-stop read failed: {error:?}");
+            return;
+        }
+    };
+    for (dispatch_id, fence) in pending {
+        if let Err(error) = domain
+            .settle_conversation_stop(dispatch_id, fence, evidence.clone())
+            .await
+        {
+            tracing::warn!("[stop] settle refused: {error:?}");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -573,5 +615,79 @@ mod tests {
         assert!(!f.root.path().join("work/owned-mcp.requests").exists());
         drop(report);
         test_common::shutdown_domain(&f.store, "bootstrap binding").await;
+    }
+
+    /// G8 (wiring audit): the console stop route (`stop_dispatch_for_agent`,
+    /// the store surface behind `/console/api/agents/{id}/stop`) fences a
+    /// started dispatch into `outcome_unknown` and writes an unsettled
+    /// `dispatch_stops` row — but it never settles it. The host settle sweep
+    /// (`settle_pending_stops`, run by `run()` after the operation resolves)
+    /// must settle that row with the observed evidence. Driven against the
+    /// real `DomainStore` writer through the exact production store surfaces
+    /// the console route and the driver call — not a fixture rewrite.
+    #[tokio::test]
+    async fn native_bootstrap_settles_pending_stop_after_operation() {
+        let f = test_common::Fixture::new();
+        let fake = test_common::Fake::start(true).await;
+        let prepared = fixture(&f, &fake.endpoint).await;
+        let engagement = f.identity.transport.engagement_id.clone();
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        let cap = f
+            .store
+            .claim_owned_dispatch_for_host(prepared.claim, "host".into(), 60_000, 60_000, 1)
+            .await
+            .unwrap()
+            .unwrap();
+        let scope = f.store.owned_dispatch_scope(cap.clone()).await.unwrap();
+        f.store
+            .start_owned_dispatch(cap.clone(), scope.fingerprint().to_owned())
+            .await
+            .unwrap();
+        // The console stop route fences the started dispatch; it never settles.
+        let stop = f
+            .store
+            .stop_dispatch_for_agent(engagement, now)
+            .await
+            .unwrap();
+        assert_eq!(stop["stop_pending"], true, "an honest stop is pending");
+        assert_eq!(stop["stopped"], false, "the console route never settles");
+        assert_eq!(stop["state"], "outcome_unknown");
+        let inspect =
+            rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3")).unwrap();
+        let unsettled: Option<u64> = inspect
+            .query_row(
+                "SELECT settled_at FROM dispatch_stops WHERE dispatch_id='dispatch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(unsettled, None, "fail-first: the stop row is unsettled");
+        drop(inspect);
+        // The host settle sweep (the production caller added in this commit).
+        settle_pending_stops(&f.store, "host inspected stop".into()).await;
+        let settled: Option<u64> = rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
+            .unwrap()
+            .query_row(
+                "SELECT settled_at FROM dispatch_stops WHERE dispatch_id='dispatch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(settled.is_some(), "the host settles the pending stop");
+        // A second pass is idempotent and writes no second row.
+        settle_pending_stops(&f.store, "host inspected stop".into()).await;
+        let count: u64 = rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
+            .unwrap()
+            .query_row(
+                "SELECT COUNT(*) FROM dispatch_stops WHERE dispatch_id='dispatch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1, "no duplicate stop row");
+        test_common::shutdown_domain(&f.store, "bootstrap settle").await;
     }
 }
