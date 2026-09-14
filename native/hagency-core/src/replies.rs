@@ -2,7 +2,8 @@
 //! constructed only by authenticated host adapters, never decoded from HTTP.
 use crate::{InvalidInput, JSON_SAFE_MAX, project::identifier, tasks::text};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
+use serde_json::Value;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -51,6 +52,19 @@ pub struct MatrixRoomObservation {
     pub joined: BTreeSet<String>,
     pub invite_only: bool,
     pub encrypted: bool,
+}
+
+/// Verification-time-only authority facts observed from a room's `/state`
+/// (ADR-095 mapping): the five `RoomObservation` fields the scope snapshot
+/// does not persist. Carried in memory to `verify_request` and read once;
+/// never stored, so no migration or schema change.
+#[derive(Clone, Default, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RoomAuthorityFacts {
+    pub powers: BTreeMap<String, i64>,
+    pub default_power: i64,
+    pub invite_power: i64,
+    pub binding: Option<Value>,
+    pub name: Option<String>,
 }
 
 /// An authenticated adapter must record loss/absence of room evidence. This is
