@@ -160,8 +160,11 @@ async fn native_private_approval_delivery_is_wired() {
     // The pump's send is still in flight when the run settles — the probe
     // holds the turn open with no terminal event, so the transport timeout
     // settles outcome_unknown BEFORE the card's HTTP round trip completes.
-    // Keep servicing both legs for a bounded window until the event lands.
-    let drain = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+    // Keep servicing both legs until the event lands, bounded by the
+    // fixture's own STARTUP_WATCHDOG (the same bound capabilities() polls
+    // under — a fixed 10 s here raced a loaded host's round trip and the
+    // card arrived after the window, leaving peer.events empty).
+    let drain = tokio::time::Instant::now() + STARTUP_WATCHDOG;
     while peer.events.is_empty() && tokio::time::Instant::now() < drain {
         let request = tokio::select! {
             request = f.fake.next() => Some(request),
@@ -181,6 +184,17 @@ async fn native_private_approval_delivery_is_wired() {
             }
         }
     }
+    // Named failure: the card must be observed before the fixture watchdog
+    // expires. Dump the child's stderr so a timeout names the pump's own
+    // send outcome (a denied-at-deadline card is a different root cause
+    // than a merely slow one).
+    assert!(
+        !peer.events.is_empty(),
+        "approval card not delivered within the fixture watchdog\n--- native.stderr ---\n{}",
+        String::from_utf8_lossy(
+            &std::fs::read(f.root.path().join("native.stderr")).unwrap_or_default()
+        )
+    );
     // The scenario observes the DELIVERY, never the verdict: the probe
     // raises the requestApproval and then holds the turn open with no
     // terminal event (the owned probe's own discipline — "Done

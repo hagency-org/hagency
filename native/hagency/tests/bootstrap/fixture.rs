@@ -14,6 +14,13 @@ use std::{
 };
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
+/// Bounds fixture waits that must outlast the operation budget under load —
+/// the sibling fixtures (file_service, received_files) name the same value
+/// `STARTUP_WATCHDOG`. The bootstrap fixture's own capability-poll bound and
+/// the approval scenario's delivery drain both use it, so the two sides can
+/// never disagree about how long a loaded host may take.
+pub const STARTUP_WATCHDOG: Duration = Duration::from_secs(15);
+
 pub struct Running(Child);
 impl Running {
     pub fn from_child(child: Child) -> Self {
@@ -291,7 +298,7 @@ impl Fixture {
             .unwrap()
     }
     pub async fn capabilities(&self) -> Value {
-        let until = tokio::time::Instant::now() + Duration::from_secs(15);
+        let until = tokio::time::Instant::now() + STARTUP_WATCHDOG;
         loop {
             if let Ok(mut stream) = tokio::net::TcpStream::connect(self.address).await {
                 let token = String::from_utf8(
