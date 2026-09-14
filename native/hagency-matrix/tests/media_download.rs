@@ -456,14 +456,16 @@ async fn native_matrix_media_deadline_cancel() {
     // The deadline variants set deliberately tight bounds (150/200/600/180ms)
     // while the scripted peer's delivery — accept, TLS handshake, parse,
     // channel, wake — is only bounded at load scale (`Fake::next`'s own
-    // orchestration budget). On a loaded runner the GET is issued but not yet
-    // observed when the headers bound expires, so the run honestly resolves
-    // Timeout before `fake.next()` wakes; panicking there conflated that with a
-    // request that was never issued. Each variant runs on its own Fake (a
-    // request delivered after the deadline cannot leak into a later leg's
-    // script) and tolerates exactly the run-first Timeout this scenario
-    // already asserts; every other run-first outcome still fails by name, and
-    // an observed request is verified and scripted exactly as `exchange`.
+    // orchestration budget). An ordering diagnosed by reading (the biased
+    // select against timeout_at) and never reproduced locally: on a loaded
+    // runner the GET is issued but not yet observed when the headers bound
+    // expires, so the run honestly resolves Timeout before `fake.next()`
+    // wakes. Each variant runs on its own Fake, so a request delivered after
+    // the deadline cannot leak into a later leg's script. Both invariants
+    // hold on every path: whichever leg wins, the GET's shape is verified
+    // through the same `expect_media_get`, a product that never issues one
+    // fails by the fake's named request-missing panic, and the resolved
+    // failure must be exactly the Timeout this variant asserts.
     let timing = Limits {
         connect: Duration::from_millis(150),
         headers: Duration::from_millis(200),
@@ -509,11 +511,20 @@ async fn native_matrix_media_deadline_cancel() {
                 error(run.await)
             }
             result = &mut run => {
+                // The deadline resolved first. Await the GET with the fake's
+                // own orchestration budget — its named panic is the verdict
+                // for a product that never issued one, and a connect-phase
+                // timeout is the same word as this one — verify the same
+                // shape as the scripted leg, and only then accept the
+                // timeout this variant asserts.
+                let request = fake.next().await;
+                expect_media_get(&request);
+                drop(request);
                 let failure = error(result);
                 assert_eq!(
                     failure,
                     Failure::Transport(Error::Timeout),
-                    "deadline variant resolved {failure:?} before its request was observed"
+                    "deadline variant resolved {failure:?} after its GET was observed"
                 );
                 failure
             }
