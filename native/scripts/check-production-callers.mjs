@@ -27,11 +27,12 @@ const STRIP_PREFIXES = ['native/hagency-runtime/src/bin/approval_probe/'];
 // hagency/tests/** is covered by the */tests/* rule (the [[bin]] fixture peers
 // owned/file/receive/approval_mcp_peer.rs and matrix_crypto_peer.rs live there).
 
-function isStripped(rel) {
+export function isStripped(rel) {
   if (STRIP_FILES.has(rel)) return true;
   if (STRIP_PREFIXES.some((p) => rel.startsWith(p))) return true;
   if (STRIP_DIRS.some((d) => rel.startsWith(d + '/'))) return true;
   if (/(^|\/)tests?\//.test(rel)) return true;
+  if (/(^|\/)examples\//.test(rel)) return true; // e.g. hagency-execution/examples/codex_qualify.rs
   if (rel.endsWith('tests.rs')) return true;
   return false;
 }
@@ -119,6 +120,14 @@ export function extractCalls(body) {
     const name = m[1];
     if (!SKIP_WORDS.has(name)) calls.add(name);
   }
+  // Handler/edge references passed as bare identifiers:
+  // .get(handler) .post(..) .put(..) .delete(..) .push(..) .hoop(..) and
+  // tokio::spawn(worker) — Salvo route registration and worker spawns pass the
+  // fn by name, invisible to the call extraction above.
+  const hre = /\.(?:get|post|put|delete|push|hoop)\s*\(\s*([a-z_][A-Za-z0-9_]*)/g;
+  while ((m = hre.exec(body))) calls.add(m[1]);
+  const sre = /\bspawn\s*\(\s*([a-z_][A-Za-z0-9_]*)/g;
+  while ((m = sre.exec(body))) calls.add(m[1]);
   return [...calls];
 }
 
@@ -128,16 +137,18 @@ function listRustFiles() {
 }
 
 export function buildGraph(files, read) {
-  // fns: name -> [{ file, body, calls }]; multiple entries = ambiguous.
+  // fns: name -> [{ file, body, calls, impls }]; a name with entries in
+  // several files is a collision. fileFns: file -> defs (defs carry impls).
   const fns = new Map();
   const fileFns = new Map();
   for (const rel of files) {
     const src = stripTestItems(read(rel));
     const defs = extractFns(src);
+    for (const def of defs) def.impls = implsOf(src, def);
     fileFns.set(rel, defs);
     for (const def of defs) {
       if (!fns.has(def.name)) fns.set(def.name, []);
-      fns.get(def.name).push({ file: rel, body: def.body, calls: null });
+      fns.get(def.name).push({ file: rel, body: def.body, calls: null, impls: def.impls });
     }
   }
   for (const defs of fileFns.values()) {
@@ -148,6 +159,53 @@ export function buildGraph(files, read) {
     }
   }
   return { fns, fileFns };
+}
+
+// The impl type names whose blocks contain the fn's definition, e.g.
+// ['DomainRepository'] for a method inside `impl DomainRepository { ... }`.
+function implsOf(src, def) {
+  const idx = src.indexOf(def.body);
+  const impls = [];
+  const re = /\bimpl\b[^{]*\b([A-Z][A-Za-z0-9_]*)[^{]*\{/g;
+  let m;
+  while ((m = re.exec(src))) {
+    let depth = 0, end = src.indexOf('{', m.index);
+    for (let i = end; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    if (idx > m.index && idx < end) impls.push(m[1]);
+  }
+  return impls;
+}
+
+// crate::module[::Type]::fn -> the single definition it names, or null.
+// hagency::bootstrap::accounts::run -> native/hagency/src/bootstrap/accounts.rs
+// hagency_store::domain::approve -> native/hagency-store/src/domain.rs
+// A Type segment (capitalised) is consumed as an impl filter, not a path part.
+export function resolvePath(graph, files, full) {
+  const parts = full.split('::');
+  if (parts.length < 2) return { def: null, reason: 'not a qualified path' };
+  const fnName = parts[parts.length - 1];
+  let segs = parts.slice(0, -1);
+  let typeName = null;
+  if (/^[A-Z]/.test(segs[segs.length - 1])) typeName = segs.pop();
+  if (!segs.length) return { def: null, reason: `not a module path (${full})` }; // e.g. Duration::from_millis
+  const modPath = segs.slice(1).join('/');
+  // Crate dir spellings: hagency -> native/hagency, hagency_store -> native/hagency-store.
+  const crateDirs = [...new Set([segs[0], segs[0].replace(/_/g, '-')])].map((d) => `native/${d}/src`);
+  const candidates = crateDirs.flatMap((crateDir) => [
+    modPath ? `${crateDir}/${modPath}.rs` : `${crateDir}/lib.rs`,
+    modPath ? `${crateDir}/${modPath}/mod.rs` : `${crateDir}/main.rs`,
+  ]);
+  const file = candidates.find((c) => files.includes(c));
+  if (!file) return { def: null, reason: `no module file for ${segs.join('::')}` };
+  const defs = (graph.fileFns.get(file) || []).filter((d) => d.name === fnName);
+  const inImpl = typeName ? defs.filter((d) => (d.impls || []).includes(typeName)) : defs;
+  const chosen = typeName ? inImpl : defs;
+  if (chosen.length === 1) return { def: { file, name: fnName }, reason: null };
+  if (chosen.length === 0) return { def: null, reason: `no fn ${fnName}${typeName ? ` in impl ${typeName}` : ''} in ${file}` };
+  return { def: null, reason: `${chosen.length} definitions of ${fnName} in ${file}` };
 }
 
 function parseCaller(raw) {
@@ -169,57 +227,102 @@ export function parseSpecLines(content, file) {
 }
 
 export function parseAdrGaps(content) {
+  // Only rows of the gap table count: `| ... | ... | gap Gn ... |` lines.
+  // Whole-document scanning would admit ids mentioned in prose or other tables.
   const gaps = new Set();
-  for (const m of content.matchAll(/\b(G\d+)\b/g)) gaps.add(m[1]);
+  for (const line of content.split('\n')) {
+    if (!line.trim().startsWith('|')) continue;
+    // `gap Gn` optionally followed by slash-listed sharers: `gap G2/G5 (shared)`.
+    for (const m of line.matchAll(/\bgap\s+((?:G\d+)(?:\/G\d+)*)\b/gi)) {
+      for (const id of m[1].toUpperCase().split('/')) gaps.add(id);
+    }
+  }
   return gaps;
 }
 
 export function resolveReachable(graph, roots) {
-  // BFS from roots. Same-file resolution first; then a unique global name;
-  // ambiguous names expand to all candidates (conservative, name-based).
-  const seen = new Set(); // keys: name or file::name
-  const ambiguous = new Set();
+  // BFS from roots tracking, per reached definition, whether ANY chain from a
+  // root reaches it through unambiguous edges only. A call resolves to
+  // (a) a same-file definition, (b) a module::name qualified definition,
+  // (c) otherwise ALL same-named definitions — the edge is ambiguous iff the
+  // call binds more than one definition. Ambiguous edges propagate: a node
+  // reached only through them is `ambiguous`, never `wired`.
+  const best = new Map(); // key file::name -> 'clean' | 'tainted'
+  const parents = new Map(); // key -> { from, via } of the first tainting edge
   const queue = [];
-  const seed = (file, name) => { const key = `${file}::${name}`; if (!seen.has(key)) { seen.add(key); queue.push({ file, name }); } };
-  for (const r of roots) seed(r.file, r.name);
+  const seed = (file, name, taint, from, via) => {
+    const key = `${file}::${name}`;
+    const cur = best.get(key);
+    if (cur === 'clean' || (cur === 'tainted' && taint)) return;
+    if (cur === 'tainted' && !taint) best.set(key, 'clean'); // upgrade
+    else if (!cur) best.set(key, taint ? 'tainted' : 'clean');
+    if (taint && !parents.has(key)) parents.set(key, { from, via });
+    queue.push({ file, name, taint });
+  };
+  for (const r of roots) seed(r.file, r.name, false, null, null);
+  const keyOf = (file, name) => `${file}::${name}`;
   while (queue.length) {
-    const { file, name } = queue.shift();
-    const entries = (graph.fns.get(name) || []).filter((e) => e.file === file);
-    const entry = entries[0] || (graph.fns.get(name) || [])[0];
+    const { file, name, taint } = queue.shift();
+    const entry = (graph.fns.get(name) || []).find((e) => e.file === file);
     if (!entry || !entry.calls) continue;
     const local = new Set((graph.fileFns.get(file) || []).map((d) => d.name));
     for (const call of entry.calls) {
       const parts = call.split('::');
       const short = parts[parts.length - 1];
-      // Same-file resolution first; then a name defined in exactly one file;
-      // only a name defined in several files is ambiguous (name-based graph,
-      // so it conservatively expands to every candidate file).
-      if (local.has(short)) { seed(file, short); continue; }
-      const candidates = graph.fns.get(short) || [];
-      const filesFor = [...new Set(candidates.map((c) => c.file))];
-      if (filesFor.length === 1) seed(filesFor[0], short);
-      else if (filesFor.length > 1) {
-        ambiguous.add(short);
-        for (const c of candidates) seed(c.file, short);
+      const via = `${file}::${name} -> ${call}`;
+      // Unqualified calls bind the same-file definition first; qualified
+      // calls resolve their path (a same-file short-name coincidence must
+      // not swallow `bootstrap::accounts::run` just because main.rs also
+      // defines a `run`).
+      if (parts.length === 1 && local.has(short)) { seed(file, short, taint, keyOf(file, name), via); continue; }
+      let targets = [];
+      let ambiguousEdge = false;
+      if (parts.length > 1) {
+        // Qualified: resolve the module path to its definition. In-body paths
+        // are often crate-relative (`bootstrap::accounts::run`,
+        // `crate::x::y`) rather than crate-prefixed, so retry with the
+        // caller's crate name and with `crate` swapped for it.
+        const filesList = [...graph.fileFns.keys()];
+        const callerCrate = file.match(/^native\/([^/]+)\/src\//)?.[1].replace(/-/g, '_');
+        const attempts = [call];
+        if (callerCrate) {
+          if (parts[0] === 'crate') attempts.push([callerCrate, ...parts.slice(1)].join('::'));
+          else attempts.push(`${callerCrate}::${call}`);
+        }
+        let r = { def: null };
+        for (const attempt of attempts) {
+          r = resolvePath(graph, filesList, attempt);
+          if (r.def) break;
+        }
+        if (r.def) targets = [r.def];
+        else targets = []; // unresolvable qualified path: no edge, not ambiguous
+      } else {
+        const candidates = graph.fns.get(short) || [];
+        targets = candidates.map((c) => ({ file: c.file, name: short }));
+        ambiguousEdge = candidates.length > 1;
       }
+      for (const t of targets) seed(t.file, t.name, taint || ambiguousEdge, keyOf(file, name), via);
     }
   }
-  return { seen, ambiguous };
+  return { best, parents };
 }
 
-export function defaultRoots(files) {
-  // main.rs is the `hagency` bin; every fn defined there is a root because the
-  // clap dispatch names subcommand handlers (e.g. accounts::run at :204) and
-  // the Salvo `Router` registrations, worker/sweep spawns and the MCP stdio
-  // entry (mcp/stdio.rs via main.rs:1,152) are all called from main's flow.
-  const graphFiles = files;
-  const roots = [];
-  const main = 'native/hagency/src/main.rs';
-  if (graphFiles.includes(main)) {
-    // Seeded by name list after the graph is built — see checkProductionCallers.
-    roots.push({ file: main, name: 'main' });
+// True when `def` is reachable from a root through unambiguous edges only.
+export function isCleanlyReachable(reach, def) {
+  return reach.best.get(`${def.file}::${def.name}`) === 'clean';
+}
+
+// The chain by which a tainted node was reached (for diagnostics).
+export function taintChain(reach, def) {
+  const chain = [];
+  let key = `${def.file}::${def.name}`;
+  let guard = 0;
+  while (reach.parents.has(key) && guard++ < 50) {
+    const p = reach.parents.get(key);
+    chain.push(p.via);
+    key = p.from;
   }
-  return roots;
+  return chain;
 }
 
 export function checkProductionCallers({ root = repoRoot, read, files: givenFiles } = {}) {
@@ -233,7 +336,7 @@ export function checkProductionCallers({ root = repoRoot, read, files: givenFile
   if (files.includes(main)) {
     for (const def of graph.fileFns.get(main) || []) roots.push({ file: main, name: def.name });
   }
-  const { seen, ambiguous } = resolveReachable(graph, roots);
+  const reach = resolveReachable(graph, roots);
 
   const specsDir = path.join(root, 'specs');
   const lines = [];
@@ -247,6 +350,8 @@ export function checkProductionCallers({ root = repoRoot, read, files: givenFile
   const wired = [];
   const owed = [];
   const missing = [];
+  const ambiguous = [];
+  const unresolved = [];
   const unknownGaps = [];
   for (const item of lines) {
     const ref = { file: item.file, line: item.line, caller: item.raw };
@@ -255,22 +360,27 @@ export function checkProductionCallers({ root = repoRoot, read, files: givenFile
       else unknownGaps.push({ ...ref, gap: item.parsed.gap });
       continue;
     }
-    const name = item.parsed.name;
-    const reachable = [...seen].some((key) => key.endsWith(`::${name}`));
-    if (reachable) wired.push(ref);
-    else missing.push(ref);
+    // Exact full-path resolution only — never a bare-name search.
+    const r = resolvePath(graph, files, item.parsed.full);
+    if (!r.def) { unresolved.push({ ...ref, reason: r.reason }); continue; }
+    if (isCleanlyReachable(reach, r.def)) { wired.push(ref); continue; }
+    const key = `${r.def.file}::${r.def.name}`;
+    if (reach.best.has(key)) ambiguous.push({ ...ref, definition: key, chain: taintChain(reach, r.def) });
+    else missing.push({ ...ref, definition: key });
   }
   const result = {
     count: lines.length,
     wired: wired.length,
     owed: owed.map((o) => `${o.file}:${o.line} ${o.gap}`),
     missing,
+    ambiguous,
+    unresolved,
     unknownGaps,
-    ambiguous: [...ambiguous].sort(),
     roots: roots.length,
-    stripped: 'cfg(test) items, #[test] fns, */tests/*, tests.rs, native/fixtures/**, probe/fixture bins, bootstrap/driver.rs',
+    stripped: 'cfg(test) items, #[test] fns, */tests/*, */examples/*, tests.rs, native/fixtures/**, probe/fixture bins, bootstrap/driver.rs',
   };
-  return { result, ok: missing.length === 0 && unknownGaps.length === 0 };
+  const failures = missing.length + ambiguous.length + unresolved.length + unknownGaps.length;
+  return { result, ok: failures === 0 };
 }
 
 function listRustFilesAt(root) {

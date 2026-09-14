@@ -1,13 +1,15 @@
 // Tests for check-production-callers.mjs (ADR-146). Fixture trees, no repo
-// dependency: checkProductionCallers accepts { root, read }.
+// dependency: checkProductionCallers accepts { root, read, files }.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  isStripped,
   stripTestItems,
   extractFns,
+  extractCalls,
   parseSpecLines,
   parseAdrGaps,
   checkProductionCallers,
@@ -47,6 +49,25 @@ test('stripTestItems removes a bare #[test] fn and #[tokio::test] fn', () => {
   assert.match(out, /pub fn real/);
 });
 
+test('isStripped covers tests, examples, fixtures and probe bins', () => {
+  assert.equal(isStripped('native/hagency-execution/examples/codex_qualify.rs'), true);
+  assert.equal(isStripped('native/hagency-store/tests/replies.rs'), true);
+  assert.equal(isStripped('native/hagency/src/domain/tests.rs'), true);
+  assert.equal(isStripped('native/fixtures/peer.rs'), true);
+  assert.equal(isStripped('native/hagency/src/bootstrap/driver.rs'), true);
+  assert.equal(isStripped('native/hagency-runtime/src/bin/approval_probe/mod.rs'), true);
+  assert.equal(isStripped('native/hagency/src/console.rs'), false);
+  assert.equal(isStripped('native/hagency-store/src/domain.rs'), false);
+});
+
+test('extractCalls treats handler and spawn arguments as edges', () => {
+  const body = 'Router::with_path("/x").get(list_agents).post(create_agent).hoop(guard); tokio::spawn(sweep_loop); call_site(other);';
+  const calls = extractCalls(body);
+  for (const name of ['list_agents', 'create_agent', 'guard', 'sweep_loop', 'call_site']) {
+    assert.ok(calls.includes(name), `expected edge to ${name}`);
+  }
+});
+
 test('parseSpecLines classifies wired and owed Production caller lines', () => {
   const spec = [
     '  Production caller: hagency::bootstrap::accounts::run',
@@ -58,10 +79,17 @@ test('parseSpecLines classifies wired and owed Production caller lines', () => {
   assert.deepEqual(lines[1].parsed, { kind: 'owed', gap: 'G2' });
 });
 
-test('parseAdrGaps reads the gap ids from the ADR table', () => {
-  const adr = '| gap G1 — owner |\n| gap G2 |\n**8 open gaps (G1–G8)**\n';
+test('parseAdrGaps reads only the gap table rows, including slash-shared ids', () => {
+  const adr = [
+    '| `approve` | domain.rs:1145 | none | gap G2 |',
+    '| `retry_cleanup` | domain.rs:1265 | none | gap G2/G5 (shared) |',
+    '',
+    'The gaps table has 8 open gaps (G1–G8); G9 resolved as superseded.', // prose: not a row
+  ].join('\n');
   const gaps = parseAdrGaps(adr);
-  assert.ok(gaps.has('G1') && gaps.has('G2') && gaps.has('G8'));
+  assert.ok(gaps.has('G2') && gaps.has('G5'));
+  assert.equal(gaps.has('G9'), false);
+  assert.equal(gaps.has('G1'), false); // range mention in prose is not a row
 });
 
 function makeFixture({ rust, specs, adr }) {
@@ -80,35 +108,67 @@ function makeFixture({ rust, specs, adr }) {
 
 const MAIN = 'native/hagency/src/main.rs';
 
-test('native_production_callers_wired: a wired caller resolves from a root', () => {
+test('native_production_callers_wired: a full-path caller reached by an unambiguous chain is wired', () => {
   const { root, read, files } = makeFixture({
     rust: {
-      [MAIN]: 'fn main() { run(); }\nfn run() {}\n',
+      [MAIN]: 'fn main() { run(); }\nfn run() { bootstrap::accounts::run(); }\n',
       'native/hagency/src/bootstrap/accounts.rs': 'pub fn run() { helper(); }\nfn helper() {}\n',
     },
     specs: '  Production caller: hagency::bootstrap::accounts::run\n',
-    adr: '| gap G1 |\n',
+    adr: '| `x` | gap G1 |\n',
   });
   const { result, ok } = checkProductionCallers({ root, read, files });
-  assert.ok(ok);
+  assert.ok(ok, JSON.stringify(result));
   assert.equal(result.wired, 1);
   assert.equal(result.missing.length, 0);
+  assert.equal(result.ambiguous.length, 0);
 });
 
-test('native_production_callers_missing: a test-only caller is absent and fails', () => {
+test('native_production_callers_missing: an unreachable full path is missing and fails', () => {
   const { root, read, files } = makeFixture({
     rust: {
       [MAIN]: 'fn main() { run(); }\nfn run() {}\n',
-      // The only "caller" of approve lives inside a stripped cfg(test) module.
-      'native/hagency-store/src/domain.rs': 'pub fn approve(&self) {}\n#[cfg(test)]\nmod tests {\n  fn t() { let db = 1; db_approve(); }\n  fn db_approve() { approve(); }\n  fn approve() {}\n}\n',
+      // Integration probe: approve exists in domain.rs but nothing in the
+      // production graph calls it (the test-module call is stripped).
+      'native/hagency-store/src/domain.rs': [
+        'impl DomainRepository {',
+        '  pub fn approve(&self) {}',
+        '}',
+        '#[cfg(test)]',
+        'mod tests {',
+        '  fn t() { approve(); }',
+        '}',
+      ].join('\n'),
     },
-    specs: '  Production caller: hagency_store::domain::approve\n',
-    adr: '| gap G1 |\n',
+    specs: '  Production caller: hagency_store::domain::DomainRepository::approve\n',
+    adr: '| `approve` | gap G2 |\n',
   });
   const { result, ok } = checkProductionCallers({ root, read, files });
   assert.equal(ok, false);
   assert.equal(result.missing.length, 1);
   assert.match(result.missing[0].caller, /approve$/);
+  assert.match(result.missing[0].definition, /domain\.rs::approve$/);
+});
+
+test('native_production_callers_ambiguous: a homonym collision reached only through ambiguous edges fails', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      // Integration probe: `admit` collides with MediaBudget::admit and
+      // control.admit; the bare `.admit(` edge binds all three.
+      [MAIN]: 'fn main() { run(); }\nfn run() { self.admit(); }\n',
+      'native/hagency-store/src/domain.rs': 'impl DomainRepository {\n  pub fn admit(&self) {}\n}\n',
+      'native/hagency-media/src/lib.rs': 'impl MediaBudget {\n  pub fn admit(&self) {}\n}\n',
+      'native/hagency-runtime/src/codex/session/driver.rs': 'impl Control {\n  pub fn admit(&self) {}\n}\n',
+    },
+    specs: '  Production caller: hagency_store::domain::DomainRepository::admit\n',
+    adr: '| `admit` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.equal(ok, false);
+  assert.equal(result.missing.length, 0);
+  assert.equal(result.ambiguous.length, 1);
+  assert.match(result.ambiguous[0].definition, /domain\.rs::admit$/);
+  assert.ok(result.ambiguous[0].chain.length > 0);
 });
 
 test('native_production_callers_owed: a resolvable owed id is reported, never failed', () => {
@@ -127,10 +187,22 @@ test('native_production_callers_unknown_gap: an unknown owed id fails the checke
   const { root, read, files } = makeFixture({
     rust: { [MAIN]: 'fn main() {}\n' },
     specs: '  Production caller: owed (G42)\n',
-    adr: '| gap G1 |\n',
+    adr: '| `x` | gap G1 |\n',
   });
   const { result, ok } = checkProductionCallers({ root, read, files });
   assert.equal(ok, false);
   assert.equal(result.unknownGaps.length, 1);
   assert.equal(result.unknownGaps[0].gap, 'G42');
+});
+
+test('an unresolvable full path is reported unresolved and fails', () => {
+  const { root, read, files } = makeFixture({
+    rust: { [MAIN]: 'fn main() {}\n' },
+    specs: '  Production caller: hagency_store::domain::DomainRepository::no_such_fn\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.equal(ok, false);
+  assert.equal(result.unresolved.length, 1);
+  assert.match(result.unresolved[0].reason, /no module file for hagency_store::domain/);
 });
