@@ -1221,6 +1221,7 @@ async fn native_matrix_intake_handoff_changed_event_cannot_reuse_old_receipt() {
 mod rejections;
 
 mod attachments;
+mod provisioning;
 mod receive;
 
 #[tokio::test]

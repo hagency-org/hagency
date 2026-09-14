@@ -341,15 +341,17 @@ impl Inner {
             .domain
             .matrix_room_state(t.engagement_id.clone(), target.room_id.clone())
             .await?;
-        // The reception room is fetched for verify_request only and must never
-        // be published (observe_matrix_room refuses it); its scope row is
-        // absent, so `prior` is None and its facts are carried in memory.
-        // Driven by the HostConfig field, not a per-room store read.
-        let reception = self
+        // Only `rooms` members are published: observe_matrix_room refuses a
+        // Group room that is not the host engagement's own project room
+        // (matrix_routes.rs:413), and the pre-project reception room has no
+        // scope row by design. Every other observed room (the reception room
+        // and any verify-time room fetch) keeps its authority facts in memory
+        // for verify_request and is never published.
+        let publish = self
             .config
-            .reception_room
-            .as_ref()
-            .is_some_and(|r| r.room_id == target.room_id);
+            .rooms
+            .iter()
+            .any(|r| r.room_id == target.room_id);
         let result = async {
             observe!(RoomHttp);
             let state = self
@@ -371,7 +373,7 @@ impl Inner {
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
             }
-            if reception {
+            if !publish {
                 return Ok(observation);
             }
             observe!(RoomPublish);

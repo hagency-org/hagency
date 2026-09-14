@@ -10,7 +10,7 @@ use hagency_core::{
         ProjectRequest, RequestObservation, RoomObservation, SourceObservation, verify_request,
     },
     project::identifier,
-    replies::{ReplyRoute, RoomAuthorityFacts},
+    replies::{ReplyRoute, RoomAuthorityFacts, RoomPrivacy},
 };
 use serde_json::json;
 use std::collections::{BTreeMap, BTreeSet};
@@ -150,14 +150,20 @@ impl Inner {
         &self,
         msg: &hagency_core::messages::InboundMessage,
     ) -> Result<(hagency_core::project::Engagement, bool), Error> {
-        let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
+        let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|e| {
+            eprintln!("PROVISION-DIAG body parse failed: {e:?}");
+            Error::Wire
+        })?;
         let reg = self
             .domain
             .provisioning_registration_for_engagement(
                 self.config.identity.transport.engagement_id.clone(),
             )
             .await
-            .map_err(|_| Error::Wire)?;
+            .map_err(|e| {
+                eprintln!("PROVISION-DIAG registration read failed: {e:?}");
+                Error::Wire
+            })?;
         let owner_room = self
             .domain
             .provisioning_owner_room(
@@ -168,7 +174,10 @@ impl Inner {
                 reg.server_name.clone(),
             )
             .await
-            .map_err(|_| Error::Wire)?;
+            .map_err(|e| {
+                eprintln!("PROVISION-DIAG owner room read failed: {e:?}");
+                Error::Wire
+            })?;
         // The retained single-owner flow: the requester is the project owner.
         let requester = body
             .get("requester")
@@ -206,9 +215,19 @@ impl Inner {
         let source_content_obj = source_content.as_object_mut().ok_or(Error::Wire)?;
         source_content_obj.remove("ownerDmRoomId");
         source_content_obj.remove("sourceEventId");
-        let facts = self.room_facts.lock().await;
-        let (reception_obs, reception_facts) = facts.get(&msg.room_id).ok_or(Error::Wire)?;
-        let (project_obs, project_facts) = facts.get(&request.target_room_id).ok_or(Error::Wire)?;
+        // The reception and target rooms are verify-only observations: neither
+        // is published (observe_matrix_room refuses a room that is not the
+        // engagement's own project room), so their authority facts are kept in
+        // memory. A room the collector has not observed yet (the request's
+        // target room is named by the event, not the host config) is fetched
+        // from /state on demand; a missing or unverifiable snapshot is
+        // refused, never substituted.
+        let (reception_obs, reception_facts) = self
+            .verify_room_facts(&msg.room_id, 1, RoomPrivacy::Group {})
+            .await?;
+        let (project_obs, project_facts) = self
+            .verify_room_facts(&request.target_room_id, 1, RoomPrivacy::Group {})
+            .await?;
         let room_observation = |obs: &hagency_core::replies::MatrixRoomObservation,
                                 facts: &RoomAuthorityFacts| {
             RoomObservation {
@@ -223,8 +242,8 @@ impl Inner {
                 name: facts.name.clone(),
             }
         };
-        let reception = room_observation(reception_obs, reception_facts);
-        let project = room_observation(project_obs, project_facts);
+        let reception = room_observation(&reception_obs, &reception_facts);
+        let project = room_observation(&project_obs, &project_facts);
         let owner = RoomObservation {
             room_id: owner_room.room_id.clone(),
             joined: owner_room.joined.clone(),
@@ -238,7 +257,6 @@ impl Inner {
             binding: None,
             name: None,
         };
-        drop(facts);
         let request_observation = RequestObservation {
             registration_generation: reg.generation,
             observed_at_ms: msg.origin_ts,
@@ -254,7 +272,10 @@ impl Inner {
             owner_room: owner,
         };
         let verified =
-            verify_request(&reg, request, request_observation).map_err(|_| Error::Wire)?;
+            verify_request(&reg, request, request_observation).map_err(|e| {
+                eprintln!("PROVISION-DIAG verify_request failed: {e:?}");
+                Error::Wire
+            })?;
         let id = verified
             .request()
             .engagement_id()
@@ -262,9 +283,53 @@ impl Inner {
         let exists = self
             .domain
             .provisioning_engagement_exists(id.clone())
-            .await?;
-        let engagement = self.domain.admit(verified, msg.origin_ts).await?;
+            .await
+            .map_err(|e| {
+                eprintln!("PROVISION-DIAG engagement_exists failed: {e:?}");
+                e
+            })?;
+        eprintln!("PROVISION-DIAG admit: id={id} exists={exists}");
+        let engagement = self
+            .domain
+            .admit(verified, msg.origin_ts)
+            .await
+            .map_err(|e| {
+                eprintln!("PROVISION-DIAG admit failed: {e:?}");
+                e
+            })?;
         Ok((engagement, !exists))
+    }
+    /// The in-memory authority facts for a verify-only room, fetched from
+    /// /state on demand when the collector has not observed the room yet.
+    async fn verify_room_facts(
+        &self,
+        room_id: &str,
+        generation: u64,
+        privacy: RoomPrivacy,
+    ) -> Result<(hagency_core::replies::MatrixRoomObservation, RoomAuthorityFacts), Error> {
+        if let Some(found) = self.room_facts.lock().await.get(room_id).cloned() {
+            return Ok(found);
+        }
+        let target = crate::HostRoom {
+            room_id: room_id.to_owned(),
+            generation,
+            privacy,
+        };
+        let state = self
+            .http
+            .request(
+                &["_matrix", "client", "v3", "rooms", room_id, "state"],
+                None,
+                &crate::CancellationToken::new(),
+            )
+            .await?
+            .success()?;
+        let found = self.room(&target, state)?;
+        self.room_facts
+            .lock()
+            .await
+            .insert(room_id.to_owned(), found.clone());
+        Ok(found)
     }
     async fn targets(&self, plan: &HostIntakePlan) -> Result<Vec<ReplyRoute>, Error> {
         let mut targets = vec![];
@@ -398,6 +463,12 @@ impl Inner {
         }
         let mut admitted = 0;
         let mut replayed = batch.acknowledgements.len();
+        eprintln!(
+            "PROVISION-DIAG handoff: pre_project={} events={} acks={}",
+            batch.pre_project.len(),
+            batch.events.len(),
+            batch.acknowledgements.len()
+        );
         // ADR-095: pre-project provisioning events are admitted before target
         // resolution and carry no route, ack or disposition. Reprocessing is
         // safe: provision is idempotent on `request_id`, so a restored batch
