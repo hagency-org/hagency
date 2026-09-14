@@ -47,239 +47,297 @@ fn bounded(value: u64) -> Result<u64, Error> {
 /// A single ordered pass is the fixed point: the FK graph between these
 /// tables is acyclic by tier, so child-first order removes every removable
 /// row in one pass and anything left pins its parent to the next tick.
-const CASCADE: &[(&str, &str)] = &[
-    // Tier 1 — leaves off dispatches, tasks, sessions and conversations.
+/// One step of the child-first tier walk: (table, the child's FK column,
+/// the parent-key scope). The scope yields the PARENT key values reachable
+/// from this batch's engagements — every SELECT names its table alias (no
+/// `ambiguous column name: id`) — and the delete matches the child's own
+/// FK column, never its rowid (an INTEGER rowid never equals a TEXT parent
+/// id, so `rowid IN (SELECT id ...)` silently deleted nothing).
+const CASCADE: &[(&str, &str, &str)] = &[
     (
         "runner_outputs",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=runner_outputs.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "runner_attempts",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=runner_attempts.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "task_comments",
-        "SELECT id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE t.id=task_comments.task_id",
+        "task_id",
+        "SELECT t.id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "graph_dependencies",
-        "SELECT graph_id FROM task_graphs g JOIN runner_sessions s ON s.id=g.creator_session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE g.id=graph_dependencies.graph_id",
+        "graph_id",
+        "SELECT g.id FROM task_graphs g JOIN runner_sessions s ON s.id=g.creator_session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "task_input_receipts",
-        "SELECT id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE t.id=task_input_receipts.task_id",
+        "task_id",
+        "SELECT t.id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "conversation_operations",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=conversation_operations.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "dispatch_inputs",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=dispatch_inputs.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "peer_dispatch_inputs",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=peer_dispatch_inputs.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "peer_session_inputs",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=peer_session_inputs.session_id",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "session_inputs",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=session_inputs.session_id",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "task_inputs",
-        "SELECT id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE t.id=task_inputs.task_id",
+        "task_id",
+        "SELECT t.id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "dispatch_stops",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=dispatch_stops.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "dispatch_resources",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=dispatch_resources.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "dispatch_attachment_windows",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=dispatch_attachment_windows.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "resource_leases",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=resource_leases.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "dispatch_recovery_reports",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=dispatch_recovery_reports.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "dispatch_recoveries",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=dispatch_recoveries.original_id OR d.id=dispatch_recoveries.replacement_id",
+        "original_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
+    ),
+    (
+        "dispatch_recoveries",
+        "replacement_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "graph_commands",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=graph_commands.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "file_deliveries",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=file_deliveries.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "file_uploads",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=file_uploads.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "usage_receipts",
-        "SELECT id FROM usage_sources u JOIN engagement_prune_batch b ON b.engagement_id=u.engagement_id WHERE u.id=usage_receipts.source_id",
+        "source_id",
+        "SELECT u.id FROM usage_sources u JOIN engagement_prune_batch b ON b.engagement_id=u.engagement_id",
     ),
     (
         "approval_responses",
-        "SELECT id FROM approval_contexts c JOIN engagement_prune_batch b ON b.engagement_id=c.engagement_id WHERE c.id=approval_responses.context_id",
+        "context_id",
+        "SELECT c.id FROM approval_contexts c JOIN engagement_prune_batch b ON b.engagement_id=c.engagement_id",
     ),
     (
         "approval_verdict_receipts",
-        "SELECT id FROM owner_approvals o JOIN approval_contexts c ON c.id=o.context_id JOIN engagement_prune_batch b ON b.engagement_id=c.engagement_id WHERE o.id=approval_verdict_receipts.request_id",
+        "request_id",
+        "SELECT o.id FROM owner_approvals o JOIN approval_contexts c ON c.id=o.context_id JOIN engagement_prune_batch b ON b.engagement_id=c.engagement_id",
     ),
     (
         "notice_send_inspections",
-        "SELECT id FROM task_notices n JOIN canonical_tasks t ON t.id=n.task_id JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE n.id=notice_send_inspections.notice_id",
+        "notice_id",
+        "SELECT n.id FROM task_notices n JOIN canonical_tasks t ON t.id=n.task_id JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "session_attachment_visibility",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=session_attachment_visibility.session_id",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
-    // The owned-completion wedge (F1): deleted BEFORE the composite-FK
-    // receipts and BEFORE final_replies — the load-bearing ordering.
     (
         "owned_task_completions",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=owned_task_completions.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "task_operation_receipts",
-        "SELECT id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE d.id=task_operation_receipts.dispatch_id",
+        "dispatch_id",
+        "SELECT d.id FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "final_reply_inspections",
-        "SELECT id FROM final_replies f JOIN runner_sessions s ON s.id=f.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE f.id=final_reply_inspections.reply_id",
+        "reply_id",
+        "SELECT f.id FROM final_replies f JOIN runner_sessions s ON s.id=f.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "final_reply_calls",
-        "SELECT id FROM final_replies f JOIN runner_sessions s ON s.id=f.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE f.id=final_reply_calls.reply_id",
+        "reply_id",
+        "SELECT f.id FROM final_replies f JOIN runner_sessions s ON s.id=f.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "final_replies",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=final_replies.session_id",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
-    // Tier 1 tail: task-scoped rows whose owning task goes in this same
-    // transaction — task_outbox rides the cascade (option B), never a bound.
     (
         "task_outbox",
-        "SELECT id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE t.id=task_outbox.task_id",
+        "task_id",
+        "SELECT t.id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
-    // Tier 2 — mid.
     (
         "task_notices",
-        "SELECT id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE t.id=task_notices.task_id",
+        "task_id",
+        "SELECT t.id FROM canonical_tasks t JOIN runner_sessions s ON s.id=t.session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "verified_task_requests",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=verified_task_requests.source_session_id",
+        "source_session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "task_intents",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=task_intents.session_id",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "matrix_attachments",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=matrix_attachments.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "matrix_ingress_events",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=matrix_ingress_events.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "owner_approvals",
-        "SELECT id FROM approval_contexts c JOIN engagement_prune_batch b ON b.engagement_id=c.engagement_id WHERE c.id=owner_approvals.context_id",
+        "context_id",
+        "SELECT c.id FROM approval_contexts c JOIN engagement_prune_batch b ON b.engagement_id=c.engagement_id",
     ),
     (
         "retained_message_archive",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=retained_message_archive.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
-    // Tier 3 — parents.
     (
         "internal_participants",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=internal_participants.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "graph_nodes",
-        "SELECT id FROM task_graphs g JOIN runner_sessions s ON s.id=g.creator_session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE g.id=graph_nodes.graph_id",
+        "graph_id",
+        "SELECT g.id FROM task_graphs g JOIN runner_sessions s ON s.id=g.creator_session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "peer_messages",
-        "SELECT id FROM internal_conversations c WHERE c.creator_session_id IN (SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id) AND c.id=peer_messages.conversation_id",
-    ),
-    (
-        "runner_dispatches",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=runner_dispatches.session_id",
-    ),
-    (
-        "task_graphs",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=task_graphs.creator_session_id",
-    ),
-    (
-        "internal_conversations",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=internal_conversations.creator_session_id",
+        "conversation_id",
+        "SELECT c.id FROM internal_conversations c JOIN runner_sessions s ON s.id=c.creator_session_id JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "approval_contexts",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=approval_contexts.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "usage_sources",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=usage_sources.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
+    ),
+    (
+        "runner_dispatches",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
+    ),
+    (
+        "task_graphs",
+        "creator_session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
+    ),
+    (
+        "internal_conversations",
+        "creator_session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
         "usage_periods",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=usage_periods.engagement_id",
-    ),
-    // Tier 4 — identity.
-    (
-        "canonical_tasks",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=canonical_tasks.session_id",
-    ),
-    (
-        "matrix_session_routes",
-        "SELECT id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id WHERE s.id=matrix_session_routes.session_id",
-    ),
-    (
-        "matrix_transports",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=matrix_transports.engagement_id",
-    ),
-    (
-        "matrix_room_memberships",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=matrix_room_memberships.engagement_id",
-    ),
-    (
-        "approval_bindings",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=approval_bindings.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "approval_grants",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=approval_grants.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
+    ),
+    (
+        "canonical_tasks",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
+    ),
+    (
+        "matrix_session_routes",
+        "session_id",
+        "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
+    ),
+    (
+        "matrix_transports",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
+    ),
+    (
+        "matrix_room_memberships",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
+    ),
+    (
+        "approval_bindings",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "effects",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=effects.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
         "runner_sessions",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=runner_sessions.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
-    // Tier 5 — the bounded delete itself, side table first.
     (
         "engagement_ends",
-        "SELECT engagement_id FROM engagement_prune_batch WHERE engagement_id=engagement_ends.engagement_id",
+        "engagement_id",
+        "SELECT engagement_id FROM engagement_prune_batch",
     ),
 ];
 
@@ -374,8 +432,11 @@ impl DomainRepository {
                 // failing the phase: statement-level failure never aborts
                 // the transaction, so the walk continues.
                 let mut deferred = false;
-                for (table, scope) in CASCADE {
-                    match tx.execute(&format!("DELETE FROM {table} WHERE rowid IN ({scope})"), []) {
+                for (table, column, scope) in CASCADE {
+                    match tx.execute(
+                        &format!("DELETE FROM {table} WHERE {column} IN ({scope})"),
+                        [],
+                    ) {
                         Ok(removed) => {
                             if removed > 0 {
                                 child_counts.insert(
