@@ -257,7 +257,7 @@ async fn native_provisioning_ingress_admits_a_provider_approved_request() {
 /// pending; the restored handoff replays the admission (idempotent on
 /// `request_id`) instead of minting a second engagement.
 #[tokio::test]
-async fn native_provisioning_ingress_replays_an_already_admitted_request() {
+async fn native_provisioning_ingress_replays_an_identical_duplicate() {
     let (f, mut fake, c) = ready_provisioning().await;
     let before = rows(&f, "engagements");
     let sync = provisioning_sync(
@@ -303,7 +303,7 @@ async fn resume_provisioning(
 /// different content digests differently: `admit` refuses the conflict, the
 /// handoff quarantines the intake, and no second engagement is minted.
 #[tokio::test]
-async fn native_provisioning_ingress_refuses_a_conflicting_request_id() {
+async fn native_provisioning_ingress_refuses_a_conflicting_request_by_the_same_key() {
     let (f, mut fake, c) = ready_provisioning().await;
     let before = rows(&f, "engagements");
     let result = run_provisioning(
@@ -330,7 +330,7 @@ async fn native_provisioning_ingress_refuses_a_conflicting_request_id() {
 /// `verify_request` refuses before admission, the handoff quarantines the
 /// intake, and nothing is minted.
 #[tokio::test]
-async fn native_provisioning_ingress_refuses_an_unverifiable_request() {
+async fn native_provisioning_ingress_refuses_unverified_before_admit() {
     let (f, mut fake, c) = ready_provisioning().await;
     let before = rows(&f, "engagements");
     let mut forged = project_state();
