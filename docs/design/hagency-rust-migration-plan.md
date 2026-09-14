@@ -1,6 +1,6 @@
 # Hagency Rust migration plan
 
-Date: 2026-09-09. Status: implementation started in an isolated worktree; the native foundation is in verification. M0–M9 completion is not claimed.
+Date: 2026-09-13. Status: delivery slices landing on feat/rust-migration by hosted probe; the native foundation is past verification and the first retention, account, console, approvals and wiring slices are landed. M0–M9 completion is not claimed.
 
 Requirements: [REQ-RUST-MIGRATION-PLAN](../../knowledge/requirements/req-rust-migration-plan.md) and the subsequent [implementation authorization](../../knowledge/requirements/req-rust-migration-execution.md).
 
@@ -532,6 +532,41 @@ all deployed helper entrypoints and release validation, which widens the range.
 Most domain code remains shared; supporting three OS families does not multiply
 every feature by three. Confidence is medium for the architecture and low-to-medium
 for schedule until hardware, runner versions and state continuity are settled.
+
+### Status 2026-09-13
+
+**LANDED on feat/rust-migration (green hosted probe, fast-forwarded; head `4ecc7578`), in landing order:**
+- Slice 1 corpus retention (migration 026) — `465434d9` and its review fixes
+- RT-7 peer corpus retention (migration 027) — `ac4fa197`
+- MA-S1 account login readiness (migration 028) — `fc5b5576`
+- decisions retention (in-write, no migration; the tick's `decisions` phase) — `262ea608`
+- MA-S4 retirement logout + audit (migration 029) — `b551839f`
+- CL-S2 agent start/stop/preset behind one finite scope — `d5cae1ff`
+- MA-S3b the account DTO's readiness field — `ed5f98cf`
+- PC-C2a the bounded, SELECT-named approval list read on the domain store — `2caa885b`
+- PC-C2b the console read-only approval observation — `0dc75eaf`
+- PC-C3 the task-bound MCP approval tool pair — `d676030f`
+- approvals wire oracle (console-origin, approval and app-server vectors) — `c6fd399d`, `53c865f2`, `e0a64970`
+- PC-C0 private approval wiring through the bootstrap host — `6f6d49b2`, with the hosted-lane fixes `b11a507a`, `659db80d`, `78f99bcc`
+- docs follow-ups — `4ecc7578` (`b86bcc43`+`ee000bf7`+`e7efbbbc`+`4ecc7578`): the ADR-124 note on the operator bearer route, D-6's premise corrected, migration numbers follow landing order (ADR-125), ADR-047's first-unsafe-snapshot named refusal with its parked scenario
+
+**IN FLIGHT on probe branches:**
+- one stacked probe on the head: engagements retention (migration 030) + execution retention (renumbered 031 — the two lineages had both claimed 030) + the received-files fixture fix + the approval-eof probe fix
+- the unsafe-snapshot named refusal (review corrections in progress)
+- the media-deadline fixture fix (review accepted, hosted run pending)
+
+**BUILDING:**
+- MA-S2 dispatch park reason (032, provisional)
+- PC-C1 denial receipt (032/033 by landing order)
+- PC-C0b the delivery-fixture slice (owed selector parked)
+- Lane C two-agent acceptance
+- approval-loss product fixes
+- PC-C5 permanent-uncertain re-issue (started, no migration)
+- two root-cause tasks: the file-service restart intermittent, the owned-fixture entered() flake
+
+**NOT STARTED:** none.
+
+Migration numbers follow landing order over the store's single linear head — a spec's digits are provisional until it lands (ADR-125). Windows is not a release target for now (ADR-136): its lane reports without blocking.
 
 ## 11. Open choices and risk-reduction work
 
