@@ -1989,18 +1989,6 @@ impl DomainStore {
         })
         .await
     }
-    pub async fn attach_task_inputs(
-        &self,
-        task: String,
-        scope: String,
-        key: String,
-        sequences: Vec<u64>,
-    ) -> Result<(), Error> {
-        self.call(weight(&(&task, &scope, &key, &sequences))?, move |db| {
-            db.attach_task_inputs(&task, &scope, &key, &sequences)
-        })
-        .await
-    }
     pub async fn claim_task_notice(&self, lease_ms: u64) -> Result<Option<NoticeClaim>, Error> {
         self.call(1, move |db| db.claim_task_notice(writer_time()?, lease_ms))
             .await

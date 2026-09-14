@@ -234,7 +234,14 @@ fn native_completed_intent_report() {
         )
         .unwrap()
         .sequence;
-    db.attach_task_inputs(&task.task_id, "fixture", "fresh", &[fresh])
+    // `attach_task_inputs` is deleted (no production caller); its only live
+    // effect for this setup — the `task_inputs` row the report reuses — is
+    // written directly.
+    sql(&root)
+        .execute(
+            "INSERT INTO task_inputs(task_id,message_sequence) VALUES(?1,?2)",
+            rusqlite::params![task.task_id, fresh],
+        )
         .unwrap();
     let replacement = report_input("report", &task);
     assert!(
@@ -440,7 +447,13 @@ fn native_report_recovery_epoch() {
         )
         .unwrap()
         .sequence;
-    db.attach_task_inputs(&task.task_id, "fixture", "new_epoch", &[fresh])
+    // `attach_task_inputs` is deleted (no production caller); the follow-up
+    // input row is attached directly.
+    sql(&root)
+        .execute(
+            "INSERT INTO task_inputs(task_id,message_sequence) VALUES(?1,?2)",
+            rusqlite::params![task.task_id, fresh],
+        )
         .unwrap();
     db.enqueue_inbox_dispatch(&input("new_human", &task), &[fresh])
         .unwrap();
@@ -965,14 +978,14 @@ fn native_task_human_followup() {
             inspect.execute("UPDATE session_inputs SET processed_at=2001 WHERE session_id=?1 AND message_sequence=?2",rusqlite::params![task.session_id,next]).unwrap();
         }
         if case != "unattached" {
-            db.attach_task_inputs(&task.task_id, "human", "next", &[next])
+            // `attach_task_inputs` is deleted (no production caller); the
+            // follow-up input row is attached directly.
+            inspect
+                .execute(
+                    "INSERT INTO task_inputs(task_id,message_sequence) VALUES(?1,?2)",
+                    rusqlite::params![task.task_id, next],
+                )
                 .unwrap();
-            db.attach_task_inputs(&task.task_id, "human", "next", &[next])
-                .unwrap();
-            assert!(matches!(
-                db.attach_task_inputs(&task.task_id, "human", "next", &[seq]),
-                Err(Error::Conflict)
-            ));
         }
         let queued = db.enqueue_inbox_dispatch(&input("followup", &task), &[next]);
         if ["processed", "unattached"].contains(&case) {
