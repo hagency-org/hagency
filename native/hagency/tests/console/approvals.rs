@@ -230,7 +230,30 @@ async fn native_console_approval_grant_revocation() {
         authorization_matches(&state, &f.engagement),
         "the saved grant authorizes before revocation"
     );
-    let cookie = session(&service).await;
+    // A read-only ticket is refused: the mutation requires `Scope::AgentLifecycle`,
+    // so the read-only session's DELETE is refused with the console's named word
+    // and the grant stays un-revoked.
+    let read_only = session(&service).await;
+    let mut refused = TestClient::delete(format!(
+        "{BASE}/console/api/approvals/grants/grant_console_revoke"
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .add_header("origin", BASE, true)
+    .add_header("sec-fetch-site", "same-origin", true)
+    .add_header("cookie", &read_only, true)
+    .send(&service)
+    .await;
+    assert_eq!(refused.status_code, Some(StatusCode::FORBIDDEN));
+    let refusal = refused.take_json::<Value>().await.unwrap();
+    assert_eq!(refusal["code"], "agent_lifecycle_scope_required");
+    assert!(
+        authorization_matches(&state, &f.engagement),
+        "the read-only refusal left the grant authorizing (revoked=0)"
+    );
+    // The scoped session revokes. Ticket issuance is rate-limited to one per
+    // second (authority.rs `issued` slot), so the second ticket waits.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let cookie = lifecycle_session(&service).await;
     let mut response = TestClient::delete(format!(
         "{BASE}/console/api/approvals/grants/grant_console_revoke"
     ))

@@ -1,8 +1,11 @@
-//! Read-only approval observation (ADR-138, PC-C2b): the bounded list read
-//! and the single-id read, served under the existing `authenticate` hoop with
-//! no scope and no new `Scope`. A read-only ticket installs `mutation: None`
-//! (`authority.rs:151-159`), so no mutation is reachable; the routes are
-//! GET-only and no verdict/consume/detail route exists on this path.
+//! Approval observation (ADR-138, PC-C2b) plus the bounded grant-revocation
+//! mutation (ADR-043). The two GET routes are read-only: they serve under the
+//! `authenticate` hoop with no scope, so a read-only ticket (`mutation: None`,
+//! `authority.rs:151-159`) can observe but reaches no mutation. The DELETE
+//! grant-revocation route is a mutation and is gated on `Scope::AgentLifecycle`
+//! — the console's scope for direct store mutations (start/stop/preset) — via
+//! the same `can_lifecycle` check the agents routes use; a read-only ticket is
+//! refused with `agent_lifecycle_scope_required` before any store work.
 //!
 //! The row is exactly seven camelCase keys — `id`, `state`, `choice`,
 //! `reusableScope`, `expiresAt`, `engagementId`, `projectRoomId` — drawn from
@@ -10,7 +13,7 @@
 //! `description`/`config`/`application`/`observation`, no owner or room
 //! column, no card byte, so an undelivered approval can show its `state` and
 //! `choice` words and never a card, a preview or a delivery stage.
-use super::{Error, failed, recheck, usage::query};
+use super::{Error, Session, console, failed, recheck, usage::query};
 use crate::{refusal, resources::domain};
 use hagency_core::project::identifier;
 use salvo::prelude::*;
@@ -110,6 +113,26 @@ async fn revoke_grant(req: &mut Request, depot: &mut Depot, res: &mut Response) 
         failed(res, Error::Invalid);
         return;
     };
+    // The mutation gate: a valid session whose grant is `Scope::AgentLifecycle`.
+    // A read-only or other-scoped session is refused before any store work.
+    let session = match depot.get_typed::<Session>() {
+        Ok(session) => session,
+        Err(_) => {
+            failed(res, Error::Unauthorized);
+            return;
+        }
+    };
+    match console(depot).and_then(|c| c.0.authority.can_lifecycle(session)) {
+        Ok(true) => {}
+        Ok(false) => {
+            failed(res, Error::LifecycleForbidden);
+            return;
+        }
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    }
     let Some(store) = domain(depot, res) else {
         return;
     };
