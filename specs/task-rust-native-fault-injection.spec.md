@@ -68,7 +68,7 @@ Scenario: The store fails closed on an injected disk-full write
   And the limit is restored afterwards — never a real filesystem fill
 
 Scenario: A partial upload on the outbound adapter is recorded unknown
-  Owed Selector: native_outbound_partial_upload_is_recorded_unknown (parked — binds with this slice; no Test: line here yet)
+  Test: native_outbound_partial_upload_is_recorded_unknown
   Level: integration
   Test Double: the real outbound adapter driven against the shared fake peer, which closes after a partial body or a failed EOF
   Given the real adapter with an upload the fake peer interrupts mid-body or ends with a failed EOF
@@ -77,7 +77,7 @@ Scenario: A partial upload on the outbound adapter is recorded unknown
   And no runtime gains transport authority from the unknown outcome
 
 Scenario: A server rejection on the outbound adapter is recorded rejected
-  Owed Selector: native_outbound_server_rejection_is_recorded_rejected (parked — binds with this slice; no Test: line here yet)
+  Test: native_outbound_server_rejection_is_recorded_rejected
   Level: integration
   Test Double: the real outbound adapter driven against the shared fake peer, which answers 4xx/5xx with a definitive cause
   Given the real adapter with a send the fake peer rejects with a 4xx/5xx cause
