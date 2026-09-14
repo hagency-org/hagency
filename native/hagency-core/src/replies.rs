@@ -67,6 +67,18 @@ pub struct RoomAuthorityFacts {
     pub name: Option<String>,
 }
 
+/// The enrolled owner-DM room facts the provisioning ingress reads from the
+/// store (`approval_rooms`, recorded by the approval collector at enrollment).
+/// Only the three fields `verify_request`'s owner-room check reads are carried;
+/// an unenrolled owner is refused fail-closed before `admit`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OwnerRoomFacts {
+    pub room_id: String,
+    pub joined: BTreeSet<String>,
+    pub invite_only: bool,
+    pub encrypted: bool,
+}
+
 /// An authenticated adapter must record loss/absence of room evidence. This is
 /// a negative observation, never permission to infer a new privacy classification.
 #[derive(Clone, Serialize)]

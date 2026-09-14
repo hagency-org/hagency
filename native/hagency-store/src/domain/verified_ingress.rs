@@ -171,6 +171,70 @@ impl DomainRepository {
         scoped(&self.db, &scope)?;
         Ok(scope)
     }
+
+    /// The current registration the provisioning ingress verifies against:
+    /// `fleet_id`, `reception_room_id`, `representative_mxid` and
+    /// `approval_bot_mxid` live only in `registrations.config`, never in the
+    /// intake event or the host identity.
+    pub fn provisioning_registration(
+        &self,
+        fleet_id: &str,
+    ) -> Result<hagency_core::authority::Registration, Error> {
+        identifier(fleet_id, 128)?;
+        let encoded: String = self
+            .db
+            .query_row(
+                "SELECT config FROM registrations WHERE fleet_id=?1",
+                [fleet_id],
+                |r| r.get(0),
+            )
+            .optional()?
+            .ok_or(Error::NotFound)?;
+        Ok(serde_json::from_str(&encoded)?)
+    }
+
+    /// The enrolled owner-DM room for a requesting owner, recorded by the
+    /// approval collector at enrollment. An owner with no enrolled room is
+    /// refused fail-closed before `admit`.
+    pub fn provisioning_owner_room(
+        &self,
+        owner_mxid: &str,
+        server_name: &str,
+    ) -> Result<OwnerRoomFacts, Error> {
+        matrix_user(owner_mxid, server_name)
+            .map_err(|_| Error::Invalid(hagency_core::InvalidInput("invalid owner mxid")))?;
+        let row: Option<(String, String)> = self
+            .db
+            .query_row(
+                "SELECT room_id,config FROM approval_rooms WHERE owner_mxid=?1 AND available=1 ORDER BY generation DESC LIMIT 1",
+                [owner_mxid],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let (room_id, config) = row.ok_or(Error::Invalid(hagency_core::InvalidInput(
+            "owner room not enrolled",
+        )))?;
+        let value: serde_json::Value = serde_json::from_str(&config)?;
+        Ok(OwnerRoomFacts {
+            room_id,
+            joined: value
+                .get("joined")
+                .and_then(serde_json::Value::as_array)
+                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?
+                .iter()
+                .map(|v| v.as_str().map(str::to_owned))
+                .collect::<Option<_>>()
+                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
+            invite_only: value
+                .get("invite_only")
+                .and_then(serde_json::Value::as_bool)
+                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
+            encrypted: value
+                .get("encrypted")
+                .and_then(serde_json::Value::as_bool)
+                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
+        })
+    }
     /// Host-only snapshot for one current intake target. A returned route is
     /// copied into authenticated custody, then checked again by admission.
     pub fn matrix_intake_route(&self, session: &str) -> Result<ReplyRoute, Error> {
