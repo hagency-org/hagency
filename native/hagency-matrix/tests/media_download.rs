@@ -1,6 +1,6 @@
 mod common;
 use base64::{Engine, engine::general_purpose::STANDARD};
-use common::{Fake, TOKEN};
+use common::{Fake, Request, TOKEN};
 use hagency_core::replies::{MatrixTransportObservation, RoomPrivacy};
 use hagency_matrix::{
     CancellationToken, Error, HostConfig, HostIdentity, HostRoom, Limits,
@@ -114,6 +114,11 @@ async fn exchange(
             Ok(_) => panic!("download completed without expected HTTP request"),
         },
     };
+    expect_media_get(&request);
+    request.chunks(pieces);
+    run.await
+}
+fn expect_media_get(request: &Request) {
     assert_eq!(request.method, "GET");
     assert_eq!(
         request.target,
@@ -123,8 +128,6 @@ async fn exchange(
     assert_eq!(request.headers["accept-encoding"], "identity");
     assert_eq!(request.headers["accept"], "application/octet-stream");
     assert!(request.body.is_empty());
-    request.chunks(pieces);
-    run.await
 }
 fn error(result: Result<CheckedBytes, Failure>) -> Failure {
     match result {
@@ -450,7 +453,17 @@ async fn native_matrix_media_integrity_eof() {
 
 #[tokio::test]
 async fn native_matrix_media_deadline_cancel() {
-    let mut fake = Fake::start(true).await;
+    // The deadline variants set deliberately tight bounds (150/200/600/180ms)
+    // while the scripted peer's delivery — accept, TLS handshake, parse,
+    // channel, wake — is only bounded at load scale (`Fake::next`'s own
+    // orchestration budget). On a loaded runner the GET is issued but not yet
+    // observed when the headers bound expires, so the run honestly resolves
+    // Timeout before `fake.next()` wakes; panicking there conflated that with a
+    // request that was never issued. Each variant runs on its own Fake (a
+    // request delivered after the deadline cannot leak into a later leg's
+    // script) and tolerates exactly the run-first Timeout this scenario
+    // already asserts; every other run-first outcome still fails by name, and
+    // an observed request is verified and scripted exactly as `exchange`.
     let timing = Limits {
         connect: Duration::from_millis(150),
         headers: Duration::from_millis(200),
@@ -458,7 +471,6 @@ async fn native_matrix_media_deadline_cancel() {
         body_idle: Duration::from_millis(180),
         ..common::limits()
     };
-    let client = configured(&fake, timing, 1024, 1, 1);
     let id = media();
     let (cipher, descriptor, _) = vector(16);
     for pieces in [
@@ -483,14 +495,35 @@ async fn native_matrix_media_deadline_cancel() {
             pieces
         },
     ] {
+        let mut fake = Fake::start(true).await;
+        let client = configured(&fake, timing.clone(), 1024, 1, 1);
         let cancel = CancellationToken::new();
         let started = Instant::now();
-        assert_eq!(
-            error(exchange(&client, &mut fake, &id, &descriptor, pieces, &cancel).await),
-            Failure::Transport(Error::Timeout)
-        );
+        let run = client.download(&id, &descriptor, &cancel);
+        tokio::pin!(run);
+        let failure = tokio::select! {
+            biased;
+            request = fake.next() => {
+                expect_media_get(&request);
+                request.chunks(pieces);
+                error(run.await)
+            }
+            result = &mut run => {
+                let failure = error(result);
+                assert_eq!(
+                    failure,
+                    Failure::Transport(Error::Timeout),
+                    "deadline variant resolved {failure:?} before its request was observed"
+                );
+                failure
+            }
+        };
+        assert_eq!(failure, Failure::Transport(Error::Timeout));
         assert!(started.elapsed() < Duration::from_secs(2));
+        fake.close().await;
     }
+    let mut fake = Fake::start(true).await;
+    let client = configured(&fake, timing, 1024, 1, 1);
     let cancel = CancellationToken::new();
     cancel.cancel();
     assert_eq!(
