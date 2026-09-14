@@ -585,3 +585,19 @@ deferral of a bound prune survives — a cascade-created sequence gap is
 indistinguishable from a quiet period only once a pager with a persisted cursor
 ships — but its *reason* is now the no-consumer fact, not a nonexistent
 production pager.
+
+---
+
+## Rule: migration numbers follow landing order
+
+The store's upgrade loop (`native/hagency-store/src/database.rs`) applies
+versions strictly one by one (`next = current + 1`, exactly one registry
+entry per step) and `user_version` is a single linear head — so a
+migration's file number, its registry slot and the head pin are **one
+contiguous number, assigned by landing order**, not pre-allocated by any
+ledger. A spec's migration digits are therefore **provisional until
+landing**: builders number a migration base-head + 1, and integration
+renumbers at landing. The current landed/planned order is: 026 Slice 1,
+027 RT-7, 028 MA-S1, 029 MA-S4, 030 engagements retention, 031 MA-S2; PC-C1
+and execution retention take the next numbers when they land (their spec
+digits are provisional).

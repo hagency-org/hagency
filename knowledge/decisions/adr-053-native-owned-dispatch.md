@@ -222,6 +222,40 @@ The existing failure, protocol, cleanup and settlement remain independent facts.
 This observation diagnoses an original attempt; it cannot authorize replay,
 settlement, cleanup or a longer execution interval.
 
+
+
+### Account readiness gate amendment (MA-S2)
+
+A dispatch over a managed scope is **consumed only when the bound account's
+readiness fact is observed and unexpired** — the fact MA-S1 records
+(migration 028, ADR-114's amendment). The queued-dispatch selector
+(`domain/execution.rs:743`, which already joins `resource_accounts` to
+`managed_accounts` and requires `state='active'` with matching
+id/generation/seat) gains one conjunct: the account's latest usable fact —
+matching generation, `outcome='observed'`, unexpired — evaluated **at read
+time**, never cached and never written by the read. The Host admission
+(`hagency-execution/src/host.rs:251-262`) re-checks the same predicate on
+the same row at consumption, because the retained-handle rule re-validates
+rather than trusting the selector.
+
+Where readiness is `unknown`, expired, or `uncertain`, the dispatch does not
+fail opaquely and is not retried in a loop: it **parks with the named reason
+`account_readiness_unknown`** — the existing parked-update shape
+(`approvals.rs:152-161`) — and **the reason has a storage home**: migration
+**031** adds one nullable `park_reason TEXT` to `runner_attempts` via
+`ADD COLUMN`, so the park is auditable as `outcome='parked'` plus
+`park_reason='account_readiness_unknown'` on the attempt row (029 stays
+MA-S4's per the ledger; the schema-head pin moves to 31 in the same commit).
+Parking is a legal resting state everywhere
+the lifecycle enumerates it. A parked dispatch is **re-evaluated when a new
+readiness fact is observed** (the next selector pass after a receipt
+settles), never on a timer: there is no retry loop, and a park is visible as
+a state, in the audit trail, with its reason. The park is a refusal of
+*now*, not of the dispatch: the row, its inputs and its custody survive
+untouched, and an observed unexpired fact makes it dispatchable again
+without rewrite. This gate adds no launcher, no runner capability and no
+workspace access — it only refuses consumption until the operator's own
+login has been observed.
 ## Alternatives Considered
 
 Launching before the original Started acknowledgement or reconstructing authority after losing that response could execute unowned work. A general command endpoint or detached cleanup path would bypass the fixed host operation.

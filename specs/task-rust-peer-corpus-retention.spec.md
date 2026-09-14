@@ -56,7 +56,7 @@ slot. Mirrors the messages-phase set scenario-for-scenario.
 
 ### Forbidden
 - Live services, credentials, deployed state.
-- native/hagency-store/src/domain/ceiling_alerts.rs; migrations other than 027 (026 phase 1's, 028 MA-S1's, 029 MA-S4's, 030 MA-S2's, 031 PC-C1's); the schema-head pin move **to 27** is licensed here and nowhere else.
+- native/hagency-store/src/domain/ceiling_alerts.rs; migrations other than 027 (026 phase 1's, 028 MA-S1's, 029 MA-S4's, 031 MA-S2's, 032 PC-C1's); the schema-head pin move **to 27** is licensed here and nowhere else.
 
 ## Acceptance Criteria
 
