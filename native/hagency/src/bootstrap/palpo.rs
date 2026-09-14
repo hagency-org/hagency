@@ -302,4 +302,16 @@ mod tests {
         assert_eq!(status.get().error, Some("remote"));
         assert_eq!(status.get().state, "unavailable");
     }
+
+    #[test]
+    fn native_palpo_service_error_label_names_every_class_without_status_detail() {
+        // The failure label is the class word only: a Remote/Rejected status code
+        // never leaks a value into the operator projection.
+        assert_eq!(error_label(Error::Rejected(400)), "rejected");
+        assert_eq!(error_label(Error::Rejected(u16::MAX)), "rejected");
+        assert_eq!(error_label(Error::Remote(429)), "remote");
+        assert_eq!(error_label(Error::Unauthorized), "unauthorized");
+        assert_eq!(error_label(Error::OutcomeUnknown), "outcome_unknown");
+        assert_eq!(error_label(Error::Capacity), "capacity");
+    }
 }

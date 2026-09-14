@@ -745,6 +745,81 @@ async fn native_outbound_server_rejection_is_recorded_rejected() {
 }
 
 #[tokio::test]
+async fn native_outbound_publication_transient_status_retains_pending_row() {
+    let mut fake = Fake::start(false).await;
+    let (dir, store) = store();
+    let adapter = Adapter::attach(config(&fake.endpoint, 31), store.clone())
+        .await
+        .unwrap();
+    let cancel = CancellationToken::new();
+    adapter
+        .freeze_update(json!({"heartbeat":true}))
+        .await
+        .unwrap();
+    // A 5xx / 429 on the publication lane is transient: no `rejected` write,
+    // the row stays selectable, and a later cycle re-selects the same id.
+    for status in [503, 429] {
+        let (result, _) = tokio::join!(adapter.publish_once(&cancel), async {
+            let request = fake.next().await;
+            assert!(request.target.ends_with("/updates"));
+            request.json(status, json!({"code":"queue_full"}));
+        });
+        assert_eq!(result, Err(Error::Remote(status)));
+        let db = rusqlite::Connection::open(dir.path().join("private/custody.sqlite3")).unwrap();
+        let state: String = db
+            .query_row(
+                "SELECT state FROM outbound_publications WHERE binding='managed-http'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(state, "unknown");
+    }
+    // A later cycle re-selects the retained row and completes it.
+    let (result, _) = tokio::join!(adapter.publish_once(&cancel), async {
+        let request = fake.next().await;
+        assert!(request.target.ends_with("/updates"));
+        request.json(200, json!({"ok":true}));
+    });
+    assert_eq!(result, Ok(Step::Published));
+    store.shutdown().await.unwrap();
+    fake.close().await;
+}
+
+#[tokio::test]
+async fn native_outbound_publication_unauthorized_keeps_pending_row() {
+    let mut fake = Fake::start(false).await;
+    let (dir, store) = store();
+    let adapter = Adapter::attach(config(&fake.endpoint, 31), store.clone())
+        .await
+        .unwrap();
+    let cancel = CancellationToken::new();
+    adapter
+        .freeze_update(json!({"heartbeat":true}))
+        .await
+        .unwrap();
+    // A 401 on publish keeps its unauthorized class: no `rejected` write, the
+    // row stays selectable (pending) rather than terminal.
+    let (result, _) = tokio::join!(adapter.publish_once(&cancel), async {
+        let request = fake.next().await;
+        assert!(request.target.ends_with("/updates"));
+        request.json(401, json!({"code":"unauthorized","error":"synthetic"}));
+    });
+    assert_eq!(result, Err(Error::Unauthorized));
+    let db = rusqlite::Connection::open(dir.path().join("private/custody.sqlite3")).unwrap();
+    let state: String = db
+        .query_row(
+            "SELECT state FROM outbound_publications WHERE binding='managed-http'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "unknown");
+    store.shutdown().await.unwrap();
+    fake.close().await;
+}
+
+#[tokio::test]
 async fn native_outbound_http_lanes_blocked_matrix_independent_work_and_publish() {
     let mut fake = Fake::start(false).await;
     let (dir, store) = store();

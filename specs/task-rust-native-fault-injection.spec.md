@@ -27,7 +27,7 @@ those records' outcomes.
 - Drive the real outbound adapter against the shared fake peer for a partial upload: the fake peer closes after a partial body or a failed EOF, so the outcome cannot be proven delivered.
 - Assert the partial-upload outcome: the adapter observes the interruption and issues `Unknown` (via `mark_upload_uncertain`'s production caller), the store records the publication state **`unknown`** with the original fence retained, and no runtime gains transport authority from it.
 - Drive the real outbound adapter against the shared fake peer for a server rejection: the fake peer answers 4xx/5xx with a definitive cause.
-- Assert the rejection outcome: the adapter issues `PublicationResponse::Rejected` carrying the server's cause, the store records the publication state **`rejected`**, and nothing is re-sent under the same id — never retried silently, never reported delivered.
+- Assert the rejection outcome by class: a 409 whose code is sequence_conflict/stale_lease stays non-final (row pending, re-begun later, never written rejected); 5xx and 429 are transient (no rejected write, the loop's backoff/retry stands); 401/403 keep their unauthorized class; every other 4xx is definitive — `PublicationResponse::Rejected` written once, the publication state **`rejected`**, the adapter returns a non-retryable error so the loop terminates that publication, and nothing is re-sent under the same id on any later cycle.
 
 ### Must Not
 - Do not use real filesystem fills, tmpfs mounts or disk partitioning — the injection is engine-level and portable.
