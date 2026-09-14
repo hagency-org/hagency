@@ -32,6 +32,12 @@ pub(crate) struct Batch {
     pub phase: Phase,
     pub reason: Option<String>,
     pub events: Vec<Event>,
+    /// ADR-095: pre-project provisioning events, admitted by discriminator
+    /// before target resolution. They carry no `ReplyRoute` (the reception
+    /// room is pre-project), are acknowledged by reprocessing (provision is
+    /// idempotent on `request_id`), and are never disposition rows.
+    #[serde(default)]
+    pub pre_project: Vec<PreProjectEvent>,
     pub acknowledgements: Vec<Acknowledgement>,
     pub filtered: usize,
     #[serde(default)]
@@ -45,6 +51,26 @@ pub(crate) struct Event {
     proof: Proof,
     #[serde(default)]
     pub(crate) attachment: Option<crate::attachments::Manifest>,
+}
+/// A provisioning request admitted by discriminator before target resolution
+/// (ADR-095). It has no route and no scope; the request body's `requestId`
+/// is the idempotency key, and `verify_request` binds its room, sender,
+/// powers and binding against the store-recorded registration.
+#[derive(Clone, Serialize, Deserialize)]
+pub(crate) struct PreProjectEvent {
+    input: Message,
+    proof: Proof,
+}
+impl PreProjectEvent {
+    pub(crate) fn observation(&self) -> InboundMessage {
+        self.input.observation()
+    }
+}
+/// A derived timeline candidate: either a routed event or a pre-project
+/// provisioning request admitted by discriminator before target resolution.
+enum Candidate {
+    Target(Box<Event>),
+    PreProject(Box<PreProjectEvent>),
 }
 #[derive(Clone, Serialize, Deserialize)]
 struct Message {
@@ -148,6 +174,7 @@ impl Batch {
             phase: Phase::Prepared,
             reason: None,
             events: vec![],
+            pre_project: vec![],
             acknowledgements: vec![],
             filtered: 0,
             dispositions: Some(vec![]),
@@ -216,10 +243,18 @@ impl Batch {
                 }
             } else {
                 match self.event(room, original, &value, &timeline.kind) {
-                    Ok(Some(event)) => {
+                    Ok(Some(Candidate::Target(event))) => {
                         let index = events.len();
-                        events.push(event);
+                        events.push(*event);
                         Decision::Candidate { index }
+                    }
+                    // ADR-095: a pre-project provisioning request is not a
+                    // disposition row. Its admission is idempotent on
+                    // `requestId`, so a re-delivered source simply re-derives
+                    // and replays the prior admission.
+                    Ok(Some(Candidate::PreProject(request))) => {
+                        self.pre_project.push(*request);
+                        continue;
                     }
                     Ok(None) => Decision::NotTarget,
                     Err(reason) => Decision::Rejected { reason },
@@ -235,7 +270,7 @@ impl Batch {
             )?);
         }
         // Candidate content plus the complete private disposition ledger is bounded.
-        if serde_json::to_vec(&(&events, &dispositions))
+        if serde_json::to_vec(&(&events, &self.pre_project, &dispositions))
             .map_err(|_| Error::Storage)?
             .len()
             > 1024 * 1024
@@ -254,7 +289,7 @@ impl Batch {
         original: &Value,
         value: &Value,
         kind: &TimelineEventKind,
-    ) -> Result<Option<Event>, Rejection> {
+    ) -> Result<Option<Candidate>, Rejection> {
         use Rejection::{CryptoIneligible, Malformed, PlaintextEncrypted, Unsupported};
         let string = |field: &str| value.get(field).and_then(Value::as_str).ok_or(Malformed);
         let id = string("event_id")?;
@@ -304,6 +339,42 @@ impl Batch {
         let relation = content.get("m.relates_to");
         if relation.is_some_and(|v| !v.is_object()) {
             return Err(Malformed);
+        }
+        let msgtype = content
+            .get("msgtype")
+            .and_then(Value::as_str)
+            .ok_or(Malformed)?;
+        // ADR-095: the provisioning discriminator is admitted before target
+        // resolution. The reception room is pre-project, so no ReplyRoute can
+        // name it; the event becomes a pre-project candidate instead and
+        // `provision()` verifies it against the store-recorded registration
+        // (which refuses any other room fail-closed).
+        if msgtype == "com.hagency.engagement.request.v1" {
+            let body = content
+                .get("body")
+                .and_then(Value::as_str)
+                .ok_or(Malformed)?;
+            let input = Message {
+                server_name: string("sender")?
+                    .split_once(':')
+                    .map(|(_, s)| s.to_owned())
+                    .ok_or(Malformed)?,
+                room_id: room.into(),
+                event_id: id.into(),
+                sender_mxid: string("sender")?.into(),
+                thread_root: None,
+                body: body.into(),
+                kind: msgtype.into(),
+                origin_ts: value
+                    .get("origin_server_ts")
+                    .and_then(Value::as_u64)
+                    .ok_or(Malformed)?,
+            };
+            input.observation().validate().map_err(|_| Malformed)?;
+            return Ok(Some(Candidate::PreProject(Box::new(PreProjectEvent {
+                input,
+                proof,
+            }))));
         }
         let thread = match relation.and_then(|v| v.get("rel_type")) {
             Some(Value::String(t)) if t == "m.thread" => Some(
@@ -414,7 +485,7 @@ impl Batch {
             },
         };
         event.observation().validate().map_err(|_| Malformed)?;
-        Ok(Some(event))
+        Ok(Some(Candidate::Target(Box::new(event))))
     }
     pub(crate) fn rejected(&self) -> usize {
         disposition::rejected(self.dispositions.as_deref())
@@ -431,7 +502,8 @@ impl Batch {
             || self
                 .events
                 .len()
-                .checked_add(self.filtered)
+                .checked_add(self.pre_project.len())
+                .and_then(|n| n.checked_add(self.filtered))
                 .is_none_or(|n| n > MAX_TIMELINE)
             || self.acknowledgements.len() > self.events.len()
             || self.raw.get("next_batch").and_then(Value::as_str) != Some(self.token.as_str())
@@ -441,6 +513,7 @@ impl Batch {
         }
         if matches!(self.phase, Phase::Prepared | Phase::Applying)
             && (!self.events.is_empty()
+                || !self.pre_project.is_empty()
                 || !self.acknowledgements.is_empty()
                 || self.filtered != 0
                 || self.dispositions.as_ref().is_some_and(|v| !v.is_empty()))
@@ -490,6 +563,9 @@ impl Batch {
                                 )
                                 .map_err(|_| Error::Storage)?
                                 .ok_or(Error::Storage)?;
+                            let Candidate::Target(plain) = plain else {
+                                return Err(Error::Storage);
+                            };
                             if serde_json::to_value(&plain).map_err(|_| Error::Storage)?
                                 != serde_json::to_value(candidate).map_err(|_| Error::Storage)?
                             {

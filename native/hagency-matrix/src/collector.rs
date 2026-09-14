@@ -452,8 +452,7 @@ impl Inner {
         }
         let allowed = self
             .config
-            .rooms
-            .iter()
+            .observed_rooms()
             .map(|r| r.room_id.as_str())
             .collect::<BTreeSet<_>>();
         if let Some(rooms) = value.get("rooms") {

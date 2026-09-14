@@ -9,7 +9,6 @@ use hagency_core::{
     authority::{
         ProjectRequest, RequestObservation, RoomObservation, SourceObservation, verify_request,
     },
-    ingress::MatrixIngressReceipt,
     project::identifier,
     replies::{ReplyRoute, RoomAuthorityFacts},
 };
@@ -145,17 +144,20 @@ impl Inner {
     /// `RequestObservation` from collector-observed facts only, verify with
     /// the existing `verify_request`, then `admit` exactly once. Returns the
     /// engagement and whether this was a fresh mint (vs an identical replay).
+    /// Pre-project: the registration comes from the host identity's recorded
+    /// engagement, never from a `ReplyRoute`.
     async fn provision(
         &self,
-        observation: &hagency_core::ingress::MatrixEventObservation,
-        route: &ReplyRoute,
+        msg: &hagency_core::messages::InboundMessage,
     ) -> Result<(hagency_core::project::Engagement, bool), Error> {
-        let msg = &observation.event;
         let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
         let reg = self
             .domain
-            .provisioning_registration(route.fleet_id.clone())
-            .await?;
+            .provisioning_registration_for_engagement(
+                self.config.identity.transport.engagement_id.clone(),
+            )
+            .await
+            .map_err(|_| Error::Wire)?;
         let owner_room = self
             .domain
             .provisioning_owner_room(
@@ -163,9 +165,10 @@ impl Inner {
                     .and_then(serde_json::Value::as_str)
                     .ok_or(Error::Wire)?
                     .to_owned(),
-                route.server_name.clone(),
+                reg.server_name.clone(),
             )
-            .await?;
+            .await
+            .map_err(|_| Error::Wire)?;
         // The retained single-owner flow: the requester is the project owner.
         let requester = body
             .get("requester")
@@ -321,7 +324,7 @@ impl Inner {
                 let cursor = owner.cursor().await?;
                 let filter = json!({
                     "room": {
-                        "rooms": self.config.rooms.iter().map(|r| &r.room_id).collect::<Vec<_>>(),
+                        "rooms": self.config.observed_rooms().map(|r| &r.room_id).collect::<Vec<_>>(),
                         "timeline": {"limit": MAX_TIMELINE}, "ephemeral": {"types": []},
                         "account_data": {"types": []}, "state": {"lazy_load_members": false}
                     },
@@ -352,7 +355,7 @@ impl Inner {
             self.domain
                 .observe_matrix_transport(self.config.identity.transport.clone())
                 .await?;
-            for room in &self.config.rooms {
+            for room in self.config.observed_rooms() {
                 self.collect_room(room, cancel).await?;
             }
             observe!(Batch);
@@ -395,6 +398,44 @@ impl Inner {
         }
         let mut admitted = 0;
         let mut replayed = batch.acknowledgements.len();
+        // ADR-095: pre-project provisioning events are admitted before target
+        // resolution and carry no route, ack or disposition. Reprocessing is
+        // safe: provision is idempotent on `request_id`, so a restored batch
+        // replays the prior admission instead of double-counting.
+        for msg in batch.pre_project.iter().map(|e| e.observation()) {
+            if cancel.is_cancelled() {
+                return Err(Error::Cancelled);
+            }
+            observe!(Provision);
+            match self.provision(&msg).await {
+                Ok((_engagement, created)) => {
+                    if created {
+                        admitted += 1;
+                    } else {
+                        replayed += 1;
+                    }
+                }
+                Err(Error::Conflict) => {
+                    observe!(Quarantine, None);
+                    owner
+                        .intake_quarantine(
+                            "provisioning request reused request_id with different content".into(),
+                        )
+                        .await?;
+                    return Err(Error::Generation);
+                }
+                Err(Error::Wire) => {
+                    observe!(Quarantine, None);
+                    owner
+                        .intake_quarantine(
+                            "provisioning request failed verification before admission".into(),
+                        )
+                        .await?;
+                    return Err(Error::Generation);
+                }
+                Err(error) => return Err(error),
+            }
+        }
         for (index, event) in batch
             .events
             .iter()
@@ -406,47 +447,6 @@ impl Inner {
             }
             let observation = event.observation();
             let attachment = event.attachment_observation()?;
-            // ADR-095: the provisioning discriminator never reaches the message
-            // admission path; it mints an Engagement through verify_request +
-            // DomainStore::admit exactly once, idempotent on request_id.
-            if observation.event.kind == "com.hagency.engagement.request.v1" {
-                observe!(Admission, Some(index));
-                match self.provision(&observation, &event.route).await {
-                    Ok((_engagement, created)) => {
-                        if created {
-                            admitted += 1;
-                        } else {
-                            replayed += 1;
-                        }
-                        let receipt = MatrixIngressReceipt {
-                            sequence: (index + 1) as u64,
-                            session_id: event.route.session_id.clone(),
-                            wake: false,
-                            created,
-                            projected: false,
-                        };
-                        owner
-                            .intake_ack(
-                                batch.digest.clone(),
-                                index,
-                                Acknowledgement::from(&receipt),
-                            )
-                            .await?;
-                    }
-                    Err(Error::Conflict) => {
-                        observe!(Quarantine, Some(index));
-                        owner
-                            .intake_quarantine(
-                                "provisioning request reused request_id with different content"
-                                    .into(),
-                            )
-                            .await?;
-                        return Err(Error::Generation);
-                    }
-                    Err(error) => return Err(error),
-                }
-                continue;
-            }
             // Historical read can only acknowledge an exact existing commit. It cannot
             // admit or project the event through stale or replacement authority.
             observe!(HistoricalReceipt, Some(index));

@@ -61,6 +61,7 @@ pub(crate) enum Phase {
     HandoffLock,
     HistoricalReceipt,
     Admission,
+    Provision,
     Acknowledge,
     Finish,
     Quarantine,
