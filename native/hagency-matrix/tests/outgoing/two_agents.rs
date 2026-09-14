@@ -10,7 +10,7 @@ use super::*;
 use crate::collector::observation::{Phase as ObservationPhase, Trace, observed};
 use common::pair::{DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, shared_state, state_for, who};
 use serde_json::{Value, json};
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 fn now() -> u64 {
     SystemTime::now()
@@ -554,7 +554,6 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
     // into its internal Timeout (the :617 failure).
     let (result, (room_puts, dm_plain)) = common::scripted(operation, async {
         let mut room_puts = 0usize;
-        let mut dm_plain: Option<Value> = None;
         loop {
             let request = fake.next().await;
             if request.target.contains("/account/whoami") {
@@ -581,12 +580,11 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
                     "the ciphertext belongs to the DM room: {}",
                     request.target
                 );
-                dm_plain = Some(
-                    peer.decrypt_in(value, &ruma::RoomId::parse(DM_A).unwrap())
-                        .await,
-                );
+                let decrypted = peer
+                    .decrypt_in(value, &ruma::RoomId::parse(DM_A).unwrap())
+                    .await;
                 request.json(200, json!({"event_id":"$enc"}));
-                return (room_puts, dm_plain);
+                return (room_puts, Some(decrypted));
             } else if request.method == "PUT" {
                 panic!(
                     "unexpected plain PUT on the encrypted DM leg: {}",
