@@ -6,6 +6,8 @@ mod approval;
 mod fixture;
 #[path = "bootstrap/scope.rs"]
 mod scope;
+#[path = "support/approval_enrollment.rs"]
+mod support;
 use fixture::*;
 use serde_json::json;
 

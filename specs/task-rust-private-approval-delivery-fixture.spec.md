@@ -53,7 +53,7 @@ peer. Nothing about the production launch shape changes.
 ## Acceptance Criteria
 
 Scenario: A service-composed run delivers a request end to end
-  Owed Selector: native_private_approval_delivery_is_wired (parked — the name is owed by this slice and binds only when the PC-C0b code exists; no Test: line here yet)
+  Test: native_private_approval_delivery_is_wired
   Level: integration
   Test Double: the test-only callback-capable runtime probe pinned by its own executable path, and a scripted second-identity enrollment of the approval collector against the shared fake peer; no live homeserver
   Given the composition with the fixture probe selected by the test's own pinned path and the collector enrolled against the shared fake peer
