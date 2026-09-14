@@ -273,3 +273,147 @@ second frame and no double-write is possible. This amendment changes no bound, a
 and never `Applied`; native application remains unconfirmed exactly as this ADR
 states. The reconcile read is read-only and grants no retry, reply, lease or
 completion authority.
+## Amendment (2026-09-12)
+
+ADR-046's two named states were not exhaustive, and the case between them was
+cancel. The Windows trace (upstream 63c4ac9, run under eight-way load) records,
+for every cancellation, an entry whose phases are
+
+    retained, acknowledged, prepared, begun, admitted, checked, resolved-before-write
+
+with `stage: Update` and no transport termination. The primitive is therefore
+`serverRequest/resolved` observed for an entry that had passed
+`check_approval_response` and had not recorded a write receipt, while the peer had
+already read that entry's response frame. `turn/completed` is excluded: it closes
+the wire, so its observation necessarily carries a termination cause.
+
+The mechanism is an ordering hazard between two paths that are not atomic with
+respect to each other. The session's event delivery
+(`SessionDriver::receive` -> `Driver::next_event`) pops the transport's parsed
+event queue unconditionally (`transport.rs`, the `self.events.pop()` arm) and is
+not gated on whether a frame write is in flight; the write path returns its
+receipt only after the flush is observed. A resolution parsed on one of the
+host's pumps can therefore be consumed while the entry's frame is committed but
+its receipt is not yet recorded. The previous code cancelled in that window.
+
+An entry that has been committed to the transport is not cancellable by its own
+resolution. Its frame is one-shot and authoritative: the durable decision was
+consumed by `begin_approval_responses`, the typed frame was built by the pinned
+response constructor, and that value is retained by the entry. The host must
+complete that frame's bounded write and record its acceptance, or fail with the
+transport's own error; it must not cancel, and it must not re-enter the send path
+with a frame it has already committed. Re-entry is specifically harmful: a parsed
+resolution removes the connection's pending server request, so a subsequent
+attempt to send the same frame is refused as closed, which would report a
+transport failure for a frame the host itself had already committed.
+
+The three cases are now named. **Before admission**: a resolution cancels with
+`Failure::ApprovalCancelled` and no write (unchanged). **Committed to the
+transport, receipt not yet recorded**: the resolution is recorded and the write
+completes or fails on its own error; no cancellation. **After write acceptance**:
+the resolution is recorded and the drive continues; it neither revokes nor renews
+authority (unchanged).
+
+Deliberately not claimed: none of this proves the runtime *applied* the response.
+Local write acceptance is transport-level, and native application remains
+unconfirmed, exactly as ADR-046 requires. No acknowledgment, retry,
+reconstruction, renewed authority, widened deadline or new fallback follows.
+Missing phases and absent observations remain unobserved rather than
+reinterpreted.
+
+**Addendum to the amendment (review corrections).** This amendment interprets,
+and does not alter, ADR-046's own rulings at lines 121–125: a resolution
+observed before response admission cancels the callback; uncertain
+transmission closes/fences the original attempt; after known local write
+acceptance a resolution remains native application-unconfirmed and neither
+revokes nor renews authority. The `in_flight` flag only prevents a
+cancellation the wire already contradicts; it relaxes none of those rulings.
+Two outcomes are possible for the corrected window, and both are correct: if
+the resolution is delivered by a host pump (M1), the in-flight frame
+completes to `WriteAccepted` and the drive continues; if the session dropped
+the write receipt after the bytes were written (M2), the send path fails with
+the transport's own error and the operation reports `Failure::Protocol`
+truthfully — the middle-case test fails on that path, which is correct,
+because a real receipt loss must not be hidden behind a clean completion. A
+turn end remains a cancellation everywhere, including on the recheck pump
+next to an armed frame: a turn end invalidates transmission — the wire is
+closed — so the frame is never sent and the operation reports
+`ApprovalCancelled`; only a resolution exempts an in-flight frame.
+
+**Amendment (2026-09-12, reshaped): a pre-send resolution completes quietly.**
+This amendment previously added two rules — a transport parse hold (with
+ADR-034) and a `Failure::ResponseUnavailable` verdict for a resolved-away
+frame. Both are withdrawn per the VM verdict: the hold contradicted
+ADR-034's own transport contract (two pinned integration tests fail under
+it; see ADR-034's withdrawal amendment), and `ResponseUnavailable` is the
+wrong verdict for a resolution that arrives before the first byte.
+
+*The quiet path.* The send path keeps its admissibility check
+(`prepared_admissible(id)`, still exported read-only from the transport):
+it fires exactly when the connection has already parsed a
+`serverRequest/resolved` for the armed frame and the host has accepted no
+byte. The retained rule is the one the pre-admission resolution already
+follows: **the resolution is informational, never a cancellation and never
+a named failure.** The armed frame is dropped (its transmit path is gone;
+it is never re-sent and never surfaces as `Closed`), the entry keeps
+`in_flight` so it is never re-selected, and the drive continues to its
+normal quiet completion — the operation ends `Completed` with no failure
+raised for the dropped frame. The trace stamps `resolved-before-send` on
+the entry for diagnostics. What remains of the earlier vocabulary note is
+`write-flushed` (the receipt arrived, stamped immediately before
+`write-accepted`); `write-started` is withdrawn with the hold. A lost
+acceptance observation after a **written** frame keeps its named cause via
+the reconcile (the `settlement_cause` rules above), which owns that path.
+
+**Never-transmitted verdicts, corrected (the landing review's Q1–Q3).** The
+classifier's rule, stated in full:
+
+1. *The rule.* With an in-flight, receipt-less approval frame at a turn end
+   the operation must not complete silently: bytes accepted means the frame
+   **was** transmitted and its fate is unknown — `SettlementUnknown`; zero
+   bytes from a **peer-side** cause means never transmitted —
+   `PeerUnavailable`.
+2. *Who closed first is part of the verdict.* `Transport(HostClosed)` is the
+   host's own close: the turn-end path stops the transport before the send
+   is consulted and `stop()` takes the write custody. A `HostClosed` cause
+   with an unwritten frame is a host refusal and is never reported as a
+   peer departure (`Closed`, the parse-removed-id sentinel, likewise).
+3. *Scope of the zero-byte class.* A read-side `PeerEof` with **no frame
+   ever armed** is in the class: the separator is "was a frame armed",
+   carried by the coordinator's entry state (`prepared` or `in_flight`),
+   never by the absence of a `RuntimeWriteObservation`. An armed entry with
+   no snapshot stays `SettlementUnknown` — the custody was taken, the fate
+   is genuinely unknown.
+4. *Witness.* 4-vCPU Windows VM, `--test-threads=8`: the peer-exit shape is
+   `PeerUnavailable` + `Io("stdin write")` + `accepted_bytes: 0` +
+   `pending_server_requests: 1`; the host-close shape is
+   `transport_cause: Some(HostClosed)` + `write: None`. Both are named, on
+   the scenarios `peer_gone_before_first_byte` and the two turn-end arms.
+5. *Harness caveat recorded with it.* A probe bound may be a fraction of
+   the budget only where the probe may legitimately leave early; the
+   terminal lifetime and every held reader are driven by the host's stdin
+   close with the full budget as the outer ceiling, and the phase journal
+   is per-dispatch on write (`reset(dispatch)`) or it reports another
+   test's clear as a missing host phase.
+
+**Amendment (2026-09-12, drain deferral): the terminal drain must not settle
+an armed callback before the turn-end rule classifies it.** The runtime's
+`drain_terminal` runs inside `accept_update` after the peer's turn has ended,
+immediately before `wire.close()`. A `ServerRequest` that arrives there is not
+an unowned protocol violation when approvals are enabled — it is the host
+coordinator's own armed approval callback, whose frame the peer could not
+answer before its turn ended. Rejecting it (`UnsupportedRequest`) would
+propagate through `accept_update`'s `?` and starve the `TurnEnded` update from
+ever reaching the coordinator's turn-end rule, collapsing every turn-end arm
+(the quiet family, `SettlementUnknown`, `PeerUnavailable`) into a single
+protocol fault. The drain therefore defers both a request pending at loop exit
+and one arriving mid-drain (the loop's `ServerRequest` arm): the event is
+consumed without a reply, the request stays pending in the connection's
+server-pending map, and the turn-end rule classifies it from the termination
+snapshot the following `close()` preserves. Erroring remains correct only when
+approvals are disabled — there the request is genuinely unowned and must be
+rejected. This amendment narrows, for the terminal drain only, the earlier
+ruling that "a turn end remains a cancellation everywhere": that ruling still
+holds on the recheck pump next to an armed frame, where the coordinator itself
+observes the turn end and cancels; the drain is the one place the runtime would
+otherwise settle the callback before the coordinator's rule can run.

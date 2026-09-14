@@ -1,0 +1,35 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.41s
+     Running tests/owned_matrix.rs (target/debug/deps/owned_matrix-676abf887d23a70e)
+
+running 3 tests
+test native_matrix_owned_complete_workflow ... FAILED
+test native_matrix_owned_notice_failure ... FAILED
+test native_matrix_owned_private_plaintext_refused ... FAILED
+
+failures:
+
+---- native_matrix_owned_complete_workflow stdout ----
+
+thread 'native_matrix_owned_complete_workflow' (94108104) panicked at native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:62:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_matrix_owned_notice_failure stdout ----
+
+thread 'native_matrix_owned_notice_failure' (94108105) panicked at native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:62:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_matrix_owned_private_plaintext_refused stdout ----
+
+thread 'native_matrix_owned_private_plaintext_refused' (94108106) panicked at native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:62:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    native_matrix_owned_complete_workflow
+    native_matrix_owned_notice_failure
+    native_matrix_owned_private_plaintext_refused
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s
+
+error: test failed, to rerun pass `-p hagency --test owned_matrix`

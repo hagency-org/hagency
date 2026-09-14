@@ -25,6 +25,11 @@ pub(super) struct Pending {
     pub prepared: Option<PreparedApproval>,
     pub grant: Option<ApprovalResponseGrant>,
     pub write: Option<TransportWrite>,
+    // Set when this entry's prepared frame is handed to the transport, cleared
+    // when its write is accepted. `write` alone cannot distinguish "never sent"
+    // from "sent, receipt not yet recorded", and that distinction is exactly
+    // the middle case: a resolution must not cancel a frame that is in flight.
+    pub in_flight: bool,
     pub admitted: bool,
     pub recorded: bool,
     pub resolved: bool,
@@ -81,19 +86,30 @@ impl Pending {
         {
             // Two labels name two different things: the arrival label says
             // WHEN the resolution arrived (before/after the write receipt);
-            // the arm label names WHICH RULE fired. Field-independent arms
-            // only here: the `in_flight` arm belongs to the product branch's
-            // flag, which upstream does not carry.
+            // the arm label names WHICH RULE fired. The arm vocabulary is
+            // exactly the behavior's three cases below — a label that says
+            // "cancels" while the rule returns Ok(false) is a lie a failing
+            // trace would repeat (the Windows hosted failure's
+            // `resolved-cancels` was exactly that on the harness branch).
             let (arrival, _) = resolution_outcome(self.write.is_none());
             self.mark(arrival);
             let arm = if self.write.is_some() {
                 "resolved-ignored-written"
+            } else if self.in_flight {
+                "resolved-ignored-in-flight"
             } else {
                 "resolved-cancels"
             };
             self.mark(arm);
         }
-        if self.write.is_none() {
+        // Three cases. Before admission: cancel (ADR-046, unchanged). Admitted
+        // and in flight: the frame the runtime is answering is already
+        // committed to the transport, so the resolution is recorded and the
+        // write completes or fails on its own error. Admitted, not in flight,
+        // not written: the frame is prepared but not committed; it must not
+        // cancel either, because the send path still owns it and a
+        // cancellation here would strand it.
+        if self.write.is_none() && !self.admitted && !self.in_flight {
             Err(Failure::ApprovalCancelled)
         } else {
             Ok(false)
@@ -178,6 +194,16 @@ impl ApprovalRun {
             parked.release();
         }
         self.callbacks.parked = None;
+        // F3 (no leak on cancel): the terminal-drain deferral lets an armed
+        // callback — in flight, no accepted byte, never resolved/recorded —
+        // reach stop still armed. Its fate is settled by the turn-end rule,
+        // so release the deferred entries here instead of letting them leak
+        // until the whole Callbacks/Report drops. Entries with an accepted
+        // byte (`write`) are deliberately kept: their custody is still
+        // observed after the report.
+        self.callbacks
+            .entries
+            .retain(|_, entry| !(entry.in_flight && entry.write.is_none()));
     }
 }
 impl Callbacks {
@@ -250,6 +276,7 @@ impl Callbacks {
                 prepared: None,
                 grant: None,
                 write: None,
+                in_flight: false,
                 admitted: false,
                 recorded: false,
                 resolved: false,
@@ -369,7 +396,8 @@ mod trace_tests {
     /// labels are stable and every phase transition is named.
     #[test]
     fn native_approval_trace_labels_every_phase() {
-        crate::approval::diagnostics::reset();
+        crate::approval::diagnostics::reset("dispatch-a");
+        crate::approval::diagnostics::reset("dispatch-b");
         // The full happy-path sequence one entry drives through the
         // coordinator: retained, then each transition in arrival order.
         let mut trace = PhaseTrace::new();
@@ -379,6 +407,7 @@ mod trace_tests {
             "prepared",
             "begun",
             "admitted",
+            "in-flight",
             "checked",
             "write-accepted",
             "recorded",
@@ -393,6 +422,7 @@ mod trace_tests {
                 "prepared",
                 "begun",
                 "admitted",
+                "in-flight",
                 "checked",
                 "write-accepted",
                 "recorded",
@@ -427,6 +457,62 @@ mod trace_tests {
             cancelling.mark(label);
         }
         assert_eq!(cancelling.as_slice().last(), Some(&"resolved-cancels"));
+        // The quiet pre-send arm (the Windows barriers case): an in-flight
+        // entry resolved before its first byte ignores the resolution —
+        // `Ok(false)` in behavior, `resolved-ignored-in-flight` in the
+        // label, never `resolved-cancels` (which the harness branch's
+        // two-way seam mislabeled).
+        let mut quiet = PhaseTrace::new();
+        for label in [
+            "acknowledged",
+            "admitted",
+            "in-flight",
+            "checked",
+            "resolved-before-write",
+            "resolved-ignored-in-flight",
+            "resolved-before-send",
+        ] {
+            quiet.mark(label);
+        }
+        assert_eq!(quiet.as_slice().last(), Some(&"resolved-before-send"));
+        assert!(!quiet.as_slice().contains(&"resolved-cancels"));
+        // The final verdict's rule: an in-flight, receipt-less, unresolved
+        // entry names its fate at a turn end — never a silent completion.
+        // The two arms are mutually exclusive in one run (the transport's
+        // write custody decides), so each is pinned as its own sequence.
+        for (labels, arm) in [
+            (
+                vec![
+                    "acknowledged",
+                    "prepared",
+                    "begun",
+                    "admitted",
+                    "in-flight",
+                    "checked",
+                    "turn-ended-unwritten",
+                ],
+                "turn-ended-in-flight-uncertain",
+            ),
+            (
+                vec![
+                    "acknowledged",
+                    "prepared",
+                    "begun",
+                    "admitted",
+                    "in-flight",
+                    "checked",
+                    "turn-ended-unwritten",
+                ],
+                "turn-ended-in-flight-untransmitted",
+            ),
+        ] {
+            let mut trace = PhaseTrace::new();
+            for label in labels {
+                trace.mark(label);
+            }
+            trace.mark(arm);
+            assert_eq!(trace.as_slice().last(), Some(&arm));
+        }
         // The journal is keyed by dispatch: records of another operation are
         // invisible to this one's reads (parallel tests never interleave).
         let dispatch = "dispatch-a";
@@ -464,7 +550,7 @@ mod trace_tests {
             trace_text.contains("retained, acknowledged"),
             "{trace_text}"
         );
-        crate::approval::diagnostics::reset();
+        crate::approval::diagnostics::reset(dispatch);
         assert_eq!(
             crate::approval::diagnostics::phases_of(dispatch, &id),
             Vec::<&str>::new()
@@ -472,6 +558,12 @@ mod trace_tests {
         assert_eq!(
             crate::approval::diagnostics::last_cancellation_trace(dispatch),
             ""
+        );
+        // Per-dispatch reset pin: another operation's records survive — the
+        // whole point of keying (no test wipes another's in-flight journal).
+        assert!(
+            !crate::approval::diagnostics::dispatch_trace("dispatch-b").is_empty(),
+            "reset of one dispatch must not clear another's records"
         );
     }
 }

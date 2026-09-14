@@ -119,6 +119,59 @@ Scenario: Pending control preserves exact ordered usage observations
   When domain receipts are delayed or refused
   Then the original usage slot and ordered facts remain retained with explicit unknown status and no fabricated observations
 
+Scenario: An in-flight resolution parsed before the first byte takes the quiet path
+  Test: native_owned_approval_in_flight_resolution_takes_the_quiet_path
+  Given a host held at the recheck gate with the prepared frame armed but not yet committed to the transport
+  When the fixture emits the resolution for that in-flight id and the host is released only after it is on the wire
+  Then the host drops the armed frame on the pre-send quiet arm, cancels nothing, writes no frame and records no acceptance, and the operation completes with no failure beyond the retained owner's platform cleanup outcome
+  And a resolution parsed after the write receipt is the receipt-before-resolution scenario, never this one
+
+Scenario: Pre-admission resolution still cancels with the named variant
+  Test: native_owned_approval_resolution_before_admission_cancels
+  Given an entry retained before any durable admission
+  When the fixture resolves it
+  Then the operation fails with ApprovalCancelled and no frame reaches the wire
+
+Scenario: No second frame is written after a resolution
+  Test: native_owned_approval_no_second_frame_after_resolution
+  Given one written response frame and its legal post-write resolution
+  When the drive continues to completion
+  Then exactly one frame exists on both the host-written and probe-read streams and the durable write count is one
+
+Scenario: A write receipt is processed before its own resolution is delivered
+  Test: native_owned_approval_receipt_before_resolution
+  Given the host held between the transport write receipt and the acceptance observation
+  When the fixture reads the frame and then resolves it
+  Then the operation completes with the acceptance row recorded and no transport cause
+
+Scenario: A resolved-away frame is never sent
+  Test: native_owned_approval_resolved_before_first_byte
+  Given the resolution emitted while the frame is armed before its first byte
+  When the host reaches the send
+  Then the operation completes quietly with no failure no Closed cause no frame on the wire and no accepted row
+
+
+Scenario: A frame whose peer vanished before its first byte is never uncertain
+  Test: native_owned_approval_peer_gone_before_first_byte
+  Given an admitted armed frame and no accepted byte on the wire
+  When the send path attempts the first byte
+  Then the observation names the failing arm and reports accepted_bytes 0
+  And the verdict is the named non-uncertain refusal never Protocol
+  And no accepted row is manufactured
+
+Scenario: A turn end never completes over an untransmitted in-flight frame
+  Test: native_owned_approval_turn_end_untransmitted
+  Given an in-flight armed frame held at the recheck gate with zero accepted bytes
+  When the probe ends the turn and exits before the first byte
+  Then the operation reports PeerUnavailable never Completed and the untransmitted arm is stamped
+  And no frame is written and no accepted row exists
+
+Scenario: A turn end never completes over a transmitted receipt-less frame
+  Test: native_owned_approval_turn_end_midwrite_uncertain
+  Given an in-flight frame whose bytes the transport accepted but whose receipt never returned
+  When the probe ends the turn and exits with the frame unread
+  Then the operation reports SettlementUnknown never Completed and an uncertainty arm names the fate
+
 ## Out of Scope
 
 Application bootstrap selection and request delivery, private SDK collection,

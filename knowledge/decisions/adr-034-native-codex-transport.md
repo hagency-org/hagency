@@ -166,3 +166,15 @@ and protocol deadlines can expire first.
 A normal event wait persists across Control returns and ends only upon an actual
 typed read result. Prepared-send buffer drains do not reset that read clock.
 No host execution budget, write timeout, partial-frame or request policy changes.
+
+**Amendment (2026-09-12, withdrawal of the parse hold).** The transport
+parse hold this ADR introduced is withdrawn. The hold blocked the send path
+behind buffered-event delivery, which inverted the write/event ordering the
+approval coordinator depends on and left armed frames hostage to a pump that
+may never run; its contract also produced a first-write window that could
+not distinguish "peer gone" from "event pending". With the hold withdrawn,
+`prepared_inner` returns a buffered event instead of writing (the frame
+returns to `prepared` custody, exact bytes restored), and the write proceeds
+on the next call — the ordering ADR-046's quiet pre-send resolution depends
+on. The two pinned integration tests this ADR named are superseded by the
+approval scenarios in ADR-046's amendment set.

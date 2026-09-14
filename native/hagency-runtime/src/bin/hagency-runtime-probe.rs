@@ -11,17 +11,33 @@ use std::{
 };
 
 fn pulse(marker: &Path) -> io::Result<()> {
+    // The custody lifetime: the full operation budget plus half again as the
+    // ceiling — never a fraction of the budget (`harness_wait() * 4` was ten
+    // seconds of a twenty-five second operation, so a loaded host could
+    // still reach its first write after the probe had left). But it must NOT
+    // be driven by stdin EOF: three fixtures run this path with the host's
+    // pipe ends already dropped (`drop(pipes)`) or with `Stdio::null()` (the
+    // `pulse` subcommand's children), where EOF is immediate and the test
+    // proves ownership exactly by the child SURVIVING the stream close. The
+    // ownership stop signals the process, so the signal — not the pipe —
+    // ends this hold.
+    let until = Instant::now() + Duration::from_millis(operation_ceiling_ms());
     let mut file = OpenOptions::new()
         .create(true)
         .append(true)
         .open(marker.with_extension("pulse"))?;
-    let until = Instant::now() + harness_wait() * 4;
     while Instant::now() < until {
         file.write_all(b"x")?;
         file.flush()?;
         std::thread::sleep(Duration::from_millis(20));
     }
     Ok(())
+}
+/// The outer ceiling every hold shares: the operation budget plus half
+/// again. Derived, never a literal, so a budget change rescales the fixture.
+fn operation_ceiling_ms() -> u64 {
+    let budget = operation_budget_ms();
+    budget + budget / 2
 }
 /// The operation budget the host grants, in ms. The host builders pass it on
 /// the same env channel as `HAGENCY_OFFLINE_MODE`; the 25 s default matches
@@ -39,16 +55,12 @@ fn operation_budget_ms() -> u64 {
 fn harness_wait() -> Duration {
     Duration::from_millis(operation_budget_ms() / 10)
 }
-/// Stay alive after terminal output until the HOST stops ownership, which it
-/// signals by closing our stdin — the close drives the hold, and the budget
-/// (plus half again) is only the outer ceiling. The old fixed 8 s pulse was
-/// a literal while the harness grants the operation 25 s, so on a loaded
-/// host the fixture exited while the operation was still running and its
-/// next write failed as `Io` with zero bytes accepted. `StdinLock` is
-/// `!Send`, so the lock is taken in the reading thread; the caller must have
-/// dropped its own lock first (a second `io::stdin().lock()` would block on
-/// the caller's guard forever).
 fn hold_until_stdin_closed(marker: &Path, budget_ms: u64) -> io::Result<()> {
+    // `StdinLock` holds a `MutexGuard` and is `!Send`: it cannot move into
+    // the reading thread, so the lock must be TAKEN there. The caller
+    // (`fake`) drops its own lock before calling here, so this lock observes
+    // the host's close instead of deadlocking on a guard that never
+    // releases.
     let (closed, host_closed) = std::sync::mpsc::channel::<()>();
     std::thread::spawn(move || {
         let mut stdin = io::stdin().lock();
@@ -111,16 +123,23 @@ fn gated_pulse(marker: &Path) -> io::Result<()> {
         .create_new(true)
         .write(true)
         .open(marker.with_extension("pulse"))?;
-    let until = Instant::now() + harness_wait() * 4;
     file.write_all(b"xxx")?;
     file.flush()?;
+    // The gate keeps its derived bound — a fifth of the operation budget,
+    // the harness's `harness_wait() * 2` shape doubled: the TEST must
+    // release us, and a test that cannot observe our pulse within a fifth
+    // of the whole operation is itself broken — while the LIFETIME after
+    // it is the shared custody ceiling, like every terminal path.
+    let until = Instant::now() + harness_wait() * 2;
     while !marker.with_extension("release").is_file() {
         if Instant::now() >= until {
-            return Err(io::ErrorKind::TimedOut.into());
+            return Err(io::Error::other(
+                "gated keepalive was never released by the test",
+            ));
         }
         std::thread::sleep(Duration::from_millis(10));
     }
-    // Gate and heartbeat share the original fixture lifetime, not two budgets.
+    let until = Instant::now() + Duration::from_millis(operation_ceiling_ms());
     while Instant::now() < until {
         file.write_all(b"x")?;
         file.flush()?;
@@ -294,6 +313,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
             stdin.read_exact(&mut partial)?;
             fs::write(marker.with_extension("partial"), partial)?;
         }
+        drop(stdin);
         return pulse(marker);
     }
     let request = read(&mut stdin, marker)?;
@@ -310,6 +330,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     if matches!(mode, "quiet-turn" | "quiet-open") {
         fs::write(marker.with_extension("quiet"), b"turn-start-acknowledged")?;
         if mode == "quiet-open" {
+            drop(stdin);
             return pulse(marker); // filesystem evidence only; no protocol keepalive
         }
         // A real acknowledged turn can run a tool without another app-server
@@ -323,6 +344,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         send(
             json!({"id":"approval","method":"item/commandExecution/requestApproval","params":{"threadId":"owned-thread","turnId":"owned-turn","itemId":"command","command":"fixture","cwd":std::env::current_dir()?.to_string_lossy()}}),
         )?;
+        drop(stdin);
         return pulse(marker);
     }
     if mode == "wrong-scope" {
@@ -330,6 +352,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
             "thread/status/changed",
             json!({"threadId":"impostor-thread","status":{"type":"idle"}}),
         )?;
+        drop(stdin);
         return pulse(marker);
     }
     if mode == "usage-gate" {
@@ -510,11 +533,17 @@ mod hold_tests {
         let started = Instant::now();
         // An empty reader IS a closed stream: its write end is gone.
         let closed_stream: &[u8] = &[];
-        let outcome = hold_until_closed(&marker, 10_000, closed_stream);
+        let budget_ms = 10_000u64;
+        let outcome = hold_until_closed(&marker, budget_ms, closed_stream);
         let _ = std::fs::remove_file(marker.with_extension("pulse"));
         outcome.expect("a closed stream must end the hold, not the ceiling");
+        // Derived from the budget passed above, not a literal: half the
+        // hold's own budget is the generous local slack for "an empty
+        // reader reports EOF immediately" (F5) — far under the hold's
+        // 1.5×-budget ceiling, and it scales if the test budget changes.
+        let local_slack = Duration::from_millis(budget_ms / 2);
         assert!(
-            started.elapsed() < Duration::from_secs(5),
+            started.elapsed() < local_slack,
             "the hold ran toward its ceiling instead of observing the close"
         );
     }

@@ -50,6 +50,8 @@ pub enum Failure {
     CleanupUnknown,
     #[error("domain settlement outcome unknown")]
     SettlementUnknown,
+    #[error("native runner peer vanished before the approval frame's first byte")]
+    PeerUnavailable,
     #[error("host worker failed")]
     Worker,
     #[error(
@@ -75,6 +77,7 @@ impl Failure {
             Self::UnsupportedRunner { framework } => OwnedFailure::UnsupportedRunner {
                 framework: framework.clone(),
             },
+            Self::PeerUnavailable => OwnedFailure::PeerUnavailable,
         }
     }
 }
@@ -184,6 +187,27 @@ fn settlement_failure(report: &mut Report, error: &hagency_store::Error) -> Fail
         report.settlement_cause = Some(SettlementCause::of(error));
     }
     Failure::SettlementUnknown
+}
+
+/// H5: which drive outcomes still observe completion custody on the failure
+/// path. The excluded causes never reach settlement, so a store refusal there
+/// must not pin a `settlement_cause` onto them — the same first-cause rule
+/// brief 14 installed, now guarding the marker, not just its overwrite.
+/// `PeerUnavailable` joins the exclusions: a named peer-gone refusal never
+/// carries a settlement cause. `SettlementUnknown` is excluded by the
+/// precedence rule (ADR-046): a conclusive negative reconcile surfaces
+/// unchanged and never consults custody. Generic over the drive's success
+/// payload (the early completion path drives `()`, the later one the
+/// `Report`).
+fn observes_completion<T>(drive: &Result<T, Failure>) -> bool {
+    !matches!(
+        drive,
+        Err(Failure::Cancelled
+            | Failure::Deadline
+            | Failure::UnsupportedApproval
+            | Failure::PeerUnavailable
+            | Failure::SettlementUnknown)
+    )
 }
 
 /// Fixed diagnostics from the original owned runtime, never execution authority.
@@ -345,17 +369,43 @@ impl Report {
         {
             live.release();
         }
+        // F3 (macOS-reachable): the deferred approval entries are released as
+        // soon as the *leader* stopped on every OS — their fate is settled by
+        // the turn-end rule the moment the child is gone — even where the
+        // supervisor cannot prove `whole_tree_stopped` (macOS). The live
+        // reservation and the retained owner still wait on the full
+        // `whole_tree_stopped` proof: custody/settlement must not claim "no
+        // detached child remains" on a leader-only stop.
+        if leader_stopped(self.cleanup)
+            && let Some(approvals) = &mut self.approvals
+        {
+            approvals.stopped();
+        }
         if stopped(self.cleanup) {
             if let Some(live) = &mut self.live {
                 live.release();
-            }
-            if let Some(approvals) = &mut self.approvals {
-                approvals.stopped();
             }
             self.owner.take();
         }
         self.cleanup
     }
+}
+/// The release predicate (F3, macOS-reachable): the owned child's *leader* is
+/// gone, so the run is physically over even where the supervisor cannot prove
+/// the whole detached tree is gone (`whole_tree_stopped` is Linux-only; the
+/// macOS supervisor refuses the stronger report and the non-Linux scopes force
+/// it `false`). The deferred approval entries are released on this — not on the
+/// stricter `whole_tree_stopped` — because their fate is settled by the
+/// turn-end rule the moment the leader stops, on every OS. `signals_accepted`
+/// is deliberately NOT a conjunct: macOS can report it false for a leader that
+/// already exited before the stop was signalled (EPERM on a zombie-only group,
+/// `signalled = group_accepted && child_accepted` in `unix.rs`), and the child's
+/// exit — not signal delivery — is the physical fact that settles these
+/// never-transmitted frames. This must stay out of the custody/settlement
+/// paths, which still need the full `whole_tree_stopped` proof to claim "no
+/// detached child remains".
+fn leader_stopped(cleanup: Cleanup) -> bool {
+    matches!(cleanup, Cleanup::Observed(report) if report.scope.leader_exited)
 }
 fn stopped(cleanup: Cleanup) -> bool {
     matches!(cleanup, Cleanup::Observed(report) if report.scope.whole_tree_stopped && report.scope.leader_exited && report.scope.signals_accepted)
@@ -997,14 +1047,28 @@ async fn execute(
         Some(Outcome::UnsupportedRequest) => Protocol::Unsupported,
         _ => Protocol::Unknown,
     };
+    // ADR-046 precedence, report-side: a drive that ended in a settlement
+    // verdict outranks the peer's own turn outcome — the captured completion
+    // is demoted so no `SettlementUnknown` is ever delivered beside a
+    // `Completed` protocol (the midwrite scenario: a written, receipt-less
+    // frame at a turn end the peer did complete). The drive's verdict itself
+    // still surfaces unchanged through `drive?` below.
+    if matches!(drive, Err(Failure::SettlementUnknown)) && report.protocol == Protocol::Completed {
+        report.protocol = Protocol::Unknown;
+    }
     report.cleanup = runner.stop();
-    if stopped(report.cleanup) {
-        if let Some(live) = &mut report.live {
-            live.release();
-        }
-        if let Some(approvals) = &mut report.approvals {
-            approvals.stopped();
-        }
+    // F3 (macOS-reachable): release the deferred approval entries as soon as
+    // the leader stopped on every OS; the live reservation and owner release
+    // still wait on the full `whole_tree_stopped` proof below.
+    if leader_stopped(report.cleanup)
+        && let Some(approvals) = &mut report.approvals
+    {
+        approvals.stopped();
+    }
+    if stopped(report.cleanup)
+        && let Some(live) = &mut report.live
+    {
+        live.release();
     }
     if host.task_helper_enabled() {
         // Observation only, after actual owner stop and before negative fencing.
@@ -1017,28 +1081,26 @@ async fn execute(
     // A matching explicit Done+body is completion custody, not a renewed task
     // epoch or permission to continue this process. The same runner was stopped
     // above. Scope is the opaque successful Start response, never admission data.
-    //
     // A settlement verdict outranks the completion path: a drive that ended
     // in `SettlementUnknown` (ADR-046's conclusive negative reconcile) never
     // consults held completion custody, so it is neither replaced by
     // `CleanupUnknown` on macOS nor swallowed into a published completion on
     // Linux; `drive?` below surfaces it unchanged. Every other drive end that
-    // is not a cancellation, a deadline or an unsupported approval keeps
-    // consulting custody: the retained helper-finish flows end without a
-    // terminal Codex turn and complete through the held row. Any other drive
-    // error (a protocol refusal, a lost authority) also consults custody, and
-    // publication still requires the store's own held completion row, so
-    // nothing is ever published that the store did not commit as finished.
-    if !matches!(
-        drive,
-        Err(Failure::Cancelled
-            | Failure::Deadline
-            | Failure::UnsupportedApproval
-            | Failure::SettlementUnknown)
-    ) && let Some(reference) = domain
-        .observe_owned_completion(cap.clone(), started.clone())
-        .await
-        .map_err(|error| settlement_failure(report, &error))?
+    // is not a cancellation, a deadline, an unsupported approval or a named
+    // peer-gone refusal keeps consulting custody: the retained helper-finish
+    // flows end without a terminal Codex turn and complete through the held
+    // row. Any other drive error (a protocol refusal, a lost authority) also
+    // consults custody, and publication still requires the store's own held
+    // completion row, so nothing is ever published that the store did not
+    // commit as finished. The excluded causes are named in
+    // `observes_completion` (review H5): a refusal there must not pin a
+    // `settlement_cause` onto the report — the same first-cause rule brief
+    // 14 installed, now guarding the marker, not just its overwrite.
+    if observes_completion(&drive)
+        && let Some(reference) = domain
+            .observe_owned_completion(cap.clone(), started.clone())
+            .await
+            .map_err(|error| settlement_failure(report, &error))?
     {
         // A held completion reference is the store's own committed finish for
         // this dispatch, read back through custody: the canonical status it
@@ -1106,8 +1168,38 @@ async fn execute(
 
 #[cfg(test)]
 mod tests {
-    use super::{Failure, Report, SettlementCause, settlement_failure};
+    use super::{Failure, Report, SettlementCause, observes_completion, settlement_failure};
     use hagency_store::Error;
+
+    /// H5: a named `PeerUnavailable` refusal never reaches settlement, so the
+    /// failure path must not observe completion custody for it — a store
+    /// refusal there can never pin a `settlement_cause` onto the named
+    /// verdict. The pre-existing exclusions keep their meaning.
+    #[test]
+    fn native_peer_unavailable_carries_no_settlement_cause() {
+        for excluded in [
+            Failure::PeerUnavailable,
+            Failure::Cancelled,
+            Failure::Deadline,
+            Failure::UnsupportedApproval,
+        ] {
+            assert!(
+                !observes_completion(&Err::<(), Failure>(excluded)),
+                "{excluded:?} must not observe completion custody"
+            );
+        }
+        // Everything else — other named failures and any success — still
+        // observes custody. `SettlementUnknown` does NOT: ADR-060's landed
+        // precedence rule — a settlement verdict outranks the completion
+        // path, and the failure finalization is the single writer of
+        // failure and settlement — so it joins the exclusion list.
+        assert!(
+            !observes_completion(&Err::<(), Failure>(Failure::SettlementUnknown)),
+            "SettlementUnknown outranks the completion path (ADR-060)"
+        );
+        assert!(observes_completion(&Err::<(), Failure>(Failure::Protocol)));
+        assert!(observes_completion(&Ok::<(), Failure>(())));
+    }
 
     /// Every store refusal that can produce `Failure::SettlementUnknown` maps
     /// to its own marker, and anything else collapses to `Storage`. The

@@ -1,0 +1,22 @@
+   Compiling hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.36s
+     Running tests/mcp_coordination.rs (target/debug/deps/mcp_coordination-ce5c268f5b25a7a7)
+
+running 1 test
+test mcp_coordination::recovery::native_mcp_coordination_bounds ... FAILED
+
+failures:
+
+---- mcp_coordination::recovery::native_mcp_coordination_bounds stdout ----
+
+thread 'mcp_coordination::recovery::native_mcp_coordination_bounds' (88116131) panicked at native/hagency/tests/mcp_coordination/fixture.rs:49:53:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    mcp_coordination::recovery::native_mcp_coordination_bounds
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 5 filtered out; finished in 0.06s
+
+error: test failed, to rerun pass `-p hagency --test mcp_coordination`

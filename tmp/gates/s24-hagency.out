@@ -1,0 +1,216 @@
+   Compiling serde_core v1.0.229
+   Compiling getrandom v0.2.17
+   Compiling serde v1.0.229
+   Compiling rand_core v0.6.4
+   Compiling crypto-common v0.1.7
+   Compiling zeroize v1.9.0
+   Compiling jobserver v0.1.35
+   Compiling cc v1.4.5
+   Compiling tokio v1.53.1
+   Compiling zerovec v0.11.8
+   Compiling thiserror v2.0.20
+   Compiling tinystr v0.8.4
+   Compiling icu_locale_core v2.3.0
+   Compiling tracing v0.1.44
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling digest v0.10.7
+   Compiling icu_provider v2.3.1
+   Compiling futures-util v0.3.34
+   Compiling serde_json v1.0.151
+   Compiling toml_edit v0.25.13+spec-1.1.0
+   Compiling icu_normalizer v2.3.0
+   Compiling icu_properties v2.3.0
+   Compiling indexmap v2.14.2
+   Compiling idna_adapter v1.2.2
+   Compiling proc-macro-crate v3.5.0
+   Compiling bitflags v2.13.2
+   Compiling idna v1.1.0
+   Compiling getrandom v0.4.3
+   Compiling url v2.5.8
+   Compiling rand v0.10.2
+   Compiling getrandom v0.3.4
+   Compiling tokio-util v0.7.19
+   Compiling ruma-identifiers-validation v0.12.1
+   Compiling rustix v1.1.4
+   Compiling js_int v0.2.2
+   Compiling ruma-macros v0.19.0
+   Compiling sha2 v0.10.9
+   Compiling uuid v1.26.1
+   Compiling serde_html_form v0.4.1
+   Compiling block-padding v0.3.3
+   Compiling ruma-common v0.19.0
+   Compiling inout v0.1.4
+   Compiling cipher v0.4.4
+   Compiling zerocopy v0.8.57
+   Compiling rand_core v0.9.5
+   Compiling ppv-lite86 v0.2.21
+   Compiling hmac v0.12.1
+   Compiling num-traits v0.2.19
+   Compiling fs-set-times v0.20.3
+   Compiling ring v0.17.14
+   Compiling universal-hash v0.5.1
+   Compiling js_option v0.2.0
+   Compiling cap-primitives v4.0.3
+   Compiling libsqlite3-sys v0.35.0
+   Compiling poly1305 v0.8.0
+   Compiling ruma-events v0.34.0
+   Compiling curve25519-dalek v4.1.3
+   Compiling httparse v1.10.1
+   Compiling rand_xoshiro v0.7.0
+   Compiling chacha20 v0.9.1
+   Compiling aead v0.5.2
+   Compiling arrayvec v0.7.8
+   Compiling ed25519 v2.2.3
+   Compiling imbl v6.1.0
+   Compiling h2 v0.4.19
+   Compiling ruma-client-api v0.24.0
+   Compiling chacha20poly1305 v0.10.1
+   Compiling prost-derive v0.14.4
+   Compiling cap-std v4.0.3
+   Compiling rmp v0.8.15
+   Compiling rand_chacha v0.3.1
+   Compiling rand_chacha v0.9.0
+   Compiling matrix-pickle-derive v0.2.3
+   Compiling rustls-pki-types v1.15.1
+   Compiling serde_bytes v0.11.19
+   Compiling matrix-pickle v0.2.3
+   Compiling rand v0.9.5
+   Compiling rand v0.8.8
+   Compiling rmp-serde v1.3.1
+   Compiling cap-fs-ext v4.0.3
+   Compiling prost v0.14.4
+   Compiling hyper v1.11.1
+   Compiling ruma v0.16.0
+   Compiling eyeball-im v0.8.0
+   Compiling ed25519-dalek v2.2.0
+   Compiling x25519-dalek v2.0.1
+   Compiling hkdf v0.12.4
+   Compiling cbc v0.1.2
+   Compiling aes v0.8.4
+   Compiling tokio-stream v0.1.19
+   Compiling zstd-sys v2.1.0+zstd.1.5.7
+   Compiling pbkdf2 v0.12.2
+   Compiling readlock-tokio v0.1.6
+   Compiling eyeball v0.8.8
+   Compiling vodozemac v0.10.0
+   Compiling rusqlite v0.37.0
+   Compiling rustls v0.23.44
+   Compiling aquamarine v0.6.0
+   Compiling matrix-sdk-common v0.18.0
+   Compiling hyper-util v0.1.20
+   Compiling ulid v1.2.1
+   Compiling rustls-webpki v0.103.15
+   Compiling ctr v0.9.2
+   Compiling hagency-platform v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-platform)
+   Compiling blake3 v1.8.7
+   Compiling serde_urlencoded v0.7.1
+   Compiling matrix-sdk-crypto v0.18.0
+   Compiling hagency-core v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-core)
+   Compiling hagency-metering v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering)
+   Compiling encoding_rs v0.8.41
+   Compiling tower v0.5.3
+   Compiling zstd-safe v7.3.0
+   Compiling hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+   Compiling tokio-rustls v0.26.4
+   Compiling hagency-files v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-files)
+   Compiling webpki-roots v1.0.9
+   Compiling deadpool-runtime v0.3.1
+   Compiling growable-bloom-filter v2.1.1
+   Compiling hyper-rustls v0.27.9
+   Compiling decancer v3.3.3
+   Compiling tower-http v0.6.11
+   Compiling matrix-sdk-store-encryption v0.18.0
+   Compiling crc32fast v1.5.1
+   Compiling parking_lot_core v0.9.12
+   Compiling sha1 v0.10.7
+   Compiling serde-xml-rs v0.8.2
+   Compiling tempfile v3.27.0
+   Compiling salvo_macros v0.96.0
+   Compiling enumflags2 v0.7.12
+   Compiling pin-project v1.1.13
+   Compiling headers v0.4.1
+   Compiling parking_lot v0.12.5
+   Compiling flate2 v1.1.10
+   Compiling matrix-sdk-base v0.18.0
+   Compiling reqwest v0.12.28
+   Compiling zstd v0.13.3
+   Compiling unicode-general-category v0.6.0
+   Compiling deadpool v0.13.1
+   Compiling deadpool-sync v0.2.0
+   Compiling hagency-media v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-media)
+   Compiling chardetng v1.0.0
+   Compiling multra v1.1.0
+   Compiling serde_path_to_error v0.1.20
+   Compiling multimap v0.10.1
+   Compiling num_cpus v1.17.0
+   Compiling salvo_core v0.96.0
+   Compiling matrix-sdk-sqlite v0.18.0
+   Compiling hagency-matrix-format v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix-format)
+   Compiling hagency-media-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-media-store)
+   Compiling hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+   Compiling tracing-subscriber v0.3.23
+   Compiling hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+   Compiling hagency-matrix v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix)
+   Compiling clap v4.6.6
+   Compiling salvo v0.96.0
+   Compiling hagency-palpo v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-palpo)
+   Compiling hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+   Compiling futures-executor v0.3.34
+   Compiling futures v0.3.34
+   Compiling chrono v0.4.45
+   Compiling rmcp v1.8.0
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2m 58s
+     Running tests/http.rs (target/debug/deps/http-a11f6a919e88b573)
+
+running 9 tests
+test native_health_readiness_enumerates_every_state ... ok
+test unimplemented_capabilities_are_explicit ... ok
+test http_auth_and_limits ... ok
+test bounded_work_keeps_health_responsive ... ok
+test native_health_readiness_ready ... FAILED
+test native_health_readiness_refused_tick_is_ready ... FAILED
+test native_health_readiness_names_closed_domain_writer ... FAILED
+test native_health_readiness_names_stopped_sweep ... FAILED
+test native_resource_management_is_authenticated ... FAILED
+
+failures:
+
+---- native_health_readiness_ready stdout ----
+
+thread 'native_health_readiness_ready' (94107248) panicked at native/hagency/tests/http.rs:21:67:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- native_health_readiness_refused_tick_is_ready stdout ----
+
+thread 'native_health_readiness_refused_tick_is_ready' (94107249) panicked at native/hagency/tests/http.rs:103:68:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_health_readiness_names_closed_domain_writer stdout ----
+
+thread 'native_health_readiness_names_closed_domain_writer' (94107246) panicked at native/hagency/tests/http.rs:278:68:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_health_readiness_names_stopped_sweep stdout ----
+
+thread 'native_health_readiness_names_stopped_sweep' (94107247) panicked at native/hagency/tests/http.rs:214:68:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_resource_management_is_authenticated stdout ----
+
+thread 'native_resource_management_is_authenticated' (94107250) panicked at native/hagency/tests/http.rs:322:68:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    native_health_readiness_names_closed_domain_writer
+    native_health_readiness_names_stopped_sweep
+    native_health_readiness_ready
+    native_health_readiness_refused_tick_is_ready
+    native_resource_management_is_authenticated
+
+test result: FAILED. 4 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.53s
+
+error: test failed, to rerun pass `-p hagency --test http`

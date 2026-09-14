@@ -117,6 +117,18 @@ impl<R, W, E> SessionDriver<R, W, E> {
     pub fn transport_termination(&self) -> Option<&transport::Termination> {
         self.wire.termination()
     }
+    /// Whether the connection still holds this prepared server request. False
+    /// once `serverRequest/resolved` was parsed: the one-shot frame's transmit
+    /// path is gone, so it must never be re-sent.
+    pub fn prepared_admissible(&self, id: &RequestId) -> bool {
+        self.wire.prepared_admissible(id)
+    }
+    /// `(accepted, total)` bytes of the frame in write custody, or `None`.
+    /// Read-only projection for the approval turn-end rule; carries no
+    /// authority and never influences the write itself.
+    pub fn write_progress(&self) -> Option<(usize, usize)> {
+        self.wire.write_progress()
+    }
     pub fn stderr_snapshot(&self) -> transport::StderrSnapshot {
         self.wire.stderr_snapshot()
     }
@@ -529,14 +541,45 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
                     method,
                     params: Some(params),
                 }) => self.state.terminal_suffix(&method, &params)?,
-                Some(Event::ServerRequest { id, .. }) => {
+                // Same deferral as the post-loop check below (F1): with
+                // approvals enabled a request arriving DURING the drain is
+                // the host coordinator's armed callback, not an unowned
+                // violation, and erroring here would pre-empt the ADR-046
+                // turn-end rule through accept_update's `?` before the
+                // TurnEnded update ever reaches it. The runtime's own
+                // receive() guard (see below) is the authority for this
+                // condition; the drain previously enforced it only after
+                // the loop, so a mid-drain arrival still collapsed every
+                // turn-end arm into `UnsupportedRequest`.
+                Some(Event::ServerRequest { id, .. }) if !self.approvals_enabled => {
                     self.unsupported(id).await?;
+                }
+                Some(Event::ServerRequest { .. }) => {
+                    // The deferral itself: the event is consumed here (it
+                    // was already popped from the wire), but the request
+                    // stays pending in the connection's server-pending map,
+                    // which is exactly the state the post-loop check below
+                    // and the ADR-046 turn-end rule classify. Sending any
+                    // response — a reject — from the terminal drain would
+                    // answer the host's own armed callback.
                 }
                 Some(_) => return Err(Error::Scope),
                 None => break,
             }
         }
-        if self.wire.pending_server_requests() > 0 {
+        // ADR-046, "the terminal drain must not settle an armed callback"
+        // (amended this commit): a pending server request at the terminal
+        // drain is a protocol violation only when nothing owns it. With
+        // approvals enabled, these requests are the host coordinator's armed
+        // approval callbacks — the peer's turn ended before they were
+        // answered, which is precisely the state the execution host's
+        // ADR-046 turn-end rule classifies (quiet, unknown, or named
+        // refusal) from the termination snapshot the `close()` that follows
+        // preserves. Erroring here instead would pre-empt that rule with
+        // `UnsupportedRequest` and collapse every arm into a protocol fault
+        // (the macOS shape: `Protocol` where the quiet family or
+        // `SettlementUnknown` is owed).
+        if self.wire.pending_server_requests() > 0 && !self.approvals_enabled {
             return Err(Error::UnsupportedRequest);
         }
         Ok(())

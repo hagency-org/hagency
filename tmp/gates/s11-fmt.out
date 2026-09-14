@@ -1,0 +1,24 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime/src/codex/transport.rs:675:
+         )
+         .unwrap();
+         let mut prepared = driver
+[31m-            .prepare_approval(request.response(false), Instant::now() + Duration::from_secs(5))
+(B[m[32m+            .prepare_approval(
+(B[m[32m+                request.response(false),
+(B[m[32m+                Instant::now() + Duration::from_secs(5),
+(B[m[32m+            )
+(B[m             .unwrap();
+         let receipt = match driver.send_prepared_or_event(&mut prepared).await.unwrap() {
+             Controlled::Control(write) => write,
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime/src/codex/transport.rs:688:
+         // The receipt covers the whole frame and the peer read exactly the
+         // prepared bytes, in order, with nothing overwritten.
+         assert_eq!(receipt.bytes, frame.len());
+[31m-        assert_eq!(receipt.request_id, Some(RequestId::String("approval-1".into())));
+(B[m[32m+        assert_eq!(
+(B[m[32m+            receipt.request_id,
+(B[m[32m+            Some(RequestId::String("approval-1".into()))
+(B[m[32m+        );
+(B[m         let sent = serde_json::from_slice::<Value>(&frame).unwrap();
+         assert_eq!(sent["id"], "approval-1");
+         assert_eq!(sent["result"]["decision"], "decline");

@@ -1,0 +1,368 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/src/../../hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/src/../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/src/../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/bootstrap/../../../hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/bootstrap/../../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/bootstrap/../../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/file_service/../../../hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/file_service/../../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/file_service/../../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/received_files/../../../hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/received_files/../../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/received_files/../../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/../../hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency/tests/../../hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/src/../tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/src/../tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/src/../tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/mod.rs:159:
+     if let Err(error) = &result {
+         if stall::timed_out(&outcome) {
+             eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+[31m-            stall::record_if_timed_out(
+(B[m[31m-                &outcome,
+(B[m[31m-                label,
+(B[m[31m-                format!("{snapshot:?}"),
+(B[m[31m-                None,
+(B[m[31m-            );
+(B[m[32m+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+(B[m         }
+         panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/stall.rs:49:
+ /// Record the first stall of this process. Later stalls change nothing: the
+ /// first record is the root cause every witness reports, and a second
+ /// shutdown timing out is a consequence, not a new cause.
+[31m-pub fn record_if_timed_out(
+(B[m[31m-    outcome: &str,
+(B[m[31m-    label: &str,
+(B[m[31m-    snapshot: String,
+(B[m[31m-    teardown: Option<String>,
+(B[m[31m-) {
+(B[m[32m+pub fn record_if_timed_out(outcome: &str, label: &str, snapshot: String, teardown: Option<String>) {
+(B[m     if !timed_out(outcome) {
+         return;
+     }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix/tests/common/stall.rs:61:
+[31m-    let _guard = RECORD_GUARD.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m[32m+    let _guard = RECORD_GUARD
+(B[m[32m+        .lock()
+(B[m[32m+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+(B[m     // First writer wins: `set` succeeds only while the slot is unpopulated.
+     let _ = LATCH.set(Some(Stall {
+         label: label.to_owned(),

@@ -200,6 +200,7 @@ fn owned_failure_label(error: &hagency_execution::Failure) -> &'static str {
         Deadline => "deadline",
         CleanupUnknown => "cleanup_unknown",
         SettlementUnknown => "settlement_unknown",
+        PeerUnavailable => "peer_unavailable",
         Worker => "worker",
         // ADR-142: the named refusal for a dispatch whose framework has no
         // native runner. The framework itself stays out of this fixed label

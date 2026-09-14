@@ -61,7 +61,7 @@ pub(super) fn operation(
     let mut operation = Operation::start(f.domain.clone(), f.cap.clone(), host, limits()).unwrap();
     let notices = operation.take_approval_requests().unwrap();
     assert!(operation.take_approval_requests().is_none());
-    hagency_execution::diagnostics::reset();
+    hagency_execution::diagnostics::reset(&f.cap.dispatch_id);
     (operation, notices)
 }
 /// ADR-046 stage-1: when an owned approval cancels, name the primitive, the
@@ -282,15 +282,32 @@ pub(super) fn responses(f: &Fixture) -> Vec<serde_json::Value> {
         .filter(|v| v.get("result").is_some())
         .collect()
 }
+/// The durable invariant (landing verdict §3d): never MORE accepted rows
+/// than frames the host sent, and strict equality only when no entry took
+/// the early-resolution quiet drop. A peer that legitimately resolves before
+/// the host's first byte leaves the frame unwritten — a legal product
+/// outcome, not a lost receipt — and the trace names that ordering, so the
+/// assertion is keyed off the trace, not the wire count.
 pub(super) fn unconfirmed(f: &Fixture) {
     assert_eq!(
         f.count("SELECT COUNT(*) FROM owner_approvals WHERE state='applied'"),
         0
     );
-    assert_eq!(
-        f.count("SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1"),
-        responses(f).len() as u64
+    let recorded = f.count("SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1");
+    let expected = responses(f).len() as u64;
+    let trace = hagency_execution::diagnostics::dispatch_trace(&f.cap.dispatch_id);
+    let quietly_resolved =
+        trace.contains("resolved-before-write") || trace.contains("send-withheld-for-event");
+    assert!(
+        recorded <= expected,
+        "recorded={recorded} expected={expected}; trace: {trace}"
     );
+    if !quietly_resolved {
+        assert_eq!(
+            recorded, expected,
+            "no entry resolved before its byte, so every sent frame must be recorded; trace: {trace}"
+        );
+    }
 }
 pub(super) async fn marker(f: &Fixture, extension: &str) {
     let until =

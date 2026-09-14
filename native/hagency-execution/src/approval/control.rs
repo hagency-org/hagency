@@ -12,6 +12,77 @@ use hagency_store::{ApprovalResponseObservation, DomainStore};
 use std::time::Duration;
 use tokio::time::Instant;
 
+/// A frame that never accepted a byte was never transmitted: a peer-side
+/// transport refusal there is the peer being gone — **non-uncertain by
+/// construction** (nothing was sent, so there is no lost response to be
+/// uncertain about and no idempotency question). Any byte accepted means the
+/// frame **was** transmitted: its fate is unknown (the peer may hold the
+/// bytes), so the uncertain `SettlementUnknown` — never a silent completion,
+/// never a protocol fault. `Protocol` stays for genuine malformed-frame
+/// refusals. `Error::Closed` (the host-side parse-removed-id sentinel) and
+/// `Error::HostClosed` (the host's own action) are never "peer gone" and
+/// stay on the non-`PeerUnavailable` arms regardless of offset. The
+/// `zero_accepted` input must be **observed** — a snapshot that reports
+/// `accepted_bytes == 0` — never defaulted from an absent snapshot
+/// (absence means no writer was installed or the transport was already torn
+/// down: "we do not know", not "we know nothing left").
+fn send_failure(
+    error: hagency_runtime::codex::session::Error,
+    zero_accepted: bool,
+    armed: bool,
+) -> Failure {
+    match error {
+        hagency_runtime::codex::session::Error::Transport(
+            hagency_runtime::codex::transport::Error::Io(_)
+            | hagency_runtime::codex::transport::Error::PeerEof,
+        ) if zero_accepted || !armed => Failure::PeerUnavailable,
+        hagency_runtime::codex::session::Error::Transport(
+            hagency_runtime::codex::transport::Error::Io(_)
+            | hagency_runtime::codex::transport::Error::PeerEof
+            | hagency_runtime::codex::transport::Error::HostClosed
+            | hagency_runtime::codex::transport::Error::Closed,
+        ) => Failure::SettlementUnknown,
+        _ => Failure::Protocol,
+    }
+}
+
+/// H3 totality: every observer of a dead transport routes through the same
+/// classifier, with the same evidence rule. The `zero_accepted` fact is
+/// read from the runner's termination snapshot here — an OBSERVED
+/// `accepted_bytes == 0` (the frame never left), never a default from an
+/// absent snapshot. The `armed` fact (Q3) comes from the coordinator's
+/// entry state — a frame is armed when an entry holds its prepared frame or
+/// is in flight — NEVER from the absence of a write observation: a
+/// never-armed entry with a peer-side cause (`PeerEof` with no writer ever
+/// installed) is in the zero-byte class too, while an armed entry with no
+/// snapshot (the host's `stop()` took the custody) stays uncertain.
+pub(super) fn send_failure_with_termination(
+    runner: &hagency_runtime::owned::OwnedSession,
+    armed: bool,
+    error: hagency_runtime::codex::session::Error,
+) -> Failure {
+    // The post-turn-end window (ADR-046's who-closed-first): after the peer
+    // ends its turn the session phase is `Ended`, so `send_prepared_approval`
+    // refuses with `Error::State` — NOT `Transport(HostClosed)` — while the
+    // termination snapshot carries the real cause. A non-transport session
+    // error with a termination present is therefore classified by the
+    // termination's own cause, or the verdict silently degrades to
+    // `Protocol` (the macOS failure shape). Host-side causes keep the
+    // ADR-046 rule below; genuine session errors without a termination
+    // stay `Protocol`.
+    let error = match (&error, runner.transport_termination()) {
+        (hagency_runtime::codex::session::Error::State, Some(termination)) => {
+            hagency_runtime::codex::session::Error::Transport(termination.cause)
+        }
+        _ => error,
+    };
+    let zero_accepted = runner
+        .transport_termination()
+        .and_then(|termination| termination.unconfirmed_write.as_ref())
+        .is_some_and(|write| write.accepted_bytes == 0);
+    send_failure(error, zero_accepted, armed)
+}
+
 impl ApprovalRun {
     pub(crate) async fn bind(
         &mut self,
@@ -136,7 +207,11 @@ impl ApprovalRun {
                     self.callbacks.context.as_ref().ok_or(Failure::Admission)?,
                 )?;
                 if authorized.terminal? {
-                    return Err(Failure::ApprovalCancelled);
+                    // The turn-end rule is the authority on quiet ends: a
+                    // host-side close with zero accepted bytes already
+                    // classified this turn as completed; the pump must not
+                    // re-map its own arrival into a cancellation.
+                    return Ok(());
                 }
             }
             let ready = !self.callbacks.entries.is_empty()
@@ -206,7 +281,8 @@ impl ApprovalRun {
                         entry.mark("admitted");
                     }
                     if begun.terminal? {
-                        return Err(Failure::ApprovalCancelled);
+                        // Same quiet-end authority as the authorize pump.
+                        return Ok(());
                     }
                 }
             }
@@ -235,8 +311,15 @@ impl ApprovalRun {
                     .callbacks
                     .entries
                     .iter_mut()
-                    .find(|(_, e)| e.admitted && e.write.is_none())
+                    .find(|(_, e)| e.admitted && e.write.is_none() && !e.in_flight)
             {
+                // The frame is about to be committed to the transport. Set
+                // this on the same borrow, BEFORE the recheck pump below,
+                // because that pump can deliver this entry's own resolution
+                // and must not cancel the frame it is answering.
+                entry.in_flight = true;
+                #[cfg(any(test, feature = "test-diagnostics"))]
+                entry.mark("in-flight");
                 self.sending = Some(Sending {
                     id: key.clone(),
                     prepared: entry.prepared.take().ok_or(Failure::Protocol)?,
@@ -278,12 +361,48 @@ impl ApprovalRun {
                     continue;
                 }
                 checked.output.map_err(|_| Failure::LostAuthority)?;
+                // Deliberate decision (ADR-046 amendment 2026-09-12), revised
+                // by the approval-loss verdicts: a turn end on this pump is
+                // classified by the turn-end rule, not by this site. When the
+                // rule's cancel arm fired (`ApprovalCancelled` was already
+                // decided by the rule for a non-in-flight unwritten entry)
+                // `?` propagates it; when the rule returned the quiet verdict
+                // for a host-side close with zero accepted bytes, this pump
+                // honors it with a clean exit — never a re-mapped
+                // cancellation, which inverted the in-flight untransmitted
+                // scenario's own subject.
                 if checked.terminal? {
-                    return Err(Failure::ApprovalCancelled);
+                    return Ok(());
                 }
                 #[cfg(any(test, feature = "test-diagnostics"))]
                 if let Some(entry) = self.callbacks.entries.get_mut(&sending.id) {
                     entry.mark("checked");
+                }
+                // The runtime resolved this request before any byte was
+                // accepted. The retained ADR-046 rule for a pre-send
+                // resolution is the quiet path: the resolution is
+                // informational, the armed frame is dropped (its transmit
+                // path is gone), the entry keeps `in_flight` so it is never
+                // re-selected, and the drive continues — the same quiet
+                // completion the pre-admission resolution produces, never a
+                // named failure.
+                if !runner.prepared_admissible(&sending.id) {
+                    let id = sending.id.clone();
+                    drop(self.sending.take());
+                    if let Some(entry) = self.callbacks.entries.get_mut(&id) {
+                        entry.in_flight = true;
+                        #[cfg(any(test, feature = "test-diagnostics"))]
+                        entry.mark("resolved-before-send");
+                    }
+                    continue;
+                }
+                #[cfg(test)]
+                if self.callbacks.fault == Some(super::Fault::SendGate)
+                    && let Some(gate) = self.callbacks.gate.take()
+                {
+                    // A pure hold: nothing reads the wire here, so a peer
+                    // that leaves during it is first observed by the send.
+                    gate.wait().await;
                 }
                 let step = crate::operation::bounded(
                     runner.send_prepared_approval(&mut sending.prepared),
@@ -291,7 +410,18 @@ impl ApprovalRun {
                     until,
                 )
                 .await?
-                .map_err(|_| Failure::Protocol)?;
+                .map_err(|error| {
+                    // The classifier (H2/H3+Q3), one evidence path: the send
+                    // site's frame is armed BY DEFINITION (it is the frame
+                    // being sent), so the verdict differs only on the
+                    // transport's own zero-byte observation. Peer-gone causes
+                    // with an observed zero — or a never-armed entry — are
+                    // the named refusal; any accepted byte is the uncertain
+                    // `SettlementUnknown`; host-side `Closed`/`HostClosed`
+                    // and genuine protocol errors never carry the peer-gone
+                    // verdict.
+                    send_failure_with_termination(runner, true, error)
+                })?;
                 match step {
                     PreparedUpdate::Update(update, observation) => {
                         if drive
@@ -308,11 +438,26 @@ impl ApprovalRun {
                             .get_mut(&sending.id)
                             .ok_or(Failure::Protocol)?;
                         entry.write = Some(write); // actual receipt before any await
+                        // The write is accepted: the entry is no longer in
+                        // flight, and `write` now carries the receipt. A later
+                        // resolution is post-write and is informational.
+                        entry.in_flight = false;
                         #[cfg(any(test, feature = "test-diagnostics"))]
                         entry.mark("write-accepted");
                         #[cfg(test)]
                         if self.callbacks.fault == Some(super::Fault::WritePanic) {
                             panic!("actual owned response write unwind");
+                        }
+                        // ReceiptGate: hold between the transport's write
+                        // receipt and the acceptance observation, so a test
+                        // can drive a resolution in exactly that window. The
+                        // gate does not pump the session, so the resolution
+                        // stays unparsed across the hold.
+                        #[cfg(test)]
+                        if self.callbacks.fault == Some(super::Fault::ReceiptGate)
+                            && let Some(gate) = self.callbacks.gate.take()
+                        {
+                            gate.wait().await;
                         }
                         let written = drive
                             .pump(
@@ -464,5 +609,101 @@ impl ApprovalRun {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod send_failure_tests {
+    //! The never-transmitted classifier (ADR-046 amendment, review H2/H3):
+    //! one function decides the verdict for every transport-observing arm —
+    //! the send path, the pump and the turn-end rule. The table below pins
+    //! EVERY arm: peer-gone `Io`/`PeerEof` with an observed zero-byte
+    //! snapshot is `PeerUnavailable`; the same causes with bytes accepted
+    //! are the uncertain `SettlementUnknown`; host-side `Closed` (the
+    //! parse-removed-id sentinel) and `HostClosed` (the host's own action)
+    //! never carry the peer-gone verdict at ANY offset; genuine protocol
+    //! errors stay `Protocol` regardless of the snapshot.
+    use super::send_failure;
+    use crate::Failure;
+    use hagency_runtime::codex::{session, transport};
+
+    #[test]
+    fn native_never_transmitted_frame_is_peer_unavailable() {
+        // Only the peer-gone causes, only with OBSERVED zero bytes, on an
+        // ARMED frame (a snapshot exists implies a writer was installed).
+        for cause in [
+            transport::Error::Io("stdin write"),
+            transport::Error::Io("stdin flush"),
+            transport::Error::Io("stdout read"),
+            transport::Error::Io("stderr read"),
+            transport::Error::PeerEof,
+        ] {
+            assert_eq!(
+                send_failure(session::Error::Transport(cause), true, true),
+                Failure::PeerUnavailable,
+                "peer-gone {cause:?} with an observed zero-byte snapshot must be the named refusal"
+            );
+        }
+        // Q3's widened class: a NEVER-ARMED entry (no prepared frame, no
+        // in-flight flag — the read-side `PeerEof` with no writer ever
+        // installed) is in the zero-byte class even without a snapshot,
+        // because there is no frame whose fate could be unknown.
+        for cause in [
+            transport::Error::Io("stdout read"),
+            transport::Error::Io("stderr read"),
+            transport::Error::PeerEof,
+        ] {
+            assert_eq!(
+                send_failure(session::Error::Transport(cause), false, false),
+                Failure::PeerUnavailable,
+                "peer-gone {cause:?} with no frame ever armed is the named refusal, not a coin flip"
+            );
+        }
+        // Host-side causes are never "peer gone", even with zero bytes.
+        for host_side in [transport::Error::Closed, transport::Error::HostClosed] {
+            assert_eq!(
+                send_failure(session::Error::Transport(host_side), true, true),
+                Failure::SettlementUnknown,
+                "host-side {host_side:?} must not carry the peer-gone verdict"
+            );
+        }
+    }
+
+    #[test]
+    fn native_partial_write_keeps_protocol_and_uncertainty() {
+        // The negative control: once any byte is accepted the frame was
+        // transmitted, so its fate is UNKNOWN — the uncertain verdict (never
+        // a silent completion, never a protocol fault), and a *recorded*
+        // frame's fate belongs to the reconcile's rules. This holds for the
+        // host-side causes too (bytes accepted dominates the cause).
+        for cause in [
+            transport::Error::Io("stdin write"),
+            transport::Error::PeerEof,
+            transport::Error::HostClosed,
+            transport::Error::Closed,
+        ] {
+            assert_eq!(
+                send_failure(session::Error::Transport(cause), false, true),
+                Failure::SettlementUnknown,
+                "{cause:?} with bytes accepted is uncertain, never silent"
+            );
+        }
+        // A genuine protocol error is never re-labelled, at any offset.
+        assert_eq!(
+            send_failure(
+                session::Error::Transport(transport::Error::Capacity),
+                true,
+                true
+            ),
+            Failure::Protocol
+        );
+        assert_eq!(
+            send_failure(
+                session::Error::Transport(transport::Error::Capacity),
+                false,
+                false
+            ),
+            Failure::Protocol
+        );
     }
 }

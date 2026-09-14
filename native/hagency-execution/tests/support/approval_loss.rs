@@ -54,11 +54,14 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
     .unwrap()
     .with_approvals(ApprovalHost::new(2, 1, 20_000, 1500).unwrap())
     .unwrap();
-    crate::approval::diagnostics::reset();
     host.approval_fault = Some(fault);
     host
 }
-pub(crate) fn fixture(root: &std::path::Path) -> (DomainStore, RunnerCapability) {
+pub(crate) fn fixture(
+    root: &std::path::Path,
+    dispatch_key: &str,
+) -> (DomainStore, RunnerCapability) {
+    crate::approval::diagnostics::reset(dispatch_key);
     let mut db = DomainRepository::open(&root.join("state")).unwrap();
     db.register(&registration()).unwrap();
     let pool = resource("pool", "seat", 1000);
@@ -133,7 +136,7 @@ pub(crate) fn fixture(root: &std::path::Path) -> (DomainStore, RunnerCapability)
     db.create_canonical_task("task", "session", "Owned receipt loss", now())
         .unwrap();
     db.enqueue_dispatch(&DispatchInput {
-        id: "dispatch".into(),
+        id: dispatch_key.into(),
         session_id: "session".into(),
         task_id: Some("task".into()),
         resources: vec![ResourceLease {
@@ -164,7 +167,7 @@ async fn native_owned_approval_caller_loss() {
         let work = root.path().join("work");
         hagency_store::private::directory(&work).unwrap();
         let work = work.canonicalize().unwrap();
-        let (domain, cap) = fixture(root.path());
+        let (domain, cap) = fixture(root.path(), "caller-loss");
         let mut op = Operation::start(
             domain.clone(),
             cap.clone(),
@@ -223,7 +226,10 @@ async fn native_owned_approval_caller_loss() {
             assert_eq!(
                 writes,
                 usize::from(matches!(fault, Fault::WriteAck | Fault::WritePanic)),
-                "{fault:?}"
+                "{fault:?}: expected an accepted write on the wire; host wrote {} frame(s), probe read {}, probe markers present: {}",
+                host_response_frames(&work).len(),
+                probe_read_frames(&work).len(),
+                markers_present(&work),
             );
         }
         let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
@@ -280,7 +286,7 @@ async fn native_owned_approval_barriers_pending_receipt() {
         let work = root.path().join("work");
         hagency_store::private::directory(&work).unwrap();
         let work = work.canonicalize().unwrap();
-        let (domain, cap) = fixture(root.path());
+        let (domain, cap) = fixture(root.path(), "barriers-pending-receipt");
         let gate = Arc::new(crate::approval::Gate::default());
         let mut configured = host(&work, fault, "owned-approval-queued");
         configured.approval_gate = Some(gate.clone());
@@ -329,7 +335,7 @@ async fn native_owned_approval_barriers_pending_receipt() {
         let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
         assert_eq!(
             sql.query_row(
-                "SELECT state FROM runner_dispatches WHERE id='dispatch'",
+                "SELECT state FROM runner_dispatches WHERE id='barriers-pending-receipt'",
                 [],
                 |r| r.get::<_, String>(0)
             )
@@ -399,7 +405,7 @@ async fn native_owned_approval_usage_successful_control() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "usage-successful-control");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::BeginGate, "owned-approval-queued-usage");
     configured.approval_gate = Some(gate.clone());
@@ -471,7 +477,7 @@ async fn native_owned_approval_usage_unknown_slot() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "usage-unknown-slot");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::MaintainGate, "owned-approval-usage");
     configured.approval_gate = Some(gate.clone());
@@ -534,7 +540,7 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "acceptance-reconcile-accepted");
     let mut op = Operation::start(
         domain.clone(),
         cap.clone(),
@@ -649,7 +655,7 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
     let work = root.path().join("work");
     hagency_store::private::directory(&work).unwrap();
     let work = work.canonicalize().unwrap();
-    let (domain, cap) = fixture(root.path());
+    let (domain, cap) = fixture(root.path(), "acceptance-reconcile-unrecorded");
     let gate = Arc::new(crate::approval::Gate::default());
     let mut configured = host(&work, Fault::RecheckGate, "owned-approval");
     configured.approval_gate = Some(gate.clone());
@@ -743,7 +749,6 @@ async fn native_owned_approval_acceptance_reconcile_unrecorded() {
         0
     );
 }
-
 /// The harness's derived wait: one tenth of the operation budget every
 /// scenario below grants (`Limits::operation_ms`, 25 s). A literal here is
 /// what let a loaded run miss a notice the host had lawfully not yet sent —
@@ -752,8 +757,15 @@ const fn harness_wait() -> Duration {
     Duration::from_millis(crate::approval::Gate::OPERATION_BUDGET_MS / 10)
 }
 
-/// Response frames the HOST actually wrote (from the probe parent's wire
-/// record): lines with an `approval-*` id and a `result` field.
+/// Approval response frames the probe actually read, one JSON line each.
+fn probe_read_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
+    std::fs::read_to_string(work.join("owned-dispatch.approval-bytes"))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|line| serde_json::from_str(line).ok())
+        .collect()
+}
+/// Host-written approval response frames (id starts with `approval-`).
 fn host_response_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
     std::fs::read_to_string(work.join("owned-dispatch.requests"))
         .unwrap()
@@ -765,17 +777,6 @@ fn host_response_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
                 .is_some_and(|id| id.starts_with("approval-"))
                 && value.get("result").is_some()
         })
-        .collect()
-}
-
-/// Frames the PROBE actually read (its `approval-bytes` append log) — the
-/// read-side counterpart of [`host_response_frames`], so a mismatch names
-/// which side lost the frame.
-fn probe_read_frames(work: &std::path::Path) -> Vec<serde_json::Value> {
-    std::fs::read_to_string(work.join("owned-dispatch.approval-bytes"))
-        .unwrap_or_default()
-        .lines()
-        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .collect()
 }
 
@@ -798,4 +799,766 @@ fn markers_present(work: &std::path::Path) -> String {
             }
         })
         .unwrap_or_else(|_| "<unreadable>".to_owned())
+}
+/// The middle case (design §3a): the host is held at the recheck gate with
+/// `in_flight` set and the frame armed but unwritten; the fixture then emits
+/// the resolution for that in-flight id, and the host is released only after
+/// the resolution is on the wire, so it is parsed before the first byte.
+/// ADR-046's rule for a pre-send resolution is the quiet path: the armed
+/// frame is dropped, the entry stays in flight, nothing is cancelled and no
+/// frame is written (the once-and-order rule of the runtime forbids the
+/// write after a resolution). A resolution parsed after the receipt is the
+/// `receipt_before_resolution` scenario below. Fails on the pre-change
+/// predicate (`write.is_none()` alone cancels).
+#[tokio::test]
+async fn native_owned_approval_in_flight_resolution_takes_the_quiet_path() {
+    use std::sync::{Arc, atomic::Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "in-flight-resolution-completes-write");
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(&work, Fault::RecheckGate, "owned-approval-gate-resolve");
+    configured.approval_gate = Some(gate.clone());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        configured,
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "original recheck did not reach gate"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // The host is in flight at the gate. Release the probe first and wait
+    // until its resolution is on the wire, THEN release the host: the
+    // resolution is parsed before the first byte on every run, never a race
+    // between the probe's write and the host's first write step.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let resolved = work.join("owned-dispatch.approval-resolved");
+    let end = tokio::time::Instant::now() + harness_wait() * 2;
+    while !resolved.exists() {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe never announced its resolution; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
+    // The host leaves the gate and the send site's guard retires the armed
+    // frame. Observe that mark before telling the probe to end its turn: a
+    // turn end parsed during the hold reaches the pump first and the drive
+    // ends on it, which is the turn-end scenario, not this one.
+    let end = tokio::time::Instant::now() + harness_wait();
+    loop {
+        let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+        if trace.contains("resolved-before-send") {
+            break;
+        }
+        assert!(
+            tokio::time::Instant::now() < end,
+            "the pre-send quiet arm did not fire after the gate release; trace: {trace}"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    std::fs::write(work.join("owned-dispatch.approval-continue"), b"continue").unwrap();
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    // The quiet path is not a cancellation and not an uncertainty: the
+    // in-flight guard ignored the resolution for the armed frame, the send
+    // site's quiet arm retired it, the later turn end found a known fate,
+    // no frame reached the wire, nothing was accepted, and the entry stayed
+    // in flight so it was never re-selected.
+    let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+    // The retained owner's cleanup reports unknown on macOS (the supervisor
+    // cannot prove `whole_tree_stopped` there; the same platform-aware
+    // outcome as the resolved-before-first-byte scenario) — an equality, so
+    // any other failure is still refused on every platform.
+    let expected = if cfg!(target_os = "macos") {
+        Some(Failure::CleanupUnknown)
+    } else {
+        None
+    };
+    assert_eq!(
+        report.failure,
+        expected,
+        "{:?}; trace: {trace}; cancelled: {}",
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    let position = |mark: &str| {
+        trace
+            .find(mark)
+            .unwrap_or_else(|| panic!("{mark} missing from trace: {trace}"))
+    };
+    assert!(
+        position("in-flight") < position("resolved-ignored-in-flight")
+            && position("resolved-ignored-in-flight") < position("resolved-before-send")
+            && position("resolved-before-send") < position("turn-ended-ignored-in-flight"),
+        "trace order: {trace}"
+    );
+    assert!(
+        !trace.contains("resolved-cancels") && !trace.contains("turn-ended-cancels"),
+        "the in-flight frame was cancelled; trace: {trace}"
+    );
+    assert!(
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id).is_empty(),
+        "cancelled: {}",
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert_eq!(host_response_frames(&work).len(), 0, "trace: {trace}");
+    assert_eq!(probe_read_frames(&work).len(), 0, "trace: {trace}");
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+/// The named first case (design §3b): a resolution before admission still
+/// cancels with the exact variant, and nothing reaches the wire.
+#[tokio::test]
+async fn native_owned_approval_resolution_before_admission_cancels() {
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "resolution-before-admission-cancels");
+    // RecheckGate without an attached gate is inert: the take() finds None.
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        host(&work, Fault::RecheckGate, "owned-approval-resolve"),
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let _notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    // Deliberately NO owner verdict: the probe resolves while the entry is
+    // retained but not admitted, which is the pre-admission case.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.failure,
+        Some(Failure::ApprovalCancelled),
+        "{:?}; {}",
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert!(!work.join("owned-dispatch.approval-bytes").exists());
+    assert!(host_response_frames(&work).is_empty());
+}
+
+/// The re-entry guard (design §3c): after one written frame and its legal
+/// post-write resolution, no second frame for that id is ever written — the
+/// probe itself fails if one arrives.
+#[tokio::test]
+async fn native_owned_approval_no_second_frame_after_resolution() {
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "no-second-frame-after-resolution");
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        host(
+            &work,
+            Fault::RecheckGate,
+            "owned-approval-admitted-resolve-count",
+        ),
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    assert_eq!(host_response_frames(&work).len(), 1);
+    assert_eq!(probe_read_frames(&work).len(), 1);
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        1
+    );
+}
+
+/// The receipt-before-resolution ordering (design §4 scenario 1): the host is
+/// held between the transport's write receipt and the acceptance observation
+/// (`Fault::ReceiptGate`); the probe reads the frame, then resolves, so the
+/// resolution can only be parsed after the receipt. The acceptance row must
+/// exist and no transport failure may occur.
+#[tokio::test]
+async fn native_owned_approval_receipt_before_resolution() {
+    use std::sync::{Arc, atomic::Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "receipt-before-resolution");
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(&work, Fault::ReceiptGate, "owned-approval");
+    configured.approval_gate = Some(gate.clone());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        configured,
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "write receipt did not reach the receipt gate; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // The probe must have read and recorded the frame before the host's
+    // acceptance observation runs; the gate does not pump the session, so the
+    // resolution it emits stays unparsed across the hold.
+    let bytes = work.join("owned-dispatch.approval-bytes");
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !bytes.exists() {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe never recorded the written frame; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    let expected = if cfg!(target_os = "macos") {
+        Some(Failure::CleanupUnknown)
+    } else {
+        None
+    };
+    assert_eq!(
+        report.failure,
+        expected,
+        "{:?} {:?}; settlement={:?}",
+        report.failure,
+        report.runtime_observation(),
+        report.settlement_cause
+    );
+    assert_eq!(host_response_frames(&work).len(), 1);
+    assert_eq!(probe_read_frames(&work).len(), 1);
+    // The host owns the pipe on macOS: once the receipt was observed the
+    // host closes its end on the turn end, and HostClosed is the honest
+    // termination cause — a quiet completion, not a defect. Only a PEER-side
+    // cause after a recorded receipt would be unexplained.
+    if let Some(observation) = report.runtime_observation() {
+        assert!(
+            observation.transport_cause.is_none()
+                || matches!(
+                    observation.transport_cause,
+                    Some(hagency_runtime::codex::transport::Error::HostClosed)
+                ),
+            "{observation:?}"
+        );
+    }
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |r| r.get::<_, u64>(0)
+        )
+        .unwrap(),
+        1
+    );
+}
+
+/// F2's case (design §4 scenario 2): the resolution is emitted while the host
+/// is held at the recheck gate — before the first byte of the frame. The
+/// send-site guard must refuse the resolved frame with the named verdict,
+/// never `Closed`, and no frame may reach the wire.
+#[tokio::test]
+async fn native_owned_approval_resolved_before_first_byte() {
+    use std::sync::{Arc, atomic::Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "resolved-before-first-byte");
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(&work, Fault::RecheckGate, "owned-approval-resolve-first");
+    configured.approval_gate = Some(gate.clone());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        configured,
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "original recheck did not reach gate; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // The host is armed at the recheck gate; emit the resolution before the
+    // first byte, confirm it is on the wire, then release the host.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let resolving = work.join("owned-dispatch.approval-resolving");
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !resolving.exists() {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe never emitted the pre-first-byte resolution; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
+    let report = op.wait().await.unwrap();
+    // The quiet path (Q2): a pre-send resolution completes the operation —
+    // the same quiet completion the pre-admission resolution produces, never
+    // a named failure (`ResponseUnavailable` is withdrawn) and never a
+    // transport refusal (`Closed`).
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    let expected = if cfg!(target_os = "macos") {
+        Some(Failure::CleanupUnknown)
+    } else {
+        None
+    };
+    assert_eq!(
+        report.failure,
+        expected,
+        "{:?} {:?}; {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    if let Some(observation) = report.runtime_observation() {
+        assert!(
+            !matches!(
+                observation.transport_cause,
+                Some(hagency_runtime::codex::transport::Error::Closed)
+            ),
+            "{observation:?}"
+        );
+    }
+    // No frame reached the wire and no acceptance row exists.
+    assert!(host_response_frames(&work).is_empty());
+    assert!(!work.join("owned-dispatch.approval-bytes").exists());
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |row| row.get::<_, u64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+/// A frame whose peer vanished before its first byte is never uncertain
+/// (design Q4), in an order that holds on every run: the owner's verdict is
+/// recorded, the host passes its recheck and is held at the send gate — a
+/// pure hold, no wire read — then the `owned-approval-eof-gated` probe
+/// exits, and the test proves the exit (the probe's process-lifetime lock
+/// on the `alive` marker becomes acquirable) before releasing the host. The
+/// send path is therefore the first observer of the loss: its first write
+/// fails with zero bytes accepted, the verdict names the refusal
+/// (`PeerUnavailable`), the observation carries the arm with
+/// `accepted_bytes == 0`, and no accepted row is manufactured — distinct
+/// from both `Protocol` (malformed bytes) and the reconcile's uncertainty (a
+/// written frame's lost acknowledgement). The earlier shape (the probe
+/// exiting right after its callback) let a loaded host observe the exit
+/// before the verdict was recorded and refuse the verdict itself
+/// (`RunnerAuthority`).
+#[tokio::test]
+async fn native_owned_approval_peer_gone_before_first_byte() {
+    use std::sync::{Arc, atomic::Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "peer-gone-before-first-byte");
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(&work, Fault::SendGate, "owned-approval-eof-gated");
+    configured.approval_gate = Some(gate.clone());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        configured,
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "host did not reach the send gate; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // The frame is armed and held before its first byte; now the peer goes,
+    // and its going is proven before the host is released: the probe holds
+    // an exclusive lock on `alive` for its whole life, so the lock is
+    // acquirable exactly when the process is gone.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let alive = std::fs::OpenOptions::new()
+        .write(true)
+        .open(work.join("owned-dispatch.alive"))
+        .unwrap();
+    let end = tokio::time::Instant::now() + harness_wait();
+    loop {
+        match alive.try_lock() {
+            Ok(()) => break,
+            Err(std::fs::TryLockError::WouldBlock) => {}
+            Err(std::fs::TryLockError::Error(error)) => panic!("alive lock: {error}"),
+        }
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe did not exit after its release; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.failure,
+        Some(Failure::PeerUnavailable),
+        "{:?} {:?}; trace: {}; cancelled: {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    // The observation names the failing arm and proves zero accepted bytes.
+    let observation = report.runtime_observation().expect("observation");
+    assert!(
+        matches!(
+            observation.transport_cause,
+            Some(hagency_runtime::codex::transport::Error::Io(_))
+                | Some(hagency_runtime::codex::transport::Error::PeerEof)
+        ),
+        "{observation:?}"
+    );
+    // The send path observed the loss, so its write custody IS present and
+    // shows the never-transmitted frame: zero accepted of the whole frame.
+    let write = observation.write.as_ref().expect("send-site write custody");
+    assert_eq!(write.accepted_bytes, 0, "{observation:?}");
+    assert_eq!(write.total_bytes, 51, "{observation:?}");
+    // Never transmitted: no frame reached the wire and no row was accepted.
+    assert!(host_response_frames(&work).is_empty());
+    assert!(!work.join("owned-dispatch.approval-bytes").exists());
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |row| row.get::<_, u64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM owner_approvals WHERE state='applied'",
+            [],
+            |row| row.get::<_, u64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+/// The final verdict's rule, untransmitted arm (design Q3/Q4): the probe ends
+/// the turn while the host is held at the recheck gate — the entry is in
+/// flight, the frame armed, not one byte on the wire. The turn end must never
+/// end the operation silently: with zero accepted bytes the verdict is
+/// `PeerUnavailable` (never transmitted), never `Completed`.
+#[tokio::test]
+async fn native_owned_approval_turn_end_untransmitted() {
+    use std::sync::{Arc, atomic::Ordering};
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "turn-end-untransmitted");
+    let gate = Arc::new(crate::approval::Gate::default());
+    let mut configured = host(
+        &work,
+        Fault::RecheckGate,
+        "owned-approval-turn-untransmitted",
+    );
+    configured.approval_gate = Some(gate.clone());
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        configured,
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    // The host reaches the recheck gate: in flight, armed, zero bytes.
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !gate.entered.load(Ordering::Acquire) {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "original recheck did not reach gate; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    // Let the probe end its turn and exit while the host is still held.
+    std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
+    let resolving = work.join("owned-dispatch.approval-resolving");
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !resolving.exists() {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe never emitted the turn end; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    gate.release.store(true, Ordering::Release);
+    let report = op.wait().await.unwrap();
+    // ADR-046's who-closed-first: the host closing its own pipe on the
+    // peer's turn end, with nothing transmitted, is the QUIET family — the
+    // turn completed without the approval. Never `Protocol`, never
+    // `PeerUnavailable` (that name stays reserved for `Io("stdin write")`
+    // against a gone reader and `PeerEof`).
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; trace: {}; cancelled: {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+    );
+    // macOS close shape: the host's own `HostClosed` with no accepted byte
+    // may surface as the cleanup failure, never a settlement or protocol
+    // verdict.
+    let acceptable = if cfg!(target_os = "macos") {
+        matches!(
+            report.failure,
+            None | Some(Failure::ApprovalCancelled) | Some(Failure::CleanupUnknown)
+        )
+    } else {
+        report.failure.is_none()
+    };
+    assert!(
+        acceptable,
+        "{:?} {:?}; trace: {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id)
+    );
+    let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+    assert!(
+        trace.contains("turn-ended-in-flight-untransmitted"),
+        "untransmitted arm never stamped; trace: {trace}"
+    );
+    // F3 (no leak on cancel): the deferred armed callback is released on
+    // stop — the run's termination settled its fate via the turn-end rule,
+    // so no armed entry may survive into the delivered report.
+    assert_eq!(
+        report.approval_custody().0,
+        0,
+        "a deferred armed callback must be released on stop; {:?} {:?}",
+        report.failure,
+        report.runtime_observation()
+    );
+    // Never transmitted: no frame, no accepted row.
+    assert!(host_response_frames(&work).is_empty());
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row(
+            "SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1",
+            [],
+            |row| row.get::<_, u64>(0)
+        )
+        .unwrap(),
+        0
+    );
+}
+
+/// The final verdict's rule, uncertain arm: the probe stays silent while the
+/// whole frame is accepted, then ends the turn and exits with the frame
+/// unread. The fate of a transmitted, receipt-less frame is unknown — the
+/// operation must never complete silently. On Windows the flush fails
+/// mid-write (bytes accepted, uncertain arm); on POSIX the atomic 51-byte
+/// write completes and the turn end reaches a written, unrecorded entry (the
+/// reconcile's `SettlementUnknown`). Both arms assert the same verdict:
+/// `SettlementUnknown`, never `Completed`.
+#[tokio::test]
+async fn native_owned_approval_turn_end_midwrite_uncertain() {
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "turn-end-midwrite-uncertain");
+    // RecheckGate without an attached gate is inert: the take() finds None.
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        host(&work, Fault::RecheckGate, "owned-approval-turn-midwrite"),
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    choose(&domain, notice.request_id).await;
+    // The probe exits on its own schedule (silent 1.2 s, turn end, exit
+    // unread); wait for its handshake marker before claiming the report.
+    let midwrite = work.join("owned-dispatch.approval-midwrite-exit");
+    let end = tokio::time::Instant::now() + harness_wait();
+    while !midwrite.exists() {
+        assert!(
+            tokio::time::Instant::now() < end,
+            "probe never reached its midwrite exit; probe markers present: {}",
+            markers_present(&work)
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let report = op.wait().await.unwrap();
+    assert_ne!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}; trace: {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id)
+    );
+    assert_eq!(
+        report.failure,
+        Some(Failure::SettlementUnknown),
+        "{:?} {:?}; trace: {}",
+        report.failure,
+        report.runtime_observation(),
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id)
+    );
+    let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+    // One of the two uncertainty arms must name the fate — the mid-write
+    // send refusal or the reconcile's unrecorded acceptance; which one is
+    // platform timing, being-uncertain is not.
+    assert!(
+        trace.contains("turn-ended-in-flight-uncertain")
+            || trace.contains("write-flushed")
+            || trace.contains("settlement"),
+        "no uncertainty arm stamped; trace: {trace}"
+    );
 }

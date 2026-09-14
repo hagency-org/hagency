@@ -1,0 +1,24 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/../tests/support/approval_loss.rs:531:
+         .lines()
+         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+         .filter(|value| {
+[31m-            value["id"].as_str().is_some_and(|id| id.starts_with("approval-"))
+(B[m[32m+            value["id"]
+(B[m[32m+                .as_str()
+(B[m[32m+                .is_some_and(|id| id.starts_with("approval-"))
+(B[m                 && value.get("result").is_some()
+         })
+         .collect()
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/../tests/support/approval_loss.rs:658:
+     let mut op = Operation::start(
+         domain.clone(),
+         cap.clone(),
+[31m-        host(&work, Fault::RecheckGate, "owned-approval-admitted-resolve-count"),
+(B[m[32m+        host(
+(B[m[32m+            &work,
+(B[m[32m+            Fault::RecheckGate,
+(B[m[32m+            "owned-approval-admitted-resolve-count",
+(B[m[32m+        ),
+(B[m         Limits {
+             operation_ms: 25_000,
+             response_ms: 1500,

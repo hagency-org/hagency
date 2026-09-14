@@ -179,6 +179,7 @@ pub enum OwnedFailure {
     UnsupportedRunner {
         framework: String,
     },
+    PeerUnavailable,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OwnedObservation {
