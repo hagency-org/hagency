@@ -63,6 +63,17 @@ fn hold_reader_to_eof(reader: &mut impl BufRead, marker: &Path) -> io::Result<()
 pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::Result<bool> {
     callback("approval-1")?;
     if mode == "owned-approval-eof" {
+        // EOF is this mode's cancellation subject, but it must never overtake
+        // the callback that authorizes it: this probe used to exit right after
+        // writing the callback, and on a loaded host the teardown closed
+        // stdout before the host's first read had consumed the callback line,
+        // stranding a parsed server request (termination snapshot:
+        // pending_server_requests 1) so the notice never arrived and the run
+        // reported Protocol before the approval drive ever ran. Gate on the
+        // host-side release — the test writes it only once the notice proves
+        // the callback was retained — then exit; teardown closes stdout and
+        // the EOF arrives ordered, still while the approval is pending.
+        gate(marker)?;
         return Ok(false);
     }
     if mode == "owned-approval-resolve" {

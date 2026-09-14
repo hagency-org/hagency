@@ -137,6 +137,12 @@ async fn native_owned_approval_cancellation() {
             "owned-approval-resolve" => {
                 fs::write(f.work.join("owned-dispatch.approval-release"), b"release").unwrap();
             }
+            "owned-approval-eof" => {
+                // The notice proves the host retained the callback; releasing
+                // the probe's gate only then orders its hang-up AFTER delivery
+                // instead of racing the callback line against process exit.
+                fs::write(f.work.join("owned-dispatch.approval-release"), b"release").unwrap();
+            }
             "owned-approval-after" => choose(&f, &request.request_id, ApprovalChoice::Once).await,
             "owned-approval" => op.cancel(),
             "caller-drop" => {
