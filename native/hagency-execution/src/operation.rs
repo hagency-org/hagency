@@ -1184,7 +1184,7 @@ mod tests {
             Failure::UnsupportedApproval,
         ] {
             assert!(
-                !observes_completion(&Err::<(), Failure>(excluded)),
+                !observes_completion(&Err::<(), Failure>(excluded.clone())),
                 "{excluded:?} must not observe completion custody"
             );
         }
