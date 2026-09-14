@@ -2842,6 +2842,25 @@ impl DomainStore {
         self.call(weight(&registration)?, move |db| db.register(&registration))
             .await
     }
+    pub async fn provisioning_registration(
+        &self,
+        fleet_id: String,
+    ) -> Result<hagency_core::authority::Registration, Error> {
+        self.call(weight(&fleet_id)?, move |db| {
+            db.provisioning_registration(&fleet_id)
+        })
+        .await
+    }
+    pub async fn provisioning_owner_room(
+        &self,
+        owner_mxid: String,
+        server_name: String,
+    ) -> Result<hagency_core::replies::OwnerRoomFacts, Error> {
+        self.call(weight(&(&owner_mxid, &server_name))?, move |db| {
+            db.provisioning_owner_room(&owner_mxid, &server_name)
+        })
+        .await
+    }
     pub async fn admit(&self, proof: VerifiedRequest, now: u64) -> Result<Engagement, Error> {
         self.call(
             weight(&(
