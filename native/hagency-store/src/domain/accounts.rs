@@ -177,6 +177,16 @@ impl ManagedAccount {
             binding: self.binding.clone(),
         })
     }
+    /// The login-shaped launch gate: the same current-directory proof as
+    /// `prepare_launch`, without a dispatch scope — a provider login is the
+    /// operator's own host act, not a dispatch. Production caller:
+    /// `hagency::bootstrap::accounts::run` (CLI `account login --id`).
+    pub fn prepare_login(&self) -> Result<ManagedLaunch, Error> {
+        self.binding.check()?;
+        Ok(ManagedLaunch {
+            binding: self.binding.clone(),
+        })
+    }
     pub fn bind_claim_profile(
         &self,
         profile: OwnedClaimProfile,
