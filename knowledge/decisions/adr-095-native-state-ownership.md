@@ -532,8 +532,15 @@ without storing them — no migration, no schema change.** They are
 verification-time-only inputs: `verify_request` reads them once and nothing
 else consumes them, so persisting them would add a migration (034) and a
 head-pin move for facts no later read needs. The event's own content never
-asserts any of them — the collector reads `m.room.power_levels`, the
-project-binding state event and `m.room.name` from the SDK sync, and a
+asserts any of them — the collector parses them from the **same `/state`
+response** its existing room parser (`collector.rs:475`) already reads:
+`m.room.power_levels` (`users` → `powers`, `users_default` →
+`default_power`, `invite` → `invite_power`), the project-binding state
+event → `binding`, and `m.room.name` → `name`. They are carried **in
+memory** on the observation type (extending `MatrixRoomObservation`,
+`hagency-core/src/replies.rs:44-54`) and the intake batch/event types
+(`event_batch.rs:41-61` and the intake `Event`), handed to `verify_request`
+and then dropped — **nothing stored, no migration, no schema change.** A
 missing/expired observation is refused, never fabricated.
 
 - **reception room** (`source_room_id`) — the collector's full-room snapshot of
