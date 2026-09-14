@@ -41,6 +41,7 @@ peer. Nothing about the production launch shape changes.
 - native/hagency/tests/support/ (the callback-capable runtime probe fixture and the scripted second-identity enrollment helpers)
 - native/fixtures/ (the callback-capable probe's pinned binary manifest/vector, if any)
 - native/hagency/tests/bootstrap.rs
+- native/hagency/Cargo.toml (the test-probe `[[bin]]` registration only, mirroring the three sibling probes)
 - specs/task-rust-private-approval-delivery-fixture.spec.md
 - specs/task-rust-private-approval-wiring.spec.md
 - knowledge/decisions/adr-138-bounded-native-approval-observation.md
@@ -64,18 +65,16 @@ Scenario: A service-composed run delivers a request end to end
 
 ## Decisions
 
-**The wiring selector is owed by this slice, parked until it lands.**
-`native_private_approval_delivery_is_wired` is the red selector whose
-observation this slice exists to make possible; it is **parked as an owed
-name** in the scenario above (no `Test:` line, because the checker binds only
-names that exist and the PC-C0b code does not exist yet) — **integration
-restores the `Test:` line when the fixture slice lands** with the same name
-and same end-to-end semantics. The PC-C0 wiring spec keeps its other selector
-(`native_private_approval_delivery_wiring_refuses_without_enrollment`) bound
-where it is, untouched. The `#[test] fn` in
-`native/hagency/tests/bootstrap/approval.rs` carries the name today and will
-be removed from the PC-C0 lineage until this slice rebuilds it; this slice's
-Allowed Changes own that file.
+**The wiring selector is bound by this slice.**
+`native_private_approval_delivery_is_wired` is the selector whose observation
+this slice exists to make possible; it was parked as an owed name while the
+PC-C0b code did not exist (no `Test:` line, because the checker binds only
+names that exist) — the `Test:` line is **restored in this slice's scenario
+above** with the same name and the same end-to-end semantics, and the
+`#[test] fn` in `native/hagency/tests/bootstrap/approval.rs` carries it
+(this slice's Allowed Changes own that file). The PC-C0 wiring spec keeps its
+other selector (`native_private_approval_delivery_wiring_refuses_without_enrollment`)
+bound where it is, untouched.
 
 **Test-only, never production.** The callback-capable probe and the scripted
 enrollment exist only under test support; the production launch shape

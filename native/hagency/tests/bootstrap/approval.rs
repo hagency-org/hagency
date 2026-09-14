@@ -232,8 +232,13 @@ async fn native_private_approval_delivery_is_wired() {
     // The callback-capable probe is what ran (its own request log), and it
     // was driven by the ordinary dispatch — one attempt, no retries.
     assert!(f.work.join("approval-mcp.requests").exists());
-    // The pump terminated by itself when the worker dropped the sender:
-    // the process exited after the turn without the test killing it.
+    // Process cleanup only: `Running`'s Drop kills and reaps the child so
+    // the fixture never leaks a zombie. It deliberately proves nothing
+    // about the pump's self-termination — the pump task ends its
+    // `while let` loop silently (no terminal log line) and its handle is
+    // aborted, not joined, at shutdown, so the receiver's `None` is not
+    // observable from outside the child; the delivery evidence above is
+    // what this slice observes.
     drop(_child);
 }
 
