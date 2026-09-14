@@ -518,7 +518,7 @@ into the mint.
 | `target_project_id` | retained `project` |
 | `target_room_id` | retained `projectRoomId` |
 | `owner_mxid` | the collector's `Registration` (never the event) |
-| `owner_dm_room_id` | the collector's owner-DM observation (private, never the event) |
+| `owner_dm_room_id` | the store's recorded owner-room scope (`approval_rooms`, migration 013) read through `DomainStore` at intake; a request whose owner has no enrolled owner room is refused before admit (fail-closed, never the event) |
 | `role` | retained `role` |
 | `requested_tokens` | retained `requestedTokens` |
 | `rate_per_day` | retained `ratePerDay` (nullable) |
@@ -584,9 +584,20 @@ missing/expired observation is refused, never fabricated.
   `power(requester) >= invite_power`, `power(owner) >= 100`, and the
   `{v:1, purpose:"project", fleetId, projectId, ownerMxid, authVersion:1}`
   binding.
-- **owner DM room** (`owner_dm_room_id`) — the approval intake's owner-room
-  observation; `verify_request` requires invite-only, megolm-encrypted, and
-  `joined == {owner, approval_bot}` exactly.
+- **owner DM room** (`owner_dm_room_id`) — **the store's recorded owner-room
+  scope**, not a live collector fetch: the approval collector observes and
+  enrolls the owner room at PC-C0's enrollment leg and writes
+  `approval_rooms` (migration 013), whose `config` JSON already carries
+  `joined`/`invite_only`/`encrypted` (`approvals.rs:213-259`). The intake
+  reads those facts through `DomainStore` at admission time (beside the
+  registration read), so `verify_request`'s owner-room check — invite-only,
+  megolm-encrypted, `joined == {owner, approval_bot}` exactly — runs on
+  facts the **approval collector** observed, never the event's content.
+  `verify_request` reads only `room_id`/`invite_only`/`encryption`/`joined`
+  for this room (no `powers`/`binding`/`name`), so the five-field parser
+  extension is **not** needed here. **A request whose owner has no enrolled
+  owner room is refused before `admit` with a named reason — fail-closed,
+  never fabricated.**
 
 **Dispatch point.** The intake hook that sees
 `kind == "com.hagency.engagement.request.v1"` assembles the `ProjectRequest`
