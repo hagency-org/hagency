@@ -425,3 +425,44 @@ reads, quoted: *"Log and retry next tick; the store's caps (`100 000`, `10 000`,
 `30 000`) refuse at a bound, and retention must not repeat that shape."* A deferred
 engagement reports `remaining > 0`; it never refuses admission or an operator
 command.
+
+---
+
+## Amendment 2026-09-14 — the production provisioning ingress is absent
+
+**The gap, read from the tree.** The only statement that mints an engagement
+is `DomainRepository::admit(proof: &VerifiedRequest)` (`domain.rs:1081`,
+the INSERT at `:1135`) — the single minting write, idempotent on
+`request_id`, with the request row as the domain inbox marker. But **no
+production code calls it**: `verify_request` (`hagency-core/src/authority.rs:196`)
+and its `VerifiedRequest` result (`:164`) are invoked from test helpers
+alone; the only production consumers of the authority module are the store's
+`authority`/`project_authority` checks inside `admit` itself. So the native
+product cannot provision an engagement in production — every agent in every
+native test was admitted by a fixture, never through the product ingress.
+
+**The retained ingress this must match.** `POST /api/engagements`
+(`backend-v2.js:15103` → `createEngagementRequest` →
+`engagementStore.createRequest`, `lib/engagement-store.js:486`) is idempotent
+on `requestId` — which the bridge passes as the **Matrix event id** — and
+refuses a reused id with a different digest. The provider's approval is the
+separate `decide()` verdict (`:593`, called at `backend-v2.js:14732/14824`)
+after project-side and provider authority. Native already models both halves
+(`admit` for the mint; `approve` for the verdict), but only the writes exist,
+not the ingress that feeds them.
+
+**The decision.** The production ingress is the **Matrix intake admission
+chain** — owner message → intake admit → provider approval → effect observed —
+carried by the `com.hagency.engagement.request.v1` event (`authority.rs:225`
+is the event-type check `verify_request` already requires). The Matrix
+adapter observes the authenticated event, calls the same `verify_request` to
+build the `VerifiedRequest`, and calls `admit` once — `admit` stays the
+single minting write, and the provider approval is observed as the separate
+`approve` verdict, never folded into the mint. A duplicate request (same
+`source_event_id`) is refused by the same id before any second INSERT; an
+unverified request is refused before `admit`. This changes nothing about the
+store: it wires the production caller the ownership table already assumed.
+
+Cross-reference: ADR-022 ("provisions agents on approval") and ADR-013
+(the inbound engagement request) describe the retained product's flow; this
+amendment is the native admission half of that flow, which was absent.
