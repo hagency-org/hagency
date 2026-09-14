@@ -126,6 +126,17 @@ Scenario: Absolute operation deadline stops silent work
   When the deadline expires
   Then retained process stop precedes negative fencing and no clean completion is inferred
 
+Scenario: A spawn that outlives the operation budget is abandoned, fenced and never orphaned
+  Owed Selector: native_owned_dispatch_spawn_outliving_budget_is_fenced (parked — the name is owed by glm5's implementation and binds only when it lands; no Test: line here yet)
+  Level: integration
+  Test Double: an unconditional Host flag + builder (with_guardian_prepare_stall), default off, no production caller — its child stalls before exec, budget derived from HAGENCY_OPERATION_BUDGET_MS; no production path sleeps
+  Given a finite absolute host deadline and a spawn handshake that does not complete within it
+  When the bounded await of the spawn expires at the deadline and the JoinHandle is dropped
+  Then the operation returns within the budget plus the checkpoint cadence
+  And the attempt is fenced outcome_unknown exactly as today's SpawnFailed path (Negative(Fenced), quarantined, dirty workspace)
+  And a late child is stopped and reaped — delivered through the SpawnCustody try-send to the operation's teardown, with the process-group Drop as the backstop — no orphan and no second dispatch shares its resources
+  And Failure::SpawnFailed with Cleanup::Unknown{TimedOut} is reported for the uncertain start, never a plain Deadline
+
 Scenario: The Codex argv is exactly the app-server subcommand
   Test: native_codex_argv_is_app_server_only
   Level: integration
@@ -169,6 +180,16 @@ Scenario: The typed sandbox policy echoes back through the offline peer
   When the peer echoes its observed sandbox and approval configuration back
   Then the echo matches the requested policy exactly or the mismatch is named
   And no echo is treated as evidence of effective OS sandboxing
+
+## Decisions
+
+**The existing deadline scenario keeps its verdict.**
+`native_owned_dispatch_deadline_stops_and_fences` keeps asserting `Deadline`
+for the launched-in-time case — the marker exists, the child ran, and the
+budget expired over its own work — and must **not** be widened to accept
+`SpawnFailed`. The new scenario above separates the two failure shapes
+exactly so the original stays sharp: widening it would hide genuine
+`SpawnFailed` classification regressions (the glm5 report's verdict).
 
 ## Out of Scope
 
