@@ -14,14 +14,14 @@ card is minted by any in-product path, and the old request's fate is
 `choice='deny'` (PC-C1's word), and "permanent-uncertain" is the **fate the
 operator is told** (no re-issue, terminal for that request id), not the
 stored state word. The fate is read from the row plus the denial-reason
-receipt row PC-C1's migration 031 defines. A future visible re-issue is a
+receipt row PC-C1's denial-reason migration (currently 032) defines. A future visible re-issue is a
 **new** request id linking the old one; it does not land here.
 
 ## Constraints
 
 ### Must
 - Leave the store row terminal for an undeliverable request id — `state='decided'` with `choice='deny'`, the word PC-C1 writes — and state "permanent-uncertain" as the fate: no code path transitions it to a fresh card, re-queues the send, or re-sends the same packet. The stored `state=uncertain` word is the `applying → uncertain` recovery sweep's, never a failed send's.
-- Read the fate from the store-side read alone — the existing `ApprovalSummary` (`hagency-core/src/approvals.rs:97-102`, carrying `state`/`choice`) plus the kind-deny receipt row PC-C1 mints (`approval_verdict_receipts.denial_reason`, joined by `request_id`) — so PC-C2's status projection renders one fact when it reads the same row; no new `DomainStore` wrapper is added.
+- Read the fate from the store-side read alone — the existing `ApprovalSummary` (`hagency-core/src/approvals.rs:97-102`, carrying `state`/`choice`) plus the kind-deny receipt row PC-C1 mints (`approval_verdict_receipts.denial_reason`, joined by `request_id`) — so PC-C2's status projection renders one fact when it reads the same row. One read helper was added for exactly this, store-side only: a synchronous `DomainRepository::delivery_denial_reason(id)` returning the receipt row's `denial_reason` for the request (`None` when no delivery-failure receipt exists) — no async `DomainStore` wrapper, no new table, no second projection path.
 - State the linkage rule for any future re-issue: a new request id under the same context, whose record links the old id and marks the old one permanent-uncertain — recorded here so a later slice cannot silently mint a retry.
 
 ### Must Not
@@ -42,7 +42,7 @@ receipt row PC-C1's migration 031 defines. A future visible re-issue is a
 
 ### Forbidden
 - Live services, credentials, deployed state and Matrix server changes.
-- native/hagency-matrix/** (PC-C0/C1's delivery); native/hagency/src/console/** (PC-C2's observation); native/hagency/src/mcp/** (PC-C3's tools); migrations other than the already-landed 031.
+- native/hagency-matrix/** (PC-C0/C1's delivery); native/hagency/src/console/** (PC-C2's observation); native/hagency/src/mcp/** (PC-C3's tools); migrations other than PC-C1's already-landed denial-reason migration (currently 032).
 
 ## Acceptance Criteria
 
@@ -65,8 +65,7 @@ permanently_visible_as_uncertain` binds here; the backlog's alternative name
 describes the rejected (a) arm and binds nowhere until a visible re-issue
 follow-on lands.
 
-**Depends on PC-C1.** This slice reads the kind-deny receipt row PC-C1's
-migration 031 defines (`approval_verdict_receipts.denial_reason`); nothing
+**Depends on PC-C1.** This slice reads the kind-deny receipt row PC-C1's denial-reason migration (currently 032) defines (`approval_verdict_receipts.denial_reason`); nothing
 here is implementable until that row and the send-failure denial exist. No
 new migration is added — `uncertain` is already a CHECK word and
 `invalidated` stays unwritten.
