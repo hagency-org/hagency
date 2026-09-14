@@ -324,3 +324,45 @@ async fn native_provisioning_ingress_refuses_a_conflicting_request_id() {
     assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
     c.close().await.unwrap();
 }
+
+/// A provisioning request whose target-room authority does not verify (the
+/// binding names a different fleet than the registration) fails closed:
+/// `verify_request` refuses before admission, the handoff quarantines the
+/// intake, and nothing is minted.
+#[tokio::test]
+async fn native_provisioning_ingress_refuses_an_unverifiable_request() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let before = rows(&f, "engagements");
+    let mut forged = project_state();
+    for event in forged.as_array_mut().unwrap() {
+        if event["type"] == "com.hagency.project.binding.v1" {
+            event["content"]["fleetId"] = json!(format!("hf_{}", "b".repeat(32)));
+        }
+    }
+    let cancel = CancellationToken::new();
+    let intake = c.intake(plan(), &cancel);
+    let (result, ()) = common::scripted(intake, async {
+        fake.next().await.json(200, common::who());
+        let request = fake.next().await;
+        assert!(request.target.contains("sync?"));
+        request.json(
+            200,
+            provisioning_sync(
+                "provision",
+                vec![request_event(
+                    "$request_one",
+                    request_body("request_one", 250),
+                )],
+            ),
+        );
+        fake.next().await.json(200, session_state());
+        fake.next().await.json(200, reception_state());
+        fake.next().await.json(200, forged);
+    })
+    .await;
+    assert_eq!(result, Err(Error::Generation));
+    assert_eq!(rows(&f, "engagements"), before);
+    assert!(f.available().await);
+    assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
+    c.close().await.unwrap();
+}
