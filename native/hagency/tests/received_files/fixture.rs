@@ -607,64 +607,84 @@ impl Fixture {
             if let Some(value) = self.receipt("receipt") {
                 return value;
             }
-            let status = self.capabilities().await["development_execution"].clone();
-            assert!(
-                !matches!(
-                    status["state"].as_str(),
-                    Some("unavailable" | "outcome_unknown" | "no_work")
-                ),
-                "actual incoming workflow refused: {status}; intake={}, GET={}, keys={}, runtime_entry={:?}, helper_phase={:?}, sent={:?}, stage={:?}, list={:?}, first={:?}",
-                self.intakes,
-                self.gets,
-                self.sender.server.writes.len(),
-                self.receipt("entry"),
-                self.receipt("phase"),
-                self.receipt("sent"),
-                self.receipt("stage"),
-                self.receipt("list"),
-                self.receipt("first")
-            );
-            assert!(
-                tokio::time::Instant::now() < deadline,
-                "incoming executable did not complete: {status}"
-            );
+            let status = self
+                .capabilities_once()
+                .await
+                .map(|value| value["development_execution"].clone())
+                .unwrap_or(Value::Null);
+            if !status.is_null() {
+                assert!(
+                    !matches!(
+                        status["state"].as_str(),
+                        Some("unavailable" | "outcome_unknown" | "no_work")
+                    ),
+                    "actual incoming workflow refused: {status}; intake={}, GET={}, keys={}, runtime_entry={:?}, helper_phase={:?}, sent={:?}, stage={:?}, list={:?}, first={:?}",
+                    self.intakes,
+                    self.gets,
+                    self.sender.server.writes.len(),
+                    self.receipt("entry"),
+                    self.receipt("phase"),
+                    self.receipt("sent"),
+                    self.receipt("stage"),
+                    self.receipt("list"),
+                    self.receipt("first")
+                );
+                assert!(
+                    tokio::time::Instant::now() < deadline,
+                    "incoming executable did not complete: {status}"
+                );
+            }
         }
         panic!("bounded incoming fixture loop exhausted")
+    }
+    /// One bounded capabilities probe: connect, one read, bounded by the
+    /// shared per-poll budget. A connect refusal, a slow read or an IO error
+    /// is `None` — NOT a panic — so `drive()`'s loop (which serves the fake
+    /// Matrix server between probes, keeping the child's transport alive)
+    /// paces the retry and enforces the fixture's total bound. Panicking
+    /// here (the original `.unwrap()` on the 2s read) turned one slow poll
+    /// during the service's early bootstrap into a test failure; looping
+    /// here starves the fake server and stalls the child (18/12 under load).
+    async fn capabilities_once(&self) -> Option<Value> {
+        let mut stream = tokio::net::TcpStream::connect(self.address).await.ok()?;
+        let token =
+            String::from_utf8(private::read_secret(&self.state_dir.join("operator.token")).ok()?)
+                .ok()?;
+        stream
+            .write_all(format!("GET /api/native/v1/capabilities HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n",self.address,token).as_bytes())
+            .await
+            .ok()?;
+        let mut bytes = Vec::new();
+        tokio::time::timeout(
+            Duration::from_secs(2),
+            (&mut stream).take(16385).read_to_end(&mut bytes),
+        )
+        .await
+        .ok()?
+        .ok()?;
+        assert!(bytes.len() <= 16384);
+        let response = String::from_utf8(bytes).ok()?;
+        if !response.starts_with("HTTP/1.1 200") {
+            return None;
+        }
+        let value: Value = serde_json::from_str(response.split_once("\r\n\r\n")?.1).ok()?;
+        let mut observation = self.observation.get();
+        observation.status = match value["development_execution"]["state"].as_str() {
+            Some("running") => "running",
+            Some("completed") => "completed",
+            Some("outcome_unknown") => "outcome_unknown",
+            Some("unavailable") => "unavailable",
+            Some("no_work") => "no_work",
+            _ => "other",
+        };
+        self.observation.set(observation);
+        Some(value)
     }
     pub async fn capabilities(&self) -> Value {
         let until = tokio::time::Instant::now() + STARTUP_WATCHDOG;
         loop {
-            if let Ok(mut stream) = tokio::net::TcpStream::connect(self.address).await {
-                let token = String::from_utf8(
-                    private::read_secret(&self.state_dir.join("operator.token")).unwrap(),
-                )
-                .unwrap();
-                stream.write_all(format!("GET /api/native/v1/capabilities HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n",self.address,token).as_bytes()).await.unwrap();
-                let mut bytes = Vec::new();
-                tokio::time::timeout(
-                    Duration::from_secs(2),
-                    (&mut stream).take(16385).read_to_end(&mut bytes),
-                )
-                .await
-                .unwrap()
-                .unwrap();
-                assert!(bytes.len() <= 16384);
-                let response = String::from_utf8(bytes).unwrap();
-                if response.starts_with("HTTP/1.1 200") {
-                    let value: Value =
-                        serde_json::from_str(response.split_once("\r\n\r\n").unwrap().1).unwrap();
-                    let mut observation = self.observation.get();
-                    observation.status = match value["development_execution"]["state"].as_str() {
-                        Some("running") => "running",
-                        Some("completed") => "completed",
-                        Some("outcome_unknown") => "outcome_unknown",
-                        Some("unavailable") => "unavailable",
-                        Some("no_work") => "no_work",
-                        _ => "other",
-                    };
-                    self.observation.set(observation);
-                    return value;
-                }
+            if let Some(value) = self.capabilities_once().await {
+                return value;
             }
             assert!(
                 tokio::time::Instant::now() < until,
