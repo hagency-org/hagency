@@ -101,6 +101,24 @@ Scenario: Native readiness agrees with the retained verdict
   When native readiness and the retained probeFramework verdict are both evaluated
   Then they agree for every vector, so the vocabulary is pinned against retained rather than only against itself
 
+Scenario: The CLI login route drives the production path
+  Test: native_account_login_route_records_ready
+  Level: integration
+  Test Double: actual isolated files and SQLite, the fake login binary (hagency-login-probe)
+  Given a prepared managed account and the fake provider login binary
+  When the CLI account login --id route runs
+  Then begin_account_login allocates the attempt, prepare_login/apply_codex_environment set the retained namespace, and settle_account_login records observed — account_readiness reads ready
+  Production caller: hagency::bootstrap::accounts::run
+
+Scenario: A refused login through the production route never reads ready
+  Test: native_account_login_route_refused_never_ready
+  Level: integration
+  Test Double: actual isolated files and SQLite, the fake login binary refusing
+  Given a prepared managed account whose provider login the binary refuses
+  When the CLI account login --id route runs
+  Then settle_account_login records refused — account_readiness reads unknown, never ready
+  Production caller: hagency::bootstrap::accounts::run
+
 ## Decisions
 
 **Ordering of the sibling slices.** **MA-S2** (the dispatch gate that parks on
