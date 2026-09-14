@@ -61,6 +61,7 @@ Scenario: Durable approval grants are exact and revocable
   Given pending requests and authenticated owner choices
   When task or always grants are saved reused revoked or invalidated
   Then only matching current incarnations and live task epochs authorize another request
+  And a saved grant revoked through the wired console route carries the revoked state in its approval_grants row and refuses a later request bound to that grant
 
 Scenario: Every approval applies once and all unresolved work stays parked
   Test: native_owner_approval_application
@@ -79,13 +80,6 @@ Scenario: Bounded metadata and private projections remain safe
   Given oversized requests saturated pending work and sensitive private fields
   When admission and console projection are attempted
   Then capacity remains bounded exact retries survive and private identifiers stay absent
-
-Scenario: A saved grant revoked through the console route stops authorizing
-  Owed Selector: native_owner_approval_grant_revocation_route
-  Given a saved approval grant that currently authorizes requests
-  When the grant is revoked through the wired console route
-  Then the approval_grants row carries the revoked state and a later request bound to that grant is refused
-  Production caller: owed (G7)
 
 ## Out of Scope
 
