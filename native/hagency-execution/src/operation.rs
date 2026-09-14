@@ -921,9 +921,7 @@ async fn execute(
     // `Completed` protocol (the midwrite scenario: a written, receipt-less
     // frame at a turn end the peer did complete). The drive's verdict itself
     // still surfaces unchanged through `drive?` below.
-    if matches!(drive, Err(Failure::SettlementUnknown))
-        && report.protocol == Protocol::Completed
-    {
+    if matches!(drive, Err(Failure::SettlementUnknown)) && report.protocol == Protocol::Completed {
         report.protocol = Protocol::Unknown;
     }
     report.cleanup = runner.stop();
