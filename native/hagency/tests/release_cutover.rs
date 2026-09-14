@@ -392,23 +392,35 @@ fn source_fingerprint() -> String {
     }
     format!("{:x}", hasher.finalize())
 }
-/// Build the N+1 artifact once, offline and locked, under a process mutex so
-/// both tests and the gate repeats share a single build. The stamp is the
-/// source fingerprint; a matching stamp with the artifact present skips the
-/// sync-and-build.
+/// Build the N+1 artifact once, offline, under a process mutex so both tests
+/// and the gate repeats share a single build. The stamp is the source
+/// fingerprint; a matching stamp with the artifact present skips the
+/// sync-and-build. The child inherits the parent's CARGO_HOME (a warm registry)
+/// and builds into the PARENT target dir so the external dependency graph stays
+/// warm and only the version-bearing path crates recompile — `--offline` still
+/// forbids any fetch, so the ADR-134 no-network guarantee holds without a
+/// `--locked` (the version bump legitimately updates the copy's lock entries).
 fn next_artifact() -> PathBuf {
     let _guard = BUILD_LOCK.lock().unwrap();
     let root = workspace_root();
     let src = root.join("target/upgrade-next-src");
-    let target = root.join("target/upgrade-next-target");
-    let artifact = target.join("debug/hagency");
-    let stamp = target.join(".source-fingerprint");
+    let parent_target = root.join("target");
+    let staged_next = root.join("target/.hagency-upgrade-next");
+    let stamp = root.join("target/.upgrade-next-fingerprint");
+    let saved_n = root.join("target/.hagency-vN");
     let fingerprint = source_fingerprint();
     let cached = fs::read_to_string(&stamp)
         .map(|s| s == fingerprint)
         .unwrap_or(false);
-    if artifact.is_file() && cached {
-        return artifact;
+    if staged_next.is_file() && cached {
+        return staged_next;
+    }
+    // The child build writes into the parent target dir and would replace
+    // CARGO_BIN_EXE_hagency (the N binary the N leg and the existing version
+    // and restart tests read); preserve N before the build, and restore it
+    // after, so the parent target keeps reporting the workspace version.
+    if !saved_n.is_file() {
+        fs::copy(binary(), &saved_n).unwrap();
     }
     if src.exists() {
         fs::remove_dir_all(&src).unwrap();
@@ -434,21 +446,24 @@ fn next_artifact() -> PathBuf {
         .arg("hagency")
         .arg("--bin")
         .arg("hagency")
-        .env("CARGO_TARGET_DIR", &target)
-        .env("CARGO_HOME", root.join(".cargo-home"))
+        .env("CARGO_TARGET_DIR", &parent_target)
         .current_dir(&src)
         .status()
         .expect("N+1 build spawns");
     assert!(
         status.success(),
-        "the N+1 build must succeed (offline, locked)"
+        "the N+1 build must succeed (offline, parent cache)"
     );
+    // The child build just produced the N+1 binary at the shared path; stage
+    // it, then restore N so the parent target keeps serving the N binary.
+    fs::copy(parent_target.join("debug/hagency"), &staged_next).unwrap();
+    fs::copy(&saved_n, parent_target.join("debug/hagency")).unwrap();
     fs::write(stamp, fingerprint).unwrap();
     assert!(
-        artifact.is_file(),
+        staged_next.is_file(),
         "the N+1 artifact must exist after build"
     );
-    artifact
+    staged_next
 }
 fn user_version(state: &Path) -> i64 {
     rusqlite::Connection::open(state.join("domain.sqlite3"))
