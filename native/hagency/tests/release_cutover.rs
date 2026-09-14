@@ -310,6 +310,135 @@ fn native_release_entrypoints_scan_finds_no_node() {
     );
 }
 
+/// O3's line scanner: one finding per offending line, naming the file and
+/// the line. Word boundaries keep honest words honest (`denoted` is not
+/// `node`); `.js`/`.mjs`/`.cjs` catch Node script paths in any position;
+/// `__node_bin__` is the placeholder the spec names.
+fn node_reference_findings(name: &str, text: &str) -> Vec<String> {
+    let mut findings = Vec::new();
+    for (index, line) in text.lines().enumerate() {
+        let lower = line.to_ascii_lowercase();
+        let word = lower
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .any(|part| matches!(part, "node" | "npm" | "npx"));
+        let script = lower.contains(".js") || lower.contains("__node_bin__");
+        if word || script {
+            findings.push(format!("{name}:{}: {}", index + 1, line.trim()));
+        }
+    }
+    findings
+}
+
+#[test]
+fn native_package_entrypoints_reference_no_node() {
+    // O3 (M8 item 6, ADR-134): the packaged native entrypoints must not
+    // invoke Node. The old gate was a manual reading of the plist and the
+    // unit; this is the bound test. Per the corrected contract the scan
+    // surface is EXACTLY: the two packaged unit templates by path, and the
+    // installer's RENDERED output of both. There are no generated hook
+    // templates under the native packaging paths. The rendering is the
+    // installer's own: the test extracts its actual sed invocations from
+    // install/install-native.sh and executes them verbatim with a
+    // representative config — it does not trust the templates nor
+    // re-implement the substitution. The retained supervisor plist is out
+    // of scope by design (it is the JS product's).
+    let repo = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let installer = fs::read_to_string(repo.join("install/install-native.sh")).unwrap();
+    // One entry per sed the installer carries: (template rel path, the
+    // renderer command verbatim from its source lines).
+    let mut renderers: Vec<(&str, String)> = Vec::new();
+    let lines: Vec<&str> = installer.lines().collect();
+    for (index, line) in lines.iter().enumerate() {
+        if !line.contains("sed -e") {
+            continue;
+        }
+        // The continuation line names the template and the redirect target.
+        let tail = lines
+            .get(index + 1)
+            .expect("sed invocation continues onto the template path");
+        let template = if tail.contains("hagency-native.service") {
+            "deploy/hagency-native.service"
+        } else if tail.contains("io.hagency.native.plist") {
+            "deploy/io.hagency.native.plist"
+        } else {
+            panic!("installer renders an unexpected template: {tail}");
+        };
+        // The renderer, verbatim minus the redirect: the sed program with
+        // its own substitution table, applied to the template. `$(dirname
+        // "$0")` in the extracted command resolves against the process
+        // working directory, so the renderer runs from install/ exactly as
+        // the installer does.
+        let command = format!(
+            "{} {}",
+            line.trim().trim_end_matches('\\'),
+            tail.split('>').next().unwrap().trim()
+        );
+        renderers.push((template, command));
+    }
+    assert_eq!(
+        renderers.len(),
+        2,
+        "the installer must carry exactly the two native unit renderers"
+    );
+    let mut files: Vec<(String, String)> = Vec::new();
+    for template in [
+        "deploy/io.hagency.native.plist",
+        "deploy/hagency-native.service",
+    ] {
+        files.push((
+            template.to_string(),
+            fs::read_to_string(repo.join(template)).unwrap(),
+        ));
+    }
+    for (template, command) in &renderers {
+        // Representative config: the values an operator's machine supplies.
+        let output = Command::new("sh")
+            .arg("-c")
+            .arg(command)
+            .current_dir(repo.join("install"))
+            .env("INSTALL_DIR", "/opt/hagency-native")
+            .env("STATE_DIR", "/var/lib/hagency-native")
+            .stdin(Stdio::null())
+            .output()
+            .expect("the installer's sed renderer executes");
+        assert!(
+            output.status.success(),
+            "renderer for {template} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let rendered = String::from_utf8(output.stdout).unwrap();
+        assert!(
+            !rendered.contains("__INSTALL_DIR__")
+                && !rendered.contains("__STATE_DIR__")
+                && !rendered.contains("__USER__"),
+            "renderer for {template} left placeholders unresolved"
+        );
+        files.push((format!("rendered by installer: {template}"), rendered));
+    }
+    let mut findings = Vec::new();
+    for (name, text) in &files {
+        findings.extend(node_reference_findings(name, text));
+    }
+    assert!(
+        findings.is_empty(),
+        "packaged native entrypoints must reference no Node runtime, \
+         package manager or script:\n{}",
+        findings.join("\n")
+    );
+    // Negative control, the same proof shape as the release-tree scan: the
+    // scanner detects rather than skips. A planted ExecStart names its file
+    // and line.
+    let planted = node_reference_findings(
+        "planted.service",
+        "[Service]\nExecStart=/usr/bin/node /opt/app/index.js\n",
+    );
+    assert_eq!(
+        planted,
+        vec!["planted.service:2: ExecStart=/usr/bin/node /opt/app/index.js".to_string()],
+        "the scanner must name the file and the line"
+    );
+}
+
 #[test]
 fn native_cutover_dryrun_version_identity() {
     // Runbook step 0: version identity is proven BEFORE any service start —

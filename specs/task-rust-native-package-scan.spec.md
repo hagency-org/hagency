@@ -42,7 +42,7 @@ artifact set; this spec adds no decision, it binds the check.
 ## Acceptance Criteria
 
 Scenario: The packaged native entrypoints reference no Node runtime
-  Owed Selector: native_package_entrypoints_reference_no_node (parked — the name is owed by the implementing slice and binds only when it lands; no Test: line here yet)
+  Test: native_package_entrypoints_reference_no_node
   Level: integration
   Test Double: the packaging templates as shipped on the tree, scanned by the bound test
   Given the packaged native entrypoints — deploy/io.hagency.native.plist, deploy/hagency-native.service, and every generated hook template under the native packaging paths
