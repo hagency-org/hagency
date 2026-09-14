@@ -17,10 +17,10 @@ production call graph" a machine gate so the gap class cannot regrow silently.
 
 ### Must
 - Collect every `Production caller:` line carried by spec `Then` scenarios naming a store write.
-- Build the production call graph with tests (`*/tests/*`, `tests.rs`, `#[cfg(test)]` modules), `native/fixtures/**` and the bootstrap probe (`hagency/src/bootstrap/driver.rs`) stripped.
-- Treat a root as any binary entry point, Salvo handler registration, or spawned worker/loop reached from one of those.
-- Report `Production caller: owed (Gn)` lines as tracked gaps, never as failures.
-- Exit 0 only when every non-owed `Production caller:` name resolves inside the stripped graph; exit 1 listing each absent caller otherwise.
+- Build the production call graph with `#[cfg(test)]` items and `#[test]` fns removed, and `*/tests/*` (including `tests.rs`), `native/fixtures/**` and the probe/fixture binaries stripped: the bootstrap probe `hagency/src/bootstrap/driver.rs`, `hagency-platform/src/bin/hagency-platform-probe.rs`, `hagency-platform/src/bin/hagency-cgroup-probe.rs`, `hagency-progress-runtime/src/bin/hagency-progress-probe.rs`, `hagency-runtime/src/bin/hagency-runtime-probe.rs`, `hagency-runtime/src/bin/approval_probe/`, and the `hagency/tests/fixtures/*.rs` `[[bin]]` peers (`owned_mcp_peer.rs`, `file_mcp_peer.rs`, `receive_mcp_peer.rs`, `approval_mcp_peer.rs`, `matrix_crypto_peer.rs`).
+- Treat a root as the product binaries and services only: the `hagency` bin (`hagency/src/main.rs`), its Salvo handler registrations, the workers and sweeps spawned from it, and the MCP stdio entry (`mcp/stdio.rs` via `main.rs`) — never a probe or fixture bin, so a probe-only write can never score wired.
+- Report `Production caller: owed (Gn)` lines as tracked gaps, never as failures; the `Gn` must resolve to a row in ADR-146's gap table and an unknown id fails the checker.
+- Exit 0 only when every non-owed `Production caller:` name resolves from a root in the stripped graph and every `owed (Gn)` id resolves; exit 1 listing each absent caller or unknown gap id otherwise.
 
 ### Must Not
 - Do not count a call from a test, fixture or the bootstrap probe as production reachability.
@@ -52,9 +52,15 @@ Scenario: A spec-named store write with no production caller fails
 
 Scenario: An owed gap is reported and never failed
   Owed Selector: native_production_callers_owed
-  Given a spec Then line whose Production caller line reads owed with a G-number
+  Given a spec Then line whose Production caller line reads owed with a G-number that resolves to a row in ADR-146's gap table
   When the checker runs
   Then the gap is reported as owed and the exit status is unchanged
+
+Scenario: An unknown owed gap id fails the checker
+  Owed Selector: native_production_callers_unknown_gap
+  Given a spec Then line whose Production caller line reads owed with a G-number that names no row in ADR-146's gap table
+  When the checker runs
+  Then the checker exits 1 listing the unknown gap id
 
 ## Out of Scope
 

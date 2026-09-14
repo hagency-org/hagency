@@ -45,21 +45,34 @@ it marks a tracked gap and is reported, not failed.
 below as **superseded-by** (the wired replacement, with file:line of the
 production caller), **gap** (G-number — the write has no production caller and
 no wired replacement), or **delete** (decision owed to the named owner; none
-decided here). Verification command per method:
+decided here). Verification per method: the bare-name grep
 
 ```
 grep -rn '\.<name>(\|::<name>(' native --include='*.rs' | grep -v tests/
 ```
 
-with `native/fixtures` and the bootstrap probe (`hagency/src/bootstrap/driver.rs`)
-additionally stripped before judging "production". Nothing below is asserted
-without that grep.
+is only the starting enumeration — it under-strips (paths containing `tests/`
+only, so `#[cfg(test)]` modules and `#[test]` fns inside production files still
+hit; e.g. the literal command returns accounts.rs:1273, inside `mod tests`, as
+a false production hit for `approve`) and it collides on bare names (see the
+`admit` row). Every row below was therefore judged with the checker spec's
+strip: `#[cfg(test)]` items and `#[test]` fns removed, `*/tests/*`,
+`native/fixtures/**`, and the probe/fixture binaries
+(`hagency/src/bootstrap/driver.rs`,
+`hagency-platform/src/bin/hagency-platform-probe.rs`,
+`hagency-platform/src/bin/hagency-cgroup-probe.rs`,
+`hagency-progress-runtime/src/bin/hagency-progress-probe.rs`,
+`hagency-runtime/src/bin/hagency-runtime-probe.rs`,
+`hagency-runtime/src/bin/approval_probe/`,
+`hagency/tests/fixtures/*.rs` `[[bin]]` peers) excluded before calling any hit
+"production". Nothing below is asserted without that check, and bare-name
+collisions are resolved per type in the row's note.
 
 ### Gaps — store writes with no production caller and no wired replacement
 
 | Method | Defined | Production reachability (grep result) | Class |
 |---|---|---|---|
-| `admit` | domain.rs:1084 | none outside tests/fixtures (engagements/projects writes fixture-only) | gap G1 — glm8 wiring in progress |
+| `admit` | domain.rs:1084 | the engagement-minting `DomainRepository::admit` has no production caller; the bare-name grep's outside-store hits are other types — `MediaBudget::admit` (hagency-media/src/lib.rs:122,145) and `control.admit` (hagency-runtime/src/codex/session/driver.rs:480) — not the store method | gap G1 — glm8 wiring in progress |
 | `approve` | domain.rs:1145 | none outside tests/fixtures | gap G2 |
 | `claim_effect` | domain.rs:1338 | none outside tests/fixtures | gap G2 |
 | `observe_effect` | domain.rs:1357 | none outside tests/fixtures | gap G2 |
