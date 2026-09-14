@@ -444,7 +444,9 @@ native test was admitted by a fixture, never through the product ingress.
 **The retained ingress this must match.** `POST /api/engagements`
 (`backend-v2.js:15103` → `createEngagementRequest` →
 `engagementStore.createRequest`, `lib/engagement-store.js:486`) is idempotent
-on `requestId` — which the bridge passes as the **Matrix event id** — and
+on `requestId` — the requester's **native-valid** key
+(`^[a-zA-Z0-9_-]{1,96}$`, `lib/fleet-protocol.js:20`), **distinct from the
+Matrix event id** (`sourceEventId`, `^\$\S{1,254}$` at `:38`) — and
 refuses a reused id with a different digest. The provider's approval is the
 separate `decide()` verdict (`:593`, called at `backend-v2.js:14732/14824`)
 after project-side and provider authority. Native already models both halves
@@ -552,12 +554,25 @@ missing/expired observation is refused, never fabricated.
   the room the event arrived in; `verify_request` requires invite-only,
   unencrypted, `joined ⊇ {requester, representative}`. This room is NOT
   recordable via `observe_matrix_room` (which refuses the reception room,
-  `matrix_routes.rs:320`). **Decision: the bootstrap adds
-  `registration.reception_room_id` to the collector's observed room set, so
-  its `/state` is fetched exactly like the project and owner rooms
-  (`collector.rs:342`)** — the collector observes it in memory only,
-  `observe_matrix_room` keeps refusing it for the scope table, and nothing
-  is stored.
+  `matrix_routes.rs:318-320`), and the existing `collect_room_observation`
+  (`collector.rs:326-364`) **always publishes** through
+  `self.domain.observe_matrix_room` (`:355`) — so running it on the reception
+  room would fail the whole collection pass. **Decision: the reception
+  room's `/state` is fetched by the same parser (`collector.rs:342`) but
+  `observe_matrix_room` is **skipped** for it** — the observation is held in
+  memory for `verify_request` only, never published to the scope table, and
+  the publish is skipped for this room alone, not for the project/owner
+  rooms. **The observed set is `config.rooms` (`collector.rs:234-236`,
+  `intake.rs:226`), extended by the bootstrap from
+  `registration.reception_room_id` (the store's `Registration`), and the
+  intake sync filter (`intake.rs:194-197`, `:226`) must include the
+  reception room** so its `/state` arrives in the same sync. The config file
+  that supplies the id (`native/hagency/src/bootstrap/config.rs`, currently
+  `deny_unknown_fields` with only `rooms: Vec<Room>`) is licensed for the
+  new field. **Side effect named:** `HostConfig::binding()` digests `rooms`
+  as SDK identity (`config.rs:176-184`), so adding the reception room
+  changes that persisted binding digest, and `rooms.len() > 16` is still
+  refused (`config.rs:105`) — no DB migration, but the SDK binding changes.
 - **project room** (`target_room_id`) — `room_id`/`joined`/`invite_only`/
   `encrypted` from `matrix_room_scopes`, plus the intake-time-observed
   `powers`/`default_power`/`invite_power`/`binding`/`name`; `verify_request`
