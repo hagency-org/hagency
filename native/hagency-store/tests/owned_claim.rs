@@ -520,15 +520,13 @@ fn native_owned_claim_reconciles_started_dispatch_after_host_death() {
     let profile = f.profile("DEVICE_1", RoomPrivacy::Group {});
     // Host A claims and starts, then dies: the wall clock advances past its
     // lease with no completion or observe call (the "killed mid-dispatch" case).
-    let cap = f
-        .db
-        .claim_owned_dispatch_for_host(&profile, "host_a", 2000, 1_000, 1_000, 1)
-        .unwrap()
-        .unwrap();
+    let cap =
+        f.db.claim_owned_dispatch_for_host(&profile, "host_a", 2000, 1_000, 1_000, 1)
+            .unwrap()
+            .unwrap();
     assert_eq!(cap.dispatch_id, "first");
     let scope = f.db.owned_dispatch_scope(&cap, 2001).unwrap();
-    f.db
-        .start_owned_dispatch(&cap, scope.fingerprint(), 2002)
+    f.db.start_owned_dispatch(&cap, scope.fingerprint(), 2002)
         .unwrap();
     let db_path = f._root.path().join("state/domain.sqlite3");
     let sql = rusqlite::Connection::open(&db_path).unwrap();
@@ -544,10 +542,9 @@ fn native_owned_claim_reconciles_started_dispatch_after_host_death() {
     // Host B claims well after the lease expired. The claim path must expire
     // the abandoned `started` row first, never re-claim it and never mint a
     // second attempt row.
-    let next = f
-        .db
-        .claim_owned_dispatch_for_host(&profile, "host_b", 10_000, 1_000, 1_000, 1)
-        .unwrap();
+    let next =
+        f.db.claim_owned_dispatch_for_host(&profile, "host_b", 10_000, 1_000, 1_000, 1)
+            .unwrap();
     assert!(
         next.is_none(),
         "a started dispatch is reconciled, not re-claimed"

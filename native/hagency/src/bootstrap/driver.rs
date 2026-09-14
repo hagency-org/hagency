@@ -355,10 +355,7 @@ async fn run(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failure> {
 /// evidence string is recorded verbatim, never treated as proof; the store
 /// re-checks the fence and the `outcome_unknown` state before settling.
 async fn settle_pending_stops(domain: &DomainStore, evidence: String) {
-    let pending = match domain
-        .pending_conversation_stops(String::new(), 100)
-        .await
-    {
+    let pending = match domain.pending_conversation_stops(String::new(), 100).await {
         Ok(pending) => pending,
         Err(error) => {
             tracing::warn!("[stop] pending-stop read failed: {error:?}");
@@ -668,14 +665,15 @@ mod tests {
         drop(inspect);
         // The host settle sweep (the production caller added in this commit).
         settle_pending_stops(&f.store, "host inspected stop".into()).await;
-        let settled: Option<u64> = rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
-            .unwrap()
-            .query_row(
-                "SELECT settled_at FROM dispatch_stops WHERE dispatch_id='dispatch'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
+        let settled: Option<u64> =
+            rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
+                .unwrap()
+                .query_row(
+                    "SELECT settled_at FROM dispatch_stops WHERE dispatch_id='dispatch'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
         assert!(settled.is_some(), "the host settles the pending stop");
         // A second pass is idempotent and writes no second row.
         settle_pending_stops(&f.store, "host inspected stop".into()).await;
