@@ -71,6 +71,12 @@ pub struct HostConfig {
     pub(crate) authorization: HeaderValue,
     pub(crate) identity: HostIdentity,
     pub(crate) rooms: Vec<HostRoom>,
+    /// The pre-project reception room, observed for the provisioning ingress
+    /// only. It is never published (`collect_room_observation` skips
+    /// `observe_matrix_room` for it); its authority facts are carried in
+    /// memory for `verify_request`. Absent when the host has no recorded
+    /// registration naming one — bootstrap refuses to start in that case.
+    pub(crate) reception_room: Option<HostRoom>,
     pub(crate) root: PathBuf,
     pub(crate) key: [u8; 32],
     pub(crate) limits: Limits,
@@ -159,6 +165,7 @@ impl HostConfig {
             authorization,
             identity,
             rooms,
+            reception_room: None,
             root,
             key,
             limits,
@@ -172,6 +179,30 @@ impl HostConfig {
         self.roots
             .push(reqwest::Certificate::from_pem(pem).map_err(|_| Error::Config)?);
         Ok(self)
+    }
+    /// The host's engagement id, for the bootstrap fill that resolves the
+    /// recorded registration (and its reception room) from the store.
+    pub fn engagement_id(&self) -> &str {
+        &self.identity.transport.engagement_id
+    }
+    /// Set the pre-project reception room. It is not a `rooms` member (those
+    /// carry a project/owner/fleet that do not exist before admission) but is
+    /// observed alongside them, never published. Setting it twice is refused.
+    pub fn with_reception_room(&mut self, room: HostRoom) -> Result<(), Error> {
+        matrix_room(&room.room_id, &self.identity.server_name).map_err(|_| Error::Config)?;
+        if room.generation == 0 || room.generation > JSON_SAFE_MAX {
+            return Err(Error::Config);
+        }
+        if self.reception_room.is_some() {
+            return Err(Error::Config);
+        }
+        self.reception_room = Some(room);
+        Ok(())
+    }
+    /// Every room the collector observes: the ordinary scopes plus the
+    /// pre-project reception room, in that order.
+    pub(crate) fn observed_rooms(&self) -> impl Iterator<Item = &HostRoom> {
+        self.rooms.iter().chain(self.reception_room.iter())
     }
     pub(crate) fn binding(&self) -> Result<String, Error> {
         // Neither access token nor changing transport/room observation generation is SDK identity.

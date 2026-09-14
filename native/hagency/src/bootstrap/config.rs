@@ -2,7 +2,7 @@ use super::Failure;
 use hagency_core::replies::{MatrixTransportObservation, RoomPrivacy};
 use hagency_execution::{Host, Limits};
 use hagency_matrix::{HostConfig, HostIdentity, HostRoom};
-use hagency_store::{OwnedClaimProfile, OwnedClaimRoom, private};
+use hagency_store::{DomainRepository, OwnedClaimProfile, OwnedClaimRoom, private};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -297,6 +297,25 @@ impl Prepared {
             hagency_matrix::Limits::default(),
         )
         .map_err(|_| Failure::Config)?;
+        // Fail-closed: the pre-project reception room comes from the store's
+        // recorded registration for this host's engagement. A host whose
+        // engagement names no registration (or a registration with no
+        // reception room) refuses to start rather than observing nothing and
+        // silently dropping the provisioning ingress.
+        {
+            let engagement_id = matrix.engagement_id().to_owned();
+            let registration = DomainRepository::open(state)
+                .map_err(|_| Failure::Config)?
+                .provisioning_registration_for_engagement(&engagement_id)
+                .map_err(|_| Failure::Config)?;
+            matrix
+                .with_reception_room(HostRoom {
+                    room_id: registration.reception_room_id,
+                    generation: registration.generation,
+                    privacy: RoomPrivacy::Group {},
+                })
+                .map_err(|_| Failure::Config)?;
+        }
         if let Some(profile) = config.matrix.crypto_enrollment {
             if profile.profile != "fresh_own_account_v1" {
                 return Err(Failure::Config);

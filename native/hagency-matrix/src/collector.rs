@@ -200,7 +200,7 @@ impl Inner {
                 let cursor = owner.cursor().await?;
                 let filter = json!({
                     "room": {
-                        "rooms": self.config.rooms.iter().map(|r| &r.room_id).collect::<Vec<_>>(),
+                        "rooms": self.config.observed_rooms().map(|r| &r.room_id).collect::<Vec<_>>(),
                         "timeline": {"limit": 0}, "ephemeral": {"types": []},
                         "account_data": {"types": []}, "state": {"lazy_load_members": false}
                     },
@@ -238,7 +238,7 @@ impl Inner {
             {
                 return Err(Error::OutcomeUnknown);
             }
-            for target in &self.config.rooms {
+            for target in self.config.observed_rooms() {
                 self.collect_room(target, cancel).await?;
             }
             Ok(ObservationSummary {
@@ -344,12 +344,12 @@ impl Inner {
         // The reception room is fetched for verify_request only and must never
         // be published (observe_matrix_room refuses it); its scope row is
         // absent, so `prior` is None and its facts are carried in memory.
+        // Driven by the HostConfig field, not a per-room store read.
         let reception = self
-            .domain
-            .provisioning_registration_for_engagement(t.engagement_id.clone())
-            .await
-            .map(|r| r.reception_room_id == target.room_id)
-            .unwrap_or(false);
+            .config
+            .reception_room
+            .as_ref()
+            .is_some_and(|r| r.room_id == target.room_id);
         let result = async {
             observe!(RoomHttp);
             let state = self
