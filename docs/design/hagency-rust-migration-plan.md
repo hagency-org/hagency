@@ -1,6 +1,6 @@
 # Hagency Rust migration plan
 
-Date: 2026-09-13. Status: delivery slices landing on feat/rust-migration by hosted probe; the native foundation is past verification and the first retention, account, console, approvals and wiring slices are landed. M0–M9 completion is not claimed.
+Date: 2026-09-14. Status: delivery slices landing on feat/rust-migration by hosted probe; the retention family (026–032), the approvals private-card lane, the console, Lane C service/cutover companions and the bounded spawn are landed; M8 proof slices are spec'd and parked. M0–M9 completion is not claimed.
 
 Requirements: [REQ-RUST-MIGRATION-PLAN](../../knowledge/requirements/req-rust-migration-plan.md) and the subsequent [implementation authorization](../../knowledge/requirements/req-rust-migration-execution.md).
 
@@ -534,9 +534,9 @@ Most domain code remains shared; supporting three OS families does not multiply
 every feature by three. Confidence is medium for the architecture and low-to-medium
 for schedule until hardware, runner versions and state continuity are settled.
 
-### Status 2026-09-13
+### Status 2026-09-14
 
-**LANDED on feat/rust-migration (green hosted probe, fast-forwarded; head `4ecc7578`), in landing order:**
+**LANDED on feat/rust-migration (green hosted probe, fast-forwarded; head `e3e70035`), in landing order:**
 - Slice 1 corpus retention (migration 026) — `465434d9` and its review fixes
 - RT-7 peer corpus retention (migration 027) — `ac4fa197`
 - MA-S1 account login readiness (migration 028) — `fc5b5576`
@@ -544,28 +544,33 @@ for schedule until hardware, runner versions and state continuity are settled.
 - MA-S4 retirement logout + audit (migration 029) — `b551839f`
 - CL-S2 agent start/stop/preset behind one finite scope — `d5cae1ff`
 - MA-S3b the account DTO's readiness field — `ed5f98cf`
-- PC-C2a the bounded, SELECT-named approval list read on the domain store — `2caa885b`
-- PC-C2b the console read-only approval observation — `0dc75eaf`
-- PC-C3 the task-bound MCP approval tool pair — `d676030f`
+- PC-C2a the bounded, SELECT-named approval list read — `2caa885b`; PC-C2b the console read-only approval observation — `0dc75eaf`; PC-C3 the task-bound MCP approval tool pair — `d676030f`
 - approvals wire oracle (console-origin, approval and app-server vectors) — `c6fd399d`, `53c865f2`, `e0a64970`
 - PC-C0 private approval wiring through the bootstrap host — `6f6d49b2`, with the hosted-lane fixes `b11a507a`, `659db80d`, `78f99bcc`
-- docs follow-ups — `4ecc7578` (`b86bcc43`+`ee000bf7`+`e7efbbbc`+`4ecc7578`): the ADR-124 note on the operator bearer route, D-6's premise corrected, migration numbers follow landing order (ADR-125), ADR-047's first-unsafe-snapshot named refusal with its parked scenario
+- docs follow-ups — `4ecc7578`: the ADR-124 bearer-route note, D-6's premise corrected, the landing-order numbering rule (ADR-125), ADR-047's named first-unsafe-snapshot refusal
+- the stacked probe — engagements retention (migration **030**) + execution retention (renumbered **031**, the two lineages had both claimed 030) + the received-files fixture + the approval-eof probe — `f4f2d585`
+- the media-deadline fixture fix — `b297467f` — and the plan-status refresh — `b347c663`
+- the received-files watchdog and the owned entered() fixes — `c138c9e9`, `95019558`, `2b12d84e`
+- Lane C — the two-agent acceptance: service units, installer and the supervisor-less signal harness (`9fedfaba`), the in-process pair (`e57b2fbb`..`c454e948`), the service/cutover companions (ADR-127/133/134/135/136/139/140/144, the release workflow draft, the cutover runbook)
+- PC-C1 the private approval card send's fail-closed denial receipt (migration **032**) + the file-service recovery fix — `e432aab0`, `663bc357`, `3580f3bb`
+- PC-C5 the undeliverable card's permanent-uncertain fate — `7d453e87`, spec `27e1c37e`
+- PC-C0b the delivery-fixture slice (`85404f23`) and the unsafe-snapshot named refusal (`e0ec3117`, `c5d01296`)
+- the bounded owned spawn (ADR-053 amendment) — `494686a4`, selector bound at `0259a9da`
+- store shutdown resolves only after its closed word is observable — `e3e70035`
 
-**IN FLIGHT on probe branches:**
-- one stacked probe on the head: engagements retention (migration 030) + execution retention (renumbered 031 — the two lineages had both claimed 030) + the received-files fixture fix + the approval-eof probe fix
-- the unsafe-snapshot named refusal (review corrections in progress)
-- the media-deadline fixture fix (review accepted, hosted run pending)
+**IN FLIGHT:**
+- MA-S2 dispatch park reason (migration 033, provisional)
+- approval-loss scenario 4 (on the product lineage)
+- the four M8 proof slices — specs written and parked (`companions/m8-specs`): the package node-scan gate, the upgrade procedure test, the fault-injection suite, the console real-agent proof
 
-**BUILDING:**
-- MA-S2 dispatch park reason (032, provisional)
-- PC-C1 denial receipt (032/033 by landing order)
-- PC-C0b the delivery-fixture slice (owed selector parked)
-- Lane C two-agent acceptance
-- approval-loss product fixes
-- PC-C5 permanent-uncertain re-issue (started, no migration)
-- two root-cause tasks: the file-service restart intermittent, the owned-fixture entered() flake
-
-**NOT STARTED:** none.
+**BLOCKED ON THE OPERATOR / M9:**
+- the PR merge of feat/rust-migration to master (M9's precondition)
+- the release workflow dispatch (release-native.yml's triggers stay commented until enabled)
+- `native_codex_real_app_server` — skipped on the hosted line, needs an operator-run real app-server
+- `native_two_agent_qualification_records_its_evidence` — skipped on the hosted line, needs operator-run two-agent accounts
+- the Windows release target — paused per ADR-136, its probe lane is diagnostic only
+- embedded-device budget measurement and publication — needs the physical target
+- the M9 two-host cutover drill (ADR-135's runbook executed on production)
 
 Migration numbers follow landing order over the store's single linear head — a spec's digits are provisional until it lands (ADR-125). Windows is not a release target for now (ADR-136): its lane reports without blocking.
 
