@@ -9,6 +9,7 @@ use hagency_core::{
     authority::{
         ProjectRequest, RequestObservation, RoomObservation, SourceObservation, verify_request,
     },
+    ingress::MatrixIngressReceipt,
     project::identifier,
     replies::{ReplyRoute, RoomAuthorityFacts},
 };
@@ -409,6 +410,47 @@ impl Inner {
             }
             let observation = event.observation();
             let attachment = event.attachment_observation()?;
+            // ADR-095: the provisioning discriminator never reaches the message
+            // admission path; it mints an Engagement through verify_request +
+            // DomainStore::admit exactly once, idempotent on request_id.
+            if observation.event.kind == "com.hagency.engagement.request.v1" {
+                observe!(Admission, Some(index));
+                match self.provision(&observation, &event.route).await {
+                    Ok((_engagement, created)) => {
+                        if created {
+                            admitted += 1;
+                        } else {
+                            replayed += 1;
+                        }
+                        let receipt = MatrixIngressReceipt {
+                            sequence: (index + 1) as u64,
+                            session_id: event.route.session_id.clone(),
+                            wake: false,
+                            created,
+                            projected: false,
+                        };
+                        owner
+                            .intake_ack(
+                                batch.digest.clone(),
+                                index,
+                                Acknowledgement::from(&receipt),
+                            )
+                            .await?;
+                    }
+                    Err(Error::Conflict) => {
+                        observe!(Quarantine, Some(index));
+                        owner
+                            .intake_quarantine(
+                                "provisioning request reused request_id with different content"
+                                    .into(),
+                            )
+                            .await?;
+                        return Err(Error::Generation);
+                    }
+                    Err(error) => return Err(error),
+                }
+                continue;
+            }
             // Historical read can only acknowledge an exact existing commit. It cannot
             // admit or project the event through stale or replacement authority.
             observe!(HistoricalReceipt, Some(index));
