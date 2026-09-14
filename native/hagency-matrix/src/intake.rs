@@ -507,6 +507,13 @@ impl Inner {
                 Err(error) => return Err(error),
             }
         }
+        // A successful provision is retained even if the writer response is
+        // lost now: the batch stays pending and the restored handoff replays
+        // the admission instead of double-minting the engagement.
+        #[cfg(test)]
+        if fault == 6 && batch.events.len() == batch.acknowledgements.len() {
+            return Err(Error::OutcomeUnknown);
+        }
         for (index, event) in batch
             .events
             .iter()
@@ -516,6 +523,7 @@ impl Inner {
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
             }
+            let observation = event.observation();
             let observation = event.observation();
             let attachment = event.attachment_observation()?;
             // Historical read can only acknowledge an exact existing commit. It cannot

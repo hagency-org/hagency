@@ -252,3 +252,49 @@ async fn native_provisioning_ingress_admits_a_provider_approved_request() {
     assert_eq!(rows(&f, "engagements"), before + 1);
     c.close().await.unwrap();
 }
+
+/// A lost writer response after a successful provision leaves the batch
+/// pending; the restored handoff replays the admission (idempotent on
+/// `request_id`) instead of minting a second engagement.
+#[tokio::test]
+async fn native_provisioning_ingress_replays_an_already_admitted_request() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let before = rows(&f, "engagements");
+    let sync = provisioning_sync(
+        "provision",
+        vec![request_event("$request_one", request_body("request_one", 250))],
+    );
+    c.inner
+        .handoff_fault
+        .store(6, std::sync::atomic::Ordering::SeqCst);
+    assert_eq!(
+        run_provisioning(&c, &mut fake, sync).await,
+        Err(Error::OutcomeUnknown)
+    );
+    assert_eq!(rows(&f, "engagements"), before + 1);
+    assert_eq!(status(&c, &mut fake).await.stage, "domain_handoff");
+    // The writer response was lost; the transport itself is still healthy, so
+    // the restored handoff resumes the pending batch under the same owner.
+    let second = resume_provisioning(&c, &mut fake)
+        .await
+        .unwrap_or_else(|e| panic!("replay intake failed: {e:?}"));
+    assert_eq!(second.admitted, 0);
+    assert_eq!(second.replayed, 1);
+    assert_eq!(rows(&f, "engagements"), before + 1);
+    c.close().await.unwrap();
+}
+
+/// Resume a pending provisioning batch: the handoff re-reads the observed
+/// rooms' /state (session, then reception) before replaying the admission.
+async fn resume_provisioning(
+    c: &Collector,
+    fake: &mut common::Fake,
+) -> Result<IntakeSummary, Error> {
+    let cancel = CancellationToken::new();
+    let (result, _) = tokio::join!(c.intake(plan(), &cancel), async {
+        fake.next().await.json(200, common::who());
+        fake.next().await.json(200, session_state());
+        fake.next().await.json(200, reception_state());
+    });
+    result
+}
