@@ -73,6 +73,21 @@ async fn native_receive_executable() {
         );
         assert_eq!(status["agent_execution"], false);
         assert_eq!(status["production_api_parity"], false);
+        // G6: the production start registered the receive-inbox plan's
+        // workspace before the first claim (bootstrap::open_with_options →
+        // register_workspace), never this fixture. Assert the workspace_resources
+        // row the plan's dispatch FK-references actually exists.
+        assert_eq!(
+            f.sql()
+                .query_row(
+                    "SELECT COUNT(*) FROM workspace_resources WHERE id='work'",
+                    [],
+                    |r| r.get::<_, u64>(0)
+                )
+                .unwrap(),
+            1,
+            "production start must register the receive-inbox plan's workspace"
+        );
         f.fake.no_request().await;
         child.stop_and_reap();
         f.fake.close().await;

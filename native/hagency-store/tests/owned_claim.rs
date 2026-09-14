@@ -513,6 +513,12 @@ fn native_receive_inbox_claim_restriction() {
 /// :810 before selecting candidates; `expire` (:227) routes a `started` row
 /// through `lose` (:181) → `outcome_unknown` (the host's inspectable unknown),
 /// and never re-claims it — no duplicate effect.
+///
+/// Lease gate: reconciliation fires only at the first claim AFTER the lease
+/// has expired (the production driver grants 60 s — driver.rs:257). A restart
+/// that claims again WITHIN the lease still sees the row `started` and does not
+/// expire it; the test below models the expiry with a 1 s lease and a host B
+/// claim at 10 s, so the gate has provably passed before reconciliation runs.
 #[test]
 fn native_owned_claim_reconciles_started_dispatch_after_host_death() {
     let mut f = Fixture::new();

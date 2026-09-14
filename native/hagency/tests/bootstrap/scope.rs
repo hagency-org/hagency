@@ -1,6 +1,7 @@
 use super::*;
 use hagency_store::private;
 use std::io::{Seek, Write};
+use std::process::Stdio;
 
 #[tokio::test]
 async fn native_bootstrap_config() {
@@ -85,4 +86,42 @@ async fn native_bootstrap_config() {
         assert_eq!(f.attempts(), 0);
         assert!(!f.work.join("owned-mcp.requests").exists());
     }
+}
+
+/// G6 refusal (bootstrap/config.rs:241): a receive-inbox plan naming a
+/// workspace absent from the configured workspace map must refuse with the
+/// named `Failure::Config` — the plan's `validate()` passes (the id is a
+/// well-formed identifier), so the refusal is the map-membership check, not a
+/// plan-shape error. Assert the variant through the process's `Error: Config`
+/// termination line, not merely that the service did not start.
+#[tokio::test]
+async fn native_bootstrap_config_receive_inbox_absent_workspace() {
+    let f = Fixture::new(false).await;
+    let path = f.state_dir.join("development-driver.json");
+    let bytes = std::fs::read(&path).unwrap();
+    let mut config: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+    config["receive_inbox"] = json!({
+        "dispatch_id": "dispatch",
+        "session_id": "session",
+        "task_id": "task",
+        "workspace_id": "absent-workspace"
+    });
+    let mut file = private::open(&path, false).unwrap();
+    file.set_len(0).unwrap();
+    file.rewind().unwrap();
+    file.write_all(&serde_json::to_vec(&config).unwrap())
+        .unwrap();
+    drop(file);
+    let result = f.command(true).stderr(Stdio::piped()).output().unwrap();
+    assert!(
+        !result.status.success(),
+        "absent workspace unexpectedly started"
+    );
+    let stderr = String::from_utf8_lossy(&result.stderr);
+    assert!(
+        stderr.contains("Error: Config"),
+        "expected Failure::Config, got stderr: {stderr}"
+    );
+    assert_eq!(f.attempts(), 0);
+    assert!(!f.work.join("owned-mcp.requests").exists());
 }
