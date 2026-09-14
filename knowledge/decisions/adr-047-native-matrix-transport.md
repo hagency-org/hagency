@@ -211,9 +211,11 @@ and lands in the caller's log — that is where an operator finds it. What an
 operator **can** determine later: the exact refusal and its snapshot digest
 from the observing caller's log, and the room's **absence** from
 `matrix_room_scopes` (no row means never admitted). What an operator
-**cannot** determine from the store alone: whether a room absent from the
-table was refused as unsafe, never observed, or observed and invalidated —
-the store cannot answer "was this room ever refused". **Why a refusal row
+**cannot** determine from the store alone: whether an absent room was
+refused as unsafe or simply never observed — `invalidate()` preserves the
+row (an `UPDATE` to `available=0`, never a delete), so an absent row can
+never mean "observed and invalidated"; the store cannot answer "was this
+room ever refused". **Why a refusal row
 was not chosen:** writing a row on refusal would let an observation the
 safety predicate just rejected mint durable state — the store records only
 what it admitted, and a refusal creates nothing; a row at generation 1 would
