@@ -5,6 +5,8 @@ mod clock;
 mod common;
 #[path = "approvals/owned.rs"]
 mod owned;
+#[path = "approvals/reissue.rs"]
+mod reissue;
 #[path = "approvals/responses.rs"]
 mod responses;
 use common::*;

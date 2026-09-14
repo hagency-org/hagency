@@ -446,6 +446,27 @@ impl DomainRepository {
             None => None,
         })
     }
+    /// PC-C5 (ADR-110 amendment): the operator-facing fate of an undeliverable
+    /// card — permanent-uncertain — is read from the store side alone:
+    /// `approval_summary`'s state/choice plus this reason, the kind-deny
+    /// receipt `deny_for_failed_delivery` mints, naming the failed send.
+    /// `None` when no delivery-failure receipt exists for the request.
+    /// Historical naming only: "permanent-uncertain" is the fate told to the
+    /// operator, never a stored state word (the stored `uncertain` is the
+    /// applying→uncertain recovery sweep's), and never authority to re-send,
+    /// re-queue or re-issue.
+    pub fn delivery_denial_reason(&self, id: &str) -> Result<Option<String>, Error> {
+        identifier(id, 128)?;
+        let reason: Option<String> = self
+            .db
+            .query_row(
+                "SELECT denial_reason FROM approval_verdict_receipts WHERE request_id=?1 AND denial_reason IS NOT NULL",
+                [id],
+                |r| r.get(0),
+            )
+            .optional()?;
+        Ok(reason)
+    }
     pub fn private_approval(&self, id: &str, now: u64) -> Result<PrivateApproval, Error> {
         clock(now)?;
         identifier(id, 128)?;
