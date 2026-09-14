@@ -84,6 +84,7 @@ Scenario: A server rejection on the outbound adapter is recorded rejected
   When the adapter observes the rejection
   Then the adapter issues PublicationResponse::Rejected carrying the server's cause and the publication state reads rejected
   And nothing is re-sent under the same id — never retried silently and never reported delivered
+  And a 409 whose code is sequence_conflict or stale_lease stays retryable and does not finalize to rejected — every other 4xx/5xx finalizes to rejected
 
 ## Decisions
 
@@ -109,6 +110,15 @@ forbidden.
 **Injection is engine-level, always.** Disk-full is `max_page_count`, not a
 filesystem fill: the fault must be portable to every CI lane and must not
 depend on the runner's disk layout.
+
+**The 409 retryable exception, preserved.** The existing custody test
+`native_outbound_http_publication_frozen_restart_and_rotation` pins that a
+409 carrying `code: sequence_conflict` (and the `stale_lease` shape already
+distinguished in `adapter.rs:147`) is a **retryable** custody conflict, not
+a finalized rejection — the frozen publication is re-sent and then succeeds.
+So "every other 4xx/5xx finalizes to `rejected`" is the rule, and those two
+codes are the named exception that stays retryable and never writes
+`rejected`.
 
 ## Out of Scope
 
