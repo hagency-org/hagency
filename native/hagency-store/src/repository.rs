@@ -49,6 +49,22 @@ impl Repository {
         Ok(repository)
     }
 
+    /// Test seam only — no production caller. Opens the custody repository
+    /// and applies `PRAGMA max_page_count` to the same writer connection this
+    /// repository uses, so a disk-full injection fails the store's own write
+    /// (SQLite's per-connection limit) instead of a separate reader. The limit
+    /// must already be ≥ the current page count (as the injected test sets it
+    /// to the live count); `recover_outbound` runs first so the cap does not
+    /// trip on recovery's own writes. The disk-full fault-injection test is
+    /// the sole caller, and it restores the limit by reopening without it.
+    pub fn open_with_page_limit(directory: &Path, max_pages: u64) -> Result<Self, Error> {
+        let repository = Self::open(directory)?;
+        repository
+            .db
+            .pragma_update(None, "max_page_count", max_pages as i64)?;
+        Ok(repository)
+    }
+
     pub fn receive(&mut self, delivery: &Delivery, now_ms: u64) -> Result<Receipt, Error> {
         delivery.validate()?;
         if now_ms > JSON_SAFE_MAX {

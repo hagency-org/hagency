@@ -54,7 +54,7 @@ those records' outcomes.
 ## Acceptance Criteria
 
 Scenario: The store fails closed on an injected disk-full write
-  Owed Selector: native_store_fails_closed_on_disk_full (parked — the name is owed by the implementing slice and binds only when it lands; no Test: line here yet)
+  Test: native_store_fails_closed_on_disk_full
   Level: integration
   Test Double: SQLite max_page_count set to the current page count, the write attempted, the limit restored
   Given a live store at its current size with the disk-full limit injected
