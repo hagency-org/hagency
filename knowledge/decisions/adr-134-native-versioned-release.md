@@ -96,3 +96,18 @@ first real native release needs an explicit enable step.
   already flagged the sub-tag semantics of the retained globs.
 - Add `version` to `/ready` — rejected: widens the readiness contract that
   brief 21 F2/F3 froze and that SR-1/SR-2 evidence depends on.
+
+---
+
+## Note: how the upgrade procedure is tested without the release workflow
+
+The upgrade procedure this record defines (install N → install N+1 →
+restart; rollback by pointing the unit back at N's artifact) is exercised
+by a bound test that produces both versions **in-test**: two local builds
+of the same tree with different workspace-version constants — the same
+constant `hagency --version` reads — each built to its own path and named
+as this record's versioned artifacts, so both coexist in the install dir
+exactly as the procedure assumes. No release workflow, tag or network
+artifact source is involved; that is the tested form of the procedure, and
+`specs/task-rust-native-upgrade.spec.md` binds it (the upgrade-continues
+and rollback-restores selectors).
