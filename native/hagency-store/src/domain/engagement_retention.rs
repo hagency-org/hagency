@@ -275,13 +275,13 @@ const CASCADE: &[(&str, &str, &str)] = &[
         "SELECT engagement_id FROM engagement_prune_batch",
     ),
     (
-        "runner_dispatches",
-        "session_id",
+        "task_graphs",
+        "creator_session_id",
         "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
-        "task_graphs",
-        "creator_session_id",
+        "runner_dispatches",
+        "session_id",
         "SELECT s.id FROM runner_sessions s JOIN engagement_prune_batch b ON b.engagement_id=s.engagement_id",
     ),
     (
