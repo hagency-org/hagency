@@ -151,8 +151,7 @@ impl Inner {
         route: &ReplyRoute,
     ) -> Result<(hagency_core::project::Engagement, bool), Error> {
         let msg = &observation.event;
-        let body: serde_json::Value =
-            serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
+        let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
         let reg = self
             .domain
             .provisioning_registration(route.fleet_id.clone())
@@ -201,31 +200,25 @@ impl Inner {
         // verify_request reconstructs the request from source.content (minus the
         // two private room/event keys) and requires its digest to match.
         let mut source_content = serde_json::to_value(&request).map_err(|_| Error::Wire)?;
-        let source_content_obj = source_content
-            .as_object_mut()
-            .ok_or(Error::Wire)?;
+        let source_content_obj = source_content.as_object_mut().ok_or(Error::Wire)?;
         source_content_obj.remove("ownerDmRoomId");
         source_content_obj.remove("sourceEventId");
         let facts = self.room_facts.lock().await;
-        let (reception_obs, reception_facts) = facts
-            .get(&msg.room_id)
-            .ok_or(Error::Wire)?;
-        let (project_obs, project_facts) = facts
-            .get(&request.target_room_id)
-            .ok_or(Error::Wire)?;
+        let (reception_obs, reception_facts) = facts.get(&msg.room_id).ok_or(Error::Wire)?;
+        let (project_obs, project_facts) = facts.get(&request.target_room_id).ok_or(Error::Wire)?;
         let room_observation = |obs: &hagency_core::replies::MatrixRoomObservation,
-                                facts: &RoomAuthorityFacts| RoomObservation {
-            room_id: obs.room_id.clone(),
-            joined: obs.joined.clone(),
-            invite_only: obs.invite_only,
-            encryption: obs
-                .encrypted
-                .then(|| "m.megolm.v1.aes-sha2".to_string()),
-            powers: facts.powers.clone(),
-            default_power: facts.default_power,
-            invite_power: facts.invite_power,
-            binding: facts.binding.clone(),
-            name: facts.name.clone(),
+                                facts: &RoomAuthorityFacts| {
+            RoomObservation {
+                room_id: obs.room_id.clone(),
+                joined: obs.joined.clone(),
+                invite_only: obs.invite_only,
+                encryption: obs.encrypted.then(|| "m.megolm.v1.aes-sha2".to_string()),
+                powers: facts.powers.clone(),
+                default_power: facts.default_power,
+                invite_power: facts.invite_power,
+                binding: facts.binding.clone(),
+                name: facts.name.clone(),
+            }
         };
         let reception = room_observation(reception_obs, reception_facts);
         let project = room_observation(project_obs, project_facts);
@@ -257,13 +250,16 @@ impl Inner {
             project,
             owner_room: owner,
         };
-        let verified = verify_request(&reg, request, request_observation)
-            .map_err(|_| Error::Wire)?;
+        let verified =
+            verify_request(&reg, request, request_observation).map_err(|_| Error::Wire)?;
         let id = verified
             .request()
             .engagement_id()
             .map_err(|_| Error::Wire)?;
-        let exists = self.domain.provisioning_engagement_exists(id.clone()).await?;
+        let exists = self
+            .domain
+            .provisioning_engagement_exists(id.clone())
+            .await?;
         let engagement = self.domain.admit(verified, msg.origin_ts).await?;
         Ok((engagement, !exists))
     }

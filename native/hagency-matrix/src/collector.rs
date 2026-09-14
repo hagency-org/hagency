@@ -2,7 +2,10 @@ use crate::{CancellationToken, Error, HostConfig, HostRoom, http::Http, sdk::Own
 use hagency_core::replies::*;
 use hagency_store::DomainStore;
 use serde_json::{Value, json};
-use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    sync::Arc,
+};
 use tokio::sync::{Mutex, Semaphore};
 
 #[cfg(test)]
@@ -361,10 +364,10 @@ impl Inner {
             // Representable unsafe membership/privacy must reach the domain's
             // shared-room invalidation path rather than becoming a local-only error.
             let (observation, facts) = self.room(target, state)?;
-            self.room_facts.lock().await.insert(
-                target.room_id.clone(),
-                (observation.clone(), facts),
-            );
+            self.room_facts
+                .lock()
+                .await
+                .insert(target.room_id.clone(), (observation.clone(), facts));
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
             }
@@ -560,11 +563,18 @@ impl Inner {
                     if !key.is_empty() {
                         return Err(Error::Wire);
                     }
-                    facts.default_power =
-                        content.get("users_default").and_then(Value::as_i64).ok_or(Error::Wire)?;
-                    facts.invite_power =
-                        content.get("invite").and_then(Value::as_i64).ok_or(Error::Wire)?;
-                    let users = content.get("users").and_then(Value::as_object).ok_or(Error::Wire)?;
+                    facts.default_power = content
+                        .get("users_default")
+                        .and_then(Value::as_i64)
+                        .ok_or(Error::Wire)?;
+                    facts.invite_power = content
+                        .get("invite")
+                        .and_then(Value::as_i64)
+                        .ok_or(Error::Wire)?;
+                    let users = content
+                        .get("users")
+                        .and_then(Value::as_object)
+                        .ok_or(Error::Wire)?;
                     for (mxid, level) in users {
                         matrix_user(mxid, &self.config.identity.server_name)
                             .map_err(|_| Error::Wire)?;
@@ -577,7 +587,10 @@ impl Inner {
                     if !key.is_empty() {
                         return Err(Error::Wire);
                     }
-                    facts.name = content.get("name").and_then(Value::as_str).map(str::to_owned);
+                    facts.name = content
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .map(str::to_owned);
                 }
                 "com.hagency.project.binding.v1" => {
                     if !key.is_empty() {

@@ -344,7 +344,11 @@ impl Batch {
             .ok_or(Malformed)?;
         if !matches!(
             kind,
-            "m.text" | "m.notice" | "m.emote" | "m.file" | "m.image"
+            "m.text"
+                | "m.notice"
+                | "m.emote"
+                | "m.file"
+                | "m.image"
                 | "com.hagency.engagement.request.v1"
         ) {
             return Err(Unsupported);

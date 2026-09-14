@@ -240,19 +240,27 @@ impl DomainRepository {
             joined: value
                 .get("joined")
                 .and_then(serde_json::Value::as_array)
-                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?
+                .ok_or(Error::Invalid(hagency_core::InvalidInput(
+                    "invalid owner room",
+                )))?
                 .iter()
                 .map(|v| v.as_str().map(str::to_owned))
                 .collect::<Option<_>>()
-                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
+                .ok_or(Error::Invalid(hagency_core::InvalidInput(
+                    "invalid owner room",
+                )))?,
             invite_only: value
                 .get("invite_only")
                 .and_then(serde_json::Value::as_bool)
-                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
+                .ok_or(Error::Invalid(hagency_core::InvalidInput(
+                    "invalid owner room",
+                )))?,
             encrypted: value
                 .get("encrypted")
                 .and_then(serde_json::Value::as_bool)
-                .ok_or(Error::Invalid(hagency_core::InvalidInput("invalid owner room")))?,
+                .ok_or(Error::Invalid(hagency_core::InvalidInput(
+                    "invalid owner room",
+                )))?,
         })
     }
     /// Whether an engagement id already exists — the provisioning ingress uses
