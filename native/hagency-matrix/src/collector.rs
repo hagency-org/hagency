@@ -28,9 +28,9 @@ pub(crate) struct Inner {
     pub(crate) attachment_handles: Arc<Semaphore>,
     pub(crate) receiver: crate::receive::Receiver,
     pub(crate) uploads: crate::upload::Registry,
-    /// Verification-time-only authority facts (ADR-095) for the project room,
+    /// Verification-time-only room snapshots + authority facts (ADR-095),
     /// captured at intake and read by the provisioning hook; never stored.
-    pub(crate) room_facts: Mutex<BTreeMap<String, RoomAuthorityFacts>>,
+    pub(crate) room_facts: Mutex<BTreeMap<String, (MatrixRoomObservation, RoomAuthorityFacts)>>,
     #[cfg(test)]
     pub(crate) handoff_fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -361,10 +361,10 @@ impl Inner {
             // Representable unsafe membership/privacy must reach the domain's
             // shared-room invalidation path rather than becoming a local-only error.
             let (observation, facts) = self.room(target, state)?;
-            self.room_facts
-                .lock()
-                .await
-                .insert(target.room_id.clone(), facts);
+            self.room_facts.lock().await.insert(
+                target.room_id.clone(),
+                (observation.clone(), facts),
+            );
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
             }
