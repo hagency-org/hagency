@@ -315,13 +315,35 @@ fn native_release_entrypoints_scan_finds_no_node() {
 /// `node`); `.js`/`.mjs`/`.cjs` catch Node script paths in any position;
 /// `__node_bin__` is the placeholder the spec names.
 fn node_reference_findings(name: &str, text: &str) -> Vec<String> {
+    // Boundary-aware Node script-path detection: an extension must END a
+    // path token, so `logs/app.json` stays clean while `index.js`,
+    // `index.mjs`, `index.cjs` (and each followed by a space, quote or
+    // flag) is a finding. All three extensions are in the spec's Must and
+    // ADR-134's list.
+    fn has_script_path(lower: &str) -> bool {
+        for ext in [".js", ".mjs", ".cjs"] {
+            let mut rest = lower;
+            while let Some(pos) = rest.find(ext) {
+                let after = &rest[pos + ext.len()..];
+                let boundary = after
+                    .chars()
+                    .next()
+                    .is_none_or(|c| !c.is_ascii_alphanumeric());
+                if boundary {
+                    return true;
+                }
+                rest = &rest[pos + ext.len()..];
+            }
+        }
+        false
+    }
     let mut findings = Vec::new();
     for (index, line) in text.lines().enumerate() {
         let lower = line.to_ascii_lowercase();
         let word = lower
             .split(|c: char| !c.is_ascii_alphanumeric())
             .any(|part| matches!(part, "node" | "npm" | "npx"));
-        let script = lower.contains(".js") || lower.contains("__node_bin__");
+        let script = lower.contains("__node_bin__") || has_script_path(&lower);
         if word || script {
             findings.push(format!("{name}:{}: {}", index + 1, line.trim()));
         }
@@ -424,6 +446,19 @@ fn native_package_entrypoints_reference_no_node() {
                 && !rendered.contains("__USER__"),
             "renderer for {template} left placeholders unresolved"
         );
+        // The render half must not be vacuous: non-empty, and it carries
+        // the invocation line the unit's shape requires (ExecStart for the
+        // systemd unit, ProgramArguments for the launchd plist). An empty
+        // or stripped render would otherwise scan clean by omission.
+        let required = if template.ends_with(".service") {
+            "ExecStart="
+        } else {
+            "ProgramArguments"
+        };
+        assert!(
+            !rendered.trim().is_empty() && rendered.contains(required),
+            "renderer for {template} produced an empty or vacuous unit (missing `{required}`)"
+        );
         files.push((format!("rendered by installer: {template}"), rendered));
     }
     let mut findings = Vec::new();
@@ -447,6 +482,19 @@ fn native_package_entrypoints_reference_no_node() {
         planted,
         vec!["planted.service:2: ExecStart=/usr/bin/node /opt/app/index.js".to_string()],
         "the scanner must name the file and the line"
+    );
+    // A Node script invoked as .mjs must be reported by the script-path
+    // matcher on its own — no `node` word present on that line.
+    let mjs = node_reference_findings("planted.plist", "<string>/opt/app/worker.mjs</string>\n");
+    assert_eq!(
+        mjs,
+        vec!["planted.plist:1: <string>/opt/app/worker.mjs</string>".to_string()],
+        "an .mjs script path must be a finding"
+    );
+    // And the boundary stays honest: a .json path is not a Node script.
+    assert!(
+        node_reference_findings("honest.plist", "<string>/opt/logs/app.json</string>\n").is_empty(),
+        "app.json must not be a Node script finding"
     );
 }
 
