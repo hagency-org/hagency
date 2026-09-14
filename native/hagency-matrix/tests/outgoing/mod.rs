@@ -1117,6 +1117,64 @@ async fn native_matrix_outgoing_domain_changed_receipt_or_fence_cannot_settle() 
     f.store.shutdown().await.unwrap();
     fake.close().await;
 }
+/// Review r1 finding 3/8: a FIRST unsafe room snapshot must surface at the
+/// matrix boundary as its own word carrying the digest-bound reason —
+/// `Error::UnsafeSnapshot("unsafe snapshot <digest>")` — never the wire-format
+/// word and never the bare domain catch-all. A fresh collector (no prior room
+/// observation) collects a room whose Direct snapshot carries a third member;
+/// the store's safety refusal crosses the `From` boundary with the reason
+/// intact, and no scope row is created, so the room stays observable later.
+#[tokio::test]
+async fn native_matrix_outgoing_first_unsafe_snapshot_surfaces_the_safety_reason() {
+    let f = common::Fixture::new();
+    let mut fake = common::Fake::start(true).await;
+    let c = Collector::new(
+        config(&f, &fake.endpoint, f.identity.clone(), true),
+        f.store.clone(),
+    )
+    .unwrap();
+    let cancel = CancellationToken::new();
+    let (r, ()) = scripted(
+        "outgoing first unsafe snapshot",
+        None,
+        c.collect(&cancel),
+        async {
+            fake.next().await.json(200, common::who());
+            fake.next().await.json(200, common::sync("boot"));
+            let mut unsafe_room = room(true);
+            unsafe_room.as_array_mut().unwrap().push(json!({
+                "type": "m.room.member",
+                "state_key": "@other:example.test",
+                "content": {"membership": "join"}
+            }));
+            fake.next().await.json(200, unsafe_room);
+        },
+    )
+    .await;
+    match r {
+        Err(Error::UnsafeSnapshot(reason)) => assert!(
+            reason.starts_with("unsafe snapshot "),
+            "the refusal carries the digest-bound safety reason, got {reason:?}"
+        ),
+        other => panic!("the first unsafe snapshot must surface UnsafeSnapshot, got {other:?}"),
+    }
+    fake.no_request().await;
+    // The refused first observation created no scope row: the room remains
+    // unobserved, free to be admitted safely at generation 1 later.
+    assert!(
+        f.store
+            .matrix_room_state(
+                f.identity.transport.engagement_id.clone(),
+                "!project:example.test".into()
+            )
+            .await
+            .unwrap()
+            .is_none()
+    );
+    c.close().await.unwrap();
+    f.store.shutdown().await.unwrap();
+    fake.close().await;
+}
 
 #[path = "two_agents.rs"]
 mod two_agents;

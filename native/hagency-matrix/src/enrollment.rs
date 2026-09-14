@@ -60,9 +60,14 @@ impl Collector {
                 .lock()
                 .map_err(|_| Error::OutcomeUnknown)?;
             if let Some(previous) = registry.as_ref() {
-                match *previous.result.lock().map_err(|_| Error::OutcomeUnknown)? {
+                match previous
+                    .result
+                    .lock()
+                    .map_err(|_| Error::OutcomeUnknown)?
+                    .as_ref()
+                {
                     Some(Ok(())) => {}
-                    Some(Err(error)) => return Err(error),
+                    Some(Err(error)) => return Err(error.clone()),
                     None => return Err(Error::OutcomeUnknown),
                 }
             }
@@ -89,7 +94,7 @@ impl Collector {
                 }
             };
             if let Ok(mut slot) = job.result.lock() {
-                *slot = Some(result);
+                *slot = Some(result.clone());
             }
             result
         })

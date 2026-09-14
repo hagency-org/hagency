@@ -102,7 +102,7 @@ impl Inner {
                 observe!(Whoami);
                 if let Err(error) = self.whoami(cancel).await {
                     #[cfg(test)]
-                    crate::collector::observation::primary(error);
+                    crate::collector::observation::primary(error.clone());
                     return self.fence_observation(expected, error).await;
                 }
                 observe!(OpenOwner);
@@ -480,7 +480,7 @@ impl Inner {
         observe!(Whoami);
         if let Err(error) = self.whoami(cancel).await {
             #[cfg(test)]
-            crate::collector::observation::primary(error);
+            crate::collector::observation::primary(error.clone());
             return self.fence_observation(expected, error).await;
         }
         let observation = self.collect_room_observation(target, cancel).await?;

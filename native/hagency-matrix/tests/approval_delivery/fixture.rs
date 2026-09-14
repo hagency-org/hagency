@@ -206,7 +206,7 @@ impl Fixture {
             &mut self.peer,
         )
         .await;
-        if let Err(error) = result {
+        if let Err(error) = &result {
             eprintln!(
                 "original approval enrollment: error={error:?} key_writes={} claims={} shares={} room_events={}",
                 self.peer.writes.len(),

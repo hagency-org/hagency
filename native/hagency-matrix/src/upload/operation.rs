@@ -150,7 +150,7 @@ async fn fence(inner: Arc<Inner>, job: Arc<Job>, error: Error) -> Result<UploadR
             .await;
         let observed = result.err().unwrap_or(Error::OutcomeUnknown);
         if let Ok(mut value) = job.fence_error.lock() {
-            *value = Some(observed);
+            *value = Some(observed.clone());
         }
         #[cfg(test)]
         job.fence_finished.notify_one();

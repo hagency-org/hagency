@@ -120,7 +120,7 @@ pub(crate) enum SdkCommand {
     Quarantine,
     Close,
 }
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Event {
     pub phase: Phase,
     pub elapsed_us: u64,
@@ -160,7 +160,7 @@ impl Trace {
                 callsite,
                 variant,
                 batch,
-                events: [None; EVENTS],
+                events: std::array::from_fn(|_| None),
                 next: 0,
                 primary: None,
                 fence: None,
@@ -195,7 +195,7 @@ impl Trace {
                 command,
                 sequence,
                 index,
-                error,
+                error: error.clone(),
                 elapsed_us: self
                     .start
                     .elapsed()
@@ -204,13 +204,13 @@ impl Trace {
                     .unwrap_or(u64::MAX),
             };
             let next = state.next;
-            state.events[next] = Some(event);
+            state.events[next] = Some(event.clone());
             state.next = (next + 1) % EVENTS;
             if phase == Phase::PrimaryError && state.primary.is_none() {
-                state.primary = Some(event);
+                state.primary = Some(event.clone());
             }
             if phase == Phase::FenceReturned && error.is_some() && state.fence.is_none() {
-                state.fence = Some(event);
+                state.fence = Some(event.clone());
             }
             if command.is_some() && error.is_some() && state.sdk_failure.is_none() {
                 state.sdk_failure = Some(event);
@@ -306,7 +306,7 @@ pub(crate) async fn owned<T>(
 ) -> Result<T, Error> {
     let result = scope(trace.clone(), future).await;
     if let Some(trace) = trace {
-        trace.record(Phase::OwnerReturned, result.as_ref().err().copied());
+        trace.record(Phase::OwnerReturned, result.as_ref().err().cloned());
     }
     result
 }
@@ -339,7 +339,7 @@ pub(crate) async fn observed<T>(
 ) -> Result<T, Error> {
     let _panic = OnPanic(trace.clone());
     let result = scope(Some(trace.clone()), future).await;
-    trace.record(Phase::OperationReturned, result.as_ref().err().copied());
+    trace.record(Phase::OperationReturned, result.as_ref().err().cloned());
     if result.is_err() {
         trace.print();
     }

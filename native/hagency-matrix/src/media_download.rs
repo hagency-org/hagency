@@ -6,7 +6,7 @@ use std::sync::Arc;
 use tokio::{sync::Semaphore, time::Instant};
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum MediaDownloadError {
     #[error("invalid bounded Matrix media identifier")]
     MediaId,

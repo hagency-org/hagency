@@ -234,7 +234,7 @@ impl Inner {
             Ok(batch) => batch,
             Err(error) => {
                 #[cfg(test)]
-                crate::collector::observation::primary(error);
+                crate::collector::observation::primary(error.clone());
                 return self.fence_observation(expected, error).await;
             }
         };

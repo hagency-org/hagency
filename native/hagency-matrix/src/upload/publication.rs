@@ -34,7 +34,7 @@ pub struct FilePublicationAdmissionFailure {
 }
 impl FilePublicationAdmissionFailure {
     pub fn error(&self) -> Error {
-        self.error
+        self.error.clone()
     }
     pub fn into_parts(self) -> (UploadOperation, FilePublicationClaim, FilePublicationSend) {
         *self.inputs
@@ -343,7 +343,7 @@ impl FilePublicationOperation {
                         Some(Error::from(error))
                     };
                     if let Some(error) = failure {
-                        *job.outcome.lock().map_err(|_| Error::Storage)? = Some(Err(error));
+                        *job.outcome.lock().map_err(|_| Error::Storage)? = Some(Err(error.clone()));
                         return Err(error);
                     }
                 }

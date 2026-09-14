@@ -54,10 +54,13 @@ impl UploadOperation {
     }
     pub fn outcome(&self) -> Result<Option<Result<UploadReceipt, Error>>, Error> {
         let state = self.job.state.try_lock().map_err(|_| Error::Busy)?;
-        Ok(state
-            .outcome
-            .clone()
-            .or_else(|| self.job.fence_error.lock().ok().and_then(|v| v.map(Err))))
+        Ok(state.outcome.clone().or_else(|| {
+            self.job
+                .fence_error
+                .lock()
+                .ok()
+                .and_then(|v| v.as_ref().map(|e| Err(e.clone())))
+        }))
     }
 }
 impl Collector {

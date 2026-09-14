@@ -67,7 +67,7 @@ impl Jobs {
                 Some(Err(error))
                     if !historical && last.blocks_after_error.load(Ordering::Acquire) =>
                 {
-                    return Err(*error);
+                    return Err(error.clone());
                 }
                 _ => {}
             }
@@ -140,7 +140,7 @@ impl Jobs {
             {
                 Some(Ok(_)) => {}
                 Some(Err(e)) if last.blocks_after_error.load(Ordering::Acquire) => {
-                    return Err(*e);
+                    return Err(e.clone());
                 }
                 Some(Err(_)) => {}
                 None => return Err(Error::Busy),

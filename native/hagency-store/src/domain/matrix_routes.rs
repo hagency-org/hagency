@@ -342,14 +342,21 @@ impl DomainRepository {
             // `invalidate` would surface it as an authority word. The safety
             // predicate owns this refusal instead: refuse by its name, create
             // no row (the transaction is dropped uncommitted), and leave the
-            // room free to be observed safely at generation 1 later.
-            let prior_exists: bool = tx
-                .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM matrix_room_scopes WHERE server_name=?1 AND room_id=?2)",
-                    params![c.registration.server_name, &input.room_id],
-                    |r| r.get(0),
-                )
-                .unwrap_or(false);
+            // room free to be observed safely at generation 1 later. The
+            // existence check uses `invalidate`'s exact predicate (server,
+            // room, fleet, project) so a foreign-project row cannot slip past
+            // the guard into `:123`; read errors propagate, never fold into a
+            // safety refusal.
+            let prior_exists: bool = tx.query_row(
+                "SELECT EXISTS(SELECT 1 FROM matrix_room_scopes WHERE server_name=?1 AND room_id=?2 AND fleet_id=?3 AND project_id=?4)",
+                params![
+                    c.registration.server_name,
+                    &input.room_id,
+                    c.registration.fleet_id,
+                    c.project
+                ],
+                |r| r.get(0),
+            )?;
             if !prior_exists {
                 return Err(Error::UnsafeSnapshot(reason));
             }

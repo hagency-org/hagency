@@ -30,7 +30,7 @@ pub use media_upload::{
 pub use outgoing::{OutgoingState, OutgoingSummary};
 pub use receive::{ReceiveError, ReceivedAttachment, ReceivedScope};
 pub use tokio_util::sync::CancellationToken;
-#[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
     #[error("invalid host Matrix configuration")]
     Config,
@@ -72,6 +72,8 @@ pub enum Error {
     Conflict,
     #[error("Matrix event intake retains unsupported or quarantined custody")]
     Unsupported,
+    #[error("room snapshot is unsafe and was refused: {0}")]
+    UnsafeSnapshot(String),
     #[error("domain authority rejected the observation")]
     Domain,
 }
@@ -83,9 +85,9 @@ impl From<hagency_store::Error> for Error {
             hagency_store::Error::Capacity => Self::Capacity,
             hagency_store::Error::Busy => Self::Busy,
             hagency_store::Error::Conflict => Self::Conflict,
-            // A safety refusal is a contract failure of the observed snapshot,
-            // not domain authority: surface it as the named wire-contract word.
-            hagency_store::Error::UnsafeSnapshot(_) => Self::Wire,
+            // A safety refusal is neither domain authority nor a wire-format
+            // failure; it is its own word, carrying the digest-bound reason.
+            hagency_store::Error::UnsafeSnapshot(reason) => Self::UnsafeSnapshot(reason),
             _ => Self::Domain,
         }
     }

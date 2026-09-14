@@ -9,7 +9,7 @@ use tokio::{
 };
 use tokio_util::sync::CancellationToken;
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, thiserror::Error)]
+#[derive(Clone, Debug, Eq, PartialEq, thiserror::Error)]
 pub enum MediaUploadError {
     #[error("invalid encrypted media upload configuration")]
     Config,
@@ -118,7 +118,7 @@ impl UploadAttempt<'_> {
         self.state
     }
     pub fn failure(&self) -> Option<Error> {
-        self.failure
+        self.failure.clone()
     }
     /// Stored under this attempt's finite slot; no separately unbounded receipt.
     pub fn media_id(&self) -> Option<&MediaId> {
@@ -169,14 +169,14 @@ impl UploadAttempt<'_> {
                     None
                 };
                 if let Some(error) = refusal {
-                    self.failure = Some(error);
+                    self.failure = Some(error.clone());
                     return Err(error.into());
                 }
                 self.state = UploadState::Accepted;
                 Ok(())
             }
             Err(error) => {
-                self.failure = Some(error);
+                self.failure = Some(error.clone());
                 Err(error.into())
             }
         }

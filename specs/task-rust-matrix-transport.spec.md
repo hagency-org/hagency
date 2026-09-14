@@ -34,6 +34,8 @@ bounded authenticated observations without enabling event admission or sends.
 - ./Cargo.toml
 - ./Cargo.lock
 - native/hagency-matrix/**
+- native/hagency-matrix/src/lib.rs
+- native/hagency-store/src/lib.rs
 - native/hagency-core/src/replies.rs
 - native/hagency-store/src/domain.rs
 - native/hagency-store/src/domain_worker.rs

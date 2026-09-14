@@ -242,7 +242,7 @@ impl Inner {
         .await;
         if let Err(error) = result {
             #[cfg(test)]
-            observation::primary(error);
+            observation::primary(error.clone());
             return self.fence_observation(expected, error).await;
         }
         result
@@ -270,7 +270,7 @@ impl Inner {
         error: Error,
     ) -> Result<T, Error> {
         #[cfg(test)]
-        observation::primary(error);
+        observation::primary(error.clone());
         let t = &self.config.identity.transport;
         // Conservative whole-device fence: incomplete collection cannot
         // leave an earlier private room or long-lived grant usable.
@@ -366,7 +366,7 @@ impl Inner {
         .await;
         #[cfg(test)]
         if let Err(error) = &result {
-            observation::primary(*error);
+            observation::primary(error.clone());
         }
         if result.is_err()
             && let Some(prior) = prior

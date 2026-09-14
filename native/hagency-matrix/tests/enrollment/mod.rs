@@ -52,7 +52,11 @@ async fn native_matrix_enrollment_existing() {
             2 => Error::Unsupported,
             _ => Error::Identity,
         };
-        assert_eq!(result, Err(expected), "existing identity variant {variant}");
+        assert_eq!(
+            result,
+            Err(expected.clone()),
+            "existing identity variant {variant}"
+        );
         assert_eq!(f.peer.writes.len(), usize::from(variant == 1));
         assert_eq!(f.peer.claims, 0);
         assert!(!f.base.available().await);

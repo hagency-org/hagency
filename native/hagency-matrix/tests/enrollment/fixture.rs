@@ -151,7 +151,7 @@ pub async fn finish_owned(f: &mut Fixture) -> Result<(), Error> {
             permit=&mut done=>{
                 drop(permit.unwrap());
                 return f.collector.inner.enrollment_jobs.0.lock().unwrap().as_ref().unwrap()
-                    .result.lock().unwrap().expect("original owned result retained");
+                    .result.lock().unwrap().as_ref().cloned().expect("original owned result retained");
             }
             request=f.fake.next()=>respond(request,&mut f.peer).await,
         }

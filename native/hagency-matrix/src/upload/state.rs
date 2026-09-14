@@ -80,7 +80,7 @@ impl UploadAdmissionFailure {
         }
     }
     pub fn error(&self) -> Error {
-        self.error
+        self.error.clone()
     }
     pub fn into_input(self) -> StagedUpload {
         *self.input

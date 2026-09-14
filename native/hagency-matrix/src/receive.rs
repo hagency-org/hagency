@@ -18,7 +18,7 @@ use tokio::{
 const MAX_RESULTS: usize = 4;
 const MAX_BYTES: usize = 4 * 1024 * 1024;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum ReceiveError {
     #[error(transparent)]
     Authority(#[from] Error),
@@ -188,7 +188,7 @@ impl Collector {
                 MediaDownloader::new(&self.inner.config, MediaDownloadLimits::default())
             })
             .as_ref()
-            .map_err(|e| *e)?;
+            .map_err(Clone::clone)?;
         let checked = downloader
             .download_bounded_until(
                 handle.media_id(),

@@ -239,7 +239,7 @@ impl ApprovalCollector {
                 }
                 .await;
                 #[cfg(test)]
-                crate::collector::observation::fence(fence.as_ref().err().copied());
+                crate::collector::observation::fence(fence.as_ref().err().cloned());
                 // Even retired domain authority must not skip actual SDK shutdown.
                 observe!(CloseOwnerLock);
                 let shutdown = if let Some(owner) = inner.owner.lock().await.take() {
