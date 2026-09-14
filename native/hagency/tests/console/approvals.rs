@@ -190,6 +190,89 @@ async fn native_console_approval_undelivered_shows_status_not_a_card() {
     f.close().await;
 }
 
+/// G7 (spec `native_owner_approval_grants`, ADR-043): a saved grant matches
+/// the store's authorization read — the grant-match predicate of
+/// `domain/approvals.rs`'s `authorize` (`SELECT ... FROM approval_grants
+/// WHERE ... AND revoked=0 AND (mode='always' OR ...)`) — before revocation,
+/// and after `DELETE /console/api/approvals/grants/{id}` the same read matches
+/// nothing: the revoked grant no longer authorizes another request.
+fn seed_grant(state: &std::path::Path, engagement: &str) {
+    let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    db.execute(
+        "INSERT INTO approval_grants(id,engagement_id,binding_generation,scope_key,scope_kind,mode,task_id,task_epoch,context_key,revoked) \
+         VALUES('grant_console_revoke',?1,1,'task:echo','\"exact_command\"','always',NULL,NULL,'ctx_console',0)",
+        [engagement],
+    )
+    .unwrap();
+}
+
+/// The authorization read itself: the exact grant-match predicate the store's
+/// `authorize` runs when a fresh request is admitted against saved grants.
+/// Driven directly so the assertion is over the SAME columns revocation must
+/// remove from the match set — `revoked=0` is the row's only authority.
+fn authorization_matches(state: &std::path::Path, engagement: &str) -> bool {
+    let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    db.query_row(
+        "SELECT EXISTS(SELECT 1 FROM approval_grants WHERE engagement_id=?1 AND binding_generation=1 AND scope_key='task:echo' AND context_key='ctx_console' AND revoked=0 AND (mode='always' OR (task_id='private_task' AND task_epoch=0)))",
+        [engagement],
+        |r| r.get::<_, bool>(0),
+    )
+    .unwrap()
+}
+
+#[tokio::test]
+async fn native_console_approval_grant_revocation() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let state = f.root.path().join("state");
+    seed_grant(&state, &f.engagement);
+    assert!(
+        authorization_matches(&state, &f.engagement),
+        "the saved grant authorizes before revocation"
+    );
+    let cookie = session(&service).await;
+    let mut response = TestClient::delete(format!(
+        "{BASE}/console/api/approvals/grants/grant_console_revoke"
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .add_header("origin", BASE, true)
+    .add_header("sec-fetch-site", "same-origin", true)
+    .add_header("cookie", &cookie, true)
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    let value = response.take_json::<Value>().await.unwrap();
+    // The bounded grant projection (ADR-043): id and the revoked word only —
+    // no scope, context, owner-room or workspace byte.
+    assert_eq!(value["id"], "grant_console_revoke");
+    assert_eq!(value["revoked"], true);
+    assert_eq!(value.as_object().unwrap().len(), 2);
+    assert!(
+        !authorization_matches(&state, &f.engagement),
+        "the revoked grant no longer authorizes"
+    );
+    let grants = f
+        .domain
+        .approval_grants(f.engagement.clone(), String::new(), 100)
+        .await
+        .unwrap();
+    assert!(
+        grants.iter().all(|g| g.revoked),
+        "the management read reports the grant revoked"
+    );
+    // An anonymous caller cannot revoke.
+    let anonymous = TestClient::delete(format!(
+        "{BASE}/console/api/approvals/grants/grant_console_revoke"
+    ))
+    .add_header("host", "127.0.0.1:13300", true)
+    .add_header("origin", BASE, true)
+    .add_header("sec-fetch-site", "same-origin", true)
+    .send(&service)
+    .await;
+    assert_eq!(anonymous.status_code, Some(StatusCode::UNAUTHORIZED));
+    f.close().await;
+}
+
 /// C2b A6: a read-only session can observe but cannot decide. Both routes
 /// serve under the read-only ticket, and no mutation verdict or consume
 /// route exists on the approvals path — the absence is asserted, not assumed.
