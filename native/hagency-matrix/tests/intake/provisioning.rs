@@ -153,7 +153,6 @@ fn project_state() -> Value {
         member(OWNER),
         member(&representative()),
         {"type": "m.room.join_rules", "state_key": "", "content": {"join_rule": "invite"}},
-        {"type": "m.room.encryption", "state_key": "", "content": {"algorithm": "m.megolm.v1.aes-sha2"}},
         power_levels(json!({OWNER: 100, representative(): 50})),
         {
             "type": "m.room.name",
