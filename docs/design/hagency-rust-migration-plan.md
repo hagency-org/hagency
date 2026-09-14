@@ -601,6 +601,7 @@ Migration numbers follow landing order over the store's single linear head — a
 - The browser UI works with real newly created Agent IDs through Salvo.
 - Required Matrix privacy, owner-approval, file-delivery and revocation tests pass.
 - Allocation and task truth survive retries/crashes without silent duplicate effects.
+- Every store write a spec `Then` line names carries a `Production caller:` line and is reachable from a production caller with tests, fixtures and the bootstrap probe stripped (ADR-146) — test-only or fixture-only reachability is a tracked gap, not done.
 - Resource budgets are measured on the embedded device and published with limits.
 - Fresh installation, upgrade, recovery and the selected state-continuity strategy
   have tested procedures. Unknown results and platform skips remain explicit.
