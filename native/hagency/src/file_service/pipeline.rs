@@ -118,6 +118,18 @@ pub(super) async fn job(
             return;
         }
     };
+    #[cfg(test)]
+    if registry.tests.block_source() {
+        // Graceful unwind-before-capture (was a worker-thread panic nobody
+        // observed, spamming the log every run): mirror the worker's
+        // JoinSet-Err arm — mark the job unknown and drop readiness, leaving
+        // the durable receipt Unbound (no cancel_file_delivery). Quiet when
+        // healthy; the test thread stays loud via its ready-timeout and the
+        // !live && !releasable asserts in the unwind scenario.
+        job.mark_unknown();
+        registry.ready.store(false, Ordering::Release);
+        return;
+    }
     let mut reason = FileDeliveryFailure::SourceRefused;
     let result = transfer(&shared, &registry, &media, &codec, limit, &job, &mut reason).await;
     if result.is_ok() {
@@ -187,8 +199,6 @@ async fn transfer(
     job: &Job,
     reason: &mut FileDeliveryFailure,
 ) -> Result<(), FileError> {
-    #[cfg(test)]
-    registry.tests.block_source();
     checkpoint(registry)?;
     let access = shared
         .workspace
