@@ -25,6 +25,14 @@ pub(super) async fn run(
         state.input.media.ciphertext(),
         hagency_core::uploads::MAX_UPLOAD_BYTES as usize,
     )?;
+    // Capture the durable identity and fence before the send is consumed, so
+    // a partial body / failed EOF can still be recorded unknown with the
+    // original fence retained (ADR-078/083).
+    let upload_identity = state
+        .input
+        .send
+        .as_ref()
+        .map(|send| (send.identity().clone(), send.fence()));
     {
         let _busy = inner
             .busy
@@ -53,14 +61,28 @@ pub(super) async fn run(
         .await?;
     checkpoint(cancel, deadline)?;
     state.http_started = true;
-    let response = inner
+    let response = match inner
         .http
         .upload(
             request,
             deadline.min(Instant::now() + inner.config.limits.request),
             cancel,
         )
-        .await?;
+        .await
+    {
+        Ok(response) => response,
+        Err(Error::Transport) => {
+            // A partial body or failed EOF leaves the POST outcome unproven.
+            // Record it unknown with the original fence retained (ADR-078/083)
+            // before surfacing the transport failure; the claim is dropped so
+            // nothing can re-send under the same id.
+            if let Some((identity, fence)) = upload_identity {
+                let _ = inner.domain.mark_upload_uncertain(identity, fence).await;
+            }
+            return Err(Error::Transport);
+        }
+        Err(error) => return Err(error),
+    };
     // Assignment precedes every await and final cancellation check: a fully
     // checked late response is historical custody even if run then refuses.
     state.response = Some(response);
