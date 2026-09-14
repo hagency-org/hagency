@@ -221,7 +221,22 @@ impl Fixture {
             );
             tokio::time::sleep(Duration::from_millis(5)).await;
         }
-        assert_eq!(self.state(), "started");
+        // The marker proves the child entered; the state read must not race the
+        // transient "started" snapshot. Under parallel load the whole lifecycle
+        // (marker -> Done -> stop -> settlement) can complete between this
+        // fixture's own 5ms polls, and lose() settles started -> outcome_unknown
+        // (the CleanupUnknown teardown). Every state accepted below is reachable
+        // ONLY through started: lose() writes outcome_unknown from started/parked
+        // only (a leased dispatch loses to queued), park_dispatch authorizes from
+        // ["started"], and completed is started's own terminal write.
+        assert!(
+            matches!(
+                self.state().as_str(),
+                "started" | "parked" | "completed" | "outcome_unknown"
+            ),
+            "dispatch never reached started: {}",
+            self.state()
+        );
     }
     fn quarantined(&self) {
         assert_eq!(self.state(), "outcome_unknown");
