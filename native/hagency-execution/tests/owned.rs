@@ -52,6 +52,9 @@ struct Fixture {
     domain: DomainStore,
     cap: RunnerCapability,
     engagement: String,
+    /// The account `resource_accounts` binds to the provision's preset — the
+    /// id the readiness gate evaluates. Populated only for managed fixtures.
+    bound_account: Option<String>,
 }
 impl Fixture {
     fn new() -> Self {
@@ -71,6 +74,7 @@ impl Fixture {
         let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
         db.register(&registration()).unwrap();
         let mut accounts = Vec::new();
+        let mut bound_account = None;
         let pool = if managed {
             for marker in ["selected-A", "other-B"] {
                 let prepared = db.reserve_account(hagency_store::ACCOUNT_PROFILE).unwrap();
@@ -104,7 +108,39 @@ impl Fixture {
                 )
                 .unwrap();
             let result = db.enroll_account_resource(command).unwrap();
-            db.resource_configuration(&result.resource_id).unwrap()
+            let pool = db.resource_configuration(&result.resource_id).unwrap();
+            // MA-S2 (ADR-053 amendment): the readiness gate evaluates the account
+            // `resource_accounts` binds to the provision's preset. Seed an
+            // observed, unexpired fact so the managed fixture is consumable —
+            // the selector parks an unobserved account, and the Host admission
+            // re-checks the same predicate. Read the bound id back the same way
+            // the predicate does (enrollment may bind a different id than the
+            // reserved choice).
+            bound_account = Some(
+                rusqlite::Connection::open(root.path().join("state/domain.sqlite3"))
+                    .unwrap()
+                    .query_row(
+                        "SELECT account_id FROM resource_accounts WHERE preset_id=?1",
+                        [&pool.preset_id],
+                        |r| r.get::<_, String>(0),
+                    )
+                    .unwrap(),
+            );
+            let attempt = db
+                .begin_account_login(bound_account.as_ref().unwrap(), now())
+                .unwrap();
+            db.settle_account_login(
+                attempt,
+                hagency_store::LoginVerdict {
+                    mode: hagency_store::AccountReadinessMode::Subscription,
+                    provider_state: "logged-in-subscription".into(),
+                    outcome: hagency_store::LoginOutcome::Observed,
+                    expires_at_ms: Some(now() + 3_600_000),
+                },
+                now(),
+            )
+            .unwrap();
+            pool
         } else {
             db.put_resource(&unmanaged_pool).unwrap();
             unmanaged_pool
@@ -150,6 +186,7 @@ impl Fixture {
             domain,
             cap,
             engagement: e.id,
+            bound_account,
         }
     }
     fn host(&self, mode: &str, workspace: &str, missing: bool) -> Host {

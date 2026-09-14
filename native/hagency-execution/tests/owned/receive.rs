@@ -132,6 +132,7 @@ fn fixture() -> Fixture {
         domain,
         cap,
         engagement: e.id,
+        bound_account: None,
     }
 }
 

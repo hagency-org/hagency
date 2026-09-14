@@ -291,6 +291,28 @@ impl DomainRepository {
         Ok(scope)
     }
 
+    /// MA-S2 (ADR-053 amendment): the Host admission re-check. The queued-dispatch
+    /// selector gates readiness at claim, and `start_owned_dispatch` re-checks at
+    /// the commit; the Host admission re-reads the SAME predicate before any
+    /// workspace or process work, so a fact that settled between selection and
+    /// admission refuses here ("neither trusts the other's cache"). On unknown
+    /// it parks with the named reason — the park is committed, it is the audit
+    /// record — and returns `State`; the row, its inputs and custody survive.
+    pub fn admit_owned_dispatch(&mut self, cap: &RunnerCapability, now: u64) -> Result<(), Error> {
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let before = scope(&tx, cap, now, &["leased"])?;
+        self.accounts.check_resource(&tx, before.resource())?;
+        if !execution::dispatch_account_ready(&tx, &cap.dispatch_id, now)? {
+            execution::park_on_unknown(&tx, &cap.dispatch_id, &cap.runner_id, now)?;
+            tx.commit()?;
+            return Err(Error::State);
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
     pub fn start_owned_dispatch(
         &mut self,
         cap: &RunnerCapability,

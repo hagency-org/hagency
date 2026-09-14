@@ -101,3 +101,49 @@ async fn native_account_host_consumer() {
     }
     f.quarantined();
 }
+
+/// MA-S2 (ADR-053 amendment) scenario 1's second Then: the Host admission
+/// re-checks the same readiness predicate the selector uses, so a row the
+/// selector would park is refused by the admission even when handed to it
+/// directly — neither trusts the other's cache.
+#[tokio::test]
+async fn native_host_admission_refuses_unready_account() {
+    let f = Fixture::configured_account(false, true);
+    let bound = f
+        .bound_account
+        .clone()
+        .expect("managed fixture exposes the bound account");
+    // Shadow the seeded observed fact with a later uncertain fact: the latest
+    // observation of any outcome decides, so readiness is now unknown even
+    // though the claim already leased the dispatch.
+    let shadow_at = now() + 5_000;
+    f.sql()
+        .execute(
+            "INSERT INTO account_login_observations \
+             (id,account_id,account_generation,attempt,observed_at_ms,expires_at_ms,mode,provider_state,outcome) \
+             VALUES(?1,?2,1,2,?3,?4,'unknown','not-logged-in','uncertain')",
+            rusqlite::params![
+                format!("shadow_{shadow_at}"),
+                bound,
+                shadow_at,
+                shadow_at + 3_600_000
+            ],
+        )
+        .unwrap();
+    let mut host = f.host("account", "work", false);
+    let account = f.domain.managed_account(bound).await.unwrap();
+    host = host.with_managed_account(account).unwrap();
+    let mut operation = Operation::start(f.domain.clone(), f.cap.clone(), host, limits()).unwrap();
+    let report = operation.wait().await.unwrap();
+    assert_eq!(report.failure, Some(Failure::Admission));
+    assert_eq!(report.protocol, Protocol::NotStarted);
+    let reason: String = f
+        .sql()
+        .query_row(
+            "SELECT park_reason FROM runner_attempts WHERE dispatch_id='dispatch' AND park_reason IS NOT NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(reason, "account_readiness_unknown");
+}

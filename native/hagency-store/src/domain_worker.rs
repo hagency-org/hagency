@@ -1451,6 +1451,18 @@ impl DomainStore {
         })
         .await
     }
+    /// MA-S2 (ADR-053 amendment): the Host admission re-check wrapper. Mirrors
+    /// the store's own consumption re-check: re-reads the bound account's
+    /// readiness and parks with the named reason on unknown, atomically — the
+    /// Host calls this before any workspace/process work, so a fact that
+    /// settled between selection and admission refuses ("neither trusts the
+    /// other's cache"). Plumbing only; the predicate stays the repository's.
+    pub async fn admit_owned_dispatch(&self, cap: RunnerCapability) -> Result<(), Error> {
+        self.call(weight(&cap)?, move |db| {
+            db.admit_owned_dispatch(&cap, writer_time()?)
+        })
+        .await
+    }
     pub async fn check_owned_dispatch(
         &self,
         cap: RunnerCapability,

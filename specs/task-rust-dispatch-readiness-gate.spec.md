@@ -52,6 +52,7 @@ at consumption rather than trusting the selector.
 
 Scenario: Dispatch requires an observed, unexpired account
   Test: native_dispatch_requires_ready_account
+  Test: native_host_admission_refuses_unready_account
   Level: integration
   Test Double: actual isolated files and SQLite; an owned scope bound to accounts in every readiness shape
   Given owned scopes bound to accounts whose readiness is unknown, expired, uncertain and observed-unexpired

@@ -647,6 +647,15 @@ async fn execute(
         .await?
         .map_err(|_| Failure::Admission)?;
     let expected = scope.fingerprint().to_owned();
+    // MA-S2 (ADR-053 amendment): the Host admission re-check. Re-read the
+    // bound account's readiness with the store's own predicate before any
+    // workspace or process work — a fact that settled between selection and
+    // admission parks the row with the named reason (committed, it is the
+    // audit record) and refuses here. Neither the selector nor this admission
+    // trusts the other's cache.
+    bounded(domain.admit_owned_dispatch(cap.clone()), cancel, until)
+        .await?
+        .map_err(|_| Failure::Admission)?;
     let crate::host::Prepared {
         launch,
         settings,
