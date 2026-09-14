@@ -262,7 +262,10 @@ async fn native_provisioning_ingress_replays_an_identical_duplicate() {
     let before = rows(&f, "engagements");
     let sync = provisioning_sync(
         "provision",
-        vec![request_event("$request_one", request_body("request_one", 250))],
+        vec![request_event(
+            "$request_one",
+            request_body("request_one", 250),
+        )],
     );
     c.inner
         .handoff_fault

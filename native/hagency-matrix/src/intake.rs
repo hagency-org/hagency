@@ -271,11 +271,10 @@ impl Inner {
             project,
             owner_room: owner,
         };
-        let verified =
-            verify_request(&reg, request, request_observation).map_err(|e| {
-                eprintln!("PROVISION-DIAG verify_request failed: {e:?}");
-                Error::Wire
-            })?;
+        let verified = verify_request(&reg, request, request_observation).map_err(|e| {
+            eprintln!("PROVISION-DIAG verify_request failed: {e:?}");
+            Error::Wire
+        })?;
         let id = verified
             .request()
             .engagement_id()
@@ -306,7 +305,13 @@ impl Inner {
         room_id: &str,
         generation: u64,
         privacy: RoomPrivacy,
-    ) -> Result<(hagency_core::replies::MatrixRoomObservation, RoomAuthorityFacts), Error> {
+    ) -> Result<
+        (
+            hagency_core::replies::MatrixRoomObservation,
+            RoomAuthorityFacts,
+        ),
+        Error,
+    > {
         if let Some(found) = self.room_facts.lock().await.get(room_id).cloned() {
             return Ok(found);
         }
