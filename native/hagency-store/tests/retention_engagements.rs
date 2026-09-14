@@ -12,6 +12,8 @@ use serde_json::Value;
 struct Fixture {
     root: tempfile::TempDir,
     db: DomainRepository,
+    fleet: String,
+    resource_id: String,
     resource: hagency_core::project::Resource,
 }
 
@@ -20,24 +22,28 @@ fn count(sql: &Connection, table: &str) -> i64 {
         .unwrap()
 }
 
-/// One terminal engagement row seeded directly: the projects row is shared,
-/// admitted once per fixture.
-fn seed_terminal(sql: &Connection, id: &str, state: &str) {
+/// One terminal engagement row seeded directly. Every parent exists first —
+/// the registration and resource come from the fixture's own public-path
+/// setup (`register`/`put_resource`), the project row mirrors the columns
+/// `approve` writes — so the engagement insert satisfies the FK chain
+/// (engagements → registrations/resources/projects, projects → registrations).
+fn seed_terminal(sql: &Connection, fixture: &Fixture, id: &str, state: &str) {
     sql.execute(
         "INSERT OR IGNORE INTO projects(fleet_id,id,generation,room_id,owner_mxid,owner_room_id) \
-         VALUES('fleet_one','project_one',1,'!p:example.test','@owner:example.test','!dm:example.test')",
-        [],
+         VALUES(?1,'project_one',1,'!p:example.test','@owner:example.test','!dm:example.test')",
+        [&fixture.fleet],
     )
     .unwrap();
     sql.execute(
         "INSERT INTO engagements(id,fleet_id,generation,request_id,digest,context,evidence,\
          project_id,name,resource_id,tokens,state,projection) \
-         VALUES(?1,'fleet_one',1,?2,'seed','{}','{}','project_one',?3,?4,1,?5,'{}')",
+         VALUES(?1,?2,1,?3,'seed','{}','{}','project_one',?4,?5,1,?6,'{}')",
         rusqlite::params![
             id,
+            fixture.fleet,
             format!("rq_{id}"),
             format!("agent_{id}"),
-            RESOURCE_ID,
+            fixture.resource_id,
             state
         ],
     )
@@ -122,8 +128,8 @@ fn seed_children(sql: &Connection, engagement: &str, index: usize) {
     )
     .unwrap();
     sql.execute(
-        "INSERT INTO usage_sources(id,dispatch_id,fence,engagement_id,identity_digest,framework,attribution) \
-         VALUES(?1,?2,1,?3,'id','claude','{}')",
+        "INSERT INTO usage_sources(id,dispatch_id,fence,engagement_id,identity_digest,framework,attribution,high_water,latest_counts) \
+         VALUES(?1,?2,1,?3,'id','claude','{}','{}','{}')",
         rusqlite::params![format!("source_{suffix}"), format!("dispatch_{suffix}"), engagement],
     )
     .unwrap();
@@ -136,6 +142,11 @@ fn seed_children(sql: &Connection, engagement: &str, index: usize) {
     sql.execute(
         "INSERT INTO task_outbox(task_id,kind,task) VALUES(?1,'task','{}')",
         [format!("task_{suffix}")],
+    )
+    .unwrap();
+    sql.execute(
+        "INSERT INTO admitted_messages(sequence,source_key,digest,config) VALUES(1,'sk_one','d','{}') ON CONFLICT(sequence) DO NOTHING",
+        [],
     )
     .unwrap();
     sql.execute(
@@ -162,7 +173,13 @@ impl Fixture {
         db.register(&registration()).unwrap();
         let resource = resource("preset", "seat", 1000);
         db.put_resource(&resource).unwrap();
-        Self { root, db, resource }
+        Self {
+            fleet: registration().fleet_id,
+            resource_id: resource.id(),
+            root,
+            db,
+            resource,
+        }
     }
     fn sql(&self) -> Connection {
         Connection::open(self.root.path().join("state/domain.sqlite3")).unwrap()
@@ -174,9 +191,6 @@ impl Fixture {
             .unwrap()
     }
 }
-
-/// A stable resource id shared by the direct-seed helpers.
-const RESOURCE_ID: &str = "res_seed";
 
 /// Scenario: The ended-engagement cap is enforced oldest-first by rowid.
 #[test]
@@ -191,14 +205,16 @@ fn native_engagement_prune_enforces_the_cap_oldest_first() {
         } else {
             format!("en_a_{i:03}")
         };
-        seed_terminal(&sql, &id, "rejected");
+        seed_terminal(&sql, &f, &id, "rejected");
     }
     drop(sql);
     let outcome =
         f.db.sweep_engagements(2000, ENDED_LIMIT, ENDED_LIMIT)
             .unwrap();
     assert_eq!(outcome.pruned, 2);
-    assert_eq!(outcome.remaining, 0);
+    // `remaining` is the tick-start overage (the messages-phase semantics:
+    // the batch that clears the backlog still reports what it cleared).
+    assert_eq!(outcome.remaining, 2);
     let sql = f.sql();
     assert_eq!(count(&sql, "engagements"), 500);
     assert_eq!(
@@ -239,7 +255,7 @@ fn native_engagement_prune_keeps_a_terminal_engagement_with_live_custody() {
     let mut f = Fixture::new();
     let sql = f.sql();
     // P2: a failed (retryable) retire effect.
-    seed_terminal(&sql, "en_failed_retire", "revoked");
+    seed_terminal(&sql, &f, "en_failed_retire", "revoked");
     sql.execute(
         "INSERT INTO effects(id,engagement_id,kind,state,payload) \
          VALUES('fx_retry','en_failed_retire','retire','failed','{}')",
@@ -247,7 +263,7 @@ fn native_engagement_prune_keeps_a_terminal_engagement_with_live_custody() {
     )
     .unwrap();
     // P4: a live (decided, applying-class) owner approval.
-    seed_terminal(&sql, "en_live_approval", "revoked");
+    seed_terminal(&sql, &f, "en_live_approval", "revoked");
     seed_children(&sql, "en_live_approval", 90);
     sql.execute(
         "INSERT INTO approval_contexts(id,dispatch_id,fence,engagement_id,digest,config) \
@@ -295,7 +311,7 @@ fn native_engagement_prune_keeps_a_terminal_engagement_with_live_custody() {
 fn native_engagement_prune_removes_an_owned_completion_with_its_cascade() {
     let mut f = Fixture::new();
     let sql = f.sql();
-    seed_terminal(&sql, "en_owned", "revoked");
+    seed_terminal(&sql, &f, "en_owned", "revoked");
     seed_children(&sql, "en_owned", 1);
     drop(sql);
     f.db.sweep_engagements(2000, 0, 10).unwrap();
@@ -338,7 +354,7 @@ fn native_engagement_prune_removes_an_owned_completion_with_its_cascade() {
 fn native_engagement_prune_clears_the_archive_row_with_its_engagement() {
     let mut f = Fixture::new();
     let sql = f.sql();
-    seed_terminal(&sql, "en_archive", "rejected");
+    seed_terminal(&sql, &f, "en_archive", "rejected");
     seed_children(&sql, "en_archive", 2);
     drop(sql);
     f.db.sweep_engagements(2000, 0, 10).unwrap();
@@ -362,12 +378,12 @@ fn native_engagement_prune_clears_the_archive_row_with_its_engagement() {
 fn native_engagement_delete_is_refused_while_any_child_survives() {
     let mut f = Fixture::new();
     let sql = f.sql();
-    seed_terminal(&sql, "en_full", "revoked");
+    seed_terminal(&sql, &f, "en_full", "revoked");
     seed_children(&sql, "en_full", 3);
     // A second, LIVE engagement whose task names the candidate's session as
     // its creator: a cross-engagement child this phase's own cascade must
     // not clear, so the candidate defers instead of orphaning it.
-    seed_terminal(&sql, "en_other", "pending");
+    seed_terminal(&sql, &f, "en_other", "pending");
     sql.execute(
         "INSERT INTO runner_sessions(id,engagement_id,binding) VALUES('session_other','en_other','{}')",
         [],
@@ -426,7 +442,7 @@ fn native_engagement_delete_is_refused_while_any_child_survives() {
 fn native_engagement_prune_receipt_names_what_left() {
     let mut f = Fixture::new();
     let sql = f.sql();
-    seed_terminal(&sql, "en_receipt", "rejected");
+    seed_terminal(&sql, &f, "en_receipt", "rejected");
     drop(sql);
     f.db.sweep_engagements(2000, 0, 10).unwrap();
     let sql = f.sql();
@@ -455,6 +471,10 @@ fn native_engagement_prune_receipt_names_what_left() {
         )
         .unwrap();
     }
+    // The trim bound lives inside a working phase (the messages-phase
+    // shape): a no-work tick writes nothing and trims nothing, so the
+    // second sweep gets a fresh terminal engagement to prune.
+    seed_terminal(&sql, &f, "en_receipt_two", "rejected");
     drop(sql);
     f.db.sweep_engagements(2001, 0, 10).unwrap();
     let sql = f.sql();
