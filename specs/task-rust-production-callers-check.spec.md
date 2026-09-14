@@ -2,7 +2,7 @@ spec: task
 name: "Check that every spec-named store write has a production caller"
 inherits: project
 satisfies: [REQ-RUST-MIGRATION-EXECUTION]
-tags: [active, rust, spec-governance, wiring]
+tags: [active, node, spec-governance, wiring]
 ---
 
 ## Intent
@@ -39,25 +39,25 @@ production call graph" a machine gate so the gap class cannot regrow silently.
 ## Acceptance Criteria
 
 Scenario: A spec-named store write with a wired caller passes
-  Owed Selector: native_production_callers_wired
+  Test: native_production_callers_wired
   Given a spec Then line naming a store write with a Production caller line
   When the checker builds the stripped production call graph
   Then the caller resolves from a root and the checker reports it wired
 
 Scenario: A spec-named store write with no production caller fails
-  Owed Selector: native_production_callers_missing
+  Test: native_production_callers_missing
   Given a spec Then line naming a store write whose Production caller is absent from the stripped graph
   When the checker runs
   Then the checker exits 1 listing the absent caller and no test fixture or probe call satisfies it
 
 Scenario: An owed gap is reported and never failed
-  Owed Selector: native_production_callers_owed
+  Test: native_production_callers_owed
   Given a spec Then line whose Production caller line reads owed with a G-number that resolves to a row in ADR-146's gap table
   When the checker runs
   Then the gap is reported as owed and the exit status is unchanged
 
 Scenario: An unknown owed gap id fails the checker
-  Owed Selector: native_production_callers_unknown_gap
+  Test: native_production_callers_unknown_gap
   Given a spec Then line whose Production caller line reads owed with a G-number that names no row in ADR-146's gap table
   When the checker runs
   Then the checker exits 1 listing the unknown gap id
