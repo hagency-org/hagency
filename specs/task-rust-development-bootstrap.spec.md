@@ -138,6 +138,36 @@ Scenario: Lost original claim or Started result cannot become a replacement exec
   Then it issues no replacement claim capability handoff or child
   And the original custody is preserved with explicit outcome_unknown status
 
+Scenario: Bootstrap registers the receive-inbox plan's workspace before the first claim
+  Level: integration
+  Test Double: actual native serve and received-file MCP peer with a receive-inbox plan naming a workspace no production path pre-creates
+  Test: native_receive_executable
+  Production caller: bootstrap::open_with_options (register_workspace before the first claim; config.rs refuses a plan whose workspace is missing from the map)
+  Given a receive-inbox plan naming a workspace absent from production state
+  When the service starts, registers that workspace, then claims
+  Then the dispatch enqueued by select_receive_inbox satisfies its workspace_resources FK
+  And a plan whose workspace is missing from the map is refused at config load, never at claim time
+
+Scenario: The host settles pending conversation stops after the owned operation resolves
+  Level: integration
+  Test Double: actual DomainStore writer with a fenced started dispatch and an unsettled dispatch_stops row
+  Test: native_bootstrap_settles_pending_stop_after_operation
+  Production caller: bootstrap::driver::run → settle_pending_stops (sweeps pending_conversation_stops after the owned operation resolves)
+  Given an operator stop fenced a started dispatch into outcome_unknown and wrote an unsettled dispatch_stops row
+  When the owned operation resolves
+  Then run() sweeps pending_conversation_stops and settles each with the observed report as evidence
+  And a second pass over a settled row writes no duplicate
+
+Scenario: The owned claim path reconciles a started dispatch after host death
+  Level: integration
+  Test Double: actual SQLite writer with a started dispatch whose lease has expired
+  Test: native_owned_claim_reconciles_started_dispatch_after_host_death
+  Production caller: execution::claim_owned_dispatch_for_host → claim_clock → expire (execution.rs:810) → lose (started → outcome_unknown)
+  Given a started dispatch whose host died and whose lease has lapsed
+  When another host claims
+  Then expire() routes the started row through lose(): started → outcome_unknown, session quarantined, workspace dirtied, no new attempt
+  And the claim returns None rather than re-claiming the row
+
 ## Out of Scope
 
 Continuous scheduling Matrix timeline task admission file source read endpoints
