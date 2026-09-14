@@ -119,6 +119,15 @@ Scenario: A refused login through the production route never reads ready
   Then settle_account_login records refused — account_readiness reads unknown, never ready
   Production caller: hagency::bootstrap::accounts::run
 
+Scenario: An unclassifiable login through the production route never reads ready
+  Test: native_account_login_route_unclassified_never_ready
+  Level: integration
+  Test Double: actual isolated files and SQLite, the fake login binary exiting an unclassified status
+  Given a prepared managed account whose provider login the binary neither succeeds nor refuses
+  When the CLI account login --id route runs
+  Then the fail-closed arm records uncertain in the observation row — account_readiness reads unknown, never ready
+  Production caller: hagency::bootstrap::accounts::run
+
 ## Decisions
 
 **Ordering of the sibling slices.** **MA-S2** (the dispatch gate that parks on

@@ -6,6 +6,7 @@
 //! never the store's own receipt helper. The readiness answer is read back
 //! through `DomainRepository::account_readiness` on the SAME state dir.
 use hagency_store::{AccountReadinessMode, DomainRepository};
+use rusqlite::Connection;
 use std::{
     fs,
     path::Path,
@@ -96,5 +97,43 @@ fn native_account_login_route_refused_never_ready() {
         String::from_utf8_lossy(&output.stderr)
     );
     // A refused login records `refused`, which never reads as ready.
+    assert_eq!(readiness(&state, &id), AccountReadinessMode::Unknown);
+}
+
+#[test]
+fn native_account_login_route_unclassified_never_ready() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let id = prepare(&state);
+    // The fake binary exits an unclassifiable status (neither success nor the
+    // terminal `1` refusal) when the retained namespace carries this marker,
+    // exactly as a signal or spawn failure would read.
+    fs::write(state.join(&id).join("login-outcome"), "uncertain").unwrap();
+    let output = run(&[
+        "account",
+        "login",
+        "--state-dir",
+        state.to_str().unwrap(),
+        "--id",
+        &id,
+        "--login-binary",
+        env!("CARGO_BIN_EXE_hagency-login-probe"),
+    ]);
+    assert!(
+        output.status.success(),
+        "login route failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    // The fail-closed arm records `uncertain` in the observation row, and the
+    // account never reads as ready.
+    let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+    let outcome: String = sql
+        .query_row(
+            "SELECT outcome FROM account_login_observations WHERE account_id=?1",
+            [&id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(outcome.as_str(), "uncertain");
     assert_eq!(readiness(&state, &id), AccountReadinessMode::Unknown);
 }

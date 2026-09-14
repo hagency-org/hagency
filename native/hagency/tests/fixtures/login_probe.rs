@@ -23,11 +23,17 @@ fn main() {
     // The parent classifies by exit status only. The test plants this marker
     // in the retained namespace to make the child refuse, exactly as a
     // provider that declines the login would.
-    let refused = fs::read_to_string(Path::new(&home).join("login-outcome"))
-        .map(|s| s.trim() == "refuse")
-        .unwrap_or(false);
-    if refused {
+    let outcome = fs::read_to_string(Path::new(&home).join("login-outcome"))
+        .map(|s| s.trim().to_owned())
+        .unwrap_or_default();
+    if outcome == "refuse" {
         std::process::exit(1);
+    }
+    // An unclassifiable exit: a status that is neither success nor the
+    // terminal `1` refusal code, so the parent's fail-closed arm records
+    // `uncertain` — never `observed`, never ready.
+    if outcome == "uncertain" {
+        std::process::exit(17);
     }
     // Success proof: an observed login leaves a derived marker in the
     // namespace. This is the fixture's own observation, not a credential.
