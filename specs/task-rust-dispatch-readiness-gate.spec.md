@@ -22,7 +22,7 @@ at consumption rather than trusting the selector.
 - Add one conjunct to the selector and the same re-check to the Host admission: the account's latest usable fact — matching generation, `outcome='observed'`, unexpired — evaluated at read time; a read never writes and never caches.
 - Park with the named reason `account_readiness_unknown` using the existing parked-update shape (`approvals.rs:152-161`); the row, its inputs and its custody survive untouched.
 - Re-evaluate a parked dispatch on the next selector pass after a new readiness fact settles — event-driven, never a timer or retry loop.
-- Make the park visible as a state with its reason in the audit trail.
+- Make the park visible as a state with its reason in the audit table: **`runner_attempts` is that table** — the park writes `outcome='parked'` plus `park_reason='account_readiness_unknown'` — and the reason column is **migration 030's**: one nullable `park_reason TEXT` on `runner_attempts` via `ADD COLUMN` (029 stays MA-S4's per the ledger). The schema-head pin literal moves to 30 in the tests that pin it, **in this slice's own commit** with every rewind preserved.
 
 ### Must Not
 - Do not fail the dispatch opaquely, drop it, or rewrite its custody — a park is a refusal of now, not of the dispatch.
@@ -36,6 +36,7 @@ at consumption rather than trusting the selector.
 ### Allowed Changes
 - native/hagency-store/src/domain/execution.rs
 - native/hagency-store/tests/
+- native/hagency-store/src/migrations/030-dispatch-park-reason.sql
 - native/hagency-execution/src/host.rs
 - native/hagency-execution/tests/
 - specs/task-rust-dispatch-readiness-gate.spec.md
@@ -45,7 +46,7 @@ at consumption rather than trusting the selector.
 
 ### Forbidden
 - Live providers, live agents, credentials, deployed state.
-- native/hagency/src/console/**; mockup/**; native/hagency/src/bootstrap/**; the migration (028 is MA-S1's, landed before this slice).
+- native/hagency/src/console/**; mockup/**; native/hagency/src/bootstrap/**; migration 028 (MA-S1's, landed before this slice); every migration after 030.
 
 ## Acceptance Criteria
 
@@ -88,13 +89,25 @@ Scenario: The park is read-time evaluation, not a retry loop
 Scenario: The park is visible in the audit table
   Test: native_dispatch_park_is_visible_in_the_audit_table
   Level: integration
-  Test Double: actual isolated files and SQLite; the parked dispatch's audit rows
+  Test Double: actual isolated files and SQLite; the parked dispatch's runner_attempts rows
   Given a dispatch that parked on unknown readiness and later resumed
-  When the audit trail is read
-  Then the park appears as a state with its reason account_readiness_unknown and its interval is derivable
+  When the runner_attempts rows are read
+  Then the park appears as outcome parked with park_reason account_readiness_unknown and its interval is derivable from the row's neighbours
   And the later dispatch leaves no orphaned park record
 
 ## Decisions
+
+**This slice takes migration number 030** (029 stays MA-S4's per the backlog
+ledger): one nullable `park_reason TEXT` on `runner_attempts` via `ADD
+COLUMN` — the named reason's storage home, correcting the ledger's claim
+that MA-S2 adds no number. The schema-head pin moves to 30 in this slice's
+own commit, rewinds preserved.
+
+**The four park scenarios pin one mechanism.** "requires", "parks with the
+named reason", "resumes", and "not a retry loop" are four observables over
+the single read-time gate — the selector conjunct plus the Host re-check and
+the `park_reason` write — not four mechanisms; the builder budgets one
+mechanism with four assertions over it.
 
 **This slice depends on MA-S1 landing first** — the gate consumes the fact
 migration 028 records, and there is nothing to evaluate until it exists. The
