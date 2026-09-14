@@ -22,7 +22,7 @@ at consumption rather than trusting the selector.
 - Add one conjunct to the selector and the same re-check to the Host admission: the account's latest usable fact — matching generation, `outcome='observed'`, unexpired — evaluated at read time; a read never writes and never caches.
 - Park with the named reason `account_readiness_unknown` using the existing parked-update shape (`approvals.rs:152-161`); the row, its inputs and its custody survive untouched.
 - Re-evaluate a parked dispatch on the next selector pass after a new readiness fact settles — event-driven, never a timer or retry loop.
-- Make the park visible as a state with its reason in the audit table: **`runner_attempts` is that table** — the park writes `outcome='parked'` plus `park_reason='account_readiness_unknown'` — and the reason column is **migration 030's**: one nullable `park_reason TEXT` on `runner_attempts` via `ADD COLUMN` (029 stays MA-S4's per the ledger). The schema-head pin literal moves to 30 in the tests that pin it, **in this slice's own commit** with every rewind preserved.
+- Make the park visible as a state with its reason in the audit table: **`runner_attempts` is that table** — the park writes `outcome='parked'` plus `park_reason='account_readiness_unknown'` — and the reason column is **migration 033's**: one nullable `park_reason TEXT` on `runner_attempts` via `ADD COLUMN` (029 stayed MA-S4's; 030 engagements, 031 execution retention, 032 PC-C1 landed first). The schema-head pin literal moves to 33 in the tests that pin it, **in this slice's own commit** with every rewind preserved.
 
 ### Must Not
 - Do not fail the dispatch opaquely, drop it, or rewrite its custody — a park is a refusal of now, not of the dispatch.
@@ -36,7 +36,7 @@ at consumption rather than trusting the selector.
 ### Allowed Changes
 - native/hagency-store/src/domain/execution.rs
 - native/hagency-store/tests/
-- native/hagency-store/src/migrations/030-dispatch-park-reason.sql
+- native/hagency-store/src/migrations/033-dispatch-park-reason.sql
 - native/hagency-execution/src/host.rs
 - native/hagency-execution/tests/
 - specs/task-rust-dispatch-readiness-gate.spec.md
@@ -46,7 +46,7 @@ at consumption rather than trusting the selector.
 
 ### Forbidden
 - Live providers, live agents, credentials, deployed state.
-- native/hagency/src/console/**; mockup/**; native/hagency/src/bootstrap/**; migration 028 (MA-S1's, landed before this slice); every migration after 030.
+- native/hagency/src/console/**; mockup/**; native/hagency/src/bootstrap/**; migration 028 (MA-S1's, landed before this slice); migrations 029-032 (other slices); every migration after 033.
 
 ## Acceptance Criteria
 
@@ -97,11 +97,13 @@ Scenario: The park is visible in the audit table
 
 ## Decisions
 
-**This slice takes migration number 030** (029 stays MA-S4's per the backlog
-ledger): one nullable `park_reason TEXT` on `runner_attempts` via `ADD
-COLUMN` — the named reason's storage home, correcting the ledger's claim
-that MA-S2 adds no number. The schema-head pin moves to 30 in this slice's
-own commit, rewinds preserved.
+**This slice takes migration number 033 by landing order (ADR-125): 029 stayed
+MA-S4's, 030 is engagements retention, 031 execution retention, and 032 is
+PC-C1's (it landed first) — all four already on the base — so the strict
+one-by-one upgrade loop gives MA-S2 the next free number. One nullable
+`park_reason TEXT` on `runner_attempts` via `ADD COLUMN` — the named reason's
+storage home, correcting the ledger's claim that MA-S2 adds no number. The
+schema-head pin moves to 33 in this slice's own commit, rewinds preserved.
 
 **The four park scenarios pin one mechanism.** "requires", "parks with the
 named reason", "resumes", and "not a retry loop" are four observables over

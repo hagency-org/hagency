@@ -430,7 +430,8 @@ fn native_owned_completion_migration() {
     // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
     // over a receipts table that already carries the column, so strip it
     // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
-    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+    // Same for 033's park_reason on runner_attempts.
+    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason;")
         .unwrap();
     sql.pragma_update(None, "user_version", 15).unwrap();
     drop(sql);
@@ -440,7 +441,7 @@ fn native_owned_completion_migration() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        32
+        33
     );
     assert_eq!(
         sql.query_row("SELECT COUNT(*) FROM owned_task_completions", [], |r| r

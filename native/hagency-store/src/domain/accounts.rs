@@ -1301,6 +1301,31 @@ mod tests {
             payload: serde_json::json!({"instruction":"offline"}),
         })
         .unwrap();
+        // MA-S2: the dispatch is bound to the enrolled account, so the
+        // readiness gate evaluates it at claim time — observe a usable login
+        // fact on the BOUND account (enrollment may bind a different id than
+        // the reserved choice) or the row parks on
+        // account_readiness_unknown instead of leasing.
+        let bound: String = Connection::open(state.join("domain.sqlite3"))
+            .unwrap()
+            .query_row(
+                "SELECT account_id FROM resource_accounts WHERE preset_id=?1",
+                [&resource.preset_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let attempt = db.begin_account_login(&bound, 1000).unwrap();
+        db.settle_account_login(
+            attempt,
+            LoginVerdict {
+                mode: AccountReadinessMode::Subscription,
+                provider_state: "logged-in-subscription".into(),
+                outcome: LoginOutcome::Observed,
+                expires_at_ms: Some(1_000_000),
+            },
+            1000,
+        )
+        .unwrap();
         let cap = db
             .claim_dispatch("host", 1000, 10000, 10000, 1)
             .unwrap()

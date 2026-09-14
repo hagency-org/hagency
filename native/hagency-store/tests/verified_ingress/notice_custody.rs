@@ -289,14 +289,14 @@ fn native_notice_custody_migration() {
         // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
         // over a receipts table that already carries the column, so strip it
         // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
-        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason;")
             .unwrap();
         sql.pragma_update(None, "user_version", 13).unwrap();
         f.db = DomainRepository::open(&f.root.path().join("state")).unwrap();
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            32
+            33
         );
         assert!(
             f.db.claim_verified_task_notice(1014, 1000)

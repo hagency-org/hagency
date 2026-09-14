@@ -853,7 +853,7 @@ fn native_owner_approval_recovery_schema12() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            32
+            33
         );
         assert_eq!(count(&sql, "approval_bindings"), 0);
         assert_eq!(count(&sql, "approval_grants"), 0);

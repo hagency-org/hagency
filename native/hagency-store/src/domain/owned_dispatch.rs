@@ -315,6 +315,16 @@ impl DomainRepository {
         if before.fingerprint != expected {
             return Err(Error::RunnerAuthority);
         }
+        // MA-S2 (ADR-053 amendment): the consumption-time re-check, same as
+        // start_dispatch — a fact that settled between selection and
+        // consumption must not let an unknown account start. The row PARKS
+        // with the named reason, the park is COMMITTED (it is the audit
+        // record), and the start refuses.
+        if !execution::dispatch_account_ready(&tx, &cap.dispatch_id, now)? {
+            execution::park_on_unknown(&tx, &cap.dispatch_id, &cap.runner_id, now)?;
+            tx.commit()?;
+            return Err(Error::State);
+        }
         execution::start_in_transaction(&tx, cap, now)?;
         let mut started = scope(&tx, cap, now, &["started"])?;
         if started.fingerprint != expected {

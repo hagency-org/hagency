@@ -602,7 +602,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 32,
+                version: 33,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -649,6 +649,9 @@ impl DomainRepository {
                         32,
                         include_str!("migrations/032-approval-denial-reason.sql"),
                     ),
+                    // PC-C1 landed first and holds 32 (integration 3580f3bb);
+                    // MA-S2 takes the next free number, 033, by landing order.
+                    (33, include_str!("migrations/033-dispatch-park-reason.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
