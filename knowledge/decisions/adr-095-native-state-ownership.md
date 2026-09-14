@@ -466,3 +466,99 @@ store: it wires the production caller the ownership table already assumed.
 Cross-reference: ADR-022 ("provisions agents on approval") and ADR-013
 (the inbound engagement request) describe the retained product's flow; this
 amendment is the native admission half of that flow, which was absent.
+
+### Mapping — what a builder implements (fix-up 2026-09-14)
+
+The intake's only carrier is `MatrixEventObservation`'s `InboundMessage`
+(`{server_name, room_id, event_id, sender_mxid, thread_root, body, kind,
+origin_ts}` — `messages.rs:10`), and `verify_request` needs a full
+`ProjectRequest` plus a `RequestObservation` of three `RoomObservation`s
+(`authority.rs:128-138`). Nothing in production builds either from an
+inbound event today; the mapping below is the contract.
+
+**Carrier.** The retained `POST /api/engagements` body is honestly carryable
+in an event: `kind = "com.hagency.engagement.request.v1"` is the
+discriminator (the same string `verify_request` already gates on at
+`authority.rs:225`), and the JSON body is carried in `InboundMessage.body`
+(the event's text). No new event type or `content` field is invented.
+
+**Idempotency key — the two keys are distinct, and `request_id` is the key
+(finding 2b).** `ProjectRequest.request_id` is the **idempotency key**:
+`admit` replays on the same `request_id`+digest and refuses a reused
+`request_id` with a different digest (`domain.rs:1090-1099`), and the minted
+id is `en_` + `hash([fleet_id, request_id])` (`authority.rs:120-124`).
+`ProjectRequest.source_event_id` is the **carried** Matrix event id, checked
+equal to the observation's `source.event_id` (`authority.rs:225`). The
+retained `requestId` (= the bridge-set event id) maps to native `request_id`;
+when the bridge uses the event id as the key, `request_id == source_event_id`
+holds, but native's `project::identifier(request_id, 96)` is the stricter
+gate — an event id that cannot serve as a project identifier is **refused,
+never re-keyed** (mirroring the retained "absence is recorded, never
+replaced"). The provider verdict stays the separate `approve` write; it is
+never folded into the mint.
+
+**Field-by-field `ProjectRequest` mapping (from the retained body):**
+
+| ProjectRequest field | Source |
+|---|---|
+| `v`, `auth_version` | constant `1` / `1` |
+| `request_id` (idempotency key) | retained `requestId` (event id when bridge-set); refused when invalid per `project::identifier` |
+| `source_event_id` | `InboundMessage.event_id` |
+| `fleet_id` | the collector's `Registration` (never the event) |
+| `requester_mxid` | retained `requester` |
+| `source_room_id` | `InboundMessage.room_id` (must equal `registration.reception_room_id`) |
+| `target_project_id` | retained `project` |
+| `target_room_id` | retained `projectRoomId` |
+| `owner_mxid` | the collector's `Registration` (never the event) |
+| `owner_dm_room_id` | the collector's owner-DM observation (private, never the event) |
+| `role` | retained `role` |
+| `requested_tokens` | retained `requestedTokens` |
+| `rate_per_day` | retained `ratePerDay` (nullable) |
+| `agent_definition` | retained `agent` + `requestContext.agentDefinition`, resolved against the resource catalogue |
+
+Refused when absent: `project`, `projectRoomId`, `role`, `requester`,
+`requestedTokens` (retained `text()`/`posInt()` throw), and `request_id`
+(native requires it; the event id is the bridge's supply, not a generated
+key).
+
+**The three `RoomObservation`s are collector facts, never event-asserted
+values — and the five absent fields are observed at intake, not stored.**
+`matrix_room_scopes` already persists `room_id`/`joined`/`invite_only`/
+`encrypted` (`011-final-replies.sql:16-23`), and those four come from it.
+But `powers`, `default_power`, `invite_power`, `binding` and `name` exist in
+**no** store snapshot today. **Decision: the collector observes them from
+room state at intake time and passes them in the `RequestObservation`
+without storing them — no migration, no schema change.** They are
+verification-time-only inputs: `verify_request` reads them once and nothing
+else consumes them, so persisting them would add a migration (034) and a
+head-pin move for facts no later read needs. The event's own content never
+asserts any of them — the collector reads `m.room.power_levels`, the
+project-binding state event and `m.room.name` from the SDK sync, and a
+missing/expired observation is refused, never fabricated.
+
+- **reception room** (`source_room_id`) — the collector's full-room snapshot of
+  the room the event arrived in; `verify_request` requires invite-only,
+  unencrypted, `joined ⊇ {requester, representative}`. This room is NOT
+  recordable via `observe_matrix_room` (which refuses the reception room,
+  `matrix_routes.rs:320`), so the snapshot is taken from the SDK sync that
+  delivered the event.
+- **project room** (`target_room_id`) — `room_id`/`joined`/`invite_only`/
+  `encrypted` from `matrix_room_scopes`, plus the intake-time-observed
+  `powers`/`default_power`/`invite_power`/`binding`/`name`; `verify_request`
+  requires invite-only, unencrypted,
+  `joined ⊇ {requester, owner, representative}`,
+  `power(requester) >= invite_power`, `power(owner) >= 100`, and the
+  `{v:1, purpose:"project", fleetId, projectId, ownerMxid, authVersion:1}`
+  binding.
+- **owner DM room** (`owner_dm_room_id`) — the approval intake's owner-room
+  observation; `verify_request` requires invite-only, megolm-encrypted, and
+  `joined == {owner, approval_bot}` exactly.
+
+**Dispatch point.** The intake hook that sees
+`kind == "com.hagency.engagement.request.v1"` assembles the `ProjectRequest`
+and `RequestObservation` from these SDK facts and hands them through the
+domain worker's `DomainStore::admit` (the async wrapper exists at
+`domain_worker.rs:2845`, today `#[cfg(test)]`-gated and to be exposed for the
+production caller) — `admit` is the single write. The provider verdict is
+observed afterwards through the existing `approve` path, never folded into
+the mint.
