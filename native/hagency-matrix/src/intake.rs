@@ -5,9 +5,15 @@ use crate::{
     event_batch::{Acknowledgement, Batch, MAX_TARGETS, MAX_TIMELINE, Phase},
     sdk::Owner,
 };
-use hagency_core::{project::identifier, replies::ReplyRoute};
+use hagency_core::{
+    authority::{
+        ProjectRequest, RequestObservation, RoomObservation, SourceObservation, verify_request,
+    },
+    project::identifier,
+    replies::{ReplyRoute, RoomAuthorityFacts},
+};
 use serde_json::json;
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// Inherited host configuration, not a browser/runtime request or crypto proof.
 /// Targets must already be current native Matrix sessions; intake cannot create them.
@@ -134,6 +140,132 @@ impl Collector {
     }
 }
 impl Inner {
+    /// ADR-095 provisioning ingress: assemble a `ProjectRequest` +
+    /// `RequestObservation` from collector-observed facts only, verify with
+    /// the existing `verify_request`, then `admit` exactly once. Returns the
+    /// engagement and whether this was a fresh mint (vs an identical replay).
+    async fn provision(
+        &self,
+        observation: &hagency_core::ingress::MatrixEventObservation,
+        route: &ReplyRoute,
+    ) -> Result<(hagency_core::project::Engagement, bool), Error> {
+        let msg = &observation.event;
+        let body: serde_json::Value =
+            serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
+        let reg = self
+            .domain
+            .provisioning_registration(route.fleet_id.clone())
+            .await?;
+        let owner_room = self
+            .domain
+            .provisioning_owner_room(
+                body.get("requester")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or(Error::Wire)?
+                    .to_owned(),
+                route.server_name.clone(),
+            )
+            .await?;
+        // The retained single-owner flow: the requester is the project owner.
+        let requester = body
+            .get("requester")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Wire)?;
+        let request_value = serde_json::json!({
+            "v": 1,
+            "fleetId": reg.fleet_id,
+            "requestId": body.get("requestId").ok_or(Error::Wire)?,
+            "requesterMxid": requester,
+            "sourceRoomId": msg.room_id,
+            "targetProjectId": body.get("project").ok_or(Error::Wire)?,
+            "targetRoomId": body.get("projectRoomId").ok_or(Error::Wire)?,
+            "ownerMxid": requester,
+            "ownerDmRoomId": owner_room.room_id,
+            "role": body.get("role").ok_or(Error::Wire)?,
+            "requestedTokens": body.get("requestedTokens").ok_or(Error::Wire)?,
+            "ratePerDay": body.get("ratePerDay").cloned().unwrap_or(serde_json::Value::Null),
+            "authVersion": 1,
+            "sourceEventId": msg.event_id,
+            "agentDefinition": {
+                "name": body.get("agent").ok_or(Error::Wire)?,
+                "resourceId": body
+                    .get("context")
+                    .and_then(|c| c.get("agentDefinition"))
+                    .and_then(|a| a.get("resourceId"))
+                    .ok_or(Error::Wire)?
+            }
+        });
+        let request: ProjectRequest =
+            serde_json::from_value(request_value).map_err(|_| Error::Wire)?;
+        // verify_request reconstructs the request from source.content (minus the
+        // two private room/event keys) and requires its digest to match.
+        let mut source_content = serde_json::to_value(&request).map_err(|_| Error::Wire)?;
+        let source_content_obj = source_content
+            .as_object_mut()
+            .ok_or(Error::Wire)?;
+        source_content_obj.remove("ownerDmRoomId");
+        source_content_obj.remove("sourceEventId");
+        let facts = self.room_facts.lock().await;
+        let (reception_obs, reception_facts) = facts
+            .get(&msg.room_id)
+            .ok_or(Error::Wire)?;
+        let (project_obs, project_facts) = facts
+            .get(&request.target_room_id)
+            .ok_or(Error::Wire)?;
+        let room_observation = |obs: &hagency_core::replies::MatrixRoomObservation,
+                                facts: &RoomAuthorityFacts| RoomObservation {
+            room_id: obs.room_id.clone(),
+            joined: obs.joined.clone(),
+            invite_only: obs.invite_only,
+            encryption: obs
+                .encrypted
+                .then(|| "m.megolm.v1.aes-sha2".to_string()),
+            powers: facts.powers.clone(),
+            default_power: facts.default_power,
+            invite_power: facts.invite_power,
+            binding: facts.binding.clone(),
+            name: facts.name.clone(),
+        };
+        let reception = room_observation(reception_obs, reception_facts);
+        let project = room_observation(project_obs, project_facts);
+        let owner = RoomObservation {
+            room_id: owner_room.room_id.clone(),
+            joined: owner_room.joined.clone(),
+            invite_only: owner_room.invite_only,
+            encryption: owner_room
+                .encrypted
+                .then(|| "m.megolm.v1.aes-sha2".to_string()),
+            powers: BTreeMap::new(),
+            default_power: 0,
+            invite_power: 0,
+            binding: None,
+            name: None,
+        };
+        drop(facts);
+        let request_observation = RequestObservation {
+            registration_generation: reg.generation,
+            observed_at_ms: msg.origin_ts,
+            source: SourceObservation {
+                event_id: msg.event_id.clone(),
+                room_id: msg.room_id.clone(),
+                sender: msg.sender_mxid.clone(),
+                event_type: "com.hagency.engagement.request.v1".into(),
+                content: source_content,
+            },
+            reception,
+            project,
+            owner_room: owner,
+        };
+        let verified = verify_request(&reg, request, request_observation)
+            .map_err(|_| Error::Wire)?;
+        let id = verified
+            .request()
+            .engagement_id()
+            .map_err(|_| Error::Wire)?;
+        let exists = self.domain.provisioning_engagement_exists(id.clone()).await?;
+        let engagement = self.domain.admit(verified, msg.origin_ts).await?;
+        Ok((engagement, !exists))
+    }
     async fn targets(&self, plan: &HostIntakePlan) -> Result<Vec<ReplyRoute>, Error> {
         let mut targets = vec![];
         let mut scopes = BTreeSet::new();
