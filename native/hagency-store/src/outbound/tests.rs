@@ -712,33 +712,27 @@ fn native_outbound_custody_publication() {
         900_002,
     )
     .unwrap();
-    assert_eq!(freeze(&mut db, &s, body.clone()).wire_body(), raw);
-    db.outbound(
-        Command::Publication {
-            ticket: pending.clone(),
-            response: PublicationResponse::Accepted,
-        },
-        900_003,
-    )
-    .unwrap();
-    db.outbound(
-        Command::Publication {
-            ticket: pending.clone(),
-            response: PublicationResponse::Accepted,
-        },
-        900_004,
-    )
-    .unwrap();
+    // A rejected row is terminal: pending selection excludes it, so a later
+    // cycle re-selects nothing under the same id.
+    assert!(matches!(
+        db.outbound(Command::PendingPublication(s.clone()), 900_003)
+            .unwrap(),
+        Reply::Publication(None)
+    ));
+    // A fresh freeze supersedes the rejected row with a new sequence.
     let second = freeze(&mut db, &s, json!({"heartbeat":true}));
     assert_eq!(second.sequence(), 2);
-    db.outbound(
-        Command::Publication {
-            ticket: pending,
-            response: PublicationResponse::Unknown,
-        },
-        900_005,
-    )
-    .unwrap();
+    // The superseded ticket no longer matches the selected publication.
+    assert!(matches!(
+        db.outbound(
+            Command::Publication {
+                ticket: pending.clone(),
+                response: PublicationResponse::Accepted,
+            },
+            900_004,
+        ),
+        Err(Error::Conflict)
+    ));
     assert_eq!(freeze(&mut db, &s, json!({"heartbeat":true})).sequence(), 2);
     let mut altered = second.clone();
     altered.body.push(' ');

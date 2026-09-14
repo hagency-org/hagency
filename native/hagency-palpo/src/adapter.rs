@@ -230,27 +230,35 @@ impl Adapter {
             .await?;
             return Ok(Step::Published);
         }
-        // A retryable conflict (sequence_conflict / stale_lease) keeps
-        // today's behaviour: the caller backs off and re-sends. Every other
-        // 4xx/5xx is a definitive rejection: record `rejected` so nothing is
-        // re-sent under this id, then surface the server's status.
-        let retryable_conflict = response
-            .value
-            .as_ref()
-            .and_then(|v| v.get("code"))
-            .and_then(|c| c.as_str())
-            .is_some_and(|c| c == "sequence_conflict" || c == "stale_lease");
-        if !retryable_conflict {
-            self.command(Command::Publication {
-                ticket,
-                response: PublicationResponse::Rejected,
-            })
-            .await?;
+        // A 409 whose code is sequence_conflict / stale_lease stays non-final:
+        // the row remains pending, no `rejected` is written, and the caller's
+        // backoff re-begins it on a later cycle or restart. A 5xx / 429 is
+        // transient: no `rejected` write, the loop's backoff/retry stands. A
+        // 401/403 keeps its unauthorized class. Every other 4xx is definitive:
+        // write `rejected` once and return a non-retryable error so the loop
+        // terminates this publication and never re-sends under the same id.
+        let retryable_conflict = response.status == 409
+            && response
+                .value
+                .as_ref()
+                .and_then(|v| v.get("code"))
+                .and_then(|c| c.as_str())
+                .is_some_and(|c| c == "sequence_conflict" || c == "stale_lease");
+        if retryable_conflict {
+            return Err(Error::Remote(409));
         }
-        Err(match response.status {
-            401 | 403 => Error::Unauthorized,
-            status => Error::Remote(status),
-        })
+        match response.status {
+            401 | 403 => Err(Error::Unauthorized),
+            429 | 500..=599 => Err(Error::Remote(response.status)),
+            status => {
+                self.command(Command::Publication {
+                    ticket,
+                    response: PublicationResponse::Rejected,
+                })
+                .await?;
+                Err(Error::Rejected(status))
+            }
+        }
     }
 
     /// Three joined loops; cancellation waits for already received custody/known

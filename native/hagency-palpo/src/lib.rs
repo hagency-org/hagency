@@ -40,6 +40,8 @@ pub enum Error {
     Unauthorized,
     #[error("remote service returned HTTP {0}")]
     Remote(u16),
+    #[error("remote service definitively rejected the publication (HTTP {0})")]
+    Rejected(u16),
     #[error("durable custody rejected the operation; inspect original work")]
     Custody,
     #[error("durable custody writer is unavailable; inspect original work")]

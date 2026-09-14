@@ -694,23 +694,39 @@ async fn native_outbound_http_publication_frozen_restart_and_rotation() {
 async fn native_outbound_server_rejection_is_recorded_rejected() {
     let mut fake = Fake::start(false).await;
     let (dir, store) = store();
-    let adapter = Adapter::attach(config(&fake.endpoint, 31), store.clone())
-        .await
-        .unwrap();
+    let adapter = Arc::new(
+        Adapter::attach(config(&fake.endpoint, 31), store.clone())
+            .await
+            .unwrap(),
+    );
     let cancel = CancellationToken::new();
     adapter
         .freeze_update(json!({"heartbeat":true}))
         .await
         .unwrap();
-    // A 500 with no retryable-conflict code is a definitive rejection: the
-    // adapter records `rejected` and surfaces the server status.
-    let (result, _) = tokio::join!(adapter.publish_once(&cancel), async {
+    let worker = {
+        let adapter = adapter.clone();
+        let cancel = cancel.clone();
+        tokio::spawn(async move { adapter.run(&cancel).await })
+    };
+    // Drive the production loop: the matrix/work lanes poll empty while the
+    // publication lane observes a definitive 4xx (400) with no retryable code.
+    loop {
         let request = fake.next().await;
-        assert!(request.target.ends_with("/updates"));
-        request.json(500, json!({"error":"boom"}));
-    });
-    assert_eq!(result, Err(Error::Remote(500)));
-    // The store's word is `rejected` — nothing is re-sent under the same id.
+        if request.target.ends_with("/updates") {
+            request.json(400, json!({"code":"bad_request"}));
+            break;
+        }
+        if request.target.contains("/poll?") {
+            request.json(200, empty(31));
+        } else {
+            request.json(200, json!({"ok":true}));
+        }
+    }
+    // A definitive rejection is non-retryable: the production loop terminates
+    // that publication instead of backing off and re-sending it.
+    assert_eq!(worker.await.unwrap(), Err(Error::Rejected(400)));
+    // The store's word is `rejected`.
     let db = rusqlite::Connection::open(dir.path().join("private/custody.sqlite3")).unwrap();
     let state: String = db
         .query_row(
@@ -720,6 +736,9 @@ async fn native_outbound_server_rejection_is_recorded_rejected() {
         )
         .unwrap();
     assert_eq!(state, "rejected");
+    // A later cycle re-selects only non-rejected rows: nothing is re-sent
+    // under the same id.
+    assert_eq!(adapter.publish_once(&cancel).await, Ok(Step::NoPublication));
     fake.no_request().await;
     store.shutdown().await.unwrap();
     fake.close().await;

@@ -127,6 +127,7 @@ fn error_label(error: Error) -> &'static str {
         Error::Generation => "generation",
         Error::Unauthorized => "unauthorized",
         Error::Remote(_) => "remote",
+        Error::Rejected(_) => "rejected",
         Error::Custody => "custody",
         Error::Unavailable => "unavailable",
         Error::OutcomeUnknown => "outcome_unknown",

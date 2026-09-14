@@ -201,8 +201,10 @@ impl Repository {
             Command::BeginPublication(ticket) => {
                 scope(&tx, &ticket.scope)?;
                 publication_matches(&tx, &ticket)?;
+                // Only an in-flight row leaves `ready` here; a rejected row is
+                // never re-begun, so its word survives any later cycle.
                 tx.execute(
-                    "UPDATE outbound_publications SET state='unknown' WHERE binding=?1",
+                    "UPDATE outbound_publications SET state='unknown' WHERE binding=?1 AND state='ready'",
                     [&ticket.scope.binding],
                 )?;
                 Reply::Publication(Some(ticket))
@@ -501,7 +503,7 @@ fn publication(
 ) -> Result<Option<PublicationTicket>, Error> {
     let row: Option<(u64, String, String)> = tx
         .query_row(
-            "SELECT sequence,digest,body FROM outbound_publications WHERE binding=?1",
+            "SELECT sequence,digest,body FROM outbound_publications WHERE binding=?1 AND state!='rejected'",
             [&s.binding],
             |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
         )
@@ -577,6 +579,12 @@ fn freeze(
     tx.execute(
         "UPDATE outbound_transports SET sequence=?2 WHERE binding=?1",
         params![s.binding, sequence],
+    )?;
+    // A rejected row is terminal and excluded from selection; a fresh freeze
+    // supersedes it with a new sequence rather than re-sending its id.
+    tx.execute(
+        "DELETE FROM outbound_publications WHERE binding=?1 AND state='rejected'",
+        [&s.binding],
     )?;
     tx.execute("INSERT INTO outbound_publications(binding,sequence,digest,body,state) VALUES(?1,?2,?3,?4,'ready')",params![s.binding,sequence,digest,encoded])?;
     capacity(tx, limit)?;
