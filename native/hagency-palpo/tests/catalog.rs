@@ -196,7 +196,7 @@ async fn native_catalog_outbound_retirement() {
             .await,
         Err(Error::Generation)
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     cancel.cancel();
     assert_eq!(
         ctx.adapter
@@ -264,7 +264,7 @@ async fn native_catalog_outbound_queued_rotation() {
     let (blocked, result) = tokio::join!(&mut blocker, &mut publication);
     assert!(matches!(blocked.unwrap(), Reply::Publication(Some(_))));
     assert_eq!(result, Err(Error::Generation));
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     assert!(matches!(
         ctx.store
             .outbound(Command::PendingPublication(ctx.adapter.scope()), now())

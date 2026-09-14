@@ -7,7 +7,10 @@ use hagency_store::{
 use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tokio::{
@@ -168,6 +171,7 @@ pub fn response(status: u16, body: &[u8]) -> Vec<u8> {
 pub struct Fake {
     pub endpoint: String,
     requests: mpsc::Receiver<Request>,
+    count: Arc<AtomicU64>,
     stop: CancellationToken,
     task: JoinHandle<()>,
 }
@@ -199,6 +203,8 @@ impl Fake {
         let (tx, requests) = mpsc::channel(32);
         let stop = CancellationToken::new();
         let token = stop.clone();
+        let count = Arc::new(AtomicU64::new(0));
+        let seen = count.clone();
         let task = tokio::spawn(async move {
             let mut jobs = JoinSet::new();
             loop {
@@ -208,17 +214,18 @@ impl Fake {
                     result = listener.accept(), if jobs.len() < 16 => {
                         let (stream,_) = result.unwrap();
                         let tx = tx.clone(); let acceptor = acceptor.clone();
+                        let seen = seen.clone();
                         jobs.spawn(async move {
                             if let Some(acceptor) = acceptor {
                                 // Diagnostic only: name the handshake outcome so a
                                 // client-side Timeout can be attributed to a silent
                                 // peer drop rather than guessed at.
                                 match timeout(Duration::from_secs(1), acceptor.accept(stream)).await {
-                                    Ok(Ok(stream)) => serve(stream, tx).await,
+                                    Ok(Ok(stream)) => serve(stream, tx, &seen).await,
                                     Ok(Err(error)) => eprintln!("fixture tls handshake refused: {error:?}"),
                                     Err(_) => eprintln!("fixture tls handshake deadline"),
                                 }
-                            } else { serve(stream, tx).await; }
+                            } else { serve(stream, tx, &seen).await; }
                         });
                     }
                 }
@@ -229,6 +236,7 @@ impl Fake {
         Self {
             endpoint,
             requests,
+            count,
             stop,
             task,
         }
@@ -239,19 +247,62 @@ impl Fake {
             .unwrap()
             .unwrap()
     }
-    pub async fn no_request(&mut self) {
-        assert!(
-            timeout(Duration::from_millis(80), self.requests.recv())
-                .await
-                .is_err()
-        );
+    /// Total admitted requests, counted once per request when the fixture
+    /// accepts it — before any response is written — from every connection.
+    pub fn requests(&self) -> u64 {
+        self.count.load(Ordering::SeqCst)
+    }
+    /// Observe that the transport stays quiet AFTER a sequencing point the
+    /// test drove to completion itself. The drain window is derived from the
+    /// loop's own backoff ceiling (retry_max), never a fixed wall-clock guess:
+    /// under load, a late request from an earlier phase must land inside the
+    /// window (making the counter move and failing the sequenced assert),
+    /// while the claim itself is carried by the sequenced observation the
+    /// caller already made, not by this quietness check.
+    pub async fn quiesced(&mut self, since: u64) {
+        let deadline =
+            tokio::time::Instant::now() + limits().retry_max + limits().retry_max + limits().idle;
+        if let Ok(Some(request)) = tokio::time::timeout_at(deadline, self.requests.recv()).await {
+            panic!(
+                "transport was expected to be quiescent but admitted {} {}",
+                request.method, request.target
+            );
+        }
+        assert_eq!(self.requests(), since);
+    }
+    /// Absorb requests whose bytes were admitted during an earlier phase —
+    /// e.g. a lane poll racing the definitive rejection that terminated the
+    /// production loop. Bounded by the same derived window as `quiesced`,
+    /// never a literal: such lane polls are answered benignly so nothing
+    /// hangs, while a publication (`/updates`) arriving here is a genuine
+    /// re-send and fails the test.
+    pub async fn absorb_earlier(&mut self) {
+        let deadline =
+            tokio::time::Instant::now() + limits().retry_max + limits().retry_max + limits().idle;
+        while let Ok(Some(request)) = tokio::time::timeout_at(deadline, self.requests.recv()).await
+        {
+            assert!(
+                !request.target.ends_with("/updates"),
+                "publication re-sent after definitive rejection: {}",
+                request.target
+            );
+            if request.target.contains("/poll?") {
+                request.json(200, empty(31));
+            } else {
+                request.json(200, json!({"ok": true}));
+            }
+        }
     }
     pub async fn close(self) {
         self.stop.cancel();
         self.task.await.unwrap();
     }
 }
-async fn serve<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, tx: mpsc::Sender<Request>) {
+async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
+    mut stream: S,
+    tx: mpsc::Sender<Request>,
+    seen: &Arc<AtomicU64>,
+) {
     let mut bytes = Vec::new();
     let headers_end = loop {
         if let Some(n) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
@@ -303,6 +354,11 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, tx: mpsc::Sende
         body: bytes[headers_end..headers_end + length].to_vec(),
         response,
     };
+    // Admission: the request bytes were received and parsed. Counting here —
+    // before any response — makes the counter insensitive to how the client
+    // reacts to the response, so a late admitted request can never slip past
+    // a later quiescence check.
+    seen.fetch_add(1, Ordering::SeqCst);
     if tx.send(request).await.is_err() {
         return;
     }

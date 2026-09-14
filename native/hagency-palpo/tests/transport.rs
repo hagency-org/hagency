@@ -96,7 +96,7 @@ async fn native_outbound_http_authority_tls_and_redaction() {
     let error = untrusted.poll_once(Lane::Work, &cancel).await.unwrap_err();
     assert_eq!(error, Error::Transport);
     assert!(!format!("{error:?} {error}").contains(TOKEN));
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     let trusted = config(&fake.endpoint, 31)
         .with_root_pem(include_bytes!("fixtures/ca.pem"))
         .unwrap();
@@ -139,7 +139,7 @@ async fn native_outbound_http_authority_tls_and_redaction() {
         Err(Error::Transport | Error::Timeout) => {}
         other => panic!("mismatched hostname must be refused, got {other:?}"),
     }
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     second_store.shutdown().await.unwrap();
     store.shutdown().await.unwrap();
     fake.close().await;
@@ -164,7 +164,7 @@ async fn native_outbound_http_authority_redirect_and_status() {
         );
     });
     assert_eq!(result, Err(Error::Redirect));
-    destination.no_request().await;
+    destination.quiesced(destination.requests()).await;
     for status in [204, 400, 401, 403, 409, 429, 500, 503] {
         let (result, _) = tokio::join!(adapter.poll_once(Lane::Work, &cancel), async {
             fake.next()
@@ -179,7 +179,7 @@ async fn native_outbound_http_authority_redirect_and_status() {
         assert_eq!(result, Err(error));
         assert!(!format!("{result:?}").contains(TOKEN));
     }
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     store.shutdown().await.unwrap();
     fake.close().await;
     destination.close().await;
@@ -264,7 +264,7 @@ async fn native_outbound_http_wire_invalid_envelopes_and_json() {
         panic!("head");
     };
     assert!(head.is_none());
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     store.shutdown().await.unwrap();
     fake.close().await;
 }
@@ -445,7 +445,7 @@ async fn native_outbound_http_custody_completed_redelivery_ack_and_conflict() {
     });
     assert_eq!(result, Err(Error::Conflict));
     assert_eq!(view(&store, &adapter, Lane::Work, "req-done").await, prior);
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     store.shutdown().await.unwrap();
     fake.close().await;
 }
@@ -505,7 +505,7 @@ async fn native_outbound_http_custody_cancellation_stale_lease_and_rotation() {
         rotated.poll_once(Lane::Matrix, &cancel).await,
         Ok(Step::AwaitingConsumer)
     );
-    fake.no_request().await; // Rotation never invents old remote ACK success.
+    fake.quiesced(fake.requests()).await; // Rotation never invents old remote ACK success.
     let work = start(&store, &rotated, Lane::Matrix, "tx-cancel").await;
     assert_eq!(work.payload, original["delivery"]["payload"]);
     assert_eq!(work.origin_machine_generation, 31);
@@ -736,10 +736,17 @@ async fn native_outbound_server_rejection_is_recorded_rejected() {
         )
         .unwrap();
     assert_eq!(state, "rejected");
-    // A later cycle re-selects only non-rejected rows: nothing is re-sent
-    // under the same id.
+    // Absorb lane polls whose bytes were admitted before the rejection
+    // terminated the loop: they are earlier-phase traffic racing shutdown,
+    // not re-sends, and are answered benignly. A publication seen here is a
+    // genuine re-send and fails.
+    fake.absorb_earlier().await;
+    // Sequenced observation: the rejected row is never re-selected, so the
+    // next cycle completes with no HTTP request at all — proven by the
+    // admission counter across the derived quiet window, not by a
+    // wall-clock guess about when a re-send "should" have landed.
     assert_eq!(adapter.publish_once(&cancel).await, Ok(Step::NoPublication));
-    fake.no_request().await;
+    fake.quiesced(fake.requests()).await;
     store.shutdown().await.unwrap();
     fake.close().await;
 }

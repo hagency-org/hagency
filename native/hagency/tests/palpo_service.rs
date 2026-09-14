@@ -158,7 +158,10 @@ async fn native_palpo_service_configuration_refusal() {
         } else {
             child.refused().await;
         }
-        f.fake.no_request().await;
+        // Refusal and disabled/terminal states never contact the peer: zero
+        // admissions ever, proven by the counter across a derived quiet
+        // window (covering the header-parse race) rather than a wall clock.
+        f.fake.quiesced(0).await;
         f.untouched_registration(case != "missing");
         f.no_runner();
         #[cfg(unix)]
@@ -209,7 +212,12 @@ async fn native_palpo_service_cancel_custody() {
     assert_eq!(original_owner.close().await, Ok(()));
     assert_eq!(f.pending(), original); // cancellation cannot acknowledge sent bytes
     f.reopen();
-    f.fake.no_request().await;
+    // Sequencing point: `serving` completed above, so every transport loop
+    // has unwound and no further request can be initiated. Admissions that
+    // started parsing before cancellation land inside the derived window;
+    // the counter proves none of them is a new send after this point.
+    let settled = f.fake.requests();
+    f.fake.quiesced(settled).await;
     drop(held);
     drop(matrix_or_work);
     drop(other_lane);
