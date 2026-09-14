@@ -54,7 +54,7 @@ test('isStripped covers tests, examples, fixtures and probe bins', () => {
   assert.equal(isStripped('native/hagency-store/tests/replies.rs'), true);
   assert.equal(isStripped('native/hagency/src/domain/tests.rs'), true);
   assert.equal(isStripped('native/fixtures/peer.rs'), true);
-  assert.equal(isStripped('native/hagency/src/bootstrap/driver.rs'), true);
+  assert.equal(isStripped('native/hagency/src/bootstrap/driver.rs'), false); // production host driver (amendment: only its cfg(test) mod strips)
   assert.equal(isStripped('native/hagency-runtime/src/bin/approval_probe/mod.rs'), true);
   assert.equal(isStripped('native/hagency/src/console.rs'), false);
   assert.equal(isStripped('native/hagency-store/src/domain.rs'), false);
@@ -205,4 +205,30 @@ test('an unresolvable full path is reported unresolved and fails', () => {
   assert.equal(ok, false);
   assert.equal(result.unresolved.length, 1);
   assert.match(result.unresolved[0].reason, /no module file for hagency_store::domain/);
+});
+
+test('a production file that also carries mod tests: production fns reachable, test fns stripped', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { bootstrap::driver::settle_pending_stops(); }\n',
+      'native/hagency/src/bootstrap/driver.rs': [
+        'pub fn settle_pending_stops() { helper(); }',
+        'fn helper() {}',
+        '#[cfg(test)]',
+        'mod tests {',
+        '  fn only_test() { assert!(true); }',
+        '}',
+      ].join('\n'),
+    },
+    specs: [
+      '  Production caller: hagency::bootstrap::driver::settle_pending_stops',
+      '  Production caller: hagency::bootstrap::driver::only_test',
+    ].join('\n') + '\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.equal(ok, false); // the mod tests fn is stripped, so its line is unresolved
+  assert.equal(result.wired, 1);
+  assert.equal(result.unresolved.length, 1);
+  assert.match(result.unresolved[0].caller, /only_test$/);
 });

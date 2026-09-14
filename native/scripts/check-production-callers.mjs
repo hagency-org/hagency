@@ -17,7 +17,6 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 
 const STRIP_DIRS = ['native/fixtures'];
 const STRIP_FILES = new Set([
-  'native/hagency/src/bootstrap/driver.rs', // bootstrap probe
   'native/hagency-platform/src/bin/hagency-platform-probe.rs',
   'native/hagency-platform/src/bin/hagency-cgroup-probe.rs',
   'native/hagency-progress-runtime/src/bin/hagency-progress-probe.rs',
@@ -89,33 +88,45 @@ export function extractFns(source) {
     if (SKIP_WORDS.has(name)) continue;
     // Body starts at the first '{' after the signature (skip where-clauses by
     // scanning forward; a ';' first means a trait declaration with no body).
+    // Compare on a comment-stripped window: a `// ... ;` inside a long
+    // signature must not read as a declaration terminator.
     let i = m.index;
-    let semi = source.indexOf(';', i);
-    let brace = source.indexOf('{', i);
+    const window = source.slice(i, i + 4000).replace(/\/\/[^\n]*/g, '');
+    const semi = window.indexOf(';');
+    const brace = window.indexOf('{');
     if (brace === -1 || (semi !== -1 && semi < brace)) { fns.push({ name, body: '' }); continue; }
-    let depth = 0, end = brace;
+    const braceAbs = i + brace;
+    let depth = 0, end = braceAbs;
     for (; end < source.length; end++) {
       if (source[end] === '{') depth++;
       else if (source[end] === '}') { depth--; if (depth === 0) { end++; break; } }
     }
-    fns.push({ name, body: source.slice(brace, end) });
+    fns.push({ name, body: source.slice(braceAbs, end), index: m.index });
   }
   return fns;
 }
 
 export function extractCalls(body) {
   const calls = new Set();
-  // path-qualified: a::b::name(  -> full "a::b::name" and short "name"
+  // path-qualified: a::b::name(  -> full "a::b::name" ONLY. Registering the
+  // short tail as well would make `palpo::Owner::start(` collide with every
+  // bare `start` definition — the path is exactly what the author named.
   const qre = /([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)+)\s*\(/g;
   let m;
   while ((m = qre.exec(body))) {
     const full = m[1];
     const parts = full.split('::');
     const short = parts[parts.length - 1];
-    if (!SKIP_WORDS.has(short)) { calls.add(full); calls.add(short); }
+    if (!SKIP_WORDS.has(short)) calls.add(full);
   }
-  // method or bare: .name( or name(
-  const bre = /(?:\.|\b)([a-z_][A-Za-z0-9_]*)\s*\(/g;
+  // method or bare: .name( or name(. Method calls are recorded with a
+  // `receiver.` prefix so resolution can (a) restrict to method definitions
+  // (impls non-empty) and (b) prefer the impl matching a receiver type hint.
+  const mre = /([a-z_][A-Za-z0-9_]*)\s*\.\s*([a-z_][A-Za-z0-9_]*)\s*\(/g;
+  while ((m = mre.exec(body))) {
+    if (!SKIP_WORDS.has(m[2])) calls.add(`${m[1]}.${m[2]}`);
+  }
+  const bre = /(?:^|[^.:\w])([a-z_][A-Za-z0-9_]*)\s*\(/g;
   while ((m = bre.exec(body))) {
     const name = m[1];
     if (!SKIP_WORDS.has(name)) calls.add(name);
@@ -144,7 +155,7 @@ export function buildGraph(files, read) {
   for (const rel of files) {
     const src = stripTestItems(read(rel));
     const defs = extractFns(src);
-    for (const def of defs) def.impls = implsOf(src, def);
+    for (const def of defs) { def.impls = implsOf(src, def); def.types = typeHints(src); }
     fileFns.set(rel, defs);
     for (const def of defs) {
       if (!fns.has(def.name)) fns.set(def.name, []);
@@ -164,7 +175,7 @@ export function buildGraph(files, read) {
 // The impl type names whose blocks contain the fn's definition, e.g.
 // ['DomainRepository'] for a method inside `impl DomainRepository { ... }`.
 function implsOf(src, def) {
-  const idx = src.indexOf(def.body);
+  const idx = def.index ?? src.indexOf(def.body);
   const impls = [];
   const re = /\bimpl\b[^{]*\b([A-Z][A-Za-z0-9_]*)[^{]*\{/g;
   let m;
@@ -177,6 +188,16 @@ function implsOf(src, def) {
     if (idx > m.index && idx < end) impls.push(m[1]);
   }
   return impls;
+}
+
+// Simple receiver-type hints: `name: &Type`, `name: Type` in fn signatures
+// and let-bindings, and struct fields. Maps variable -> type name.
+export function typeHints(src) {
+  const hints = new Map();
+  for (const m of src.matchAll(/([a-z_][A-Za-z0-9_]*)\s*:\s*&?\s*(?:'\w+\s+)?(?:mut\s+)?([A-Z][A-Za-z0-9_]*)/g)) {
+    if (!hints.has(m[1])) hints.set(m[1], m[2]);
+  }
+  return hints;
 }
 
 // crate::module[::Type]::fn -> the single definition it names, or null.
@@ -265,11 +286,30 @@ export function resolveReachable(graph, roots) {
     const { file, name, taint } = queue.shift();
     const entry = (graph.fns.get(name) || []).find((e) => e.file === file);
     if (!entry || !entry.calls) continue;
+    const def = (graph.fileFns.get(file) || []).find((d) => d.name === name);
+    const types = def?.types || new Map();
     const local = new Set((graph.fileFns.get(file) || []).map((d) => d.name));
     for (const call of entry.calls) {
+      const via = `${file}::${name} -> ${call}`;
+      // Method call recorded as `receiver.name(`.
+      const mm = call.match(/^([a-z_][A-Za-z0-9_]*)\.([a-z_][A-Za-z0-9_]*)$/);
+      if (mm) {
+        const [, recv, meth] = mm;
+        let candidates = (graph.fns.get(meth) || []).filter((c) => (c.impls || []).length > 0);
+        // (i) exactly one method definition -> clean. (ii) receiver type hint
+        // picks the impl. (iii) otherwise ambiguous over all methods.
+        const hint = types.get(recv);
+        if (candidates.length > 1 && hint) {
+          const typed = candidates.filter((c) => c.impls.includes(hint));
+          if (typed.length === 1) candidates = typed;
+        }
+        if (candidates.length === 0) continue; // no method definition: no edge
+        const ambiguousEdge = candidates.length > 1;
+        for (const c of candidates) seed(c.file, meth, taint || ambiguousEdge, keyOf(file, name), via);
+        continue;
+      }
       const parts = call.split('::');
       const short = parts[parts.length - 1];
-      const via = `${file}::${name} -> ${call}`;
       // Unqualified calls bind the same-file definition first; qualified
       // calls resolve their path (a same-file short-name coincidence must
       // not swallow `bootstrap::accounts::run` just because main.rs also
@@ -280,14 +320,20 @@ export function resolveReachable(graph, roots) {
       if (parts.length > 1) {
         // Qualified: resolve the module path to its definition. In-body paths
         // are often crate-relative (`bootstrap::accounts::run`,
-        // `crate::x::y`) rather than crate-prefixed, so retry with the
-        // caller's crate name and with `crate` swapped for it.
+        // `crate::x::y`) or module-relative (`driver::Driver::start` from
+        // bootstrap.rs), so retry with the caller's crate, with `crate`
+        // swapped for it, and relative to the caller's own module directory.
         const filesList = [...graph.fileFns.keys()];
         const callerCrate = file.match(/^native\/([^/]+)\/src\//)?.[1].replace(/-/g, '_');
+        const callerModDir = file.replace(/^native\/[^/]+\/src\//, '').replace(/\.rs$/, '');
         const attempts = [call];
         if (callerCrate) {
           if (parts[0] === 'crate') attempts.push([callerCrate, ...parts.slice(1)].join('::'));
-          else attempts.push(`${callerCrate}::${call}`);
+          else {
+            attempts.push(`${callerCrate}::${call}`);
+            const modParts = callerModDir.split('/');
+            if (modParts.length && modParts[0]) attempts.push(`${callerCrate}::${modParts.join('::')}::${call}`);
+          }
         }
         let r = { def: null };
         for (const attempt of attempts) {
@@ -377,7 +423,7 @@ export function checkProductionCallers({ root = repoRoot, read, files: givenFile
     unresolved,
     unknownGaps,
     roots: roots.length,
-    stripped: 'cfg(test) items, #[test] fns, */tests/*, */examples/*, tests.rs, native/fixtures/**, probe/fixture bins, bootstrap/driver.rs',
+    stripped: 'cfg(test) items, #[test] fns, */tests/*, */examples/*, tests.rs, native/fixtures/**, probe/fixture bins',
   };
   const failures = missing.length + ambiguous.length + unresolved.length + unknownGaps.length;
   return { result, ok: failures === 0 };

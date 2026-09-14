@@ -58,8 +58,7 @@ a false production hit for `approve`) and it collides on bare names (see the
 `admit` row). Every row below was therefore judged with the checker spec's
 strip: `#[cfg(test)]` items and `#[test]` fns removed, `*/tests/*`,
 `native/fixtures/**`, and the probe/fixture binaries
-(`hagency/src/bootstrap/driver.rs`,
-`hagency-platform/src/bin/hagency-platform-probe.rs`,
+(`hagency-platform/src/bin/hagency-platform-probe.rs`,
 `hagency-platform/src/bin/hagency-cgroup-probe.rs`,
 `hagency-progress-runtime/src/bin/hagency-progress-probe.rs`,
 `hagency-runtime/src/bin/hagency-runtime-probe.rs`,
@@ -77,13 +76,13 @@ collisions are resolved per type in the row's note.
 | `claim_effect` | domain.rs:1338 | none outside tests/fixtures | gap G2 |
 | `observe_effect` | domain.rs:1357 | none outside tests/fixtures | gap G2 |
 | `retry_cleanup` | domain.rs:1265 | none outside tests/fixtures | gap G2/G5 (shared) |
-| `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | only the bootstrap probe (hagency/src/bootstrap/driver.rs:393) | gap G3 |
+| `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | only bootstrap driver setup code (hagency/src/bootstrap/driver.rs:393 — see the amendment: that file is production, and its calls are bootstrap configuration, not the runtime route insert) | gap G3 |
 | `begin_account_login` | domain/accounts.rs:785 | none outside tests/fixtures | gap G4 |
 | `settle_account_login` | domain/accounts.rs:824 | none outside tests/fixtures | gap G4 |
 | `reconcile_dispatches` | domain/execution.rs:1014 | none outside tests/fixtures | gap G5 |
 | `recover_dispatch` | domain/execution.rs:1025 | none outside tests/fixtures | gap G5 |
 | `shutdown_observed` | worker.rs:128, domain_worker.rs:2526 | none outside tests/fixtures | gap G5 |
-| `register_workspace` | domain/execution.rs:670 | only the bootstrap probe (hagency/src/bootstrap/driver.rs:414) | gap G6 |
+| `register_workspace` | domain/execution.rs:670 | only bootstrap driver setup code (hagency/src/bootstrap/driver.rs:414 — same amendment) | gap G6 |
 | `revoke_approval_grant` | domain/approvals.rs:676 | none outside tests/fixtures | gap G7 |
 | `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | none outside tests/fixtures | gap G8 |
 | `pending_conversation_stops` | domain/conversation_lifecycle.rs:354 | none outside tests/fixtures | gap G8 |
@@ -100,7 +99,7 @@ collisions are resolved per type in the row's note.
 | `renew_dispatch` | domain/execution.rs:918 | `admit_owned_dispatch` ← hagency-execution/src/operation.rs:706 |
 | `park_dispatch` | domain/execution.rs:888 | `admit_owned_dispatch` ← hagency-execution/src/operation.rs:706 |
 | `fail_before_start` | domain/execution.rs:939 | `admit_owned_dispatch` ← hagency-execution/src/operation.rs:706 |
-| `enqueue_dispatch` | domain/execution.rs:722 | `admit_owned_dispatch` ← hagency-execution/src/operation.rs:706 (remaining caller is the bootstrap probe, hagency/src/bootstrap/driver.rs:416) |
+| `enqueue_dispatch` | domain/execution.rs:722 | `admit_owned_dispatch` ← hagency-execution/src/operation.rs:706 (remaining caller is bootstrap driver setup, hagency/src/bootstrap/driver.rs:416 — same amendment) |
 | `ingest_message` | domain/messages.rs:152 | `admit_matrix_event` (domain/verified_ingress.rs:261) ← hagency-matrix/src/intake.rs:333 |
 | `create_task_intent` | domain/task_intents.rs:399 | `admit_matrix_event` ← hagency-matrix/src/intake.rs:333 |
 | `observe_owner_verdict` | domain/approvals.rs:492 | `admit_approval_verdict` (domain/approvals.rs:964) ← hagency-matrix/src/approval_intake.rs:630 |
@@ -141,6 +140,20 @@ deleted (1 deletion decision owed)**.
 **(c) Definition of done.** The migration plan's §12 gains one line making this
 a gate, not an audit: a store write is not "done" when a test reaches it but
 when a production caller does (see the §12 bullet added with this ADR).
+
+## Amendment 2026-09-14 — `bootstrap/driver.rs` is production
+
+The original strip list misclassified `native/hagency/src/bootstrap/driver.rs`
+as a probe. It is the production host driver (`Driver::start`, `run`,
+`settle_pending_stops`, the claim at driver.rs:257); only its `#[cfg(test)]
+mod tests` is test code, and the checker's cfg(test) stripping already removes
+that. The file is therefore **not stripped**; its fns participate in the
+production call graph like any other. The gap rows above that cited it as
+"the bootstrap probe" keep their classification: the calls there are
+bootstrap-time configuration (fixture-shaped development bootstrap), not the
+runtime route/session insert the intake plan needs — G3 and G6 stay gaps on
+that reasoning, now stated correctly. (Checker defect found by its first real
+input, reported by integration + glm9.)
 
 ## Consequences
 
