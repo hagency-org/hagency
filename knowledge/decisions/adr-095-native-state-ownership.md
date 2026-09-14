@@ -460,9 +460,12 @@ is the event-type check `verify_request` already requires). The Matrix
 adapter observes the authenticated event, calls the same `verify_request` to
 build the `VerifiedRequest`, and calls `admit` once — `admit` stays the
 single minting write, and the provider approval is observed as the separate
-`approve` verdict, never folded into the mint. A duplicate request (same
-`source_event_id`) is refused by the same id before any second INSERT; an
-unverified request is refused before `admit`. This changes nothing about the
+`approve` verdict, never folded into the mint. A duplicate is keyed on
+`request_id` (the minted id is `en_` + `hash([fleet_id, request_id])`,
+`domain.rs:1088-1099`, `authority.rs:120-124`): an identical duplicate —
+same `request_id` and same digest — **replays** the prior admission, and a
+same-`request_id` different-content request is **refused as a conflict**;
+an unverified request is refused before `admit`. This changes nothing about the
 store: it wires the production caller the ownership table already assumed.
 
 Cross-reference: ADR-022 ("provisions agents on approval") and ADR-013
