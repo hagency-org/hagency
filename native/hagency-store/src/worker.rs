@@ -83,6 +83,10 @@ impl Store {
                             mark(&probe, Phase::DropStarted);
                             drop(repository);
                             mark(&probe, Phase::DropFinished);
+                            // The receiver drops before the reply resolves
+                            // the caller: writer_open()'s closed word is
+                            // observable the moment shutdown() returns.
+                            drop(rx);
                             mark(&probe, Phase::AcknowledgementStarted);
                             if reply.send(()).is_ok() {
                                 mark(&probe, Phase::AcknowledgementSent);
@@ -271,6 +275,26 @@ mod tests {
             payload: json!({"model":"fixture", "tokens":100}),
         }
     }
+    #[tokio::test]
+    async fn native_store_shutdown_is_observable_on_return() {
+        // The invariant the health read depends on (found on a loaded
+        // runner as /health reporting ok after shutdown returned): the
+        // moment shutdown() resolves, the closed word writer_open() reads
+        // must already be false. A tight loop, not a race window: a
+        // regression that reorders drop(rx) after reply.send fails here
+        // deterministically, every iteration.
+        for _ in 0..200 {
+            let dir = tempfile::tempdir().unwrap();
+            let store =
+                Store::start(Repository::open(&dir.path().join("state")).unwrap(), 16).unwrap();
+            store.shutdown().await.unwrap();
+            assert!(
+                !store.writer_open(),
+                "shutdown() returned while the writer word was still open"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn retries_are_content_bound() {
         let dir = tempfile::tempdir().unwrap();

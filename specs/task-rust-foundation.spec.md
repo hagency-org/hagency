@@ -115,6 +115,13 @@ Scenario: Ready names a closed domain writer and health stays live
   When the health and ready boundaries are read
   Then health answers two hundred with the closed writer named in the body while ready answers five oh three never a silent two hundred
 
+Scenario: Store shutdown resolves only after its closed word is observable
+  Test: native_domain_shutdown_is_observable_on_return
+  Test: native_store_shutdown_is_observable_on_return
+  Given a domain writer and a custody store each shut down through their public shutdown call
+  When the shutdown future returns and the writer word is read on the very next line
+  Then the word already reads closed in a tight loop so a reordered acknowledgement fails deterministically
+
 Scenario: Signing bytes preserve existing wire semantics
   Test: canonical_vectors_match_javascript
   Given sanitized Unicode null integer and property-order vectors

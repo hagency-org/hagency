@@ -156,6 +156,26 @@ mod shutdown_tests {
         held_field_drop(Phase::SqliteCloseEntered).await;
     }
 
+    #[tokio::test]
+    async fn native_domain_shutdown_is_observable_on_return() {
+        // The invariant the health read depends on (found on a loaded
+        // runner as /health reporting ok after shutdown returned): the
+        // moment shutdown() resolves, the closed word writer_open() reads
+        // must already be false. A tight loop, not a race window: a
+        // regression that reorders drop(rx) after reply.send fails here
+        // deterministically, every iteration.
+        for _ in 0..200 {
+            let root = tempfile::tempdir().unwrap();
+            let state = root.path().join("state");
+            let store = DomainStore::start(DomainRepository::open(&state).unwrap(), 16).unwrap();
+            store.shutdown().await.unwrap();
+            assert!(
+                !store.writer_open(),
+                "shutdown() returned while the writer word was still open"
+            );
+        }
+    }
+
     async fn closed(store: &DomainStore) {
         tokio::time::timeout(Duration::from_secs(2), store.tx.closed())
             .await
@@ -2383,6 +2403,11 @@ impl DomainStore {
                                 drop(repository);
                             }
                             mark(&probe, Phase::DropFinished);
+                            // The receiver drops before the reply resolves
+                            // the caller: the closed word writer_open() reads
+                            // (tx.is_closed()) is observable the moment
+                            // shutdown() returns, never a tick late.
+                            drop(rx);
                             mark(&probe, Phase::AcknowledgementStarted);
                             if reply.send(()).is_ok() {
                                 mark(&probe, Phase::AcknowledgementSent);

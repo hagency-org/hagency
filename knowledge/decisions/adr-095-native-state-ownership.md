@@ -74,7 +74,10 @@ of serialized queued payload, 4 MiB per delivery, eight HTTP body/command slots,
 64 connections, two-second body/command deadlines. An admitted command that loses
 its response returns `outcome_unknown`; the caller reconciles with the same ID.
 No external effect is replayed by this worker. Shutdown drains prior commands and
-releases the database before acknowledging shutdown.
+releases the database before acknowledging shutdown. Shutdown resolves only after
+its closed word is observable: the worker drops its receiver before the reply that
+resolves the caller, so `writer_open()` reads closed the moment `shutdown()` returns —
+found on a loaded runner as `/health` reporting ok after shutdown had returned.
 
 Custody retains at most 1,024 unprocessed records and 16 MiB of payload. Reaching
 capacity rejects new IDs; identical retries still retrieve their original receipt.
