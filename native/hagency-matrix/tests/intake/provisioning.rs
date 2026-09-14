@@ -298,3 +298,29 @@ async fn resume_provisioning(
     });
     result
 }
+
+/// A second provisioning request that reuses an admitted `request_id` with
+/// different content digests differently: `admit` refuses the conflict, the
+/// handoff quarantines the intake, and no second engagement is minted.
+#[tokio::test]
+async fn native_provisioning_ingress_refuses_a_conflicting_request_id() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let before = rows(&f, "engagements");
+    let result = run_provisioning(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![
+                request_event("$request_one", request_body("request_one", 250)),
+                request_event("$request_two", request_body("request_one", 500)),
+            ],
+        ),
+    )
+    .await;
+    assert_eq!(result, Err(Error::Generation));
+    assert_eq!(rows(&f, "engagements"), before + 1);
+    assert!(f.available().await);
+    assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
+    c.close().await.unwrap();
+}
