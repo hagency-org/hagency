@@ -629,11 +629,14 @@ impl Fixture {
                     self.receipt("list"),
                     self.receipt("first")
                 );
-                assert!(
-                    tokio::time::Instant::now() < deadline,
-                    "incoming executable did not complete: {status}"
-                );
             }
+            // The watchdog binds EVERY iteration, whatever the probe
+            // returned: a None probe (connect refused, slow read, IO error)
+            // must not hide the 35s bound behind the 800-iteration cap.
+            assert!(
+                tokio::time::Instant::now() < deadline,
+                "incoming executable did not complete: {status}"
+            );
         }
         panic!("bounded incoming fixture loop exhausted")
     }
