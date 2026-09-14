@@ -8,7 +8,9 @@
 //! a vacuous "the other side never existed" check is not isolation proof.
 use super::*;
 use crate::collector::observation::{Phase as ObservationPhase, Trace, observed};
-use common::pair::{DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, state_for, state_plain_for, who};
+use common::pair::{
+    DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, shared_state, state_for, who,
+};
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -23,44 +25,44 @@ fn pair_config(pair: &PairFixture, agent: &HostIdentity, dm: &str, endpoint: &st
         .with_root_pem(include_bytes!("../fixtures/ca.pem"))
         .unwrap()
 }
-/// Answer bootstrap traffic for one agent — whoami as ITS OWN identity,
-/// empty syncs, room state (encrypted or plain per the leg) — until the
-/// peer falls quiet. The collector's config carries TWO rooms (the shared
-/// room and this agent's direct room), so it issues TWO /state requests;
-/// the script must answer BOTH before it may go quiet — a quiet window
-/// between them lets `common::scripted`'s biased select return the
-/// collector's Ok with the DM room unpublished (the :181 early-return
-/// panic). The room is keyed on the target; a DM always answers the
-/// invite-only + encrypted shape.
-async fn serve_bootstrap(fake: &mut common::Fake, agent: &HostIdentity, encrypted: bool) {
+/// Answer bootstrap traffic for one agent — a FIXED script, mirroring the
+/// single-agent `success` helper (common/mod.rs): whoami as ITS OWN
+/// identity, one sync, then BOTH rooms' state (the shared Group room and
+/// this agent's direct room), returning immediately after the second
+/// answer. Never a quiet timer: `common::scripted`'s biased select panics
+/// whenever the script settles after the collector (~136 ms) on a timer,
+/// so the script's end must be the last bootstrap request it serves. The
+/// room is keyed on the target; a DM always answers the invite-only +
+/// encrypted shape.
+async fn serve_bootstrap(fake: &mut common::Fake, pair: &PairFixture, agent: &HostIdentity) {
     let mut states_served = 0usize;
     loop {
-        let request = tokio::select! {
-            request = fake.next() => request,
-            // Only fall quiet once both rooms' /state have been answered; a
-            // shorter window can fire between the shared and DM legs.
-            _ = tokio::time::sleep(Duration::from_millis(if states_served >= 2 { 300 } else { 2000 })) => return,
-        };
+        let request = fake.next().await;
         if request.target.contains("/account/whoami") {
             request.json(200, who(agent));
         } else if request.target.contains("/sync") {
             request.json(200, common::sync("boot"));
         } else if request.target.ends_with("/state") {
-            // A DIRECT room must always be invite-only AND encrypted (ADR-144;
-            // the store's invalid_direct clause). The plain variant is for the
-            // shared Group room only — serving a DM unencrypted is the exact
-            // observation the store refuses (RunnerAuthority at
-            // matrix_routes.rs:123 via the first-observation invalidate).
+            // Room-keyed answers: a DIRECT room is always invite-only AND
+            // encrypted (ADR-144; the store's invalid_direct clause), and the
+            // SHARED room answers its one room-wide snapshot — both agents
+            // and the owner joined — so the second agent's publish is
+            // idempotent at the same generation.
             let is_dm = request.target.contains("dm-");
-            states_served += 1;
             request.json(
                 200,
-                if is_dm || encrypted {
+                if is_dm {
                     state_for(agent)
                 } else {
-                    state_plain_for(agent)
+                    shared_state(&pair.a, &pair.b)
                 },
             );
+            states_served += 1;
+            // Both rooms answered — the observation pass is complete; the
+            // script ends here, deterministically.
+            if states_served == 2 {
+                return;
+            }
         } else {
             panic!("unexpected bootstrap request: {}", request.target);
         }
@@ -83,7 +85,6 @@ async fn bootstrap_session(
     session: &str,
     room: &str,
     fake: &mut common::Fake,
-    encrypted: bool,
 ) -> Collector {
     let collector = Collector::new(
         pair_config(pair, agent, dm_of(pair, agent), endpoint),
@@ -93,7 +94,7 @@ async fn bootstrap_session(
     let cancel = CancellationToken::new();
     let trace = Trace::new("pair bootstrap", None, None);
     let operation = observed(trace, collector.collect(&cancel));
-    let (result, ()) = common::scripted(operation, serve_bootstrap(fake, agent, encrypted)).await;
+    let (result, ()) = common::scripted(operation, serve_bootstrap(fake, pair, agent)).await;
     result.unwrap();
     pair.store
         .resolve_verified_matrix_session(SessionBinding {
@@ -171,35 +172,66 @@ async fn final_claim_for(
 async fn send_and_capture(
     collector: &Collector,
     fake: &mut common::Fake,
+    pair: &PairFixture,
     agent: &HostIdentity,
     claim: ReplyClaim,
 ) -> (Vec<String>, Vec<Value>) {
+    // A DM room is always encrypted (ADR-144), so a DM send runs the megolm
+    // round; the peer crypto fixture is acquired BEFORE the send operation,
+    // exactly as the single-agent crypto test does.
+    let peer = collector
+        .inner
+        .owner
+        .lock()
+        .await
+        .as_ref()
+        .unwrap()
+        .outgoing_fixture(true)
+        .await;
     let cancel = CancellationToken::new();
     let trace = Trace::new("pair send", None, None);
     let operation = observed(trace.clone(), collector.send_final(claim, &cancel));
     let (result, puts) = common::scripted(operation, async {
         let mut targets = Vec::new();
         let mut bodies = Vec::new();
+        // A FIXED script, never a quiet timer: preflights; for a DM leg the
+        // megolm round (keys/query, sendToDevice share); then the one
+        // message PUT (plain or encrypted) — the script ends on the PUT it
+        // serves.
         loop {
-            let request = tokio::select! {
-                request = fake.next() => request,
-                _ = tokio::time::sleep(Duration::from_millis(300)) => break,
-            };
+            let request = fake.next().await;
             if request.target.contains("/account/whoami") {
                 request.json(200, who(agent));
             } else if request.target.contains("/sync") {
                 request.json(200, common::sync("boot"));
             } else if request.target.ends_with("/state") {
-                request.json(200, state_plain_for(agent));
-            } else if request.method == "PUT" && request.target.contains("/send/m.room.message/") {
+                let is_dm = request.target.contains("dm-");
+                request.json(
+                    200,
+                    if is_dm {
+                        state_for(agent)
+                    } else {
+                        shared_state(&pair.a, &pair.b)
+                    },
+                );
+            } else if request.target.contains("/keys/query") {
+                request.json(200, peer.query.clone());
+            } else if request.target.contains("/sendToDevice/m.room.encrypted/") {
+                peer.share(serde_json::from_slice(&request.body).unwrap())
+                    .await;
+                request.json(200, json!({}));
+            } else if request.method == "PUT"
+                && (request.target.contains("/send/m.room.message/")
+                    || request.target.contains("/send/m.room.encrypted/"))
+            {
                 targets.push(request.target.clone());
                 bodies.push(serde_json::from_slice(&request.body).unwrap());
                 request.json(200, json!({"event_id":"$pair"}));
+                return (targets, bodies);
             } else {
-                panic!("unexpected plain send request: {}", request.target);
+                panic!("unexpected send request: {}", request.target);
             }
         }
-        (targets, bodies)
     })
     .await;
     assert_eq!(result.unwrap().state, OutgoingState::Delivered);
@@ -211,36 +243,68 @@ async fn send_and_capture(
 async fn owner_dm_intake(
     collector: &Collector,
     fake: &mut common::Fake,
+    pair: &PairFixture,
     agent: &HostIdentity,
     room: &str,
     body: &str,
     session: &str,
 ) {
-    let event = json!({
-        "event_id": format!("$own-{session}"),
-        "sender": OWNER,
-        "type": "m.room.message",
-        "origin_server_ts": now(),
-        "content": {
-            "msgtype": "m.text",
-            "body": body,
-            "m.mentions": {"user_ids": [agent.transport.sender_mxid]}
-        }
-    });
-    let mut packet = common::sync(&format!("own-{session}"));
-    packet["rooms"]["join"][room]["timeline"] = json!({"events":[event],"limited":false});
-    packet["rooms"]["join"][room]["state"] = json!({"events":[]});
+    // A DM room is always encrypted (ADR-144), and the store refuses a
+    // plaintext event in an encrypted scope (`verified_ingress.rs:303`,
+    // route.encrypted && !input.encrypted), so the owner's DM must arrive
+    // as REAL megolm ciphertext — built on the send leg's SAME trusted
+    // human (a fresh verified_pair would be an untrusted identity change
+    // to the receiver, which already pinned this human). The shared room
+    // is a plain Group delivery room and keeps the plaintext shape.
+    let packet = if room.contains("dm-") {
+        let peer = collector
+            .inner
+            .owner
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .outgoing_fixture(true)
+            .await;
+        peer.owner_dm_packet(
+            room,
+            &format!("$own-{session}"),
+            body,
+            &agent.transport.sender_mxid,
+        )
+        .await
+    } else {
+        let event = json!({
+            "event_id": format!("$own-{session}"),
+            "sender": OWNER,
+            "type": "m.room.message",
+            "origin_server_ts": now(),
+            "content": {
+                "msgtype": "m.text",
+                "body": body,
+                "m.mentions": {"user_ids": [agent.transport.sender_mxid]}
+            }
+        });
+        let mut packet = common::sync(&format!("own-{session}"));
+        packet["rooms"]["join"][room]["timeline"] = json!({"events":[event],"limited":false});
+        packet["rooms"]["join"][room]["state"] = json!({"events":[]});
+        packet
+    };
     let plan = HostIntakePlan::new(vec![session.into()]).unwrap();
     let cancel = CancellationToken::new();
     let mut delivered = false;
     let trace = Trace::new("pair owner dm intake", None, None);
     let operation = observed(trace, collector.intake(plan, &cancel));
     let (summary, ()) = common::scripted(operation, async {
+        // A FIXED script (the notice-intake shape): whoami, the one sync
+        // packet carrying the owner's DM event, then BOTH rooms' state —
+        // the pair collector's config carries two rooms and the intake
+        // re-checks each; answering only one starves the operation into
+        // its internal Timeout. The script ends on the second answer,
+        // never a quiet timer.
+        let mut states = 0usize;
         loop {
-            let request = tokio::select! {
-                request = fake.next() => request,
-                _ = tokio::time::sleep(Duration::from_millis(300)) => return,
-            };
+            let request = fake.next().await;
             if request.target.contains("/account/whoami") {
                 request.json(200, who(agent));
             } else if request.target.contains("/sync") {
@@ -251,7 +315,19 @@ async fn owner_dm_intake(
                     request.json(200, packet.clone());
                 }
             } else if request.target.ends_with("/state") {
-                request.json(200, state_plain_for(agent));
+                let is_dm = request.target.contains("dm-");
+                request.json(
+                    200,
+                    if is_dm {
+                        state_for(agent)
+                    } else {
+                        shared_state(&pair.a, &pair.b)
+                    },
+                );
+                states += 1;
+                if states == 2 {
+                    return;
+                }
             } else {
                 panic!("unexpected intake request: {}", request.target);
             }
@@ -294,7 +370,6 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
         "root-a",
         SHARED_ROOM,
         &mut fake,
-        false,
     )
     .await;
     let cb = bootstrap_session(
@@ -304,15 +379,14 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
         "root-b",
         SHARED_ROOM,
         &mut fake,
-        false,
     )
     .await;
     // P1+P2: both agents deliver into the ONE shared room, each charged to
     // its own engagement's session.
     let claim_a = final_claim_for(&pair.store, "root-a", "task-a", "Shared answer A 中文").await;
-    let (targets_a, _) = send_and_capture(&ca, &mut fake, &pair.a, claim_a).await;
+    let (targets_a, _) = send_and_capture(&ca, &mut fake, &pair, &pair.a, claim_a).await;
     let claim_b = final_claim_for(&pair.store, "root-b", "task-b", "Shared answer B 中文").await;
-    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair.b, claim_b).await;
+    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair, &pair.b, claim_b).await;
     for (targets, agent) in [(&targets_a, "A"), (&targets_b, "B")] {
         assert_eq!(
             targets.len(),
@@ -320,7 +394,7 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
             "exactly one send per agent ({agent}), got {targets:?}"
         );
         assert!(
-            targets[0].contains("shared"),
+            targets[0].contains(SHARED_ROOM),
             "agent {agent} must deliver into the shared room: {}",
             targets[0]
         );
@@ -386,16 +460,16 @@ async fn native_two_agent_dm_reaches_only_its_own_engagement() {
     let pair = PairFixture::new_pair();
     let mut fake = common::Fake::start(true).await;
     let endpoint = fake.endpoint.clone();
-    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", DM_A, &mut fake, false).await;
-    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", DM_B, &mut fake, false).await;
+    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", DM_A, &mut fake).await;
+    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", DM_B, &mut fake).await;
     // P3: A's DM is addressed to the direct room only. B sends its own DM
     // first so the later negative is asserted against real B traffic.
     let claim_b = final_claim_for(&pair.store, "root-b", "task-dm-b", "DM from B 中文").await;
-    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair.b, claim_b).await;
+    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair, &pair.b, claim_b).await;
     assert_eq!(targets_b.len(), 1);
     assert!(targets_b[0].contains("dm-b"), "B's DM targets B's room");
     let claim_a = final_claim_for(&pair.store, "root-a", "task-dm-a", "Private DM body").await;
-    let (targets_a, _) = send_and_capture(&ca, &mut fake, &pair.a, claim_a).await;
+    let (targets_a, _) = send_and_capture(&ca, &mut fake, &pair, &pair.a, claim_a).await;
     assert_eq!(targets_a.len(), 1);
     assert!(
         targets_a[0].contains("dm-a"),
@@ -415,6 +489,7 @@ async fn native_two_agent_dm_reaches_only_its_own_engagement() {
     owner_dm_intake(
         &ca,
         &mut fake,
+        &pair,
         &pair.a,
         DM_A,
         "Owner to A private 中文",
@@ -424,6 +499,7 @@ async fn native_two_agent_dm_reaches_only_its_own_engagement() {
     owner_dm_intake(
         &cb,
         &mut fake,
+        &pair,
         &pair.b,
         DM_B,
         "Owner to B private 中文",
@@ -470,10 +546,10 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
     let endpoint = fake.endpoint.clone();
     // A's DM room is the encrypted leg; B is bootstrapped plain and sends
     // its own DM first, so the negative is asserted against real B traffic.
-    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", DM_A, &mut fake, true).await;
-    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", DM_B, &mut fake, false).await;
+    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", DM_A, &mut fake).await;
+    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", DM_B, &mut fake).await;
     let claim_b = final_claim_for(&pair.store, "root-b", "task-plain-b", "Plain DM from B").await;
-    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair.b, claim_b).await;
+    let (targets_b, _) = send_and_capture(&cb, &mut fake, &pair, &pair.b, claim_b).await;
     assert_eq!(targets_b.len(), 1);
     assert!(targets_b[0].contains("dm-b"));
     let claim = final_claim_for(&pair.store, "root-a", "task-crypto", "Enciphered DM 中文").await;
@@ -491,15 +567,14 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
     let operation = observed(trace.clone(), ca.send_final(claim, &cancel));
     // The whole enciphered DM round — keys/query, share, then the encrypted
     // PUT(s). Room ciphertexts are counted: none may exist, so none can
-    // decrypt to the DM body.
+    // decrypt to the DM body. The script ENDS on the encrypted PUT it
+    // serves — a quiet timer here starves the collector's trailing request
+    // into its internal Timeout (the :617 failure).
     let (result, (room_puts, dm_plain)) = common::scripted(operation, async {
         let mut room_puts = 0usize;
         let mut dm_plain: Option<Value> = None;
         loop {
-            let request = tokio::select! {
-                request = fake.next() => request,
-                _ = tokio::time::sleep(Duration::from_millis(300)) => break,
-            };
+            let request = fake.next().await;
             if request.target.contains("/account/whoami") {
                 request.json(200, who(&pair.a));
             } else if request.target.contains("/sync") {
@@ -524,8 +599,12 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
                     "the ciphertext belongs to the DM room: {}",
                     request.target
                 );
-                dm_plain = Some(peer.decrypt(value).await);
+                dm_plain = Some(
+                    peer.decrypt_in(value, &ruma::RoomId::parse(DM_A).unwrap())
+                        .await,
+                );
                 request.json(200, json!({"event_id":"$enc"}));
+                return (room_puts, dm_plain);
             } else if request.method == "PUT" {
                 panic!(
                     "unexpected plain PUT on the encrypted DM leg: {}",
@@ -535,7 +614,6 @@ async fn native_two_agent_dm_content_is_absent_from_the_room() {
                 panic!("unexpected crypto leg request: {}", request.target);
             }
         }
-        (room_puts, dm_plain)
     })
     .await;
     assert_eq!(result.unwrap().state, OutgoingState::Delivered);
@@ -570,7 +648,6 @@ async fn native_two_agent_message_never_crosses_engagements() {
         "root-a",
         SHARED_ROOM,
         &mut fake,
-        false,
     )
     .await;
     let cb = bootstrap_session(
@@ -580,12 +657,12 @@ async fn native_two_agent_message_never_crosses_engagements() {
         "root-b",
         SHARED_ROOM,
         &mut fake,
-        false,
     )
     .await;
     owner_dm_intake(
         &ca,
         &mut fake,
+        &pair,
         &pair.a,
         SHARED_ROOM,
         "Secret for A 中文",
@@ -595,6 +672,7 @@ async fn native_two_agent_message_never_crosses_engagements() {
     owner_dm_intake(
         &cb,
         &mut fake,
+        &pair,
         &pair.b,
         SHARED_ROOM,
         "Secret for B 中文",

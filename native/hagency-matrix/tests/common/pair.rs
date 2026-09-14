@@ -112,8 +112,11 @@ impl PairFixture {
     /// One host configuration per agent: the shared delivery room plus that
     /// agent's own direct room, on its own SDK store path. The shared room is
     /// the PROJECT's room (`!project:example.test`, the engagement's
-    /// `c.project_room`) — never an invented third id, so the store's
-    /// first-publish Group authority check (`matrix_routes.rs:390`) admits it.
+    /// `c.project_room`) so the first-publish Group authority check
+    /// (`matrix_routes.rs:390`) admits it. Both agents observe it at
+    /// generation 1 with the SAME room-wide snapshot (`shared_state`), so the
+    /// second publish is idempotent under the same-generation exact-check —
+    /// a generation advance would retire the first agent's session route.
     pub fn config(&self, agent: &HostIdentity, direct_room: &str, endpoint: &str) -> HostConfig {
         HostConfig::new(
             agent.clone(),
@@ -152,8 +155,9 @@ pub fn who(agent: &HostIdentity) -> Value {
         "is_guest": false
     })
 }
-/// Room state for one agent's view of a room: itself, the owner, invite
-/// rules and encryption — the same shape `state()` pins for one agent.
+/// The DM room's state, for one agent: itself, the owner, invite rules
+/// and encryption — the single-agent `state()` shape. A Direct room is
+/// always invite-only AND encrypted (ADR-144).
 pub fn state_for(agent: &HostIdentity) -> Value {
     json!([
      {"type":"m.room.member","state_key":agent.transport.sender_mxid,"content":{"membership":"join"}},
@@ -162,14 +166,22 @@ pub fn state_for(agent: &HostIdentity) -> Value {
      {"type":"m.room.encryption","state_key":"","content":{"algorithm":"m.megolm.v1.aes-sha2"}}
     ])
 }
-/// The unencrypted variant, for plain shared-room legs.
-pub fn state_plain_for(agent: &HostIdentity) -> Value {
-    state_for(agent)
-        .as_array()
-        .unwrap()
-        .iter()
-        .filter(|e| e["type"] != "m.room.encryption")
-        .cloned()
-        .collect::<Vec<_>>()
-        .into()
+/// The SHARED delivery room's state is ROOM-WIDE: both agents and the
+/// owner are joined — each agent's observation of the one shared room
+/// genuinely includes the other agent, so both agents publish the SAME
+/// snapshot at the SAME generation and the second publish is idempotent
+/// under the store's same-generation exact-check (`matrix_routes.rs:365`).
+/// A per-agent snapshot would differ on the second publish and either
+/// Conflict (same generation) or retire the first agent's session route
+/// (a generation advance); the room-wide shape is the honest model and
+/// needs neither. The shared room is a Group delivery room — plain, as
+/// the integration diagnostics accepted (`invite_only=true,
+/// encrypted=false`).
+pub fn shared_state(a: &HostIdentity, b: &HostIdentity) -> Value {
+    json!([
+     {"type":"m.room.member","state_key":a.transport.sender_mxid,"content":{"membership":"join"}},
+     {"type":"m.room.member","state_key":b.transport.sender_mxid,"content":{"membership":"join"}},
+     {"type":"m.room.member","state_key":OWNER,"content":{"membership":"join"}},
+     {"type":"m.room.join_rules","state_key":"","content":{"join_rule":"invite"}}
+    ])
 }

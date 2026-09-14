@@ -113,7 +113,10 @@ enum Command {
     ),
     ApprovalQuery(Vec<String>, oneshot::Sender<Result<String, Error>>),
     #[cfg(test)]
-    OutgoingFixture(bool, oneshot::Sender<outgoing_fixture::Peer>),
+    OutgoingFixture(
+        bool,
+        oneshot::Sender<std::sync::Arc<outgoing_fixture::Peer>>,
+    ),
     #[cfg(test)]
     OutgoingCorruptFixture(u8, oneshot::Sender<()>),
     #[cfg(test)]
@@ -339,7 +342,28 @@ impl Owner {
                             }
                             #[cfg(test)]
                             Command::OutgoingFixture(verified, reply) => {
-                                let _ = reply.send(outgoing_fixture::prepare(&sdk, verified).await);
+                                // Idempotent per (sdk, verified): the pair
+                                // tests acquire the peer for the send leg
+                                // and again for the owner-DM intake leg on
+                                // the SAME collector; a second prepare()
+                                // panics (the Olm session already exists).
+                                let cached = sdk
+                                    .outgoing_peer_fixture
+                                    .as_ref()
+                                    .filter(|(seen, _)| *seen == verified)
+                                    .map(|(_, peer)| peer.clone());
+                                let peer = match cached {
+                                    Some(peer) => peer,
+                                    None => {
+                                        let peer = std::sync::Arc::new(
+                                            outgoing_fixture::prepare(&sdk, verified).await,
+                                        );
+                                        sdk.outgoing_peer_fixture =
+                                            Some((verified, peer.clone()));
+                                        peer
+                                    }
+                                };
+                                let _ = reply.send(peer);
                             }
                             #[cfg(test)]
                             Command::OutgoingCorruptFixture(variant, reply) => {
@@ -417,7 +441,7 @@ impl Owner {
                             }
                             #[cfg(test)]
                             Command::AttachmentFixture(values, verified, reply) => {
-                                let _ = reply.send(crypto_fixture::encrypted_contents(&sdk, verified, values, false).await);
+                                let _ = reply.send(crypto_fixture::encrypted_contents(&sdk, verified, values, false, "!project:example.test").await);
                             }
                             #[cfg(test)]
                             Command::AttachmentCommitFault(reply) => {sdk.attachment_commit_fault = true; let _ = reply.send(());}
@@ -968,6 +992,8 @@ struct Sdk {
     outgoing_settle_reply_loss: bool,
     #[cfg(test)]
     settled_receipt_fixture: Option<crate::outgoing::state::Receipt>,
+    #[cfg(test)]
+    outgoing_peer_fixture: Option<(bool, std::sync::Arc<outgoing_fixture::Peer>)>,
     client: BaseClient,
     root: PathBuf,
     journal: Journal,
@@ -1237,6 +1263,8 @@ impl Sdk {
                 outgoing_settle_reply_loss: false,
                 #[cfg(test)]
                 settled_receipt_fixture: None,
+                #[cfg(test)]
+                outgoing_peer_fixture: None,
                 client,
                 root: init.root.clone(),
                 journal,
@@ -1778,7 +1806,10 @@ impl Owner {
 pub(crate) mod outgoing_fixture;
 #[cfg(test)]
 impl Owner {
-    pub(crate) async fn outgoing_fixture(&self, verified: bool) -> outgoing_fixture::Peer {
+    pub(crate) async fn outgoing_fixture(
+        &self,
+        verified: bool,
+    ) -> std::sync::Arc<outgoing_fixture::Peer> {
         let (send, reply) = oneshot::channel();
         self.tx
             .try_send(Command::OutgoingFixture(verified, send))

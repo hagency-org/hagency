@@ -8,7 +8,7 @@ use ruma::{
     api::client::keys::{claim_keys, get_keys},
     device_id,
     events::room::message::RoomMessageEventContent,
-    room_id, user_id,
+    user_id,
 };
 use serde_json::{Value, json};
 
@@ -110,7 +110,7 @@ pub(super) async fn verified_pair(
 pub(super) async fn encrypted_human(sdk: &Sdk, verified: bool, count: usize) -> Value {
     assert!((1..=2).contains(&count));
     let values = (0..count).map(|i| json!({"event_id":if i==0 {"$encrypted"} else {"$encrypted_new"},"content":RoomMessageEventContent::text_plain("小白：已验证的私聊，无需提及")})).collect();
-    encrypted_contents(sdk, verified, values, true).await
+    encrypted_contents(sdk, verified, values, true, "!project:example.test").await
 }
 
 pub(super) async fn encrypted_contents(
@@ -118,6 +118,7 @@ pub(super) async fn encrypted_contents(
     verified: bool,
     contents: Vec<Value>,
     rotate: bool,
+    room: &str,
 ) -> Value {
     assert!(!contents.is_empty() && contents.len() <= 100);
     let (human, _) = verified_pair(sdk, verified).await;
@@ -146,10 +147,10 @@ pub(super) async fn encrypted_contents(
         .unwrap()
         .unwrap();
     human.mark_request_as_sent(&id, &claim).await.unwrap();
-    let room = room_id!("!project:example.test");
+    let room = ruma::RoomId::parse(room).unwrap();
     let shares = human
         .share_room_key(
-            room,
+            &room,
             [receiver.user_id()].into_iter(),
             EncryptionSettings::default(),
         )
@@ -170,10 +171,10 @@ pub(super) async fn encrypted_contents(
         if rotate && i > 0 {
             // A newly sent message uses a fresh ordinary outbound Megolm session.
             // The receiver's earlier session/proof and journal are never reset.
-            assert!(human.discard_room_key(room).await.unwrap());
+            assert!(human.discard_room_key(&room).await.unwrap());
             for share in human
                 .share_room_key(
-                    room,
+                    &room,
                     [receiver.user_id()].into_iter(),
                     EncryptionSettings::default(),
                 )
@@ -191,7 +192,7 @@ pub(super) async fn encrypted_contents(
         }
         let encrypted = human
             .encrypt_room_event_raw(
-                room,
+                &room,
                 "m.room.message",
                 &ruma::serde::Raw::from_json_string(
                     serde_json::to_string(&value["content"]).unwrap(),
@@ -202,7 +203,9 @@ pub(super) async fn encrypted_contents(
             .unwrap();
         events.push(json!({"event_id":value["event_id"],"origin_server_ts":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,"sender":human.user_id(),"type":"m.room.encrypted","content":encrypted.content}));
     }
-    json!({"next_batch":"encrypted", "rooms":{"join":{"!project:example.test":{"state":{"events":[]},"timeline":{"limited":false,"events":events}}}},"to_device":{"events":to_device}})
+    let mut packet = json!({"next_batch":"encrypted","rooms":{"join":{}},"to_device":{"events":to_device}});
+    packet["rooms"]["join"][room.as_str()] = json!({"state":{"events":[]},"timeline":{"limited":false,"events":events}});
+    packet
 }
 
 pub(super) async fn trust_human(sdk: &Sdk) {

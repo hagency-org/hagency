@@ -11,6 +11,11 @@ pub(crate) struct Peer {
     pub query: Value,
     pub human: OlmMachine,
     pub old_session: String,
+    /// The collector-side agent's mxid — the sender the human peer trusts.
+    /// Never hardcoded: the two-agent pair runs @worker AND @helper, and a
+    /// to-device share wrapped with the wrong sender fails cross-signed
+    /// trust (keys.len()==0 at the share assertion).
+    pub sender: String,
 }
 pub(super) async fn prepare(sdk: &Sdk, verified: bool) -> Peer {
     let (human, mut query) = super::crypto_fixture::verified_pair(sdk, verified).await;
@@ -75,6 +80,33 @@ pub(super) async fn prepare(sdk: &Sdk, verified: bool) -> Peer {
         .unwrap()
         .unwrap();
     sender.mark_request_as_sent(&id, &claim).await.unwrap();
+    // The reverse direction (owner→agent DM intake): the human also needs
+    // an Olm session WITH the agent — the mirror of the claim above, on the
+    // agent's own one-time key — so a later owner_dm_packet can share a room
+    // key to the agent.
+    let receiver_outgoing = sender.outgoing_requests().await.unwrap();
+    let receiver_key = receiver_outgoing
+        .iter()
+        .find_map(|r| match r.request() {
+            AnyOutgoingRequest::KeysUpload(req) => req.one_time_keys.iter().next(),
+            _ => None,
+        })
+        .unwrap();
+    let mut claim_back = claim_keys::v3::Response::new(Default::default());
+    claim_back.one_time_keys.insert(
+        sender.user_id().to_owned(),
+        [(
+            sender.device_id().to_owned(),
+            [(receiver_key.0.clone(), receiver_key.1.clone())].into(),
+        )]
+        .into(),
+    );
+    let (id, _) = human
+        .get_missing_sessions([sender.user_id()].into_iter())
+        .await
+        .unwrap()
+        .unwrap();
+    human.mark_request_as_sent(&id, &claim_back).await.unwrap();
     // Seed an older room session. The actual adapter must force a fresh key,
     // even when current membership happens to be unchanged.
     sender
@@ -97,6 +129,7 @@ pub(super) async fn prepare(sdk: &Sdk, verified: bool) -> Peer {
         query: json!({"device_keys":query.device_keys,"master_keys":query.master_keys,"self_signing_keys":query.self_signing_keys,"user_signing_keys":query.user_signing_keys,"failures":{}}),
         human,
         old_session: old["session_id"].as_str().unwrap().into(),
+        sender: sender.user_id().to_string(),
     }
 }
 impl Peer {
@@ -105,7 +138,7 @@ impl Peer {
             &value["messages"][self.human.user_id().as_str()][self.human.device_id().as_str()];
         assert!(content.is_object());
         let raw = Raw::from_json_string(
-            json!({"type":"m.room.encrypted","sender":"@worker:example.test","content":content})
+            json!({"type":"m.room.encrypted","sender":self.sender,"content":content})
                 .to_string(),
         )
         .unwrap();
@@ -132,7 +165,7 @@ impl Peer {
     }
     pub async fn decrypt_in(&self, value: Value, room: &ruma::RoomId) -> Value {
         assert_ne!(value["session_id"], self.old_session);
-        let raw=Raw::from_json_string(json!({"type":"m.room.encrypted","sender":"@worker:example.test","event_id":"$sent","origin_server_ts":1,"content":value}).to_string()).unwrap();
+        let raw=Raw::from_json_string(json!({"type":"m.room.encrypted","sender":self.sender,"event_id":"$sent","origin_server_ts":1,"content":value}).to_string()).unwrap();
         let plain = self
             .human
             .decrypt_room_event(
@@ -145,6 +178,64 @@ impl Peer {
             .await
             .unwrap();
         serde_json::from_str(plain.event.json().get()).unwrap()
+    }
+
+    /// The owner's DM TO this agent as real megolm ciphertext for the agent's
+    /// direct room — the reverse of the send leg on the SAME trusted human
+    /// (a fresh verified_pair would be an untrusted identity change to the
+    /// receiver, which already pinned this human): share the room key to the
+    /// agent, encrypt the message, and return the sync packet (to_device
+    /// share + one timeline event) the collector's intake consumes.
+    pub async fn owner_dm_packet(
+        &self,
+        room: &str,
+        event_id: &str,
+        body: &str,
+        agent: &str,
+    ) -> Value {
+        let room = ruma::RoomId::parse(room).unwrap();
+        let receiver = ruma::UserId::parse(&self.sender).unwrap();
+        let shares = self
+            .human
+            .share_room_key(
+                &room,
+                std::iter::once(receiver.as_ref()),
+                EncryptionSettings::default(),
+            )
+            .await
+            .unwrap();
+        let mut to_device = vec![];
+        for share in shares {
+            let messages = &share.messages[&receiver];
+            assert_eq!(messages.len(), 1);
+            let content: Value =
+                serde_json::from_str(messages.values().next().unwrap().json().get()).unwrap();
+            to_device.push(
+                json!({"sender":self.human.user_id(),"type":share.event_type,"content":content}),
+            );
+        }
+        assert!(!to_device.is_empty());
+        let content = json!({"msgtype":"m.text","body":body,"m.mentions":{"user_ids":[agent]}});
+        let encrypted = self
+            .human
+            .encrypt_room_event_raw(
+                &room,
+                "m.room.message",
+                &Raw::from_json_string(content.to_string()).unwrap(),
+            )
+            .await
+            .unwrap();
+        let event = json!({
+            "event_id": event_id,
+            "origin_server_ts": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,
+            "sender": self.human.user_id(),
+            "type": "m.room.encrypted",
+            "content": encrypted.content,
+        });
+        let mut packet = json!({"next_batch":"own-dm","rooms":{"join":{}},"to_device":{"events":to_device}});
+        packet["rooms"]["join"][room.as_str()] =
+            json!({"state":{"events":[]},"timeline":{"limited":false,"events":[event]}});
+        packet
     }
 }
 
