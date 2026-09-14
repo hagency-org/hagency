@@ -8,9 +8,7 @@
 //! a vacuous "the other side never existed" check is not isolation proof.
 use super::*;
 use crate::collector::observation::{Phase as ObservationPhase, Trace, observed};
-use common::pair::{
-    DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, shared_state, state_for, who,
-};
+use common::pair::{DM_A, DM_B, OWNER, PairFixture, SHARED_ROOM, shared_state, state_for, who};
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -363,24 +361,8 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
     let pair = PairFixture::new_pair();
     let mut fake = common::Fake::start(true).await;
     let endpoint = fake.endpoint.clone();
-    let ca = bootstrap_session(
-        &pair,
-        &pair.a,
-        &endpoint,
-        "root-a",
-        SHARED_ROOM,
-        &mut fake,
-    )
-    .await;
-    let cb = bootstrap_session(
-        &pair,
-        &pair.b,
-        &endpoint,
-        "root-b",
-        SHARED_ROOM,
-        &mut fake,
-    )
-    .await;
+    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", SHARED_ROOM, &mut fake).await;
+    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", SHARED_ROOM, &mut fake).await;
     // P1+P2: both agents deliver into the ONE shared room, each charged to
     // its own engagement's session.
     let claim_a = final_claim_for(&pair.store, "root-a", "task-a", "Shared answer A 中文").await;
@@ -641,24 +623,8 @@ async fn native_two_agent_message_never_crosses_engagements() {
     // bootstrapped on the shared room and each receives its own owner
     // mention, so the negative is asserted against an engagement that
     // carries real traffic of its own.
-    let ca = bootstrap_session(
-        &pair,
-        &pair.a,
-        &endpoint,
-        "root-a",
-        SHARED_ROOM,
-        &mut fake,
-    )
-    .await;
-    let cb = bootstrap_session(
-        &pair,
-        &pair.b,
-        &endpoint,
-        "root-b",
-        SHARED_ROOM,
-        &mut fake,
-    )
-    .await;
+    let ca = bootstrap_session(&pair, &pair.a, &endpoint, "root-a", SHARED_ROOM, &mut fake).await;
+    let cb = bootstrap_session(&pair, &pair.b, &endpoint, "root-b", SHARED_ROOM, &mut fake).await;
     owner_dm_intake(
         &ca,
         &mut fake,

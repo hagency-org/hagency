@@ -203,8 +203,10 @@ pub(super) async fn encrypted_contents(
             .unwrap();
         events.push(json!({"event_id":value["event_id"],"origin_server_ts":std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as u64,"sender":human.user_id(),"type":"m.room.encrypted","content":encrypted.content}));
     }
-    let mut packet = json!({"next_batch":"encrypted","rooms":{"join":{}},"to_device":{"events":to_device}});
-    packet["rooms"]["join"][room.as_str()] = json!({"state":{"events":[]},"timeline":{"limited":false,"events":events}});
+    let mut packet =
+        json!({"next_batch":"encrypted","rooms":{"join":{}},"to_device":{"events":to_device}});
+    packet["rooms"]["join"][room.as_str()] =
+        json!({"state":{"events":[]},"timeline":{"limited":false,"events":events}});
     packet
 }
 

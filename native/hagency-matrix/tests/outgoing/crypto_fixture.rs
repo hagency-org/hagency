@@ -138,8 +138,7 @@ impl Peer {
             &value["messages"][self.human.user_id().as_str()][self.human.device_id().as_str()];
         assert!(content.is_object());
         let raw = Raw::from_json_string(
-            json!({"type":"m.room.encrypted","sender":self.sender,"content":content})
-                .to_string(),
+            json!({"type":"m.room.encrypted","sender":self.sender,"content":content}).to_string(),
         )
         .unwrap();
         let settings = DecryptionSettings {
@@ -232,7 +231,8 @@ impl Peer {
             "type": "m.room.encrypted",
             "content": encrypted.content,
         });
-        let mut packet = json!({"next_batch":"own-dm","rooms":{"join":{}},"to_device":{"events":to_device}});
+        let mut packet =
+            json!({"next_batch":"own-dm","rooms":{"join":{}},"to_device":{"events":to_device}});
         packet["rooms"]["join"][room.as_str()] =
             json!({"state":{"events":[]},"timeline":{"limited":false,"events":[event]}});
         packet
