@@ -343,6 +343,55 @@ async fn native_staged_upload_cancellation() {
     }
 }
 #[tokio::test]
+async fn native_outbound_partial_upload_is_recorded_unknown() {
+    if child_settlement().await {
+        return;
+    }
+    let _serial = serial().lock().await;
+    let mut f = Fixture::new().await;
+    let Some((input, identity, _)) = f.input("partial").await else {
+        f.finish().await;
+        return;
+    };
+    let fence = f.base.store.upload_fence(identity.clone()).await.unwrap();
+    let mut op = f.admit(input);
+    let cancel = CancellationToken::new();
+    let script = async {
+        authenticate(&mut f.fake).await;
+        let request = f.fake.next().await;
+        assert_eq!(request.method, "POST");
+        // Declares a 100-byte JSON body but cleanly closes after two bytes:
+        // a partial body / failed EOF that http.upload reports as Transport.
+        request.raw(
+            b"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{}"
+                .to_vec(),
+        );
+    };
+    let (result, ()) = common::scripted(op.run(&cancel), script).await;
+    assert_eq!(result, Err(Error::Transport));
+    // mark_upload_uncertain's production caller ran: the store reads unknown,
+    // the original fence is retained, and the claim token is dropped so nothing
+    // can re-send under the same id.
+    let receipt = f.base.store.inspect_upload(identity.clone()).await.unwrap();
+    assert!(receipt.outcome_unknown);
+    assert_eq!(
+        f.base.store.upload_fence(identity.clone()).await.unwrap(),
+        fence
+    );
+    let sql = rusqlite::Connection::open(f.base.root.path().join("domain/domain.sqlite3")).unwrap();
+    let claim_hash: Option<String> = sql
+        .query_row(
+            "SELECT claim_hash FROM file_uploads WHERE id=?1",
+            [identity.id()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(claim_hash.is_none());
+    drop(sql);
+    f.fake.no_request().await;
+    f.finish().await;
+}
+#[tokio::test]
 async fn native_staged_upload_recovery() {
     let _serial = serial().lock().await;
     let mut f = Fixture::new().await;
