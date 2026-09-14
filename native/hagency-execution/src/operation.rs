@@ -5,7 +5,7 @@ use crate::{Host, Limits, StartedWorkspace};
 use hagency_core::tasks::{RunnerCapability, RunnerCommand, Task, TaskState};
 use hagency_runtime::{
     codex::session::{self, Outcome, Update},
-    owned::{Cleanup, OwnedSession},
+    owned::{Cleanup, OwnedSession, StartError},
 };
 use hagency_store::{DomainStore, OwnedFailure, OwnedObservation};
 use std::{
@@ -245,6 +245,12 @@ pub struct Report {
     runtime_stage: RuntimeStage,
     pub text: Option<String>,
     owner: Option<OwnedSession>,
+    /// Custody for a child whose spawn was abandoned at the deadline (ADR-053
+    /// amendment): the detached blocking thread try-sends the spawn result here;
+    /// the teardown adopts any late OwnedSession before capture, or it drops on
+    /// the thread — SupervisedProcess::Drop's socket EOF triggers the guardian's
+    /// process-group kill. Never blocks: a gone receiver is the backstop's trigger.
+    late_child: Option<oneshot::Receiver<Result<OwnedSession, StartError>>>,
     approvals: Option<crate::approval::ApprovalRun>,
     live: Option<crate::approval::Reservation>,
     reconciliation: Option<(DomainStore, RunnerCapability, OwnedFailure)>,
@@ -268,6 +274,7 @@ impl Report {
             runtime_stage: RuntimeStage::Initialize,
             text: None,
             owner: None,
+            late_child: None,
             approvals: None,
             live: None,
             reconciliation: None,
@@ -454,6 +461,22 @@ impl Operation {
                 if let Err(failure) = outcome {
                     // execute retains any returned owner; stop before negative domain
                     // observation too. This can never authorize lease release.
+                    // ADOPTION (ADR-053 amendment): a spawn abandoned at the
+                    // deadline may still complete on its detached thread — the
+                    // late child arrives through SpawnCustody. Adopt it BEFORE
+                    // capture/stop and BEFORE the fence is written, so the
+                    // existing teardown (observe_stop's guardian stop/reap;
+                    // on a miss, SupervisedProcess::Drop's socket EOF triggers
+                    // the guardian's process-group kill) is what reaps it. The
+                    // receive is try-only — bounded by the thread having
+                    // already signalled — so finalization never waits.
+                    if report.runtime_observation.is_none()
+                        && report.owner.is_none()
+                        && let Some(mut late) = report.late_child.take()
+                        && let Ok(Ok(session)) = late.try_recv()
+                    {
+                        report.owner = Some(session);
+                    }
                     if report.runtime_observation.is_none()
                         && let Some(owner) = &report.owner
                     {
@@ -716,28 +739,116 @@ async fn execute(
     if let Some(live) = &mut report.live {
         live.possible();
     }
-    report.owner = Some(
-        OwnedSession::spawn(
-            &host.guardian,
+    // ADR-053 amendment: the operation budget bounds the spawn itself.
+    // The blocking guardian handshake (supervisor/unix.rs spawn_inner:
+    // Prepare -> Prepared -> Start -> Started against its own watch)
+    // runs on a blocking thread and is awaited through the SAME
+    // bounded() that races sleep_until(until) — no new bound, no new
+    // literal. The JoinHandle's result is the channel, so the abandoned
+    // thread can never leak the session past the operation.
+    let (custody, mut late_child) = oneshot::channel();
+    let guardian = host.guardian.clone();
+    let response_ms = limits.response_ms;
+    // Test double only (ADR-053 amendment): delay the whole spawn past the
+    // granted budget — the handshake cannot complete within `until`, and a
+    // REAL late child still appears afterwards, exercising the custody
+    // handoff and the Drop backstop against a live process. The duration
+    // is a multiple of the granted operation budget (the same value the
+    // host publishes as HAGENCY_OPERATION_BUDGET_MS) — no bare time
+    // literal. Unconditional like the Host flag it reads: a cfg(test)
+    // consumption is invisible to integration tests, and the selector would
+    // race a real, unstalled spawn. No production caller sets the flag.
+    let stall = host
+        .guardian_prepare_stall
+        .then(|| Duration::from_millis(limits.operation_ms.saturating_mul(2)))
+        .filter(|stall| {
+            // The double must LOSE the race deterministically: a stall within
+            // the budget would not exercise the expiry path at all.
+            stall.as_millis() > u128::from(limits.operation_ms)
+        });
+    let spawn = tokio::task::spawn_blocking(move || {
+        if let Some(stall) = stall {
+            std::thread::sleep(stall);
+        }
+        // try-send semantics: a gone receiver IS the Drop backstop's
+        // trigger — the OwnedSession drops here, stopping the process
+        // group through SupervisedProcess::Drop's socket EOF (the
+        // guardian's own group kill, supervisor/unix.rs). The send can
+        // therefore never block the store writer queue.
+        let _ = custody.send(OwnedSession::spawn(
+            &guardian,
             &launch,
             settings,
             io_limits,
-            limits.response_ms,
-        )
-        .map_err(|error| {
-            if let hagency_runtime::owned::StartError::Uncertain { cleanup, .. } = error {
-                report.cleanup = cleanup;
-                if stopped(cleanup)
-                    && let Some(live) = &mut report.live
-                {
-                    live.release();
+            response_ms,
+        ));
+    });
+    match bounded(spawn, cancel, until).await {
+        // bounded() yields the JoinHandle's own result: Ok(Ok(())) is the
+        // thread having finished inside the budget (the channel carries
+        // the spawn outcome); a JoinError joins SpawnFailed's existing
+        // classification — no child exists to hand over.
+        Ok(Ok(())) => {
+            // The thread finished before the deadline; its result is in
+            // the channel (try_recv cannot be pending once the handle
+            // resolved).
+            match late_child.try_recv() {
+                Ok(Ok(session)) => report.owner = Some(session),
+                Ok(Err(error)) => {
+                    if let StartError::Uncertain { cleanup, .. } = error {
+                        report.cleanup = cleanup;
+                        if stopped(cleanup)
+                            && let Some(live) = &mut report.live
+                        {
+                            live.release();
+                        }
+                    } else if let Some(live) = &mut report.live {
+                        live.release();
+                    }
+                    return Err(Failure::SpawnFailed);
                 }
-            } else if let Some(live) = &mut report.live {
+                Err(_) => return Err(Failure::SpawnFailed),
+            }
+        }
+        // A JoinError (the blocking thread panicked) has no child to hand
+        // over: SpawnFailed with the release semantics of the non-Uncertain
+        // start errors above.
+        Ok(Err(_)) => {
+            if let Some(live) = &mut report.live {
                 live.release();
             }
-            Failure::SpawnFailed
-        })?,
-    );
+            return Err(Failure::SpawnFailed);
+        }
+        // The deadline fired while the handshake was still in flight. A
+        // spawn abandoned at the deadline is an UNCERTAIN start —
+        // not-started is unprovable through a timed-out handshake (only
+        // the pre-fork Settings validation and the platform's explicit
+        // Unsupported are provably not-started, and both are already
+        // classified above) — so the word is SpawnFailed with the
+        // synthesized Cleanup::Unknown{TimedOut} the ADR names, never a
+        // plain Deadline. The JoinHandle dropped with the await (the
+        // blocking thread detaches by design); any late OwnedSession
+        // reaches the teardown through late_child — adopted before
+        // capture, or dropped on the thread where the Drop backstop
+        // stops and reaps it. The store outcome is exactly today's
+        // Uncertain path: fenced, quarantined, dirty workspace.
+        Err(Failure::Deadline) => {
+            report.cleanup = Cleanup::Unknown {
+                kind: std::io::ErrorKind::TimedOut,
+            };
+            if let Some(live) = &mut report.live {
+                live.release();
+            }
+            report.late_child = Some(late_child);
+            return Err(Failure::SpawnFailed);
+        }
+        // Cancelled mid-spawn: same custody handoff for the late child;
+        // the cancellation verdict itself is unchanged.
+        Err(failure) => {
+            report.late_child = Some(late_child);
+            return Err(failure);
+        }
+    }
     #[cfg(test)]
     if host.approval_fault == Some(crate::approval::Fault::SpawnPanic) {
         panic!("actual owned spawn unwind");

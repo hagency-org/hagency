@@ -65,6 +65,8 @@ pub struct Host {
     pub(crate) discard_usage_binding_reply: bool,
     #[cfg(test)]
     pub(crate) panic_after_workspace: bool,
+    // Test-double marker (ADR-053 amendment); no production builder sets it.
+    pub(crate) guardian_prepare_stall: bool,
 }
 impl Host {
     pub fn new(
@@ -118,6 +120,7 @@ impl Host {
             discard_usage_binding_reply: false,
             #[cfg(test)]
             panic_after_workspace: false,
+            guardian_prepare_stall: false,
         })
     }
     /// Consume the original registry binding. Managed scope cannot fall through
@@ -187,6 +190,17 @@ impl Host {
         }
         self.file_tools = true;
         Ok(self)
+    }
+    /// Test double only (ADR-053 amendment): delay the blocking spawn thread
+    /// past the granted operation budget, so the bounded-spawn expiry is
+    /// exercised deterministically and a REAL late child still appears through
+    /// the custody handoff. Compiled unconditionally so the integration
+    /// selector can reach it (a `#[cfg(test)]` double is invisible to
+    /// integration tests); no production caller sets it, and the stall itself
+    /// is a multiple of the granted operation budget — never a bare literal.
+    pub fn with_guardian_prepare_stall(mut self) -> Self {
+        self.guardian_prepare_stall = true;
+        self
     }
     /// Presentation only, after configuring the original native task helper.
     pub fn with_receive_tools(mut self) -> Result<Self, super::Failure> {

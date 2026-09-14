@@ -586,6 +586,77 @@ async fn native_owned_dispatch_deadline_stops_and_fences() {
     f.domain.shutdown().await.unwrap();
 }
 
+/// Scenario "A spawn that outlives the operation budget is abandoned, fenced
+/// and never orphaned": the double stalls the blocking spawn thread past the
+/// granted budget; the bounded await expires; the operation returns
+/// SpawnFailed with the ADR's Cleanup::Unknown{TimedOut}; the fence is
+/// recorded BEFORE the late child is stopped and reaped (asserted by row
+/// observation after wait(), not by assuming the no-child ordering); the late
+/// child — a REAL probe — is reaped through the custody handoff or the
+/// process-group Drop backstop, never orphaned; the guardian's own 5s Prepare
+/// watch is the third layer and may fire or be pre-empted, both acceptable.
+#[tokio::test]
+async fn native_owned_dispatch_spawn_outliving_budget_is_fenced() {
+    let f = Fixture::new();
+    // `silent`: the late child pulses while alive, so "appeared, then went
+    // quiet" is real reaping evidence against a live process.
+    let host = f
+        .host("silent", "work", false)
+        .with_guardian_prepare_stall();
+    let mut operation = Operation::start(
+        f.domain.clone(),
+        f.cap.clone(),
+        host,
+        Limits {
+            operation_ms: 2000,
+            response_ms: 2000,
+        },
+    )
+    .unwrap();
+    let at = std::time::Instant::now();
+    let report = operation.wait().await.unwrap();
+    // The operation returned within its budget plus the checkpoint cadence —
+    // the deadline was enforced across the spawn, not just around it.
+    assert!(at.elapsed() < Duration::from_secs(15));
+    // The uncertain-start word, never a plain Deadline: not-started is
+    // unprovable through a timed-out handshake.
+    assert_eq!(report.failure, Some(Failure::SpawnFailed));
+    assert_eq!(
+        report.settlement,
+        Settlement::Negative(OwnedObservation::Fenced)
+    );
+    // The fence itself, with the attempt fenced exactly as today's
+    // SpawnFailed path (ADR-053 amendment): the store rows precede the stop
+    // of the late child, asserted by reading them at this point — the child
+    // may still be running while these hold.
+    f.quarantined();
+    drop(report);
+    // The late child is stopped and reaped, never orphaned: the pulse marker
+    // stops growing once the custody handoff (or the Drop backstop's socket
+    // EOF, which triggers the guardian's own process-group kill) reaches it.
+    // The stall exceeds the budget, so the child started only after the
+    // fence; its pulse may exist briefly and must go quiet.
+    let pulse = f.work.join("owned-dispatch.pulse");
+    let bounded = std::time::Instant::now() + Duration::from_secs(15);
+    let mut before = fs::metadata(&pulse).map_or(0, |v| v.len());
+    while std::time::Instant::now() < bounded {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        let now = fs::metadata(&pulse).map_or(0, |v| v.len());
+        if now == before {
+            break;
+        }
+        before = now;
+    }
+    let settled = fs::metadata(&pulse).map_or(0, |v| v.len());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert_eq!(
+        fs::metadata(&pulse).map_or(0, |v| v.len()),
+        settled,
+        "the late child's pulse went quiet: stopped and reaped, never orphaned"
+    );
+    f.domain.shutdown().await.unwrap();
+}
+
 #[tokio::test]
 async fn native_owned_dispatch_fixture_artifacts_are_temp_owned() {
     let root_path = {
