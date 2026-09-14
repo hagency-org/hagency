@@ -346,7 +346,7 @@ fn native_package_entrypoints_reference_no_node() {
     let installer = fs::read_to_string(repo.join("install/install-native.sh")).unwrap();
     // One entry per sed the installer carries: (template rel path, the
     // renderer command verbatim from its source lines).
-    let mut renderers: Vec<(&str, String)> = Vec::new();
+    let mut renderers: Vec<(String, String, String)> = Vec::new();
     let lines: Vec<&str> = installer.lines().collect();
     for (index, line) in lines.iter().enumerate() {
         if !line.contains("sed -e") {
@@ -363,17 +363,19 @@ fn native_package_entrypoints_reference_no_node() {
         } else {
             panic!("installer renders an unexpected template: {tail}");
         };
-        // The renderer, verbatim minus the redirect: the sed program with
-        // its own substitution table, applied to the template. `$(dirname
-        // "$0")` in the extracted command resolves against the process
-        // working directory, so the renderer runs from install/ exactly as
-        // the installer does.
-        let command = format!(
-            "{} {}",
-            line.trim().trim_end_matches('\\'),
-            tail.split('>').next().unwrap().trim()
-        );
-        renderers.push((template, command));
+        // The render step, verbatim: the sed program with its own
+        // substitution table AND its redirect, applied to the template.
+        // `$(dirname "$0")` resolves against the process working directory,
+        // so the command runs from install/ exactly as the installer does.
+        // The redirect target is the installer's own variable ($UNIT /
+        // $PLIST); the test points it at a temp path per the Test Double.
+        let target_var = if template.ends_with(".service") {
+            "UNIT"
+        } else {
+            "PLIST"
+        };
+        let command = format!("{} {}", line.trim().trim_end_matches('\\'), tail.trim());
+        renderers.push((template.to_string(), target_var.to_string(), command));
     }
     assert_eq!(
         renderers.len(),
@@ -390,14 +392,22 @@ fn native_package_entrypoints_reference_no_node() {
             fs::read_to_string(repo.join(template)).unwrap(),
         ));
     }
-    for (template, command) in &renderers {
-        // Representative config: the values an operator's machine supplies.
+    for (template, target_var, command) in &renderers {
+        // Representative config: the values an operator's machine supplies,
+        // and the render step's own redirect target pointed at a temp path.
+        let tmp = tempfile::tempdir().unwrap();
+        let target = tmp.path().join(if target_var == "UNIT" {
+            "hagency-native.service"
+        } else {
+            "io.hagency.native.plist"
+        });
         let output = Command::new("sh")
             .arg("-c")
             .arg(command)
             .current_dir(repo.join("install"))
             .env("INSTALL_DIR", "/opt/hagency-native")
             .env("STATE_DIR", "/var/lib/hagency-native")
+            .env(target_var, &target)
             .stdin(Stdio::null())
             .output()
             .expect("the installer's sed renderer executes");
@@ -406,7 +416,8 @@ fn native_package_entrypoints_reference_no_node() {
             "renderer for {template} failed: {}",
             String::from_utf8_lossy(&output.stderr)
         );
-        let rendered = String::from_utf8(output.stdout).unwrap();
+        let rendered = fs::read_to_string(&target)
+            .unwrap_or_else(|_| panic!("renderer for {template} wrote no temp output"));
         assert!(
             !rendered.contains("__INSTALL_DIR__")
                 && !rendered.contains("__STATE_DIR__")
