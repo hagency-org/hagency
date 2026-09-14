@@ -198,10 +198,24 @@ store keeps **no record** of the unsafe first observation, so the unsafe room
 is invisible to every later audit and the same snapshot would be re-processed
 silently.
 
-**The intended rule.** A first unsafe observation is refused with a **named
-safety reason** (the safety predicate's own word, bound to the snapshot as the
-reason digest already is), and — consistent with the existing initial-failure
-rule above ("initial failure may record unavailable gen 1") — **recorded as an
-invalidated scope at generation 1**, so the unsafe observation is durable.
-`RunnerAuthority` stays reserved for authority; it is never the word a safety
-refusal surfaces as.
+**The intended rule, as implemented.** A first unsafe observation is refused
+with a **named safety reason** — `Error::UnsafeSnapshot(reason)`, the safety
+predicate's own word bound to the snapshot as the reason digest already is —
+and **nothing is written**: no scope row is created at generation 1; the
+transaction is dropped uncommitted, and the room stays free to be observed
+safely at generation 1 later. `RunnerAuthority` stays reserved for authority;
+it is never the word a safety refusal surfaces as.
+
+**The refusal itself is the record.** The named reason travels in the error
+and lands in the caller's log — that is where an operator finds it. What an
+operator **can** determine later: the exact refusal and its snapshot digest
+from the observing caller's log, and the room's **absence** from
+`matrix_room_scopes` (no row means never admitted). What an operator
+**cannot** determine from the store alone: whether a room absent from the
+table was refused as unsafe, never observed, or observed and invalidated —
+the store cannot answer "was this room ever refused". **Why a refusal row
+was not chosen:** writing a row on refusal would let an observation the
+safety predicate just rejected mint durable state — the store records only
+what it admitted, and a refusal creates nothing; a row at generation 1 would
+additionally collide with the room's real first safe observation, which must
+own generation 1 when it arrives.
