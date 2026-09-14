@@ -2,7 +2,7 @@ use crate::{CancellationToken, Error, HostConfig, HostRoom, http::Http, sdk::Own
 use hagency_core::replies::*;
 use hagency_store::DomainStore;
 use serde_json::{Value, json};
-use std::{collections::BTreeSet, sync::Arc};
+use std::{collections::{BTreeMap, BTreeSet}, sync::Arc};
 use tokio::sync::{Mutex, Semaphore};
 
 #[cfg(test)]
@@ -28,6 +28,9 @@ pub(crate) struct Inner {
     pub(crate) attachment_handles: Arc<Semaphore>,
     pub(crate) receiver: crate::receive::Receiver,
     pub(crate) uploads: crate::upload::Registry,
+    /// Verification-time-only authority facts (ADR-095) for the project room,
+    /// captured at intake and read by the provisioning hook; never stored.
+    pub(crate) room_facts: Mutex<BTreeMap<String, RoomAuthorityFacts>>,
     #[cfg(test)]
     pub(crate) handoff_fault: std::sync::atomic::AtomicU8,
     #[cfg(test)]
@@ -138,6 +141,7 @@ impl Inner {
             attachment_handles: Arc::new(Semaphore::new(crate::attachments::MAX_HANDLES)),
             receiver: crate::receive::Receiver::new(),
             uploads: crate::upload::Registry::new(),
+            room_facts: Mutex::new(BTreeMap::new()),
             #[cfg(test)]
             handoff_fault: std::sync::atomic::AtomicU8::new(0),
             #[cfg(test)]
