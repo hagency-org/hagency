@@ -32,18 +32,9 @@ fn run(args: &[&str]) -> std::process::Output {
 }
 
 fn prepare(state: &Path) -> String {
-    let output = run(&[
-        "init",
-        "--state-dir",
-        state.to_str().unwrap(),
-    ]);
+    let output = run(&["init", "--state-dir", state.to_str().unwrap()]);
     assert!(output.status.success(), "{:?}", output);
-    let output = run(&[
-        "account",
-        "prepare",
-        "--state-dir",
-        state.to_str().unwrap(),
-    ]);
+    let output = run(&["account", "prepare", "--state-dir", state.to_str().unwrap()]);
     assert!(output.status.success(), "{:?}", output);
     let choices: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     choices[0]["id"].as_str().unwrap().to_owned()
