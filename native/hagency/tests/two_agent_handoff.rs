@@ -86,6 +86,30 @@ async fn native_two_agent_task_handoff_observes_usage_on_the_right_engagement() 
         .usage_summary(pair.b.transport.engagement_id.clone())
         .await
         .unwrap();
+    // Settle B's leg BEFORE A's claim: `claim_dispatch`'s live-count guard
+    // (execution.rs — state IN ('leased','started','parked')) counts B's
+    // still-started dispatch against A's max_live=1 claim and answers None
+    // (the :130 unwrap failure). B's prior usage stays in the ledger, so
+    // the cross-engagement negative below still asserts against real B
+    // activity — only its dispatch leaves the live set.
+    store
+        .mutate_task(
+            b_cap.clone(),
+            "b-task".into(),
+            "done".into(),
+            TaskMutation::Transition {
+                status: TaskState::Done,
+                waiting_reason: None,
+                waiting_until: None,
+            },
+            now(),
+        )
+        .await
+        .unwrap();
+    store
+        .complete_dispatch(b_cap, json!({"observed":"B's prior spend recorded"}), now())
+        .await
+        .unwrap();
     // The handoff lands on A's engagement: its session is bound to the ONE
     // shared delivery room, and the task is created for that session.
     store
@@ -192,7 +216,14 @@ async fn native_two_agent_task_handoff_observes_usage_on_the_right_engagement() 
         .unwrap();
     assert_eq!(summary_a.sources, 1);
     let counts = summary_a.latest_counts.expect("parsed counts recorded");
-    assert_eq!(counts.input, Some(10));
+    // The canonical `input` is the UNCACHED remainder: the Codex parser
+    // computes normalized_input = input_tokens - cached_input_tokens
+    // (native/hagency-metering/src/lib.rs:370-373) — the same semantics the
+    // usage harness pins (native/hagency-store/tests/usage.rs:111-112 builds
+    // its fixture as input_tokens: fresh+cached and :225 asserts the FRESH
+    // part only). The snapshot's input_tokens=10 minus cached=3 is 7; the
+    // raw 10 was never the field's meaning.
+    assert_eq!(counts.input, Some(7));
     assert_eq!(counts.output, Some(2));
     assert_eq!(counts.cache_read, Some(3));
     // B's prior rows are UNCHANGED by A's handoff (review F3): the same one
@@ -206,7 +237,9 @@ async fn native_two_agent_task_handoff_observes_usage_on_the_right_engagement() 
     assert_eq!(summary_b.latest_counts, b_before.latest_counts);
     assert_eq!(summary_b.sources, 1, "B carries its own prior usage source");
     let b_counts = summary_b.latest_counts.expect("B's prior counts stand");
-    assert_eq!(b_counts.input, Some(10));
+    // Same canonical semantics as A's counts above: B's identical snapshot
+    // parses to the uncached remainder (lib.rs:370-373), never the raw 10.
+    assert_eq!(b_counts.input, Some(7));
     assert_eq!(b_counts.output, Some(2));
     pair.store.shutdown().await.unwrap();
 }
