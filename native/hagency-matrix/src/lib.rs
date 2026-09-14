@@ -83,6 +83,9 @@ impl From<hagency_store::Error> for Error {
             hagency_store::Error::Capacity => Self::Capacity,
             hagency_store::Error::Busy => Self::Busy,
             hagency_store::Error::Conflict => Self::Conflict,
+            // A safety refusal is a contract failure of the observed snapshot,
+            // not domain authority: surface it as the named wire-contract word.
+            hagency_store::Error::UnsafeSnapshot(_) => Self::Wire,
             _ => Self::Domain,
         }
     }
