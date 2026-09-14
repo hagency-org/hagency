@@ -402,13 +402,21 @@ async fn native_alert_sweep_runs_hourly_and_survives_busy() {
     let cancel = CancellationToken::new();
     let (handle, mut observed) =
         start_ceiling_sweep(f.domain.clone(), cancel.clone(), Duration::from_millis(50));
-    async fn until<F>(observed: &mut tokio::sync::watch::Receiver<CeilingSweepTick>, ok: F)
+    // Returns the tick that matched: the watch keeps only its LATEST value,
+    // and the loop keeps ticking, so a later `borrow()` can read a newer
+    // tick than the one this observed (a hosted macOS leg read the recovery
+    // sweep where the refusal had just been matched).
+    async fn until<F>(
+        observed: &mut tokio::sync::watch::Receiver<CeilingSweepTick>,
+        ok: F,
+    ) -> CeilingSweepTick
     where
         F: Fn(&CeilingSweepTick) -> bool,
     {
         loop {
-            if ok(&observed.borrow()) {
-                return;
+            let tick = observed.borrow().clone();
+            if ok(&tick) {
+                return tick;
             }
             tokio::time::timeout(Duration::from_secs(10), observed.changed())
                 .await
@@ -417,11 +425,10 @@ async fn native_alert_sweep_runs_hourly_and_survives_busy() {
         }
     }
     // One tick observed sweeping the seeded overrun.
-    until(&mut observed, |tick| {
+    let first = until(&mut observed, |tick| {
         matches!(tick, CeilingSweepTick::Swept(_))
     })
     .await;
-    let first = observed.borrow().clone();
     let CeilingSweepTick::Swept(outcome) = first else {
         unreachable!()
     };
@@ -461,12 +468,12 @@ async fn native_alert_sweep_runs_hourly_and_survives_busy() {
                 })
             })
             .collect();
-        let seen = tokio::time::timeout(Duration::from_secs(3), async {
+        let seen = tokio::time::timeout(
+            Duration::from_secs(3),
             until(&mut observed, |tick| {
                 matches!(tick, CeilingSweepTick::Refused("busy"))
-            })
-            .await;
-        })
+            }),
+        )
         .await;
         stop.store(true, std::sync::atomic::Ordering::Release);
         lock.execute_batch("COMMIT").unwrap();
@@ -474,7 +481,9 @@ async fn native_alert_sweep_runs_hourly_and_survives_busy() {
         for hammer in hammers {
             let _ = hammer.await;
         }
-        if seen.is_ok() {
+        if let Ok(refusal) = seen {
+            // The matched tick itself, never a re-read of the watch.
+            assert_eq!(refusal, CeilingSweepTick::Refused("busy"));
             saw_busy = true;
             break;
         }
@@ -483,19 +492,16 @@ async fn native_alert_sweep_runs_hourly_and_survives_busy() {
         saw_busy,
         "the store's own Error::Busy arm was never observed"
     );
-    let refusal = observed.borrow().clone();
-    assert_eq!(refusal, CeilingSweepTick::Refused("busy"));
     assert!(
         !handle.is_finished(),
         "the sweep loop must survive a refusal"
     );
 
     // Release: the next tick sweeps again — recovery, not a restart.
-    until(&mut observed, |tick| {
+    let recovered = until(&mut observed, |tick| {
         matches!(tick, CeilingSweepTick::Swept(_))
     })
     .await;
-    let recovered = observed.borrow().clone();
     let CeilingSweepTick::Swept(outcome) = recovered else {
         unreachable!()
     };
