@@ -691,6 +691,41 @@ async fn native_outbound_http_publication_frozen_restart_and_rotation() {
 }
 
 #[tokio::test]
+async fn native_outbound_server_rejection_is_recorded_rejected() {
+    let mut fake = Fake::start(false).await;
+    let (dir, store) = store();
+    let adapter = Adapter::attach(config(&fake.endpoint, 31), store.clone())
+        .await
+        .unwrap();
+    let cancel = CancellationToken::new();
+    adapter
+        .freeze_update(json!({"heartbeat":true}))
+        .await
+        .unwrap();
+    // A 500 with no retryable-conflict code is a definitive rejection: the
+    // adapter records `rejected` and surfaces the server status.
+    let (result, _) = tokio::join!(adapter.publish_once(&cancel), async {
+        let request = fake.next().await;
+        assert!(request.target.ends_with("/updates"));
+        request.json(500, json!({"error":"boom"}));
+    });
+    assert_eq!(result, Err(Error::Remote(500)));
+    // The store's word is `rejected` — nothing is re-sent under the same id.
+    let db = rusqlite::Connection::open(dir.path().join("private/custody.sqlite3")).unwrap();
+    let state: String = db
+        .query_row(
+            "SELECT state FROM outbound_publications WHERE binding='managed-http'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(state, "rejected");
+    fake.no_request().await;
+    store.shutdown().await.unwrap();
+    fake.close().await;
+}
+
+#[tokio::test]
 async fn native_outbound_http_lanes_blocked_matrix_independent_work_and_publish() {
     let mut fake = Fake::start(false).await;
     let (dir, store) = store();

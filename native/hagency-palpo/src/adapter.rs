@@ -214,20 +214,43 @@ impl Adapter {
                 .check_publication_registration(self.registration.clone())
                 .await?;
         }
-        let value = self
+        let response = self
             .http
             .request("updates", None, Some(ticket.wire_body().into()), cancel)
-            .await?
-            .success()?;
-        if !wire::accepted(&value) {
-            return Err(Error::Wire);
+            .await?;
+        if response.status == 200 {
+            let value = response.value.ok_or(Error::InvalidJson)?;
+            if !wire::accepted(&value) {
+                return Err(Error::Wire);
+            }
+            self.command(Command::Publication {
+                ticket,
+                response: PublicationResponse::Accepted,
+            })
+            .await?;
+            return Ok(Step::Published);
         }
-        self.command(Command::Publication {
-            ticket,
-            response: PublicationResponse::Accepted,
+        // A retryable conflict (sequence_conflict / stale_lease) keeps
+        // today's behaviour: the caller backs off and re-sends. Every other
+        // 4xx/5xx is a definitive rejection: record `rejected` so nothing is
+        // re-sent under this id, then surface the server's status.
+        let retryable_conflict = response
+            .value
+            .as_ref()
+            .and_then(|v| v.get("code"))
+            .and_then(|c| c.as_str())
+            .is_some_and(|c| c == "sequence_conflict" || c == "stale_lease");
+        if !retryable_conflict {
+            self.command(Command::Publication {
+                ticket,
+                response: PublicationResponse::Rejected,
+            })
+            .await?;
+        }
+        Err(match response.status {
+            401 | 403 => Error::Unauthorized,
+            status => Error::Remote(status),
         })
-        .await?;
-        Ok(Step::Published)
     }
 
     /// Three joined loops; cancellation waits for already received custody/known
