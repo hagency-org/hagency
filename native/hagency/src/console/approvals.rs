@@ -19,6 +19,7 @@ pub(super) fn router() -> Router {
     Router::new()
         .push(Router::with_path("approvals").get(list))
         .push(Router::with_path("approvals/{id}").get(single))
+        .push(Router::with_path("approvals/grants/{id}").delete(revoke_grant))
 }
 
 fn store_error(res: &mut Response, error: hagency_store::Error) {
@@ -89,6 +90,36 @@ async fn single(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     match result {
         Ok(row) => res.render(Json(row)),
+        Err(error) => store_error(res, error),
+    }
+}
+
+/// G7 (spec `native_owner_approval_grants`, ADR-043): the console revocation
+/// route. Revocation only REMOVES authority — it can never grant, decide or
+/// consume — so it serves any authenticated operator session with no new
+/// `Scope`, the same class as the observation routes above; an anonymous
+/// caller is refused at the `authenticate` hoop. The response is the bounded
+/// ADR-043 grant projection: the grant id and the revoked word, nothing else.
+#[handler]
+async fn revoke_grant(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if req.uri().query().is_some() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let Some(id) = req.param::<String>("id") else {
+        failed(res, Error::Invalid);
+        return;
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.revoke_approval_grant(id.clone()).await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    match result {
+        Ok(()) => res.render(Json(serde_json::json!({"id": id, "revoked": true}))),
         Err(error) => store_error(res, error),
     }
 }
