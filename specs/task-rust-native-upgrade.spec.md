@@ -71,7 +71,12 @@ single binary path (it cannot produce two coexisting versioned artifacts)
 and not the release workflow (operator-gated, network-sourced). The version
 constant is the same one `hagency --version` reads, so the artifacts are
 named exactly as ADR-134's procedure installs them; ADR-134's note records
-this as the tested form of the procedure.
+this as the tested form of the procedure. The version-patched copy is
+rebuilt into the parent target dir with the inherited crate cache, at a
+measured cost of about two minutes cold on a hosted lane and seconds warm;
+the cheaper same-binary override (one build reporting a patched version)
+was considered and rejected because only a real second artifact proves the
+procedure, not merely the report.
 
 ## Out of Scope
 
