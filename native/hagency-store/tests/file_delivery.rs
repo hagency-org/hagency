@@ -921,7 +921,7 @@ fn native_file_delivery_schema_migration() {
     let path = root.path().join("state/domain.sqlite3");
     let sql = rusqlite::Connection::open(&path).unwrap();
     sql.execute_batch(
-        "DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; DROP TABLE received_files; DROP TABLE file_deliveries; PRAGMA user_version=19;",
+        "DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; DROP TABLE received_files; DROP TABLE file_deliveries; ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; PRAGMA user_version=19;",
     )
     .unwrap();
     drop(sql);
@@ -931,7 +931,7 @@ fn native_file_delivery_schema_migration() {
     assert_eq!(
         sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
             .unwrap(),
-        31
+        32
     );
     assert_eq!(count(&sql, "file_deliveries"), 0);
     drop(db);

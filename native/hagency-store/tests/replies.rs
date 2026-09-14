@@ -968,7 +968,7 @@ fn native_reply_routes_schema_ten_does_not_invent_legacy_privacy() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        31
+        32
     );
     assert_eq!(
         sql.query_row(
@@ -1122,6 +1122,11 @@ fn native_matrix_transport_migration_preserves_verified_routes() {
     drop(f.db);
     let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
     remove_matrix_transport_schema(&sql);
+    // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+    // over a receipts table that already carries the column, so strip it
+    // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+        .unwrap();
     sql.pragma_update(None, "user_version", 14).unwrap();
     drop(sql);
     f.db = DomainRepository::open(&f.root.path().join("state")).unwrap();

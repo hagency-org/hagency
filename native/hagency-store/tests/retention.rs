@@ -958,6 +958,11 @@ async fn native_retained_corpus_schema_upgrade() {
     drop(f.db);
     {
         let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+        // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+        // over a receipts table that already carries the column, so strip it
+        // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+            .unwrap();
         sql.pragma_update(None, "user_version", 25).unwrap();
     }
     // The double open: the second run is at head 26 and replays nothing.
@@ -968,7 +973,7 @@ async fn native_retained_corpus_schema_upgrade() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            31
+            32
         );
         let archive: u64 = sql
             .query_row("SELECT COUNT(*) FROM retained_message_archive", [], |r| {

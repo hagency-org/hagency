@@ -262,7 +262,7 @@ fn native_approval_response_recovery() {
     let path = f.root.path().join("state");
     drop(f.db);
     // Reconstruct the real preceding schema by removing only schema22 additions.
-    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; PRAGMA user_version=21;")
+    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; PRAGMA user_version=21;")
         .unwrap();
     let mut db = DomainRepository::open(&path).unwrap();
     assert_eq!(count(&sql, "approval_responses"), 0);

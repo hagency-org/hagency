@@ -298,6 +298,11 @@ fn native_attachment_schema_migration() {
     drop(f.db);
     let sql = rusqlite::Connection::open(path.join("domain.sqlite3")).unwrap();
     remove_attachment_schema(&sql);
+    // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+    // over a receipts table that already carries the column, so strip it
+    // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+        .unwrap();
     sql.pragma_update(None, "user_version", 17).unwrap();
     drop(sql);
     for _ in 0..2 {
@@ -308,7 +313,7 @@ fn native_attachment_schema_migration() {
     assert_eq!(
         sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
             .unwrap(),
-        31
+        32
     );
     for table in [
         "matrix_attachments",

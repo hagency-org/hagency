@@ -781,6 +781,11 @@ fn native_ceiling_alert_schema_upgrade() {
         ],
     )
     .unwrap();
+    // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+    // over a receipts table that already carries the column, so strip it
+    // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+        .unwrap();
     sql.pragma_update(None, "user_version", 24).unwrap();
     drop(sql);
     for _ in 0..2 {
@@ -791,7 +796,7 @@ fn native_ceiling_alert_schema_upgrade() {
     let head: u64 = sql
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(head, 31);
+    assert_eq!(head, 32);
     // The backfill: a resolved row serves 'resolved' with an empty map.
     // The open-alerts read deliberately excludes resolved rows, so this
     // half is verified on the table the read is served from.

@@ -37,12 +37,14 @@ store wrapper, `deny_for_failed_delivery`** on `DomainRepository` with its
 (`decide_verdict` is private and takes an owner's
 `OwnerVerdictObservation`, which a delivery failure is not), **at most once
 per request**: a second call is idempotent on the receipt and differing
-content is refused. **The reason has a storage home**: migration **029**
+content is refused. **The reason has a storage home**: migration **032**
 adds one nullable `denial_reason TEXT` to `approval_verdict_receipts` via
-`ADD COLUMN` (the number follows landing order — base head 28 + 1; the schema-head pin moves to
-29 **in the tests that pin it**, in this slice's own commit — every
+`ADD COLUMN` (**032 is provisional, landing order** — base head 31 + 1,
+after engagements retention 030 and execution retention 031 landed; it
+renumbers to 033 if MA-S2 lands first). The schema-head pin moves to 32
+**in the tests that pin it**, in this slice's own commit — every
 `assert_eq!(… user_version …)` site moves, every `pragma_update` rewind
-stays). The request never sits `pending` after a failed send, and the denial
+stays. The request never sits `pending` after a failed send, and the denial
 is recorded **where PC-C2's observation read and PC-C3's tools read it** —
 the same `owner_approvals` row and the same kind-deny receipt row every
 other surface serves, so the operator and the runner see one fact, not two:

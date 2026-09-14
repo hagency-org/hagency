@@ -834,6 +834,11 @@ fn native_retained_peer_corpus_migration_replays_after_rewind() {
     drop(f.db);
     {
         let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+        // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+        // over a receipts table that already carries the column, so strip it
+        // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
+            .unwrap();
         sql.pragma_update(None, "user_version", 26).unwrap();
     }
     // The double open: the second run is at head 31 and replays nothing.
@@ -844,7 +849,7 @@ fn native_retained_peer_corpus_migration_replays_after_rewind() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            31
+            32
         );
         let index: u64 = sql
             .query_row("SELECT COUNT(*) FROM retained_peer_index", [], |r| r.get(0))
@@ -903,7 +908,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            31
+            32
         );
         // 025 is NOT idempotent (ALTER TABLE ... ADD COLUMN status): a
         // deeper rewind to 24 replays it over a table that already carries
@@ -912,6 +917,11 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         // to a bare 024 table and 026/027 replay as no-ops.
         sql.execute_batch("DROP TABLE ceiling_alerts;").unwrap();
         sql.execute_batch(include_str!("../src/migrations/024-ceiling-alerts.sql"))
+            .unwrap();
+        // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+        // over a receipts table that already carries the column, so strip it
+        // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason;")
             .unwrap();
         sql.pragma_update(None, "user_version", 24).unwrap();
     }
@@ -922,7 +932,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            31,
+            32,
             "every reopen lands at the current head"
         );
     }
