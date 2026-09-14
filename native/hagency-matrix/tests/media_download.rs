@@ -9,6 +9,7 @@ use hagency_matrix::{
 use hagency_media::{CheckedBytes, Descriptor};
 use serde_json::Value;
 use std::time::Duration;
+use tokio::sync::oneshot;
 use tokio::time::{Instant, timeout};
 
 fn config(endpoint: &str, limits: Limits) -> HostConfig {
@@ -453,19 +454,15 @@ async fn native_matrix_media_integrity_eof() {
 
 #[tokio::test]
 async fn native_matrix_media_deadline_cancel() {
-    // The deadline variants set deliberately tight bounds (150/200/600/180ms)
-    // while the scripted peer's delivery — accept, TLS handshake, parse,
-    // channel, wake — is only bounded at load scale (`Fake::next`'s own
-    // orchestration budget). An ordering diagnosed by reading (the biased
-    // select against timeout_at) and never reproduced locally: on a loaded
-    // runner the GET is issued but not yet observed when the headers bound
-    // expires, so the run honestly resolves Timeout before `fake.next()`
-    // wakes. Each variant runs on its own Fake, so a request delivered after
-    // the deadline cannot leak into a later leg's script. Both invariants
-    // hold on every path: whichever leg wins, the GET's shape is verified
-    // through the same `expect_media_get`, a product that never issues one
-    // fails by the fake's named request-missing panic, and the resolved
-    // failure must be exactly the Timeout this variant asserts.
+    // The deadline variants make the FAKE the slow party, never the client's
+    // clock racing delivery: the fake accepts the connection and reads the GET
+    // (observed and asserted through `fake.next()`), then withholds the
+    // headers — or the body, per variant — past the client's headers/body
+    // bound via a gate the test holds open. The run therefore resolves
+    // Timeout AFTER the request was observed, deterministically on any
+    // runner. No biased select over the result, no run-first leg, no
+    // tolerance branch: a product that never issues the GET fails
+    // `fake.next()`'s named request-missing panic.
     let timing = Limits {
         connect: Duration::from_millis(150),
         headers: Duration::from_millis(200),
@@ -475,27 +472,32 @@ async fn native_matrix_media_deadline_cancel() {
     };
     let id = media();
     let (cipher, descriptor, _) = vector(16);
-    for pieces in [
-        vec![(Duration::from_millis(350), body(&cipher))],
-        vec![
-            (
-                Duration::ZERO,
-                b"HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n".to_vec(),
-            ),
-            (Duration::from_millis(350), cipher.clone()),
-        ],
-        {
+    for (hold_after, pieces) in [
+        // Headers withheld: the fake sends nothing, so the client's headers
+        // bound (200ms) expires after the GET was observed.
+        (0usize, vec![(Duration::ZERO, body(&cipher))]),
+        // Body withheld after the headers: the status+headers arrive, then the
+        // body is held, so the client's body_idle bound (180ms) expires.
+        (
+            1usize,
+            vec![
+                (
+                    Duration::ZERO,
+                    b"HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n".to_vec(),
+                ),
+                (Duration::ZERO, cipher.clone()),
+            ],
+        ),
+        // Body withheld mid-stream: headers + the first chunk arrive, the rest
+        // is held, so body_idle expires between chunks.
+        (2usize, {
             let mut pieces = vec![(
                 Duration::ZERO,
                 b"HTTP/1.1 200 OK\r\nContent-Length: 16\r\n\r\n".to_vec(),
             )];
-            pieces.extend(
-                cipher
-                    .iter()
-                    .map(|b| (Duration::from_millis(100), vec![*b])),
-            );
+            pieces.extend(cipher.iter().map(|b| (Duration::ZERO, vec![*b])));
             pieces
-        },
+        }),
     ] {
         let mut fake = Fake::start(true).await;
         let client = configured(&fake, timing.clone(), 1024, 1, 1);
@@ -503,34 +505,25 @@ async fn native_matrix_media_deadline_cancel() {
         let started = Instant::now();
         let run = client.download(&id, &descriptor, &cancel);
         tokio::pin!(run);
-        let failure = tokio::select! {
+        // Poll the run concurrently so it issues the GET, while `fake.next()`
+        // receives the observed request. The run cannot resolve before the
+        // fake holds the response, so this arm never fires.
+        let request = tokio::select! {
             biased;
-            request = fake.next() => {
-                expect_media_get(&request);
-                request.chunks(pieces);
-                error(run.await)
-            }
-            result = &mut run => {
-                // The deadline resolved first. Await the GET with the fake's
-                // own orchestration budget — its named panic is the verdict
-                // for a product that never issued one, and a connect-phase
-                // timeout is the same word as this one — verify the same
-                // shape as the scripted leg, and only then accept the
-                // timeout this variant asserts.
-                let request = fake.next().await;
-                expect_media_get(&request);
-                drop(request);
-                let failure = error(result);
-                assert_eq!(
-                    failure,
-                    Failure::Transport(Error::Timeout),
-                    "deadline variant resolved {failure:?} after its GET was observed"
-                );
-                failure
-            }
+            request = fake.next() => request,
+            result = &mut run => panic!("download resolved before the request: {:?}", error(result)),
         };
-        assert_eq!(failure, Failure::Transport(Error::Timeout));
+        expect_media_get(&request);
+        let (gate, release) = oneshot::channel();
+        request.hold(pieces, hold_after, release);
+        let failure = error(run.await);
+        assert_eq!(
+            failure,
+            Failure::Transport(Error::Timeout),
+            "deadline variant resolved {failure:?} after its GET was observed"
+        );
         assert!(started.elapsed() < Duration::from_secs(2));
+        drop(gate); // release the fake's hold before closing
         fake.close().await;
     }
     let mut fake = Fake::start(true).await;

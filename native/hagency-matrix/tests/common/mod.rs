@@ -204,6 +204,12 @@ pub async fn shutdown_domain(store: &DomainStore, label: &'static str) {
 struct ScriptedResponse {
     pieces: Vec<(Duration, Vec<u8>)>,
     clean: bool,
+    /// Write pieces[..hold_after] immediately, then await `hold` (the test's
+    /// gate) before writing the rest. `usize::MAX` never holds; the held
+    /// response lets a deadline variant make the FAKE the slow party — driven
+    /// by the test, never a sleep.
+    hold_after: usize,
+    hold: Option<oneshot::Receiver<()>>,
 }
 pub struct Request {
     pub method: String,
@@ -220,6 +226,8 @@ impl Request {
         let _ = self.response.send(ScriptedResponse {
             pieces: vec![(Duration::ZERO, bytes)],
             clean: true,
+            hold_after: usize::MAX,
+            hold: None,
         });
     }
     /// Deliberately omit TLS close_notify to exercise truncated transport EOF.
@@ -227,12 +235,35 @@ impl Request {
         let _ = self.response.send(ScriptedResponse {
             pieces: vec![(Duration::ZERO, bytes)],
             clean: false,
+            hold_after: usize::MAX,
+            hold: None,
         });
     }
     pub fn chunks(self, pieces: Vec<(Duration, Vec<u8>)>) {
         let _ = self.response.send(ScriptedResponse {
             pieces,
             clean: true,
+            hold_after: usize::MAX,
+            hold: None,
+        });
+    }
+    /// Write the first `hold_after` pieces immediately, then await `hold` (the
+    /// test's gate) before the remaining pieces. The fake becomes the SLOW
+    /// party: the request is fully observed and asserted first, then the hold
+    /// withholds the headers/body past the client's bound so the run resolves
+    /// Timeout AFTER the request was observed — driven by the test, never a
+    /// sleep.
+    pub fn hold(
+        self,
+        pieces: Vec<(Duration, Vec<u8>)>,
+        hold_after: usize,
+        hold: oneshot::Receiver<()>,
+    ) {
+        let _ = self.response.send(ScriptedResponse {
+            pieces,
+            clean: true,
+            hold_after,
+            hold: Some(hold),
         });
     }
 }
@@ -389,8 +420,29 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(mut stream: S, tx: mpsc::Sende
     if tx.send(request).await.is_err() {
         return;
     }
-    if let Ok(ScriptedResponse { pieces, clean }) = rx.await {
-        for (delay, bytes) in pieces {
+    if let Ok(ScriptedResponse {
+        pieces,
+        clean,
+        hold_after,
+        hold,
+    }) = rx.await
+    {
+        let mut remaining = pieces.into_iter();
+        for (delay, bytes) in remaining.by_ref().take(hold_after) {
+            tokio::time::sleep(delay).await;
+            if stream.write_all(&bytes).await.is_err() {
+                return;
+            }
+            if stream.flush().await.is_err() {
+                return;
+            }
+        }
+        if let Some(hold) = hold
+            && hold.await.is_err()
+        {
+            return;
+        }
+        for (delay, bytes) in remaining {
             tokio::time::sleep(delay).await;
             if stream.write_all(&bytes).await.is_err() {
                 return;
