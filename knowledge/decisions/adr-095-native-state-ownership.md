@@ -482,27 +482,30 @@ discriminator (the same string `verify_request` already gates on at
 `authority.rs:225`), and the JSON body is carried in `InboundMessage.body`
 (the event's text). No new event type or `content` field is invented.
 
-**Idempotency key — the two keys are distinct, and `request_id` is the key
-(finding 2b).** `ProjectRequest.request_id` is the **idempotency key**:
-`admit` replays on the same `request_id`+digest and refuses a reused
+**Idempotency key — `request_id` is the key and can never be the Matrix
+event id (finding 1).** `ProjectRequest.request_id` is the **idempotency
+key**: `admit` replays on the same `request_id`+digest and refuses a reused
 `request_id` with a different digest (`domain.rs:1090-1099`), and the minted
 id is `en_` + `hash([fleet_id, request_id])` (`authority.rs:120-124`).
 `ProjectRequest.source_event_id` is the **carried** Matrix event id, checked
-equal to the observation's `source.event_id` (`authority.rs:225`). The
-retained `requestId` (= the bridge-set event id) maps to native `request_id`;
-when the bridge uses the event id as the key, `request_id == source_event_id`
-holds, but native's `project::identifier(request_id, 96)` is the stricter
-gate — an event id that cannot serve as a project identifier is **refused,
-never re-keyed** (mirroring the retained "absence is recorded, never
-replaced"). The provider verdict stays the separate `approve` write; it is
-never folded into the mint.
+equal to the observation's `source.event_id` (`authority.rs:225`). **The
+event id can never be `request_id`**: `project::identifier` admits only
+`[A-Za-z0-9_-]` (`project.rs:47-57`), and an event id starts with `$` (and
+carries `:`/base64), which `validate` refuses (`authority.rs:83`). So the
+request body carries a **native-valid `request_id`** — the requester's own
+idempotency key, distinct from the event id — while the event id is carried
+as `source_event_id`. Idempotency matches the retained store: same
+`request_id` + same digest returns the prior admission; same `request_id` +
+different digest is a refused `conflict` (never re-keyed, never overwritten).
+The provider verdict stays the separate `approve` write; it is never folded
+into the mint.
 
 **Field-by-field `ProjectRequest` mapping (from the retained body):**
 
 | ProjectRequest field | Source |
 |---|---|
 | `v`, `auth_version` | constant `1` / `1` |
-| `request_id` (idempotency key) | retained `requestId` (event id when bridge-set); refused when invalid per `project::identifier` |
+| `request_id` (idempotency key) | retained `requestId` carried as a **native-valid** identifier (`[A-Za-z0-9_-]`), distinct from the event id; refused when invalid per `project::identifier` |
 | `source_event_id` | `InboundMessage.event_id` |
 | `fleet_id` | the collector's `Registration` (never the event) |
 | `requester_mxid` | retained `requester` |
@@ -518,8 +521,8 @@ never folded into the mint.
 
 Refused when absent: `project`, `projectRoomId`, `role`, `requester`,
 `requestedTokens` (retained `text()`/`posInt()` throw), and `request_id`
-(native requires it; the event id is the bridge's supply, not a generated
-key).
+(native requires a valid `[A-Za-z0-9_-]` key; the event id is the
+`source_event_id` carry, not a generated key).
 
 **The three `RoomObservation`s are collector facts, never event-asserted
 values — and the five absent fields are observed at intake, not stored.**
@@ -532,11 +535,13 @@ without storing them — no migration, no schema change.** They are
 verification-time-only inputs: `verify_request` reads them once and nothing
 else consumes them, so persisting them would add a migration (034) and a
 head-pin move for facts no later read needs. The event's own content never
-asserts any of them — the collector parses them from the **same `/state`
-response** its existing room parser (`collector.rs:475`) already reads:
-`m.room.power_levels` (`users` → `powers`, `users_default` →
-`default_power`, `invite` → `invite_power`), the project-binding state
-event → `binding`, and `m.room.name` → `name`. They are carried **in
+asserts any of them — the collector's room parser (`collector.rs:475`) today
+handles only `m.room.member`/`join_rules`/`encryption`; **this slice
+extends it** to additionally parse `m.room.power_levels` (`users` →
+`powers`, `users_default` → `default_power`, `invite` → `invite_power`),
+the project-binding state event → `binding`, and `m.room.name` → `name` —
+the assembled `authority::RoomObservation` is a **separate shape** from the
+stored `MatrixRoomObservation`. They are carried **in
 memory** on the observation type (extending `MatrixRoomObservation`,
 `hagency-core/src/replies.rs:44-54`) and the intake batch/event types
 (`event_batch.rs:41-61` and the intake `Event`), handed to `verify_request`
@@ -547,8 +552,12 @@ missing/expired observation is refused, never fabricated.
   the room the event arrived in; `verify_request` requires invite-only,
   unencrypted, `joined ⊇ {requester, representative}`. This room is NOT
   recordable via `observe_matrix_room` (which refuses the reception room,
-  `matrix_routes.rs:320`), so the snapshot is taken from the SDK sync that
-  delivered the event.
+  `matrix_routes.rs:320`). **Decision: the bootstrap adds
+  `registration.reception_room_id` to the collector's observed room set, so
+  its `/state` is fetched exactly like the project and owner rooms
+  (`collector.rs:342`)** — the collector observes it in memory only,
+  `observe_matrix_room` keeps refusing it for the scope table, and nothing
+  is stored.
 - **project room** (`target_room_id`) — `room_id`/`joined`/`invite_only`/
   `encrypted` from `matrix_room_scopes`, plus the intake-time-observed
   `powers`/`default_power`/`invite_power`/`binding`/`name`; `verify_request`
@@ -564,8 +573,8 @@ missing/expired observation is refused, never fabricated.
 **Dispatch point.** The intake hook that sees
 `kind == "com.hagency.engagement.request.v1"` assembles the `ProjectRequest`
 and `RequestObservation` from these SDK facts and hands them through the
-domain worker's `DomainStore::admit` (the async wrapper exists at
-`domain_worker.rs:2845`, today `#[cfg(test)]`-gated and to be exposed for the
-production caller) — `admit` is the single write. The provider verdict is
-observed afterwards through the existing `approve` path, never folded into
-the mint.
+domain worker's `DomainStore::admit` — an **unconditional, already-public
+async method** (`domain_worker.rs:2845`, no `#[cfg(test)]` gate; what is
+absent is the production *caller*, not the method's compilation) — `admit`
+is the single write. The provider verdict is observed afterwards through
+the existing `approve` path, never folded into the mint.
