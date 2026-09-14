@@ -915,6 +915,17 @@ async fn execute(
         Some(Outcome::UnsupportedRequest) => Protocol::Unsupported,
         _ => Protocol::Unknown,
     };
+    // ADR-046 precedence, report-side: a drive that ended in a settlement
+    // verdict outranks the peer's own turn outcome — the captured completion
+    // is demoted so no `SettlementUnknown` is ever delivered beside a
+    // `Completed` protocol (the midwrite scenario: a written, receipt-less
+    // frame at a turn end the peer did complete). The drive's verdict itself
+    // still surfaces unchanged through `drive?` below.
+    if matches!(drive, Err(Failure::SettlementUnknown))
+        && report.protocol == Protocol::Completed
+    {
+        report.protocol = Protocol::Unknown;
+    }
     report.cleanup = runner.stop();
     // F3 (macOS-reachable): release the deferred approval entries as soon as
     // the leader stopped on every OS; the live reservation and owner release

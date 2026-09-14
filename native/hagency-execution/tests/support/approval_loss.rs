@@ -335,7 +335,7 @@ async fn native_owned_approval_barriers_pending_receipt() {
         let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
         assert_eq!(
             sql.query_row(
-                "SELECT state FROM runner_dispatches WHERE id='dispatch'",
+                "SELECT state FROM runner_dispatches WHERE id='barriers-pending-receipt'",
                 [],
                 |r| r.get::<_, String>(0)
             )
@@ -858,13 +858,15 @@ async fn native_owned_approval_in_flight_resolution_completes_write() {
     // a `checked` phase followed by a store refusal indicts the recheck
     // pump's barriers guard; a clean `checked → write-started` followed by
     // the failure indicts the grant/entry match or the acknowledge path.
+    // The write must complete; any uncertainty the platform reports beside
+    // that completion is a different scenario's contract (midwrite, below).
     assert!(
         report.failure.is_none(),
         "{:?} {:?}; trace: {}; cancelled: {}",
         report.failure,
         report.runtime_observation(),
-        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id),
-        hagency_execution::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
     assert_eq!(host_response_frames(&work).len(), 1);
     assert_eq!(probe_read_frames(&work).len(), 1);
@@ -1220,8 +1222,8 @@ async fn native_owned_approval_peer_gone_before_first_byte() {
         "{:?} {:?}; trace: {}; cancelled: {}",
         report.failure,
         report.runtime_observation(),
-        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id),
-        hagency_execution::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
     // The observation names the failing arm and proves zero accepted bytes.
     let observation = report.runtime_observation().expect("observation");
@@ -1340,8 +1342,8 @@ async fn native_owned_approval_turn_end_untransmitted() {
         "{:?} {:?}; trace: {}; cancelled: {}",
         report.failure,
         report.runtime_observation(),
-        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id),
-        hagency_execution::diagnostics::last_cancellation_trace(&cap.dispatch_id)
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id),
+        crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
     // macOS close shape: the host's own `HostClosed` with no accepted byte
     // may surface as the cleanup failure, never a settlement or protocol
@@ -1359,9 +1361,9 @@ async fn native_owned_approval_turn_end_untransmitted() {
         "{:?} {:?}; trace: {}",
         report.failure,
         report.runtime_observation(),
-        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id)
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id)
     );
-    let trace = hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id);
+    let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
     assert!(
         trace.contains("turn-ended-in-flight-untransmitted"),
         "untransmitted arm never stamped; trace: {trace}"
@@ -1441,7 +1443,7 @@ async fn native_owned_approval_turn_end_midwrite_uncertain() {
         "{:?} {:?}; trace: {}",
         report.failure,
         report.runtime_observation(),
-        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id)
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id)
     );
     assert_eq!(
         report.failure,
@@ -1449,9 +1451,9 @@ async fn native_owned_approval_turn_end_midwrite_uncertain() {
         "{:?} {:?}; trace: {}",
         report.failure,
         report.runtime_observation(),
-        hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id)
+        crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id)
     );
-    let trace = hagency_execution::diagnostics::dispatch_trace(&cap.dispatch_id);
+    let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
     // One of the two uncertainty arms must name the fate — the mid-write
     // send refusal or the reconcile's unrecorded acceptance; which one is
     // platform timing, being-uncertain is not.
