@@ -338,6 +338,15 @@ impl Inner {
             .domain
             .matrix_room_state(t.engagement_id.clone(), target.room_id.clone())
             .await?;
+        // The reception room is fetched for verify_request only and must never
+        // be published (observe_matrix_room refuses it); its scope row is
+        // absent, so `prior` is None and its facts are carried in memory.
+        let reception = self
+            .domain
+            .provisioning_registration_for_engagement(t.engagement_id.clone())
+            .await
+            .map(|r| r.reception_room_id == target.room_id)
+            .unwrap_or(false);
         let result = async {
             observe!(RoomHttp);
             let state = self
@@ -351,9 +360,16 @@ impl Inner {
                 .success()?;
             // Representable unsafe membership/privacy must reach the domain's
             // shared-room invalidation path rather than becoming a local-only error.
-            let (observation, _facts) = self.room(target, state)?;
+            let (observation, facts) = self.room(target, state)?;
+            self.room_facts
+                .lock()
+                .await
+                .insert(target.room_id.clone(), facts);
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
+            }
+            if reception {
+                return Ok(observation);
             }
             observe!(RoomPublish);
             self.domain.observe_matrix_room(observation.clone()).await?;
