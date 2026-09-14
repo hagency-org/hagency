@@ -336,11 +336,6 @@ impl Inner {
         cancel: &CancellationToken,
     ) -> Result<MatrixRoomObservation, Error> {
         let t = &self.config.identity.transport;
-        observe!(RoomPrior);
-        let prior = self
-            .domain
-            .matrix_room_state(t.engagement_id.clone(), target.room_id.clone())
-            .await?;
         // Only `rooms` members are published: observe_matrix_room refuses a
         // Group room that is not the host engagement's own project room
         // (matrix_routes.rs:413), and the pre-project reception room has no
@@ -352,6 +347,17 @@ impl Inner {
             .rooms
             .iter()
             .any(|r| r.room_id == target.room_id);
+        observe!(RoomPrior);
+        // The prior read exists to retire stale positive evidence when the
+        // fetch fails; a never-published room can hold none, so a verify-only
+        // room skips it (the reception room has no scope row by design).
+        let prior = if publish {
+            self.domain
+                .matrix_room_state(t.engagement_id.clone(), target.room_id.clone())
+                .await?
+        } else {
+            None
+        };
         let result = async {
             observe!(RoomHttp);
             let state = self

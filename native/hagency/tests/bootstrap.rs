@@ -22,6 +22,7 @@ async fn native_bootstrap_executable() {
     first.json(200, common::who());
     f.fake.next().await.json(200, common::sync("bootstrap"));
     f.fake.next().await.json(200, common::state());
+    f.fake.next().await.json(200, common::state());
     let status = f.wait_result().await;
     assert_eq!(status["mode"], "one_attempt");
     assert_eq!(status["workspace_registered"], true);
@@ -90,6 +91,8 @@ async fn native_bootstrap_custody_shutdown() {
     let mut f = Fixture::new(false).await;
     let mut child = f.launch(true);
     common::success(&mut f.fake, "shutdown").await;
+    // The reception room is observed but never published: answer its /state too.
+    f.fake.next().await.json(200, common::state());
     let status = f.wait_result().await;
     assert_eq!(status["protocol"], "completed");
     child.request_shutdown();
