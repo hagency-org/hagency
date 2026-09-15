@@ -147,10 +147,12 @@ deletion is a separate decision, not made here.
 
 Counts at first writing: **31 superseded / 15 gap methods across 8 gaps
 (G1-G8) / 0 deleted (1 deletion decision owed)**. After the 2026-09-14 and
-2026-09-15 closures and additions, the open set is **G10** (operator refusal and
-retirement, with `retry_cleanup`'s cleanup retry), **G11** (project-side
-registration) and **G12** (late output); `create_coordinator_task` and
-`create_canonical_task` carry deletion decisions rather than gap ids. Re-run the
+2026-09-15 closures and additions, the open set is **G10's refusal half**
+(`reject`, a `Pending`-only refusal; the retire half and `retry_cleanup` closed
+2026-09-15) and **G11** (project-side registration); **G12** (late output) is
+closing under a slice now gating (`probe/stack-58`, not yet landed at this head).
+`create_coordinator_task` was deleted 2026-09-15 rather than wired;
+`create_canonical_task` carries a deletion decision rather than a gap id. Re-run the
 checkers rather than relying on any count in this paragraph.
 
 **(c) Definition of done.** The migration plan's §12 gains one line making this
@@ -210,10 +212,12 @@ bins; every finding grep-confirmed per the original evidence rule).
 | G2 | `observe_effect` | `hagency-matrix/src/intake.rs:407` (the same effect observed complete) |
 | G3 | `resolve_verified_matrix_session` | `hagency-matrix/src/intake.rs:450` (the provisioned engagement's route binding) |
 
-**Open gaps added 2026-09-14 evening.** G10 — an operator can neither refuse a pending
-engagement request nor retire an active one: `reject` and `revoke` are the only
+**Open gaps added 2026-09-14 evening.** G10 — an operator could neither refuse a
+pending engagement request nor retire an active one when this gap was opened:
+`reject` and `revoke` are the only
 callers of `end`, which is the sole writer of the Rejected and Revoked states, and
-neither has a production caller. G11 — no production path registers a project
+neither had a production caller. The retire half closed 2026-09-15 (see the
+status below); the refusal half (`reject`) remains open. G11 — no production path registers a project
 side, though `register` is the sole writer of that table outside tests. Both are
 parity gaps against the retained product, which exposes operator routes for all
 three acts; their spec slices carry `Production caller: owed (G10)` and `owed
@@ -256,9 +260,11 @@ resume. An orphaned dispatch was settled but never resumed. That gap was
 the operator console route `POST /console/api/agents/{id}/recover-dispatch`
 (`hagency/src/console/agents.rs:263`) under `Scope::AgentLifecycle`, never
 automatic, carrying the operator's stopped-owner and workspace-inspection
-evidence into `dispatch_recoveries` unchanged. Of the G2 set only
-`retry_cleanup` remains unreached, now carried under G10; `approve`,
+evidence into `dispatch_recoveries` unchanged. Of the G2 set `approve`,
 `claim_effect` and `observe_effect` closed at `intake.rs:397`, `:405` and `:407`,
+and `retry_cleanup` closed under G10 at
+`hagency::console::engagements::cleanup_retry` (`POST
+/console/api/engagements/{id}/cleanup-retry`, `engagements.rs:162`);
 and G3 (`resolve_verified_matrix_session`) at `intake.rs:450`, all inside
 `Inner::approve_provision` (`intake.rs:285`). The bootstrap driver call this
 paragraph once cited (`driver.rs:432`) is test-enclosed and was withdrawn from
@@ -289,10 +295,14 @@ Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 
 **Checker reconciliation**: on 88e05d5f `check-production-callers.mjs` read
 exit 0, count 14, wired 11, owed G2/G2/G3. Those figures are historical: no
-`Production caller:` line names G2 or G3 any more, and the owed set is now G10
-and G11, with G12 owed once the late-output spec names it. Re-run the checker
+`Production caller:` line names G2 or G3 any more. At this head the checker
+reads count 43, wired 27, owed 16 — six refusal `owed (G10)` lines, eight
+registration `owed (G11)` lines, and two late-output `owed` lines that a slice
+now gating (`probe/stack-58`, not yet landed here) closes under G12, moving the
+figures to 29/14 with G12 closed. Re-run the checker
 rather than quoting this paragraph. The checker only
 sees spec-named `Production caller:` lines, and no spec line names the G5a
-recovery-artifact writes or the two new gaps, so neither tool contradicts the
+recovery-artifact writes or the un-numbered new-row surfaces, so neither tool
+contradicts the
 other; the asymmetry (audit covers the whole store surface, checker covers
 spec-named writes) is the intended division of labour.
