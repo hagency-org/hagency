@@ -147,8 +147,8 @@ deletion is a separate decision, not made here.
 
 Counts at first writing: **31 superseded / 15 gap methods across 8 gaps
 (G1-G8) / 0 deleted (1 deletion decision owed)**. After the 2026-09-14 and
-2026-09-15 closures and additions, the open set is **G11** (project-side
-registration) alone. **G10** closed in both halves on 2026-09-15 — the retire
+2026-09-15 closures and additions, the open set is **empty** — every
+allocated gap id is closed, superseded or deleted. **G10** closed in both halves on 2026-09-15 — the retire
 half and `retry_cleanup` through `hagency::console::engagements`, the refusal
 half through `hagency::console::agents::refuse` — and **G12** (late output) is
 closed by the late-output route in `hagency::runner`'s `completion.rs`
@@ -216,13 +216,13 @@ bins; every finding grep-confirmed per the original evidence rule).
 | G2 | `observe_effect` | `hagency-matrix/src/intake.rs:407` (the same effect observed complete) |
 | G3 | `resolve_verified_matrix_session` | `hagency-matrix/src/intake.rs:450` (the provisioned engagement's route binding) |
 
-**Open gaps added 2026-09-14 evening.** G10 — an operator could neither refuse a
-pending engagement request nor retire an active one when this gap was opened:
+**Open gaps added 2026-09-14 evening.** When these paragraphs were written,
+two gaps stood open. G10 — an operator could neither refuse a
+pending engagement request nor retire an active one when that gap was opened:
 `reject` and `revoke` are the only
 callers of `end`, which is the sole writer of the Rejected and Revoked states, and
-neither had a production caller. The retire half closed 2026-09-15 (see the
-status below); the refusal half (`reject`) remains open. G11 — no production path registers a project
-side, though `register` is the sole writer of that table outside tests. Both are
+neither had a production caller. G11 — at the time, no production path registered a project
+side, though `register` is the sole writer of that table outside tests. Both were
 parity gaps against the retained product, which exposes operator routes for all
 three acts. **G11 status 2026-09-15: closed** — two production callers landed:
 `hagency::bootstrap::registration::run` (the CLI `Registration` subcommand) and
@@ -235,8 +235,9 @@ allocated gap id is closed, superseded or deleted.
 wires `revoke` (ADR-150), and `cleanup_retry` is wired beside it, closing the
 row reallocated to G10 (its old G2/G5 ids are dead: G2 closed 2026-09-14, G5
 revised to G5a and closed by the recover-dispatch route). The refusal half
-(`reject`, a `Pending`-only refusal) remains open; its own spec slice still
-carries the owed lines legitimately.
+(`reject`, a `Pending`-only refusal) closed 2026-09-15 too —
+`console/agents.rs:264` per its row — and no spec slice carries an owed line
+any more: the checker reads count 43, wired 43, owed [].
 
 **Correction to the brief (twice revised)**: the crash-reconciliation
 BEHAVIOUR is production-reached, and the duplicate-effect clause of the DoD is
@@ -292,8 +293,8 @@ reasoning stands.
 | `claim_verified_task_notice` | domain/notice_custody.rs:99 | facade domain_worker.rs:1780 is the only production-source hit and is its own body; the wired notice lane enters through `begin_verified_task_notice_send` / `validate_verified_task_notice_send` ← hagency-matrix/src/outgoing.rs:266,438 | **superseded-by** the verified notice lane |
 | `deliver_verified_task_notice` | domain/notice_custody.rs:190 | facade domain_worker.rs:1828 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
 | `cancel_verified_task_notice` | domain/notice_custody.rs:232 | facade domain_worker.rs:1806 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
-| `reject` | domain.rs:1257 | now called from production | **closed G10 (refusal half)** (2026-09-15): hagency/src/console/agents.rs:264 — `POST /console/api/agents/{id}/refuse` under `Scope::AgentLifecycle`, operator-triggered only, matching the retained verdict route's else-branch; the G10 retire half (`revoke`, row below) stays open as its own slice |
-| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), in production | **closed G10 (retire half)** (2026-09-15): `hagency::console::engagements::retire` — `POST /console/api/engagements/{id}/retire` under `Scope::AgentLifecycle`, per ADR-150; the `reject` refusal half of G10 stays open (its spec slice still carries the owed lines) |
+| `reject` | domain.rs:1257 | now called from production | **closed G10 (refusal half)** (2026-09-15): hagency/src/console/agents.rs:264 — `POST /console/api/agents/{id}/refuse` under `Scope::AgentLifecycle`, operator-triggered only, matching the retained verdict route's else-branch; the G10 retire half (`revoke`, row below) closed the same day through `console/engagements::retire` |
+| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), in production | **closed G10 (retire half)** (2026-09-15): `hagency::console::engagements::retire` — `POST /console/api/engagements/{id}/retire` under `Scope::AgentLifecycle`, per ADR-150; the `reject` refusal half of G10 closed the same day (`console/agents.rs:264`, row above) |
 
 Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 (`hagency/src/runner.rs:416`); the remaining candidate names are read APIs
