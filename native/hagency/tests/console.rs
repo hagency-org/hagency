@@ -23,6 +23,8 @@ mod origin;
 mod project_sides;
 #[path = "console/real_agent.rs"]
 mod real_agent;
+#[path = "console/registration.rs"]
+mod registration;
 #[path = "console/resources.rs"]
 mod resources;
 #[path = "console/status_strip.rs"]

@@ -13,12 +13,14 @@
 //! server-owned `unavailable` list names every retained column native has
 //! no source for, rendered as unknown by the page — never zero, never
 //! invented.
-use super::{Error, failed, recheck, usage::query};
+use super::engagements::check_lifecycle;
+use super::{Error, body, failed, recheck, usage::query};
 use crate::{refusal, resources::domain};
+use hagency_core::authority::Registration;
 use salvo::prelude::*;
 
 pub(super) fn router() -> Router {
-    Router::with_path("project-sides").get(list)
+    Router::with_path("project-sides").get(list).post(save)
 }
 
 /// Every retained `publicSide` column native has no source for in this
@@ -80,9 +82,59 @@ async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
 fn store_error(res: &mut Response, error: hagency_store::Error) {
     let (status, code) = match error {
         hagency_store::Error::Invalid(_) => (StatusCode::BAD_REQUEST, "invalid_side_query"),
+        hagency_store::Error::Generation => (StatusCode::CONFLICT, "stale_generation"),
         hagency_store::Error::Busy => (StatusCode::SERVICE_UNAVAILABLE, "busy"),
         hagency_store::Error::OutcomeUnknown => (StatusCode::GATEWAY_TIMEOUT, "outcome_unknown"),
         _ => (StatusCode::SERVICE_UNAVAILABLE, "sides_unavailable"),
     };
     refusal(res, status, code);
+}
+
+/// The operator's fleet registration (G11, spec
+/// `task-rust-project-side-registration`): the retained `POST /api/project-sides`
+/// shape on the console API, gated by the same `Scope::AgentLifecycle` the
+/// lifecycle mutations use. The store owns every guarantee — shape validation,
+/// the identical-content no-op, the stale-generation refusal, the rotate-and-
+/// reconcile on advance; the route adds no guard of its own and renders the
+/// saved record's own fields, never the operator token.
+#[handler]
+async fn save(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let raw = match body(req, 4 * 1024).await {
+        Ok(raw) => raw,
+        Err(_) => {
+            failed(res, Error::Invalid);
+            return;
+        }
+    };
+    let registration: Registration = match serde_json::from_slice(&raw) {
+        Ok(registration) => registration,
+        Err(_) => {
+            failed(res, Error::Invalid);
+            return;
+        }
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.register(registration.clone()).await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    match result {
+        Ok(()) => res.render(Json(serde_json::json!({
+            "ok": true,
+            "side": {
+                "id": registration.fleet_id,
+                "generation": registration.generation,
+                "server_name": registration.server_name,
+                "reception_room_id": registration.reception_room_id,
+                "representative": registration.representative_mxid,
+            },
+        }))),
+        Err(error) => store_error(res, error),
+    }
 }

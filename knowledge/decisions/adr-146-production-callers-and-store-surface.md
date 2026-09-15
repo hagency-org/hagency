@@ -224,8 +224,12 @@ neither had a production caller. The retire half closed 2026-09-15 (see the
 status below); the refusal half (`reject`) remains open. G11 — no production path registers a project
 side, though `register` is the sole writer of that table outside tests. Both are
 parity gaps against the retained product, which exposes operator routes for all
-three acts; their spec slices carry `Production caller: owed (G10)` and `owed
-(G11)` until the code exists.
+three acts. **G11 status 2026-09-15: closed** — two production callers landed:
+`hagency::bootstrap::registration::run` (the CLI `Registration` subcommand) and
+`hagency::console::project_sides::save` (the POST route behind the shared
+`Scope::AgentLifecycle` check), both calling the facade `DomainStore::register`
+(`domain_worker.rs:2842`); the spec slice's `Production caller:` lines now name
+them, and the wiring audit's open set is the G10 refusal half alone.
 **G10 status 2026-09-15: the retire half is closed** — `hagency::console::engagements::retire`
 wires `revoke` (ADR-150), and `cleanup_retry` is wired beside it, closing the
 row reallocated to G10 (its old G2/G5 ids are dead: G2 closed 2026-09-14, G5
@@ -283,7 +287,7 @@ reasoning stands.
 | `record_late_output` | domain/execution.rs:982 | now called from production | **closed G12** (2026-09-15): hagency/src/runner/completion.rs (the `late` handler, `POST /api/native/v1/runner/late-output`), registered on the routed runner surface beside `complete-task-with-reply` — outside the Check hoop by design (Check authorizes only `started`, which would refuse the arrival [REQ-TSS-FENCE] says MUST be recorded); the store's own attempt-row authentication, no-clock property and `accepted=0` verdict are unchanged |
 | `enqueue_inbox_dispatch` | domain/messages.rs:283 | **superseded-by** `select_receive_inbox` → `select_receive` (messages.rs:647, which performs the `enqueue_inbox` write at :703/:741) ← `hagency/src/bootstrap/inbox.rs:31`; the direct facade is a stale variant | superseded |
 | `create_canonical_task` | domain/execution.rs:679 | facade domain_worker.rs:2194 (self-call :2202) has no production caller; every candidate is test-enclosed — domain_worker.rs:428 and :710 in `mod clock_tests` (:354-1389), domain/accounts.rs:1301 in `mod tests` (:1154-1425), hagency/src/bootstrap/driver.rs:445 in `mod tests` (:378-691). The write is real: the body reaches the `canonical_tasks` insert | **retained, dead** (2026-09-15, decision reversed): deletion was attempted and abandoned on rate evidence — the surface is 70 hits across 54 files, only four outside `tests/`, and the substitute is not drop-in because each conversion re-implements the delegation ceremony. Roughly two hours of conversion produced one partially-converted test, still red on dispatch mechanics; ~50 test files use it legitimately as a fixture primitive. It is dead surface with no runtime cost and no correctness or security exposure, so it is retained and recorded as dead rather than carrying a deletion decision it will not receive. |
-| `register` | domain.rs:730 | facade domain_worker.rs:2842 has no production caller; the `.register(` hits outside the store are a DIFFERENT type (`workspace.register` ← hagency/src/bootstrap/driver.rs:299, workspace.rs:68), and the in-store hits are test-enclosed (domain_worker.rs:373 and :1317 in `mod clock_tests`, accounts.rs:1280 in `mod tests`) | gap G11 (project-side registration) |
+| `register` | domain.rs:730 | **wired 2026-09-15**: two production callers — `hagency::bootstrap::registration::run` (the CLI `Registration` subcommand, `main.rs`, calling the facade `DomainStore::register` `domain_worker.rs:2842`) and `hagency::console::project_sides::save` (the POST route gated by the shared `Scope::AgentLifecycle` check). The old `.register(` trap still holds: the other hits are a DIFFERENT type (`workspace.register`) and the in-store hits are test-enclosed | closed — G11 wired (project-side registration) |
 | `claim_verified_task_notice` | domain/notice_custody.rs:99 | facade domain_worker.rs:1780 is the only production-source hit and is its own body; the wired notice lane enters through `begin_verified_task_notice_send` / `validate_verified_task_notice_send` ← hagency-matrix/src/outgoing.rs:266,438 | **superseded-by** the verified notice lane |
 | `deliver_verified_task_notice` | domain/notice_custody.rs:190 | facade domain_worker.rs:1828 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
 | `cancel_verified_task_notice` | domain/notice_custody.rs:232 | facade domain_worker.rs:1806 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |

@@ -44,7 +44,7 @@ fn store_error(res: &mut Response, error: hagency_store::Error) {
 
 /// The lifecycle gate shared with the agents mutations: any authenticated
 /// session may read, only `Scope::AgentLifecycle` may decide a retirement.
-fn check_lifecycle(depot: &Depot, res: &mut Response) -> bool {
+pub(super) fn check_lifecycle(depot: &Depot, res: &mut Response) -> bool {
     let session = match depot.get_typed::<Session>() {
         Ok(session) => session,
         Err(_) => {
