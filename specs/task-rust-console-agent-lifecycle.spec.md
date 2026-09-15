@@ -98,7 +98,7 @@ Scenario: Operator recovery resumes an orphaned dispatch exactly once
   Test: native_console_agent_recover_dispatch_recovers_orphan
   Level: integration
   Test Double: a settled orphan dispatch with held lease quarantined session and dirty workspace
-  Production caller: POST /console/api/agents/{id}/recover-dispatch (console/agents.rs) under Scope::AgentLifecycle calls DomainStore::recover_dispatch; the operator supplies the stopped-owner and workspace-inspection evidence and the store clears the lease quarantine and dirty state supersedes the orphan enqueues the replacement and writes dispatch_recoveries with the evidence
+  Production caller: hagency::console::agents::recover_dispatch
   Given an engagement whose dispatch was settled to the orphan state with its lease held session quarantined and workspace dirty
   When a read-only session posts recovery and then a lifecycle operator posts recovery with evidence
   Then the read-only post is refused before any row changes
