@@ -137,6 +137,27 @@ Scenario: The admitted engagement's project room binds a session route
   Then the matrix_session_routes row binds the project room to the configured session id so the intake plan's session resolves
   Production caller: hagency_matrix::intake::Inner::approve_provision
 
+Scenario: A verdict from a non-representative sender is refused fail-closed
+  Test: native_provisioning_approval_refuses_a_non_representative_verdict
+  Given an admitted engagement pending provider approval and a verdict event whose sender is not the fleet's representative
+  When the intake handoff processes the verdict
+  Then the verdict is refused with the named quarantine reason, and no effects row and no matrix_session_routes row exist for the engagement
+  Production caller: hagency_matrix::intake::Inner::approve_provision
+
+Scenario: A verdict naming an unknown request id is refused fail-closed
+  Test: native_provisioning_approval_refuses_an_unknown_request_id
+  Given a verdict event naming a request id with no admitted engagement
+  When the intake handoff processes the verdict
+  Then the verdict is refused with the named quarantine reason at the evidence read, and no engagement, effects, or matrix_session_routes row is created for it
+  Production caller: hagency_matrix::intake::Inner::approve_provision
+
+Scenario: A second verdict for the same request id replays the recorded decision
+  Test: native_provisioning_approval_replays_a_second_verdict
+  Given an admitted and approved engagement and a second identical verdict event for the same request id
+  When the intake handoff processes the second verdict
+  Then the recorded decision replays with exactly one effects row in kind=provision state=complete and exactly one matrix_session_routes row for the engagement, and no duplicate is created
+  Production caller: hagency_matrix::intake::Inner::approve_provision
+
 ## Out of Scope
 
 The provider-approval verdict surface itself (already owned by the
