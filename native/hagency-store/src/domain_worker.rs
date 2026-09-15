@@ -2880,7 +2880,7 @@ impl DomainStore {
         &self,
         fleet_id: String,
         request_id: String,
-    ) -> Result<Option<(String, String)>, Error> {
+    ) -> Result<Option<(String, String, String)>, Error> {
         self.call(weight(&(&fleet_id, &request_id))?, move |db| {
             db.provisioning_request_evidence(&fleet_id, &request_id)
         })

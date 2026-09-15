@@ -285,7 +285,7 @@ impl Inner {
     async fn approve_provision(
         &self,
         msg: &hagency_core::messages::InboundMessage,
-    ) -> Result<(), Error> {
+    ) -> Result<bool, Error> {
         let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
         if body.get("decision").and_then(serde_json::Value::as_str) != Some("approve") {
             return Err(Error::Wire);
@@ -305,7 +305,9 @@ impl Inner {
         if msg.sender_mxid != reg.representative_mxid {
             return Err(Error::Wire);
         }
-        let (context, evidence) = self
+        // A non-pending engagement state means the verdict was already decided:
+        // the identical re-delivery is a replay, not a fresh reservation.
+        let (context, evidence, prior_state) = self
             .domain
             .provisioning_request_evidence(reg.fleet_id.clone(), request_id.to_owned())
             .await
@@ -452,7 +454,10 @@ impl Inner {
                 thread_root: None,
             })
             .await?;
-        Ok(())
+        // prior_state was captured before approve: 'pending' marks a fresh
+        // verdict; anything else means replay_decision returned the recorded
+        // engagement, so the handoff counts this as a replay.
+        Ok(prior_state == "pending")
     }
     /// The in-memory authority facts for a verify-only room, fetched from
     /// /state on demand when the collector has not observed the room yet.
@@ -636,7 +641,7 @@ impl Inner {
             // ADR-095: the request event mints via admit; the provider's
             // approval event is the separate verdict that reserves via approve.
             let result = if msg.kind == "com.hagency.engagement.approval.v1" {
-                self.approve_provision(&msg).await.map(|_| true)
+                self.approve_provision(&msg).await
             } else {
                 self.provision(&msg).await.map(|(_e, created)| created)
             };

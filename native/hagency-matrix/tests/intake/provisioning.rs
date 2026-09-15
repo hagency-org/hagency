@@ -99,9 +99,15 @@ fn request_event(event_id: &str, body: String) -> Value {
 /// the request id it approves (ADR-095: the verdict is the separate `approve`
 /// write, never folded into the mint).
 fn approval_event(event_id: &str, request_id: &str) -> Value {
+    approval_event_from(event_id, request_id, &representative())
+}
+
+/// The approval event with an explicit sender — the fail-closed refusal tests
+/// drive verdicts from a sender that is not the fleet's representative.
+fn approval_event_from(event_id: &str, request_id: &str, sender: &str) -> Value {
     json!({
         "event_id": event_id,
-        "sender": representative(),
+        "sender": sender,
         "type": "m.room.message",
         "origin_server_ts": now(),
         "content": {
@@ -122,6 +128,20 @@ fn effect_row(f: &common::Fixture) -> Option<(String, String)> {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .ok()
+}
+
+/// The number of session-route rows bound to the request_one engagement's
+/// project room (0 before the verdict, exactly 1 after; a refused or replayed
+/// verdict must never add a second).
+fn route_rows(f: &common::Fixture) -> u64 {
+    rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
+        .unwrap()
+        .query_row(
+            "SELECT COUNT(*) FROM matrix_session_routes r JOIN runner_sessions s ON s.id=r.session_id JOIN engagements e ON e.id=s.engagement_id WHERE e.request_id='request_one'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap()
 }
 
 fn provisioning_sync(token: &str, events: Vec<Value>) -> Value {
@@ -268,6 +288,28 @@ async fn run_provisioning(
         fake.next().await.json(200, session_state());
         fake.next().await.json(200, reception_state());
         fake.next().await.json(200, project_state());
+    })
+    .await;
+    result
+}
+
+/// The approval-only variant of `run_provisioning`: a verdict for an unknown
+/// request id is refused at the evidence read, before any target-room /state
+/// fetch, so the script answers only the session and reception rooms.
+async fn run_approval_only(
+    c: &Collector,
+    fake: &mut common::Fake,
+    value: Value,
+) -> Result<IntakeSummary, Error> {
+    let cancel = CancellationToken::new();
+    let intake = c.intake(plan(), &cancel);
+    let (result, ()) = common::scripted(intake, async {
+        fake.next().await.json(200, common::who());
+        let request = fake.next().await;
+        assert!(request.target.contains("sync?"));
+        request.json(200, value);
+        fake.next().await.json(200, session_state());
+        fake.next().await.json(200, reception_state());
     })
     .await;
     result
@@ -510,5 +552,90 @@ async fn native_provisioning_session_route() {
         Some(PROJECT),
         "expected a session route binding the provisioned project room"
     );
+    c.close().await.unwrap();
+}
+
+/// A verdict from anyone but the fleet's representative is refused fail-closed:
+/// approve_provision's sender check (intake.rs:301-304) rejects the event, the
+/// handoff quarantines with the verification reason, and nothing is reserved.
+#[tokio::test]
+async fn native_provisioning_approval_refuses_a_non_representative_verdict() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let result = run_provisioning(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![
+                request_event("$request_one", request_body("request_one", 250)),
+                approval_event_from("$approval_one", "request_one", "@intruder:example.test"),
+            ],
+        ),
+    )
+    .await;
+    assert_eq!(result, Err(Error::Generation));
+    assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
+    assert_eq!(effect_row(&f), None, "no effect row for the refused verdict");
+    assert_eq!(route_rows(&f), 0, "no session route for the refused verdict");
+    assert!(f.available().await);
+    c.close().await.unwrap();
+}
+
+/// A verdict naming a request id with no admitted engagement is refused
+/// fail-closed: approve_provision's evidence read finds nothing
+/// (.ok_or(Error::Wire) at intake.rs:307-310), the handoff quarantines, and no
+/// engagement/effect/route row is created for it.
+#[tokio::test]
+async fn native_provisioning_approval_refuses_an_unknown_request_id() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let before_effects = rows(&f, "effects");
+    let before_routes = rows(&f, "matrix_session_routes");
+    let result = run_approval_only(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![approval_event("$approval_one", "no_such_request")],
+        ),
+    )
+    .await;
+    assert_eq!(result, Err(Error::Generation));
+    assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
+    assert_eq!(rows(&f, "effects"), before_effects);
+    assert_eq!(rows(&f, "matrix_session_routes"), before_routes);
+    assert!(f.available().await);
+    c.close().await.unwrap();
+}
+
+/// A second verdict for the same request id replays the recorded decision:
+/// exactly one effect row remains in ('provision','complete'), no duplicate
+/// engagement/effect/route is created, and the handoff counts it as a replay.
+#[tokio::test]
+async fn native_provisioning_approval_replays_a_second_verdict() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let before_effects = rows(&f, "effects");
+    let before_routes = rows(&f, "matrix_session_routes");
+    let before_engagements = rows(&f, "engagements");
+    let summary = run_provisioning(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![
+                request_event("$request_one", request_body("request_one", 250)),
+                approval_event("$approval_one", "request_one"),
+                approval_event("$approval_two", "request_one"),
+            ],
+        ),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
+    assert_eq!(summary.admitted, 2);
+    assert_eq!(summary.replayed, 1);
+    assert_eq!(rows(&f, "engagements"), before_engagements + 1);
+    assert_eq!(rows(&f, "effects"), before_effects + 1);
+    assert_eq!(rows(&f, "matrix_session_routes"), before_routes + 1);
+    assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
+    assert_eq!(route_rows(&f), 1);
     c.close().await.unwrap();
 }

@@ -282,15 +282,15 @@ impl DomainRepository {
         &self,
         fleet_id: &str,
         request_id: &str,
-    ) -> Result<Option<(String, String)>, Error> {
+    ) -> Result<Option<(String, String, String)>, Error> {
         identifier(fleet_id, 128)?;
         identifier(request_id, 128)?;
         Ok(self
             .db
             .query_row(
-                "SELECT context,evidence FROM engagements WHERE fleet_id=?1 AND request_id=?2",
+                "SELECT context,evidence,state FROM engagements WHERE fleet_id=?1 AND request_id=?2",
                 params![fleet_id, request_id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
             )
             .optional()?)
     }
