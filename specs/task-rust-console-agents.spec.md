@@ -81,6 +81,13 @@ Scenario: The agent roster page renders under the native browser boundary
   When real Chromium opens /console/agents without any operator token
   Then the roster reaches data-native-state ready with no external request and no credential value on screen
 
+Scenario: The roster shows an agent whose engagement was minted by the production ingress
+  Test: native_console_roster_shows_an_ingress_provisioned_agent
+  Given a production intake that admitted a com.hagency.engagement.request.v1 event and a representative verdict that made the engagement effective and bound its session route
+  When the operator lists the agent roster through the real GET /console/api/agents route
+  Then the roster carries an item whose engagement_id is the engagement the store minted by request_id (never seeded), and the engagements row, the effects row in kind=provision state=complete, and the matrix_session_routes row for that engagement all exist
+  Production caller: hagency::console::agents::list
+
 ## Out of Scope
 
 The agent lifecycle (start/stop/preset behind a finite scope), a CLI read via an

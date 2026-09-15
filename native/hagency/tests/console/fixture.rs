@@ -11,9 +11,10 @@ use std::{
     path::Path,
     time::{SystemTime, UNIX_EPOCH},
 };
-
-#[path = "../../../hagency-store/tests/common/mod.rs"]
-pub mod common;
+// The O2 proof loads the store's common fixture through the matrix fixture
+// (native/hagency-matrix/tests/common); re-export it here so both surfaces
+// share one module instance instead of loading the same file twice.
+pub use super::real_agent::matrix_common::domain as common;
 pub const TOKEN: &str = "fixture_operator_token_32_bytes_minimum";
 pub const BASE: &str = "http://127.0.0.1:13300";
 pub fn now() -> u64 {
