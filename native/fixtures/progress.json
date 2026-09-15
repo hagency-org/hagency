@@ -1,0 +1,5065 @@
+{
+  "hashes": {
+    "lib/progress-filter.js": "b01b5af277c8c6763e4acbe775eb1ec4079b5baac1173e81198227ac6c1da62d",
+    "bin/hagency-progress": "5cb509fc23dd4a93d89841f04170491fbd729e8ba47328c438617b5cc100ed99",
+    "scripts/hagency-acp-agent.mjs": "8c61339ab76461230a4c07d514c3487410afc8047bf5f2f0c1de5f7705817084"
+  },
+  "vectors": [
+    {
+      "operation": "filter",
+      "input": {
+        "raw": null,
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "default"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": null,
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "default"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {},
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {},
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            " start ",
+            "done"
+          ]
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            " start ",
+            "done"
+          ]
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            "unknown"
+          ]
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "unknown"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            "unknown"
+          ]
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "unknown"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": null
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": null
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": []
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": [],
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": []
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": [],
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read",
+              "Bash"
+            ],
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": [
+              "Read",
+              "Bash"
+            ],
+            "exclude": [
+              "Bash"
+            ]
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read",
+              "Bash"
+            ],
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": [
+              "Read",
+              "Bash"
+            ],
+            "exclude": [
+              "Bash"
+            ]
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": null
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": null
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 0
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 5000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 0
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 5000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 1.5
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 5000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 1.5
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 5000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 5000.5
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 5000.5,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 5000.5
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 5000.5,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 120000
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 120000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": 120000
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 120000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": "done"
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "events must be an array of non-empty strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": "done"
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "events must be an array of non-empty strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            ""
+          ]
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "events must be an array of non-empty strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            ""
+          ]
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "events must be an array of non-empty strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            3
+          ]
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "events must be an array of non-empty strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            3
+          ]
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "events must be an array of non-empty strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": []
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": []
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": null
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": null
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": "Read"
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools.include must be an array of strings or null"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": "Read"
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools.include must be an array of strings or null"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": "Bash"
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools.exclude must be an array of strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": "Bash"
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "tools.exclude must be an array of strings"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": []
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "perGroup is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": []
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "perGroup is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": null
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "perGroup is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": null
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "perGroup is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": -1
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "minIntervalMs must be a non-negative number"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": -1
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "minIntervalMs must be a non-negative number"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": "60s"
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "minIntervalMs must be a non-negative number"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "minIntervalMs": "60s"
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "minIntervalMs must be a non-negative number"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": [],
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "filter is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": [],
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "filter is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": "bad",
+        "group": null
+      },
+      "expected": {
+        "ok": false,
+        "reason": "filter is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": "bad",
+        "group": "customer"
+      },
+      "expected": {
+        "ok": false,
+        "reason": "filter is not an object"
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          },
+          "perGroup": {
+            "customer": {
+              "events": [
+                "step"
+              ]
+            }
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": [
+              "Bash"
+            ]
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          },
+          "perGroup": {
+            "customer": {
+              "events": [
+                "step"
+              ]
+            }
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "step"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "perGroup:customer"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ],
+          "perGroup": {
+            "customer": {
+              "events": [
+                "start"
+              ],
+              "minIntervalMs": 10000
+            }
+          }
+        },
+        "group": null
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      }
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ],
+          "perGroup": {
+            "customer": {
+              "events": [
+                "start"
+              ],
+              "minIntervalMs": 10000
+            }
+          }
+        },
+        "group": "customer"
+      },
+      "expected": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 10000,
+          "source": "perGroup:customer"
+        }
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "start",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "SessionStart",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "Stop",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "done",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "PostToolUse",
+        "tool": "Read"
+      },
+      "expected": {
+        "report": true,
+        "kind": "step",
+        "verb": "read"
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "PostToolUse",
+        "tool": "Bash"
+      },
+      "expected": {
+        "report": true,
+        "kind": "step",
+        "verb": "ran commands"
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "future",
+        "tool": "PrivateCustomerTool"
+      },
+      "expected": {
+        "report": true,
+        "kind": "step",
+        "verb": "worked"
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "PostToolUse",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": null,
+        "event": "PostToolUse",
+        "tool": 42
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "start",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "SessionStart",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "Stop",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "done",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "PostToolUse",
+        "tool": "Read"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "PostToolUse",
+        "tool": "Bash"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "future",
+        "tool": "PrivateCustomerTool"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "PostToolUse",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ]
+        },
+        "event": "PostToolUse",
+        "tool": 42
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "start",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "SessionStart",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "Stop",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "done",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": "Read"
+      },
+      "expected": {
+        "report": true,
+        "kind": "step",
+        "verb": "read"
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": "Bash"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "future",
+        "tool": "PrivateCustomerTool"
+      },
+      "expected": {
+        "report": true,
+        "kind": "step",
+        "verb": "worked"
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "exclude": [
+              "Bash"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": 42
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "start",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "SessionStart",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "Stop",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "done",
+        "tool": null
+      },
+      "expected": {
+        "report": true,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": "Read"
+      },
+      "expected": {
+        "report": true,
+        "kind": "step",
+        "verb": "read"
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": "Bash"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "future",
+        "tool": "PrivateCustomerTool"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "tools": {
+            "include": [
+              "Read"
+            ]
+          }
+        },
+        "event": "PostToolUse",
+        "tool": 42
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "start",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "SessionStart",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "start",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "Stop",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "done",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "done",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "PostToolUse",
+        "tool": "Read"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "PostToolUse",
+        "tool": "Bash"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "future",
+        "tool": "PrivateCustomerTool"
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "PostToolUse",
+        "tool": null
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "decision",
+      "input": {
+        "raw": {
+          "events": []
+        },
+        "event": "PostToolUse",
+        "tool": 42
+      },
+      "expected": {
+        "report": false,
+        "kind": "step",
+        "verb": null
+      }
+    },
+    {
+      "operation": "verb",
+      "input": "Read",
+      "expected": "read"
+    },
+    {
+      "operation": "verb",
+      "input": "Glob",
+      "expected": "searched"
+    },
+    {
+      "operation": "verb",
+      "input": "Grep",
+      "expected": "searched"
+    },
+    {
+      "operation": "verb",
+      "input": "Bash",
+      "expected": "ran commands"
+    },
+    {
+      "operation": "verb",
+      "input": "Edit",
+      "expected": "edited"
+    },
+    {
+      "operation": "verb",
+      "input": "Write",
+      "expected": "wrote"
+    },
+    {
+      "operation": "verb",
+      "input": "NotebookEdit",
+      "expected": "edited"
+    },
+    {
+      "operation": "verb",
+      "input": "WebFetch",
+      "expected": "fetched"
+    },
+    {
+      "operation": "verb",
+      "input": "WebSearch",
+      "expected": "searched"
+    },
+    {
+      "operation": "verb",
+      "input": "PrivateTool",
+      "expected": "worked"
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "read",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "Read"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "search",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "Grep"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "execute",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "Bash"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "edit",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "Edit"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "delete",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "Edit"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "move",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "Edit"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "fetch",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "WebFetch"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "think",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "other",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call",
+        "kind": "future",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": {
+          "event": "PostToolUse",
+          "tool": "AcpTool"
+        },
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "read",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "search",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "execute",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "edit",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "delete",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "move",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "fetch",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "think",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "other",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "kind": "future",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "read",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "search",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "execute",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "edit",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "delete",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "move",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "fetch",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "think",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "other",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "agent_message_chunk",
+        "kind": "future",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "read",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "search",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "execute",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "edit",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "delete",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "move",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "fetch",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "think",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "other",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "plan",
+        "kind": "future",
+        "status": "failed",
+        "toolCallId": "call-1",
+        "title": "SECRET /private/customer/.env",
+        "rawInput": {
+          "token": "SECRET"
+        },
+        "error": "SECRET"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": "failed"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": "FAILED"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": "Failed"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": true
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": "completed"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": "pending"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": "in_progress"
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": " failed "
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": null
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": 42
+      },
+      "expected": {
+        "mapped": null,
+        "failed": false
+      }
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "start",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "started"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": null
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": null
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": null
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "1 failed attempt"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "1 failed attempt"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "1 failed attempt"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "3 failed attempts"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "3 failed attempts"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "3 failed attempts"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "read"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "read"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "read"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "read, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "read, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "read, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "read, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "read, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "read, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "worked ×16"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "worked ×16"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "worked ×16"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "worked ×16, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "worked ×16, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "worked ×16, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "worked ×16, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "worked ×16, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "worked ×16, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "wrote, read ×3"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "wrote, read ×3"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "wrote, read ×3"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "wrote, read ×3, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "wrote, read ×3, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "wrote, read ×3, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "wrote, read ×3, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "wrote, read ×3, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "step",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "wrote, read ×3, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "finished"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "finished"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "finished"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "finished, but nothing succeeded — 1 failed attempt"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "finished, but nothing succeeded — 1 failed attempt"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "finished, but nothing succeeded — 1 failed attempt"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "finished, but nothing succeeded — 3 failed attempts"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "finished, but nothing succeeded — 3 failed attempts"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "finished, but nothing succeeded — 3 failed attempts"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "finished — read"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "finished — read, but sent nothing"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "finished — read"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "finished — read, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "finished — read, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "finished — read, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "finished — read, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "finished — read, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "read",
+            1
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "finished — read, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "finished — worked ×16"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "finished — worked ×16, but sent nothing"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "finished — worked ×16"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "finished — worked ×16, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "finished — worked ×16, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "finished — worked ×16, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "finished — worked ×16, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "finished — worked ×16, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "worked",
+            16
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "finished — worked ×16, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": null
+      },
+      "expected": "finished — wrote, read ×3"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": 0
+      },
+      "expected": "finished — wrote, read ×3, but sent nothing"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 0,
+        "delivered": 2
+      },
+      "expected": "finished — wrote, read ×3"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": null
+      },
+      "expected": "finished — wrote, read ×3, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": 0
+      },
+      "expected": "finished — wrote, read ×3, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 1,
+        "delivered": 2
+      },
+      "expected": "finished — wrote, read ×3, 1 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": null
+      },
+      "expected": "finished — wrote, read ×3, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": 0
+      },
+      "expected": "finished — wrote, read ×3, 3 failed"
+    },
+    {
+      "operation": "summary",
+      "input": {
+        "kind": "done",
+        "pairs": [
+          [
+            "wrote",
+            1
+          ],
+          [
+            "read",
+            3
+          ]
+        ],
+        "failures": 3,
+        "delivered": 2
+      },
+      "expected": "finished — wrote, read ×3, 3 failed"
+    },
+    {
+      "operation": "hook_series",
+      "input": [
+        {
+          "event": "start",
+          "now": 1000000,
+          "accepted": true
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Read",
+          "now": 1000001,
+          "accepted": true
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Bash",
+          "now": 1060000,
+          "accepted": true
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Write",
+          "now": 1060001,
+          "accepted": true
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Read",
+          "now": 1120000,
+          "accepted": true
+        }
+      ],
+      "expected": [
+        {
+          "emitted": "⏳ started",
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {}
+          }
+        },
+        {
+          "emitted": null,
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {
+              "read": 1
+            }
+          }
+        },
+        {
+          "emitted": "⏳ read, ran commands",
+          "state": {
+            "lastSentAt": 1060000,
+            "counts": {}
+          }
+        },
+        {
+          "emitted": null,
+          "state": {
+            "lastSentAt": 1060000,
+            "counts": {
+              "wrote": 1
+            }
+          }
+        },
+        {
+          "emitted": "⏳ wrote, read",
+          "state": {
+            "lastSentAt": 1120000,
+            "counts": {}
+          }
+        }
+      ]
+    },
+    {
+      "operation": "hook_series",
+      "input": [
+        {
+          "event": "PostToolUse",
+          "tool": "Read",
+          "now": 1000000,
+          "accepted": false
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Read",
+          "now": 1000001,
+          "accepted": false
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Bash",
+          "now": 1060000,
+          "accepted": true
+        }
+      ],
+      "expected": [
+        {
+          "emitted": "⏳ read",
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {
+              "read": 1
+            }
+          }
+        },
+        {
+          "emitted": null,
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {
+              "read": 2
+            }
+          }
+        },
+        {
+          "emitted": "⏳ read ×2, ran commands",
+          "state": {
+            "lastSentAt": 1060000,
+            "counts": {}
+          }
+        }
+      ]
+    },
+    {
+      "operation": "hook_series",
+      "input": [
+        {
+          "event": "start",
+          "now": 1000000,
+          "accepted": true
+        },
+        {
+          "event": "PostToolUse",
+          "tool": "Read",
+          "now": 1000001,
+          "accepted": true
+        },
+        {
+          "event": "Stop",
+          "now": 1000002,
+          "accepted": true
+        }
+      ],
+      "expected": [
+        {
+          "emitted": "⏳ started",
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {}
+          }
+        },
+        {
+          "emitted": null,
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {
+              "read": 1
+            }
+          }
+        },
+        {
+          "emitted": "⏳ finished — read",
+          "state": {
+            "lastSentAt": 1000002,
+            "counts": {}
+          }
+        }
+      ]
+    },
+    {
+      "operation": "acp_finish",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "c"
+          },
+          {
+            "sessionUpdate": "tool_call_update",
+            "status": "completed",
+            "toolCallId": "c"
+          }
+        ],
+        "delivered": null
+      },
+      "expected": "⏳ finished — read"
+    },
+    {
+      "operation": "acp_finish",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "c"
+          },
+          {
+            "sessionUpdate": "tool_call_update",
+            "status": "completed",
+            "toolCallId": "c"
+          }
+        ],
+        "delivered": 0
+      },
+      "expected": "⏳ finished — read, but sent nothing"
+    },
+    {
+      "operation": "acp_finish",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "c"
+          },
+          {
+            "sessionUpdate": "tool_call_update",
+            "status": "completed",
+            "toolCallId": "c"
+          }
+        ],
+        "delivered": 1
+      },
+      "expected": "⏳ finished — read"
+    },
+    {
+      "operation": "acp_finish",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "already-complete",
+            "status": "completed"
+          }
+        ],
+        "delivered": null
+      },
+      "expected": "⏳ finished — read"
+    }
+  ],
+  "corrections": [
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": {
+            "customer": null
+          }
+        },
+        "group": "customer"
+      },
+      "legacy": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      },
+      "native": {
+        "error": "selected perGroup rule is not an object"
+      },
+      "rationale": "An explicitly malformed selected rule must not widen publication by falling back."
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": {
+            "customer": []
+          }
+        },
+        "group": "customer"
+      },
+      "legacy": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      },
+      "native": {
+        "error": "selected perGroup rule is not an object"
+      },
+      "rationale": "An explicitly malformed selected rule must not widen publication by falling back."
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": {
+            "customer": false
+          }
+        },
+        "group": "customer"
+      },
+      "legacy": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      },
+      "native": {
+        "error": "selected perGroup rule is not an object"
+      },
+      "rationale": "An explicitly malformed selected rule must not widen publication by falling back."
+    },
+    {
+      "operation": "filter",
+      "input": {
+        "raw": {
+          "perGroup": {
+            "customer": "broken"
+          }
+        },
+        "group": "customer"
+      },
+      "legacy": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "file"
+        }
+      },
+      "native": {
+        "error": "selected perGroup rule is not an object"
+      },
+      "rationale": "An explicitly malformed selected rule must not widen publication by falling back."
+    },
+    {
+      "operation": "verb",
+      "input": "constructor",
+      "legacy": {
+        "type": "function"
+      },
+      "native": "worked",
+      "rationale": "Inherited JavaScript object properties are not vetted verbs."
+    },
+    {
+      "operation": "verb",
+      "input": "toString",
+      "legacy": {
+        "type": "function"
+      },
+      "native": "worked",
+      "rationale": "Inherited JavaScript object properties are not vetted verbs."
+    },
+    {
+      "operation": "verb",
+      "input": "__proto__",
+      "legacy": {
+        "type": "object"
+      },
+      "native": "worked",
+      "rationale": "Inherited JavaScript object properties are not vetted verbs."
+    },
+    {
+      "operation": "acp",
+      "input": {
+        "sessionUpdate": "tool_call_update",
+        "status": [
+          "failed"
+        ]
+      },
+      "legacy": {
+        "failed": true
+      },
+      "native": {
+        "failed": false
+      },
+      "rationale": "A malformed non-string status is not failure evidence."
+    },
+    {
+      "operation": "finished_totals",
+      "input": [
+        {
+          "event": "PostToolUse",
+          "tool": "Read",
+          "now": 1000000,
+          "accepted": true
+        },
+        {
+          "event": "Stop",
+          "now": 1000001,
+          "accepted": true
+        }
+      ],
+      "legacy": [
+        {
+          "emitted": "⏳ read",
+          "state": {
+            "lastSentAt": 1000000,
+            "counts": {}
+          }
+        },
+        {
+          "emitted": "⏳ finished",
+          "state": {
+            "lastSentAt": 1000001,
+            "counts": {}
+          }
+        }
+      ],
+      "native": "⏳ finished — read",
+      "rationale": "Finish describes the whole run even when earlier progress snapshots were accepted."
+    },
+    {
+      "operation": "failed_call",
+      "input": [
+        {
+          "sessionUpdate": "tool_call",
+          "kind": "read",
+          "toolCallId": "c"
+        },
+        {
+          "sessionUpdate": "tool_call_update",
+          "status": "failed",
+          "toolCallId": "c"
+        },
+        {
+          "sessionUpdate": "tool_call_update",
+          "status": "failed",
+          "toolCallId": "c"
+        }
+      ],
+      "legacy": "⏳ finished — read, 2 failed",
+      "native": "⏳ finished, but nothing succeeded — 1 failed attempt",
+      "rationale": "Count a call failure once and remove that failed attempt from activity totals."
+    },
+    {
+      "operation": "excluded_failure",
+      "input": [
+        {
+          "sessionUpdate": "tool_call",
+          "kind": "execute",
+          "toolCallId": "c"
+        },
+        {
+          "sessionUpdate": "tool_call_update",
+          "status": "failed",
+          "toolCallId": "c"
+        }
+      ],
+      "legacy": "⏳ finished, but nothing succeeded — 1 failed attempt",
+      "native": "⏳ finished",
+      "rationale": "Failure counting must honor the same tool exclusion as its start."
+    },
+    {
+      "operation": "silent_filter",
+      "input": {
+        "events": []
+      },
+      "legacy": "⏳ finished",
+      "native": null,
+      "rationale": "An ACP finish must not bypass events filtering."
+    },
+    {
+      "operation": "inherited_group",
+      "input": {
+        "raw": {
+          "events": [
+            "done"
+          ],
+          "perGroup": {}
+        },
+        "group": "__proto__"
+      },
+      "legacy": {
+        "ok": true,
+        "filter": {
+          "events": [
+            "start",
+            "step",
+            "done"
+          ],
+          "tools": {
+            "include": null,
+            "exclude": []
+          },
+          "minIntervalMs": 60000,
+          "source": "perGroup:__proto__"
+        }
+      },
+      "native": {
+        "events": [
+          "done"
+        ],
+        "source": "file"
+      },
+      "rationale": "Inherited object properties cannot create a permissive group override."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a"
+          }
+        ],
+        "delivered": null
+      },
+      "legacy": "⏳ finished — read",
+      "native": "⏳ finished — 1 attempt unresolved",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a",
+            "status": "pending"
+          }
+        ],
+        "delivered": null
+      },
+      "legacy": "⏳ finished — read",
+      "native": "⏳ finished — 1 attempt unresolved",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a",
+            "status": "in_progress"
+          }
+        ],
+        "delivered": null
+      },
+      "legacy": "⏳ finished — read",
+      "native": "⏳ finished — 1 attempt unresolved",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a",
+            "status": "failed"
+          }
+        ],
+        "delivered": null
+      },
+      "legacy": "⏳ finished — read",
+      "native": "⏳ finished, but nothing succeeded — 1 failed attempt",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a",
+            "status": "failed"
+          },
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "b",
+            "status": "pending"
+          }
+        ],
+        "delivered": null
+      },
+      "legacy": "⏳ finished — read ×2",
+      "native": "⏳ finished — 1 failed attempt, 1 attempt unresolved",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a",
+            "status": "completed"
+          },
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "b",
+            "status": "failed"
+          },
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "c",
+            "status": "in_progress"
+          }
+        ],
+        "delivered": null
+      },
+      "legacy": "⏳ finished — read ×3",
+      "native": "⏳ finished — read, 1 failed, 1 attempt unresolved",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    },
+    {
+      "operation": "acp_outcomes",
+      "input": {
+        "updates": [
+          {
+            "sessionUpdate": "tool_call",
+            "kind": "read",
+            "toolCallId": "a",
+            "status": "pending"
+          }
+        ],
+        "delivered": 0
+      },
+      "legacy": "⏳ finished — read, but sent nothing",
+      "native": "⏳ finished — 1 attempt unresolved, but sent nothing",
+      "rationale": "Initial status is current ACP evidence; pending or unconfirmed attempts cannot be reported as successful completed work."
+    }
+  ]
+}

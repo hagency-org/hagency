@@ -1500,6 +1500,21 @@ export class RouterStore {
   }
 
   claimDispatch(input: ClaimDispatchInput): ClaimResult {
+    return this.claimDispatchObserved(input).claim;
+  }
+
+  claimDispatchWithWake(input: ClaimDispatchInput): { claim: ClaimResult; nextAvailableAt: number | null } {
+    const { claim, cutoff } = this.claimDispatchObserved(input);
+    return {
+      claim,
+      // A retry can become due between eligibility selection and this lookup.
+      // Keep the actual selection cutoff so that work cannot miss both checks.
+      nextAvailableAt: claim?.ok ? null : this.nextQueuedDispatchAfter(cutoff ?? this.now()),
+    };
+  }
+
+  private claimDispatchObserved(input: ClaimDispatchInput): { claim: ClaimResult; cutoff: number | null } {
+    let cutoff: number | null = null;
     try {
       const tx = this.db.transaction((): ClaimResult => {
         const runnerId = requiredText(input.runnerId, 'runner_id', 255);
@@ -1510,6 +1525,7 @@ export class RouterStore {
         ).get()?.count ?? 0;
         if (live >= input.maxLiveRunners) return refusal('live_runner_cap', 'live runner cap is full');
         const now = this.now();
+        cutoff = now;
         this.db.prepare(
           `DELETE FROM resource_leases WHERE dispatch_id IN
            (SELECT dispatch_id FROM dispatches
@@ -1666,18 +1682,22 @@ export class RouterStore {
         }
         return null;
       });
-      return tx();
+      return { claim: tx(), cutoff };
     } catch (error) {
-      if (error instanceof RouterInputError) return refusal('bad_request', error.message);
+      if (error instanceof RouterInputError) return { claim: refusal('bad_request', error.message), cutoff };
       throw error;
     }
   }
 
   nextQueuedDispatchAt(): number | null {
+    return this.nextQueuedDispatchAfter(this.now());
+  }
+
+  private nextQueuedDispatchAfter(cutoff: number): number | null {
     const row = this.db.prepare<[number], { available_at: number | null }>(
       `SELECT MIN(available_at) AS available_at FROM dispatches
        WHERE state = 'queued' AND available_at IS NOT NULL AND available_at > ?`,
-    ).get(this.now());
+    ).get(cutoff);
     return row?.available_at ?? null;
   }
 

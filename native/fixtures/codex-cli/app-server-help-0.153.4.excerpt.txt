@@ -1,0 +1,25 @@
+# codex app-server --help — transport options excerpt
+#
+# PIN: this excerpt must be captured from Codex CLI 0.153.4 (the version the
+# wire-protocol spec pins, specs/task-rust-codex-protocol.spec.md:18).
+# ADR-139 relies on: (a) stdio is the DEFAULT transport (`--listen` default
+# `stdio://`), and (b) `--stdio` is an exact synonym ("equivalent to
+# `--listen stdio://`") — so a bare `app-server` argv yields stdio.
+#
+# Captured by integration on 2026-09-13 from the pinned build: the npm package
+# @openai/codex@0.153.4 (registry tarball codex-0.153.4.tgz), run as
+# `npx -y @openai/codex@0.153.4 app-server --help`; `codex --version` printed
+# `codex-cli 0.153.4`. The excerpt is the verbatim transport section.
+#
+# captured_version: 0.153.4
+# capture_command: codex app-server --help
+# ----------------------------------------------------------------------
+
+      --listen <URL>
+          Transport endpoint URL. Supported values: `stdio://` (default), `unix://`, `unix://PATH`,
+          `ws://IP:PORT`, `off`
+          
+          [default: stdio://]
+
+      --stdio
+          Use stdio as the transport (equivalent to `--listen stdio://`)

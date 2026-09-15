@@ -1,0 +1,15 @@
+-- MA-S2 (ADR-053 "Account readiness gate amendment"): the named reason's
+-- storage home. When dispatch consumption refuses a row because its bound
+-- account's readiness fact is unknown, expired or uncertain, the park is
+-- auditable here: outcome='parked' plus park_reason='account_readiness_unknown'
+-- on the attempt row, its interval derivable from the row's neighbours.
+--
+-- Provisionally migration 033 by landing order (ADR-125): this base carries
+-- 029 (MA-S4), 030 (engagements retention), 031 (execution retention) and
+-- 032 (PC-C1, which landed first). If another slice takes 033 first, this
+-- one renumbers in a small fix-up.
+--
+-- NOT idempotent by design: no ADD COLUMN in this store replays over an
+-- already-upgraded table; recovery fixtures rewind user_version below 33 only
+-- alongside rebuilding runner_attempts to its pre-033 shape (the 025 rule).
+ALTER TABLE runner_attempts ADD COLUMN park_reason TEXT;

@@ -45,6 +45,8 @@ export default [
       'coverage/**',
       '**/.next/**',
       '**/dist/**',
+      // Cargo removes temporary compiler directories while builds are active.
+      '**/target/**',
       '**/*.min.js',
     ],
   },

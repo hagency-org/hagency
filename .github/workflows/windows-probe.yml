@@ -1,0 +1,111 @@
+name: Windows probe
+# Manual, repeated runs of a few native selectors on the hosted Windows
+# runner with full output. This is diagnostic evidence only; it never
+# replaces the Native Rust workflow's verdict and never publishes artifacts
+# that a release step could consume.
+on:
+  # A workflow_dispatch is only addressable once the file exists on the default
+  # branch. Until then, pushing a `probe/**` branch runs it with the defaults.
+  push:
+    branches: ["probe/**"]
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: Space-separated Cargo packages whose test targets are built
+        default: hagency-execution hagency-palpo
+        required: true
+      filters:
+        description: Space-separated cargo test name filters (any match runs)
+        default: approvals::native_owned_approval_resume approval_loss::native_owned_approval_barriers_pending_receipt approvals::native_owned_approval_cancellation native_outbound_http_authority_tls_and_redaction
+        required: true
+      repeat:
+        description: How many times to run the selected tests
+        default: "5"
+        required: true
+      test_threads:
+        description: cargo test --test-threads value (1 serializes the selectors)
+        default: "1"
+        required: true
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: windows-2025
+    timeout-minutes: 45
+    env:
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: windows-probe
+      - name: Build the selected test targets once
+        shell: pwsh
+        run: |
+          $packages = "${{ inputs.packages || 'hagency-execution hagency-palpo' }}".Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { @('-p', $_) }
+          cargo test @packages --all-targets --locked --no-run
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run the selectors repeatedly with full output
+        shell: pwsh
+        run: |
+          $packages = "${{ inputs.packages || 'hagency-execution hagency-palpo' }}".Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries) | ForEach-Object { @('-p', $_) }
+          $filters = "${{ inputs.filters || 'approvals::native_owned_approval_resume approval_loss::native_owned_approval_barriers_pending_receipt approvals::native_owned_approval_cancellation native_outbound_http_authority_tls_and_redaction' }}".Split(' ', [System.StringSplitOptions]::RemoveEmptyEntries)
+          $repeat = [int]"${{ inputs.repeat || '5' }}"
+          New-Item -ItemType Directory -Force -Path probe-logs | Out-Null
+          $failures = 0
+          for ($i = 1; $i -le $repeat; $i++) {
+            Write-Host "=== probe iteration $i of $repeat ==="
+            $PSNativeCommandUseErrorActionPreference = $false
+            cargo test @packages --all-targets --locked --no-fail-fast -- @filters --nocapture --test-threads=${{ inputs.test_threads || '1' }} 2>&1 | Tee-Object -FilePath "probe-logs/iteration-$i.log"
+            if ($LASTEXITCODE -ne 0) { $failures++ }
+            "iteration=$i exit=$LASTEXITCODE" | Add-Content probe-logs/summary.txt
+          }
+          Get-Content probe-logs/summary.txt
+          Write-Host "failed iterations: $failures of $repeat"
+          # Evidence only: every iteration ran; the summary records the verdicts.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: windows-probe-logs
+          path: probe-logs
+          if-no-files-found: warn
+  # The hosted Ubuntu runner timed out two new matrix delivery tests that pass
+  # repeatedly in a local Linux container. Repeat them here with full output.
+  probe-ubuntu:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUST_BACKTRACE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@1.95.0
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ubuntu-probe
+      - name: Build the matrix test targets once
+        run: cargo test -p hagency-matrix --all-targets --locked --no-run
+      - name: Run the delivery selectors repeatedly with full output
+        shell: bash
+        run: |
+          set +e
+          mkdir -p probe-logs
+          failures=0
+          for i in 1 2 3 4 5; do
+            echo "=== probe iteration $i of 5 ==="
+            cargo test -p hagency-matrix --all-targets --locked --no-fail-fast -- \
+              approval_delivery::tests::enrollment::native_private_approval_fresh_enrollment_and_delivery_after_expired_refusal \
+              approval_delivery::tests::journal::native_private_approval_historical_restart_and_capacity \
+              --nocapture --test-threads=1 2>&1 | tee "probe-logs/iteration-$i.log"
+            code=${PIPESTATUS[0]}
+            [ "$code" -ne 0 ] && failures=$((failures+1))
+            echo "iteration=$i exit=$code" >> probe-logs/summary.txt
+          done
+          cat probe-logs/summary.txt
+          echo "failed iterations: $failures of 5"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ubuntu-probe-logs
+          path: probe-logs
+          if-no-files-found: warn

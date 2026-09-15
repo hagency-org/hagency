@@ -1,0 +1,232 @@
+   Compiling hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.43s
+     Running tests/owned.rs (target/debug/deps/owned-36d7108ec34d13ab)
+
+running 31 tests
+test accounts::native_account_host_consumer ... FAILED
+test approvals::native_owned_approval_barriers ... FAILED
+test approvals::native_owned_approval_cancellation ... FAILED
+test approvals::native_owned_approval_capacity ... FAILED
+test approvals::native_owned_approval_resume ... FAILED
+test approvals::native_owned_approval_usage ... FAILED
+test idle::native_owned_turn_quiet_limits ... FAILED
+test idle::native_owned_turn_quiet_notification_wait ... FAILED
+test native_owned_dispatch_admission_and_protocol_failure ... FAILED
+test native_owned_dispatch_cancel_and_unknown ... FAILED
+test native_owned_dispatch_database_lock_refuses_before_spawn ... FAILED
+test native_owned_dispatch_deadline_stops_and_fences ... FAILED
+test native_owned_dispatch_real_pipes ... FAILED
+test native_owned_runtime_failure_observation ... FAILED
+test receive::native_receive_workspace_authority_read_deadline ... FAILED
+test receive::native_receive_workspace_authority_retirement ... FAILED
+test receive::native_receive_workspace_once ... FAILED
+test receive::native_receive_workspace_sink_mutations ... FAILED
+test receive::native_receive_workspace_sink_original ... FAILED
+test registration::native_workspace_registration_gate ... FAILED
+test registration::native_workspace_registration_gate_drop_and_late_ack ... FAILED
+test registration::native_workspace_registration_gate_revoked_before_ack ... FAILED
+test usage::native_owned_usage_missing_and_binding_refusal ... FAILED
+test usage::native_owned_usage_normalization_refusal_keeps_completion_separate ... FAILED
+test usage::native_owned_usage_real_capture ... FAILED
+test usage::native_owned_usage_restart_and_capacity_keeps_execution_separate ... FAILED
+test workspace::native_workspace_binding_bounds ... FAILED
+test workspace::native_workspace_binding_process ... FAILED
+test workspace::native_workspace_binding_replacement ... FAILED
+test workspace::native_workspace_binding_retirement ... FAILED
+test workspace::native_workspace_binding_scope ... FAILED
+
+failures:
+
+---- accounts::native_account_host_consumer stdout ----
+
+thread 'accounts::native_account_host_consumer' (88066367) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- approvals::native_owned_approval_barriers stdout ----
+
+thread 'approvals::native_owned_approval_barriers' (88066368) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approvals::native_owned_approval_cancellation stdout ----
+
+thread 'approvals::native_owned_approval_cancellation' (88066369) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approvals::native_owned_approval_capacity stdout ----
+
+thread 'approvals::native_owned_approval_capacity' (88066371) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approvals::native_owned_approval_resume stdout ----
+
+thread 'approvals::native_owned_approval_resume' (88066375) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approvals::native_owned_approval_usage stdout ----
+
+thread 'approvals::native_owned_approval_usage' (88066376) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- idle::native_owned_turn_quiet_limits stdout ----
+
+thread 'idle::native_owned_turn_quiet_limits' (88066381) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- idle::native_owned_turn_quiet_notification_wait stdout ----
+
+thread 'idle::native_owned_turn_quiet_notification_wait' (88066382) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_dispatch_admission_and_protocol_failure stdout ----
+
+thread 'native_owned_dispatch_admission_and_protocol_failure' (88066383) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_dispatch_cancel_and_unknown stdout ----
+
+thread 'native_owned_dispatch_cancel_and_unknown' (88066398) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_dispatch_database_lock_refuses_before_spawn stdout ----
+
+thread 'native_owned_dispatch_database_lock_refuses_before_spawn' (88066408) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_dispatch_deadline_stops_and_fences stdout ----
+
+thread 'native_owned_dispatch_deadline_stops_and_fences' (88066409) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_dispatch_real_pipes stdout ----
+
+thread 'native_owned_dispatch_real_pipes' (88066410) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_runtime_failure_observation stdout ----
+
+thread 'native_owned_runtime_failure_observation' (88066411) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- receive::native_receive_workspace_authority_read_deadline stdout ----
+
+thread 'receive::native_receive_workspace_authority_read_deadline' (88066412) panicked at native/hagency-execution/tests/owned/receive.rs:22:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- receive::native_receive_workspace_authority_retirement stdout ----
+
+thread 'receive::native_receive_workspace_authority_retirement' (88066413) panicked at native/hagency-execution/tests/owned/receive.rs:22:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- receive::native_receive_workspace_once stdout ----
+
+thread 'receive::native_receive_workspace_once' (88066414) panicked at native/hagency-execution/tests/owned/receive.rs:22:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- receive::native_receive_workspace_sink_mutations stdout ----
+
+thread 'receive::native_receive_workspace_sink_mutations' (88066415) panicked at native/hagency-execution/tests/owned/receive.rs:22:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- receive::native_receive_workspace_sink_original stdout ----
+
+thread 'receive::native_receive_workspace_sink_original' (88066416) panicked at native/hagency-execution/tests/owned/receive.rs:22:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- registration::native_workspace_registration_gate stdout ----
+
+thread 'registration::native_workspace_registration_gate' (88066417) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- registration::native_workspace_registration_gate_drop_and_late_ack stdout ----
+
+thread 'registration::native_workspace_registration_gate_drop_and_late_ack' (88066418) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- registration::native_workspace_registration_gate_revoked_before_ack stdout ----
+
+thread 'registration::native_workspace_registration_gate_revoked_before_ack' (88066419) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::native_owned_usage_missing_and_binding_refusal stdout ----
+
+thread 'usage::native_owned_usage_missing_and_binding_refusal' (88066420) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::native_owned_usage_normalization_refusal_keeps_completion_separate stdout ----
+
+thread 'usage::native_owned_usage_normalization_refusal_keeps_completion_separate' (88066436) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::native_owned_usage_real_capture stdout ----
+
+thread 'usage::native_owned_usage_real_capture' (88066454) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::native_owned_usage_restart_and_capacity_keeps_execution_separate stdout ----
+
+thread 'usage::native_owned_usage_restart_and_capacity_keeps_execution_separate' (88066481) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- workspace::native_workspace_binding_bounds stdout ----
+
+thread 'workspace::native_workspace_binding_bounds' (88066482) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- workspace::native_workspace_binding_process stdout ----
+
+thread 'workspace::native_workspace_binding_process' (88066483) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- workspace::native_workspace_binding_replacement stdout ----
+
+thread 'workspace::native_workspace_binding_replacement' (88066484) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- workspace::native_workspace_binding_retirement stdout ----
+
+thread 'workspace::native_workspace_binding_retirement' (88066485) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- workspace::native_workspace_binding_scope stdout ----
+
+thread 'workspace::native_workspace_binding_scope' (88066486) panicked at native/hagency-execution/tests/owned.rs:67:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    accounts::native_account_host_consumer
+    approvals::native_owned_approval_barriers
+    approvals::native_owned_approval_cancellation
+    approvals::native_owned_approval_capacity
+    approvals::native_owned_approval_resume
+    approvals::native_owned_approval_usage
+    idle::native_owned_turn_quiet_limits
+    idle::native_owned_turn_quiet_notification_wait
+    native_owned_dispatch_admission_and_protocol_failure
+    native_owned_dispatch_cancel_and_unknown
+    native_owned_dispatch_database_lock_refuses_before_spawn
+    native_owned_dispatch_deadline_stops_and_fences
+    native_owned_dispatch_real_pipes
+    native_owned_runtime_failure_observation
+    receive::native_receive_workspace_authority_read_deadline
+    receive::native_receive_workspace_authority_retirement
+    receive::native_receive_workspace_once
+    receive::native_receive_workspace_sink_mutations
+    receive::native_receive_workspace_sink_original
+    registration::native_workspace_registration_gate
+    registration::native_workspace_registration_gate_drop_and_late_ack
+    registration::native_workspace_registration_gate_revoked_before_ack
+    usage::native_owned_usage_missing_and_binding_refusal
+    usage::native_owned_usage_normalization_refusal_keeps_completion_separate
+    usage::native_owned_usage_real_capture
+    usage::native_owned_usage_restart_and_capacity_keeps_execution_separate
+    workspace::native_workspace_binding_bounds
+    workspace::native_workspace_binding_process
+    workspace::native_workspace_binding_replacement
+    workspace::native_workspace_binding_retirement
+    workspace::native_workspace_binding_scope
+
+test result: FAILED. 0 passed; 31 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.47s
+
+error: test failed, to rerun pass `-p hagency-execution --test owned`

@@ -1,0 +1,44 @@
+[package]
+name = "hagency-execution"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hagency-core = { path = "../hagency-core" }
+hagency-store = { path = "../hagency-store" }
+hagency-runtime = { path = "../hagency-runtime" }
+hagency-platform = { path = "../hagency-platform" }
+hagency-metering = { path = "../hagency-metering" }
+hagency-files = { path = "../hagency-files" }
+cap-std = "=4.0.3"
+cap-fs-ext = "=4.0.3"
+sha2.workspace = true
+tokio = { workspace = true, features = ["io-util", "net"] }
+serde_json.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Threading", "Win32_Storage_FileSystem"] }
+
+[features]
+# Read-only per-entry approval phase traces for cancellation diagnostics
+# (ADR-046 stage-1). Never enabled in production builds.
+test-diagnostics = []
+
+[dev-dependencies]
+# Self dev-dependency lights the default-off diagnostics feature for unit and
+# integration test builds only; a production build compiles none of it.
+hagency-execution = { path = ".", features = ["test-diagnostics"] }
+serde.workspace = true
+tempfile.workspace = true
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+
+[[bin]]
+name = "hagency-execution-probe"
+path = "../hagency-runtime/src/bin/hagency-runtime-probe.rs"
+
+[lints]
+workspace = true

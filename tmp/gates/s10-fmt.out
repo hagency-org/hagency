@@ -1,0 +1,81 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/../tests/support/approval_loss.rs:809:
+     assert_eq!(host_response_frames(&work).len(), 1);
+     assert_eq!(probe_read_frames(&work).len(), 1);
+     if let Some(observation) = report.runtime_observation() {
+[31m-        assert!(
+(B[m[31m-            observation.transport_cause.is_none(),
+(B[m[31m-            "{observation:?}"
+(B[m[31m-        );
+(B[m[32m+        assert!(observation.transport_cause.is_none(), "{observation:?}");
+(B[m     }
+     let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+     assert_eq!(
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/approval/control.rs:364:
+                         {
+                             gate.wait().await;
+                         }
+[31m-                let written = drive
+(B[m[31m-                    .pump(
+(B[m[31m-                        &mut self.callbacks,
+(B[m[31m-                        runner,
+(B[m[31m-                        domain.observe_approval_response(
+(B[m[31m-                            &mut sending.grant,
+(B[m[31m-                            ApprovalResponseObservation::WriteAccepted,
+(B[m[31m-                        ),
+(B[m[31m-                    )
+(B[m[31m-                    .await;
+(B[m[31m-                if let Err(error) = &written.output {
+(B[m[31m-                    // The frame is physically on the wire; only its durable
+(B[m[31m-                    // record is in doubt. Record which store refusal produced
+(B[m[31m-                    // the verdict before mapping it, so the report carries the
+(B[m[31m-                    // cause instead of a bare `SettlementUnknown` the suite
+(B[m[31m-                    // cannot attribute (ADR-046's named-failure rule).
+(B[m[31m-                    *drive.settlement_cause =
+(B[m[31m-                        Some(crate::operation::SettlementCause::of(error));
+(B[m[31m-                    written.output.map_err(|_| Failure::SettlementUnknown)?;
+(B[m[31m-                }
+(B[m[32m+                        let written = drive
+(B[m[32m+                            .pump(
+(B[m[32m+                                &mut self.callbacks,
+(B[m[32m+                                runner,
+(B[m[32m+                                domain.observe_approval_response(
+(B[m[32m+                                    &mut sending.grant,
+(B[m[32m+                                    ApprovalResponseObservation::WriteAccepted,
+(B[m[32m+                                ),
+(B[m[32m+                            )
+(B[m[32m+                            .await;
+(B[m[32m+                        if let Err(error) = &written.output {
+(B[m[32m+                            // The frame is physically on the wire; only its durable
+(B[m[32m+                            // record is in doubt. Record which store refusal produced
+(B[m[32m+                            // the verdict before mapping it, so the report carries the
+(B[m[32m+                            // cause instead of a bare `SettlementUnknown` the suite
+(B[m[32m+                            // cannot attribute (ADR-046's named-failure rule).
+(B[m[32m+                            *drive.settlement_cause =
+(B[m[32m+                                Some(crate::operation::SettlementCause::of(error));
+(B[m[32m+                            written.output.map_err(|_| Failure::SettlementUnknown)?;
+(B[m[32m+                        }
+(B[m                         #[cfg(test)]
+                         if self.callbacks.fault == Some(super::Fault::WriteAck) {
+                             return Err(Failure::SettlementUnknown);
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/src/approval/state.rs:408:
+         // (the F1 case-2 interleaving), so it is absent from the happy path.
+         let mut partial = PhaseTrace::new();
+         partial.mark("write-started");
+[31m-        assert_eq!(
+(B[m[31m-            partial.as_slice(),
+(B[m[31m-            ["retained", "write-started"]
+(B[m[31m-        );
+(B[m[32m+        assert_eq!(partial.as_slice(), ["retained", "write-started"]);
+(B[m         // The cancellation primitive labels and outcomes, both directions.
+         assert_eq!(resolution_outcome(true), ("resolved-before-write", true));
+         assert_eq!(resolution_outcome(false), ("resolved-after-write", false));
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution/tests/owned/approval_fixture.rs:300:
+     let recorded = f.count("SELECT COUNT(*) FROM approval_responses WHERE write_accepted=1");
+     let expected = responses(f).len() as u64;
+     assert_eq!(
+[31m-        recorded, expected,
+(B[m[32m+        recorded,
+(B[m[32m+        expected,
+(B[m         "wire ids {:?}; recorded={recorded} expected={expected}; settlement={:?}; failure={:?}",
+         responses(f)
+             .iter()

@@ -1,0 +1,127 @@
+[
+  {
+    "from": "created",
+    "to": "created",
+    "allowed": false
+  },
+  {
+    "from": "created",
+    "to": "accepted",
+    "allowed": true
+  },
+  {
+    "from": "created",
+    "to": "in_progress",
+    "allowed": false
+  },
+  {
+    "from": "created",
+    "to": "blocked",
+    "allowed": false
+  },
+  {
+    "from": "created",
+    "to": "done",
+    "allowed": false
+  },
+  {
+    "from": "accepted",
+    "to": "created",
+    "allowed": false
+  },
+  {
+    "from": "accepted",
+    "to": "accepted",
+    "allowed": false
+  },
+  {
+    "from": "accepted",
+    "to": "in_progress",
+    "allowed": true
+  },
+  {
+    "from": "accepted",
+    "to": "blocked",
+    "allowed": false
+  },
+  {
+    "from": "accepted",
+    "to": "done",
+    "allowed": false
+  },
+  {
+    "from": "in_progress",
+    "to": "created",
+    "allowed": false
+  },
+  {
+    "from": "in_progress",
+    "to": "accepted",
+    "allowed": false
+  },
+  {
+    "from": "in_progress",
+    "to": "in_progress",
+    "allowed": false
+  },
+  {
+    "from": "in_progress",
+    "to": "blocked",
+    "allowed": true
+  },
+  {
+    "from": "in_progress",
+    "to": "done",
+    "allowed": true
+  },
+  {
+    "from": "blocked",
+    "to": "created",
+    "allowed": false
+  },
+  {
+    "from": "blocked",
+    "to": "accepted",
+    "allowed": false
+  },
+  {
+    "from": "blocked",
+    "to": "in_progress",
+    "allowed": true
+  },
+  {
+    "from": "blocked",
+    "to": "blocked",
+    "allowed": false
+  },
+  {
+    "from": "blocked",
+    "to": "done",
+    "allowed": false
+  },
+  {
+    "from": "done",
+    "to": "created",
+    "allowed": false
+  },
+  {
+    "from": "done",
+    "to": "accepted",
+    "allowed": false
+  },
+  {
+    "from": "done",
+    "to": "in_progress",
+    "allowed": false
+  },
+  {
+    "from": "done",
+    "to": "blocked",
+    "allowed": false
+  },
+  {
+    "from": "done",
+    "to": "done",
+    "allowed": false
+  }
+]

@@ -4,27 +4,71 @@
   "title": "Agent Chat owner approval verdict v1",
   "type": "object",
   "additionalProperties": true,
-  "$comment": "Canonical wire namespace is com.agentchat.*. During the rename transition the bridge ALSO accepts verdicts sent as com.hagency.approval.verdict.v1 with payload key com.hagency.approval (strict pairing, no hybrids); it SENDS only com.agentchat.*. This note is runtime transition policy, not part of the schema contract.",
-  "required": ["msgtype", "body", "com.agentchat.approval"],
+  "$comment": "ADR115 admits exact retained32/native40 request IDs and the four canonical choices. Current backend request scope, authenticated encrypted event and owner binding still determine whether a verdict is accepted. Request-only RPC metadata remains forbidden in the closed verdict detail.",
+  "required": [
+    "msgtype",
+    "body",
+    "com.agentchat.approval"
+  ],
   "properties": {
-    "msgtype": { "const": "com.agentchat.approval.verdict.v1" },
-    "body": { "type": "string", "minLength": 1, "maxLength": 512 },
+    "msgtype": {
+      "const": "com.agentchat.approval.verdict.v1"
+    },
+    "body": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
     "com.agentchat.approval": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "version", "kind", "agent", "project", "project_room_id",
-        "request_id", "input_digest", "action"
+        "version",
+        "kind",
+        "agent",
+        "project",
+        "project_room_id",
+        "request_id",
+        "input_digest",
+        "action"
       ],
       "properties": {
-        "version": { "const": 1 },
-        "kind": { "const": "verdict" },
-        "agent": { "type": "string", "minLength": 1, "maxLength": 128 },
-        "project": { "type": "string", "minLength": 1, "maxLength": 255 },
-        "project_room_id": { "type": "string", "pattern": "^!" },
-        "request_id": { "type": "string", "pattern": "^approval_[0-9a-f]{32}$" },
-        "input_digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
-        "action": { "enum": ["approve_once", "deny"] }
+        "version": {
+          "const": 1
+        },
+        "kind": {
+          "const": "verdict"
+        },
+        "agent": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "project": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 255
+        },
+        "project_room_id": {
+          "type": "string",
+          "pattern": "^!"
+        },
+        "request_id": {
+          "type": "string",
+          "pattern": "^approval_(?:[0-9a-f]{32}|[0-9a-f]{40})$"
+        },
+        "input_digest": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "action": {
+          "enum": [
+            "approve_once",
+            "approve_task",
+            "approve_always",
+            "deny"
+          ]
+        }
       }
     }
   }

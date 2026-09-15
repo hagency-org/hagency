@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, test, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, onTestFailed, test, vi } from 'vitest';
 import path from 'node:path';
 
 import { createBackendTestContext } from './helpers/backend-test-runtime.js';
@@ -57,6 +57,19 @@ describe('thread-session runner launch recovery', () => {
       workspaceResourceId: 'launch-workspace', mayWrite: true, payload: {},
     });
 
+    let phase = 'first-launch';
+    onTestFailed(() => {
+      const observed = router.db.prepare(
+        'SELECT state, launch_failures, available_at FROM dispatches WHERE dispatch_id = ?',
+      ).get(queued.dispatchId);
+      process.stderr.write(`[router-launch-recovery] ${JSON.stringify({
+        phase,
+        state: observed?.state ?? null,
+        launchFailures: observed?.launch_failures ?? null,
+        retryDelayMs: observed?.available_at === null || !observed ? null : observed.available_at - Date.now(),
+      })}\n`);
+    });
+
     context.internals.scheduleRouterPumpForTest();
     let row;
     // A real wrapper process has to spawn and die before the count moves; on a loaded CI runner
@@ -87,6 +100,7 @@ describe('thread-session runner launch recovery', () => {
 
     // Simulate a persisted backoff surviving a process restart: startup only
     // kicks the pump once, which must reconstruct the future wake-up from DB.
+    phase = 'retry-wake-and-second-launch';
     router.db.prepare(
       'UPDATE dispatches SET available_at = ? WHERE dispatch_id = ?',
     ).run(Date.now() + 100, queued.dispatchId);
@@ -101,6 +115,7 @@ describe('thread-session runner launch recovery', () => {
     }
     expect(row).toMatchObject({ state: 'queued', launch_failures: 2 });
 
+    phase = 'stopped-pump';
     context.internals.stopRouterPumpForTest();
     router.db.prepare(
       'UPDATE dispatches SET available_at = ? WHERE dispatch_id = ?',

@@ -1,0 +1,56 @@
+   Compiling hagency-metering v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.94s
+     Running unittests src/lib.rs (target/debug/deps/hagency_metering-5b47d9f2da1034a4)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/attribution.rs (target/debug/deps/attribution-2e8d29e42987fc28)
+
+running 3 tests
+test native_metering_attribution_search_layout ... ok
+test native_metering_attribution_unavailable_never_zero ... ok
+test native_metering_attribution_vectors ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/parsers.rs (target/debug/deps/parsers-18f8bb1d99bb1616)
+
+running 5 tests
+test native_metering_ceiling_categories ... ok
+test native_metering_incomplete_observations ... ok
+test native_metering_conflicting_observations ... ok
+test native_metering_legacy_vectors ... ok
+test native_metering_bounds ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.12s
+
+     Running tests/reader.rs (target/debug/deps/reader-fc0578e35dbe4acf)
+
+running 5 tests
+test native_metering_reader_limits_from_env ... ok
+test native_metering_reader_cache ... ok
+test native_metering_reader_bounds_are_reported ... ok
+test native_metering_reader_layout_discovery ... ok
+test native_metering_reader_vectors ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+     Running tests/runtime_usage.rs (target/debug/deps/runtime_usage-65c896634d7088be)
+
+running 5 tests
+test native_metering_runtime_pinned_categories ... ok
+test native_metering_runtime_legacy_shape ... ok
+test native_metering_runtime_contradictions_and_resets ... ok
+test native_metering_runtime_unknown_and_invalid ... ok
+test native_metering_runtime_digest_and_bounds ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+   Doc-tests hagency_metering
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

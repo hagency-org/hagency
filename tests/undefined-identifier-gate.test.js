@@ -19,6 +19,7 @@ import { describe, expect, test } from 'vitest';
 import { execFileSync } from 'child_process';
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import path from 'path';
+import { ESLint } from 'eslint';
 
 const REPO = new URL('..', import.meta.url).pathname;
 
@@ -90,6 +91,18 @@ describe('the rule is enabled and configured to bite', () => {
 });
 
 describe('the gate runs in CI', () => {
+  test('Rust targets are ignored while native JavaScript remains checked', async () => {
+    const eslint = new ESLint({ cwd: REPO });
+    for (const artifact of ['target/debug/build/generated.js', 'native/example/target/debug/generated.js']) {
+      expect(await eslint.isPathIgnored(path.join(REPO, artifact))).toBe(true);
+    }
+    const source = path.join(REPO, 'native/scripts/identifier-probe.mjs');
+    expect(await eslint.isPathIgnored(source)).toBe(false);
+    const [result] = await eslint.lintText('unknownNativeBuildIdentifier();', { filePath: source });
+    expect(result.messages.some((message) => message.ruleId === 'no-undef')).toBe(true);
+    expect(result.errorCount).toBe(1);
+  });
+
   test('verify:ci invokes it, so it cannot pass locally and be skipped remotely', () => {
     const verify = readFileSync(path.join(REPO, 'scripts/verify-ci.sh'), 'utf8');
     expect(verify).toContain('npm run check:undef');
