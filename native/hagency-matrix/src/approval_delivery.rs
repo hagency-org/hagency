@@ -21,7 +21,7 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 use tokio::{sync::OwnedSemaphorePermit, time::Instant};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -82,24 +82,28 @@ impl ApprovalCollector {
             return Err(Error::Config);
         }
         let frozen = Frozen::new(&card)?;
-        let now = u64::try_from(
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .map_err(|_| Error::Config)?
-                .as_millis(),
-        )
-        .map_err(|_| Error::Config)?;
-        let deadline = Instant::now()
-            + Duration::from_millis(card.owner_expires_at().saturating_sub(now))
-                .min(Duration::from_secs(45));
+        // ADR-149: the bound is a DELIVERY clock starting at the first send
+        // attempt, not the owner's decision window. The owner expiry keeps
+        // governing the owner through the store's verdict gate; the 45 s
+        // literal is unchanged from the old expression's ceiling (Rule 4).
+        let deadline = Instant::now() + Duration::from_secs(45);
         let inner = self.inner.clone();
-        let cancel = cancel.child_token();
+        // ADR-149: an owned clone shares this token's cancellation node, so the
+        // caller's shutdown cancel still reaches the work; what is gone is the
+        // delivery job cancelling a token of its own.
+        let cancel = cancel.clone();
         let blocks_after_error = Arc::new(AtomicBool::new(true));
         let original_classification = blocks_after_error.clone();
         let denial_request_id = card.target().request_id.clone();
         let job=self.jobs.start_classified(false,false,permit,blocks_after_error,async move{
+            // ADR-149: a budget overrun is a Timeout, never a manufactured
+            // cancellation — the arm returns, it does not cancel a token the
+            // work itself holds, and it does not await the inner work (a stuck
+            // inner hold must not hang the job). The token is the caller's own
+            // parent, so shutdown propagation survives; the jobs registry owns
+            // this task's lifetime, not the pump.
             let work=inner.deliver_private_card(card,frozen,&cancel,deadline,&original_classification);tokio::pin!(work);
-            let result=tokio::select!{r=&mut work=>r,_=tokio::time::sleep_until(deadline)=>{cancel.cancel();work.await}};
+            let result=tokio::select!{biased;_ = cancel.cancelled() => Err(Error::Cancelled),_ = tokio::time::sleep_until(deadline) => Err(Error::Timeout),r=&mut work=>r};
             result.map(Value::Delivery)
         })?;
         match job.wait().await {
