@@ -28,7 +28,7 @@ http = "=1.5.0"
 ruma = { version = "=0.16.0", features = ["client-api-c", "events"] }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["process"] }
+tokio = { workspace = true, features = ["process", "test-util"] }
 hagency-files = { path = "../hagency-files" }
 cap-std = "=4.0.3"
 base64 = "=0.22.1"
