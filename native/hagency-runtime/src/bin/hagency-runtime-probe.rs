@@ -55,6 +55,40 @@ fn operation_budget_ms() -> u64 {
 fn harness_wait() -> Duration {
     Duration::from_millis(operation_budget_ms() / 10)
 }
+/// The usage gate: wait for the TEST's release file or the HOST's stdin
+/// close, whichever comes first, under the shared custody ceiling (the
+/// budget plus half again — the same outer bound the tail hold uses). This
+/// replaces a 5 s self-expiry fuse that fired before a loaded host could
+/// finish its assertions, retiring the workspace binding out from under
+/// `native_workspace_binding_replacement`; the intended exits are the
+/// test's release (usage.rs) or the operation's cancel closing our stdin
+/// (every receive.rs close), never our own short timer.
+fn usage_gate_hold(marker: &Path, budget_ms: u64, guard: std::io::StdinLock<'_>) -> io::Result<()> {
+    // Release the stdin mutex first: StdinLock is !Send, so the close-reader
+    // below must take its own lock (see hold_until_stdin_closed).
+    drop(guard);
+    let (closed, host_closed) = std::sync::mpsc::channel::<()>();
+    std::thread::spawn(move || {
+        let mut stdin = io::stdin().lock();
+        let mut byte = [0u8; 1];
+        // Block until the host closes our stdin (EOF) or the stream errors.
+        while stdin.read(&mut byte).unwrap_or(0) != 0 {}
+        let _ = closed.send(());
+    });
+    let release = marker.with_extension("usage-release");
+    let until = Instant::now() + Duration::from_millis(budget_ms + budget_ms / 2);
+    loop {
+        if release.is_file() || host_closed.try_recv().is_ok() {
+            return Ok(());
+        }
+        if Instant::now() >= until {
+            return Err(io::Error::other(
+                "usage gate expired waiting for the test release or the host stdin close",
+            ));
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+}
 fn hold_until_stdin_closed(marker: &Path, budget_ms: u64) -> io::Result<()> {
     // `StdinLock` holds a `MutexGuard` and is `!Send`: it cannot move into
     // the reading thread, so the lock must be TAKEN there. The caller
@@ -276,8 +310,11 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     } else {
         None
     };
-    let mut stdin = io::stdin().lock();
-    let request = read(&mut stdin, marker)?;
+    // The guard is an Option because the usage gate hands it to its
+    // close-reader thread (StdinLock is !Send and holds the stdin mutex);
+    // every other mode keeps it until the shared tail's drop.
+    let mut stdin = Some(io::stdin().lock());
+    let request = read(stdin.as_mut().unwrap(), marker)?;
     method(&request, "initialize")?;
     if mode == "eof" {
         return Ok(());
@@ -290,8 +327,8 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         &request,
         json!({ "userAgent": "offline-fixture/0.153.4", "platformFamily": "unix", "platformOs": "fixture", "codexHome": "/fixture" }),
     )?;
-    method(&read(&mut stdin, marker)?, "initialized")?;
-    let request = read(&mut stdin, marker)?;
+    method(&read(stdin.as_mut().unwrap(), marker)?, "initialized")?;
+    let request = read(stdin.as_mut().unwrap(), marker)?;
     method(&request, "thread/start")?;
     let params = &request["params"];
     if params["approvalPolicy"] != "on-request"
@@ -310,13 +347,13 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         {
             use std::io::Read;
             let mut partial = [0u8; 4096];
-            stdin.read_exact(&mut partial)?;
+            stdin.as_mut().unwrap().read_exact(&mut partial)?;
             fs::write(marker.with_extension("partial"), partial)?;
         }
-        drop(stdin);
+        drop(stdin.take());
         return pulse(marker);
     }
-    let request = read(&mut stdin, marker)?;
+    let request = read(stdin.as_mut().unwrap(), marker)?;
     method(&request, "turn/start")?;
     if request["params"]["threadId"] != "owned-thread"
         || request["params"]["sandboxPolicy"]["networkAccess"] != false
@@ -337,7 +374,9 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         // event during the shorter RPC response interval.
         std::thread::sleep(harness_wait());
     }
-    if mode.starts_with("owned-approval") && !approval_probe::run(mode, &mut stdin, marker)? {
+    if mode.starts_with("owned-approval")
+        && !approval_probe::run(mode, stdin.as_mut().unwrap(), marker)?
+    {
         return Ok(());
     }
     if mode == "approval" {
@@ -357,13 +396,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     }
     if mode == "usage-gate" {
         fs::write(marker.with_extension("usage-ready"), b"ready")?;
-        let until = Instant::now() + harness_wait() * 2;
-        while !marker.with_extension("usage-release").is_file() {
-            if Instant::now() >= until {
-                return Err(io::Error::other("offline usage gate expired"));
-            }
-            std::thread::sleep(Duration::from_millis(5));
-        }
+        usage_gate_hold(marker, operation_budget_ms(), stdin.take().unwrap())?;
     }
     if matches!(mode, "usage" | "usage-overflow" | "usage-gate") {
         // Pinned cumulative usage categories, emitted through actual child
@@ -418,7 +451,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     // it. The close drives the hold; the budget (plus half again) is only the
     // outer ceiling. `stdin` is still held here — drop it first, or the
     // reading thread's lock would block on this guard forever.
-    drop(stdin);
+    drop(stdin.take());
     let outcome = hold_until_stdin_closed(marker, operation_budget_ms());
     if let Some(child) = &mut child {
         let _ = child.kill();
