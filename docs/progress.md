@@ -8343,8 +8343,8 @@ client qualification and ongoing identity/key management remain separate.
   test, fixture, example and probe trees, then walk the store's own call graph
   from each production root — found nine flows whose store writes were reached
   only by tests. Seven now have an evidenced production caller in the tree; five
-  of those were recorded closed in the classification table before this entry,
-  and the provisioning pair's rows land in the same batch as this entry. One
+  of those were recorded closed in the classification table earlier, and the
+  provisioning pair's rows landed at 83e49557. One
   flow was superseded, and one remains: operator recovery and resume, which has
   a decision record but no code yet. The audit's method is now enforced rather
   than remembered: a spec `Production caller:` line must resolve in the
@@ -8360,8 +8360,9 @@ client qualification and ongoing identity/key management remain separate.
   input.
 - 2026-09-14: four intermittent tests were fixed by handshake rather than by
   widening anything — a media deadline and two no-resend scenarios, all three
-  landed before this entry, and the turn-end untransmitted arm, whose fix lands
-  in the same batch as this entry — plus the CLI console readiness poll, which
+  landed before this entry, and the turn-end untransmitted arm, whose fix landed
+  at 83e49557 alongside the table rows closing G2 and G3 — plus the CLI console
+  readiness poll, which
   treated a reset connection during startup as a failure instead of retrying
   until its own deadline. The rule applied throughout: every wait is derived
   from the client's own limits rather than written as a literal, and an
