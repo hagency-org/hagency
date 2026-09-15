@@ -4,6 +4,7 @@ mod approval;
 mod config;
 mod driver;
 pub(crate) mod palpo;
+pub mod registration;
 pub(crate) mod workspace;
 use hagency_matrix::{CancellationToken, Collector};
 use hagency_store::{

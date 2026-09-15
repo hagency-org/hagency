@@ -44,6 +44,14 @@ enum Command {
         #[command(subcommand)]
         command: hagency::bootstrap::accounts::Command,
     },
+    /// Register the fleet before first serve (G11): the trusted-local writer of
+    /// the registrations row the provisioning ingress requires.
+    Registration {
+        #[arg(long, global = true)]
+        state_dir: Option<PathBuf>,
+        #[command(subcommand)]
+        command: hagency::bootstrap::registration::Command,
+    },
     /// Print a short-lived read-only console link using local operator authority.
     ConsoleAccess {
         #[arg(long)]
@@ -203,6 +211,11 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             let state_dir = state_dir.ok_or("account commands require --state-dir")?;
             let result = hagency::bootstrap::accounts::run(&state_dir, command)?;
             println!("{}", serde_json::to_string(&result)?);
+        }
+        Command::Registration { state_dir, command } => {
+            let state_dir = state_dir.ok_or("registration commands require --state-dir")?;
+            hagency::bootstrap::registration::run(&state_dir, command)?;
+            println!("{}", serde_json::json!({"ok": true}));
         }
         Command::Serve {
             state_dir,

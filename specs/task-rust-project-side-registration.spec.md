@@ -110,29 +110,23 @@ with only the CLI loses the retained operator surface.
 - Do not invent a gap id. The owed form is `owed (G11)`, allocated centrally for
   this slice.
 
-## Production-caller gate (state honestly)
+## Production-caller gate
 
-Every scenario carries `Production caller: owed (G11)` — the centrally allocated
-gap id for this slice. The gate (`native/scripts/check-production-callers.mjs`,
-a wired CI step at `.github/workflows/rust.yml:124`) resolves a concrete
-`crate::path::fn` against the production call graph, and **the handlers this
-slice intends do not exist yet**, so a concrete path cannot resolve and would
-fail the build. The intended targets are recorded here as documentation, not as
-bindings:
+The gate (`native/scripts/check-production-callers.mjs`, a wired CI step at
+`.github/workflows/rust.yml:124`) resolves a concrete `crate::path::fn`
+against the production call graph. Both callers landed 2026-09-15 and every
+scenario's `Production caller:` line now names one of them:
 
-- Bootstrap-time: `hagency::bootstrap::registration::run` — a new module
+- Bootstrap-time: `hagency::bootstrap::registration::run` — the module
   mirroring `native/hagency/src/bootstrap/accounts.rs`, dispatched from a
-  subcommand in `native/hagency/src/main.rs` beside `Command::Account`
-  (`main.rs:202-206`), calling the facade `DomainStore::register`
-  (`domain_worker.rs:2841`).
-- Route-driven: `hagency::console::project_sides::save` — a POST handler added
-  to the existing `project_sides` router
-  (`native/hagency/src/console/project_sides.rs:21`, mounted at
-  `native/hagency/src/console.rs:75`), calling the same facade.
+  subcommand in `native/hagency/src/main.rs` beside `Command::Account`,
+  calling the facade `DomainStore::register` (`domain_worker.rs:2841`).
+- Route-driven: `hagency::console::project_sides::save` — the POST handler
+  on the existing `project_sides` router, gated by the shared
+  `Scope::AgentLifecycle` check, calling the same facade.
 
-When either lands, its scenario's `owed (G11)` becomes that concrete path. Both
-write the **same store method**; the two scenarios differ in authority, not in
-the write.
+Both write the **same store method**; the two route scenarios differ in
+authority, not in the write.
 
 ## Representation divergences (UNRESOLVED — decision owed, not decided here)
 
@@ -184,7 +178,7 @@ Scenario: A fresh host registers its fleet before serve
   Given an initialized private state whose engagement names fleet hf_<32 hex> at generation 1 and no registrations row for it
   When the operator runs the bootstrap registration command with a valid six-field registration
   Then exactly one registrations row exists for that fleet at that generation, and a subsequent serve reads it instead of taking the fail-closed refusal
-  Production caller: owed (G11)
+  Production caller: hagency::bootstrap::registration::run
   Retained: POST /api/project-sides (backend-v2.js:9861-9877) -> projectSideStore.upsertSide (lib/project-side-store.js:369-440): the create branch (existing null) writes the record and audits 'side_created' (:433-437, :438)
 
 Scenario: An operator registers the fleet through the console route
@@ -192,7 +186,7 @@ Scenario: An operator registers the fleet through the console route
   Given an authenticated console operator session and a valid six-field registration
   When the operator submits it through the console project-side registration route
   Then exactly one registrations row exists for that fleet and the response reports the saved record, never the operator token
-  Production caller: owed (G11)
+  Production caller: hagency::console::project_sides::save
   Retained: POST /api/project-sides (backend-v2.js:9861-9877) answers { ok: true, side } (:9873) through respondProjectSideError (:9874, map :9105-9117)
 
 Scenario: A re-registration with identical content is idempotent
@@ -200,7 +194,7 @@ Scenario: A re-registration with identical content is idempotent
   Given a registrations row for a fleet at a generation
   When the identical registration (same fleet, generation and all six fields) is registered again
   Then the call succeeds, the row is unchanged, and no second row is written
-  Production caller: owed (G11)
+  Production caller: hagency::bootstrap::registration::run
   Retained: lib/project-side-store.js:371, :374-417 — upsertSide on an existing key re-writes the same keyed record and audits 'side_updated' rather than creating a second side
 
 Scenario: A stale generation is refused and the stored row is unchanged
@@ -208,7 +202,7 @@ Scenario: A stale generation is refused and the stored row is unchanged
   Given a registrations row for a fleet at generation N
   When a registration for the same fleet arrives at generation N (or any generation below it)
   Then the store returns a generation error, the stored row still describes generation N, and no second row is written
-  Production caller: owed (G11)
+  Production caller: hagency::bootstrap::registration::run
   Retained: NO counterpart — the retained upsertSide has no generation fence (lib/project-side-store.js:374-417 overwrites); this is the port's own contract (domain.rs:754-756), asserted here as a divergence, not as parity
 
 Scenario: A generation advance rotates the registration and reconciles
@@ -216,7 +210,7 @@ Scenario: A generation advance rotates the registration and reconciles
   Given a registrations row for a fleet at generation N
   When a registration for the same fleet arrives at generation N+1 with valid content
   Then the row describes generation N+1, the graphs and matrix-route reconciles have run in the same transaction, and the previous allocations stay observable rather than erased
-  Production caller: owed (G11)
+  Production caller: hagency::bootstrap::registration::run
   Retained: NO counterpart — rotation and its reconciles are the port's (domain.rs:757-763); the comment at :757-758 states the reason (rotation fences execution immediately, rotation cannot erase spend)
 
 Scenario: An invalid registration is refused before any write
@@ -224,7 +218,7 @@ Scenario: An invalid registration is refused before any write
   Given a registration that violates the record's own shape — a malformed fleet id, generation zero, a server name the mxids and room do not share, a representative mxid that is not the fleet's own derived name, or two identical operator mxids
   When it is registered through either caller
   Then the store returns an input error and no registrations row is written
-  Production caller: owed (G11)
+  Production caller: hagency::bootstrap::registration::run
   Retained: lib/project-side-store.js:370 serverName(...) and :377 text(...) validate the side's own fields before the record is built; respondProjectSideError maps bad_request to 400 (backend-v2.js:9113-9116)
 
 Scenario: A registration naming an unknown engagement's fleet cannot satisfy bootstrap
@@ -232,7 +226,7 @@ Scenario: A registration naming an unknown engagement's fleet cannot satisfy boo
   Given a registrations row written for a fleet and generation that no engagement on the host names
   When the host serves
   Then the registration read refuses fail-closed with the named configuration failure and the host does not start, exactly as before this slice
-  Production caller: owed (G11)
+  Production caller: hagency::bootstrap::registration::run
   Retained: the retained product has no equivalent precondition — a side is usable once its credential verifies (backend-v2.js:9917 POST /api/project-sides/:id/verify); the port's engagement-joined read is its own (verified_ingress.rs:206-207 joins on fleet_id AND generation)
 
 Scenario: The registration route refuses an unauthenticated caller
@@ -240,7 +234,7 @@ Scenario: The registration route refuses an unauthenticated caller
   Given no console session and no bearer
   When the console project-side registration route is called
   Then it is refused before any store work and no registrations row is written
-  Production caller: owed (G11)
+  Production caller: hagency::console::project_sides::save
   Retained: POST /api/project-sides is behind requireBearer (backend-v2.js:9861)
 
 ## Out of Scope (named explicitly)
