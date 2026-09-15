@@ -112,3 +112,18 @@ Comparing only the request packet and skipping the verdict parser: rejected,
 because the parser's accept/refuse boundaries — the thirty-two hex bound, the
 no-mixed-shapes rule, the action allowlist — are where an interoperability
 failure actually lands.
+
+## Amendment 2026-09-14 — the provisioning verdict wire kind (ADR-147)
+
+The native approval wire surface gains a second, distinct verdict kind for
+provisioning: **`com.hagency.engagement.approval.v1`**, fields
+**`{requestId, decision}`**, accepted **only from the fleet's representative
+sender**. It carries the provider's engagement verdict — the approval that makes a
+minted engagement effective — and is wholly distinct from the owner-approval v1
+profiles this ADR already carries and from the retained execution-verdict kind
+`com.hagency.approval.verdict.v1` (`bridge-matrix.js:219-220`), which carries a
+running agent's tool-call verdicts, not engagement provisioning. The retained
+product has no such wire kind — its provider verdict arrives over HTTP
+(`POST /api/engagements/:id/verdict`, `backend-v2.js:15160`) — so this kind is a
+native decision; the rationale and evidence are recorded in ADR-147 (a). A verdict
+from any sender other than the fleet's representative is refused before `approve`.

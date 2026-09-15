@@ -32,8 +32,9 @@ MXID/device shape, **ADR-014**; and (b) is confirmed-by-existing-decision under
 decision of record and names that placement for each; the per-ADR amendment text
 is applied to ADR-143, ADR-095 and ADR-014 in their own files. (The review's cited
 evidence lines — ADR-095's 2026-09-14 amendment and the intake `provision()` body
-— are on the slice's own branch, not this head; this ADR cites the retained
-product's source directly instead.)
+— were on the slice's own branch, not the head this was written against; the
+amendments are now landed here and this ADR cites the retained product's source
+directly.)
 
 ## Decision
 
@@ -79,7 +80,8 @@ checks — so a verdict from any other sender is refused before `approve`.
 provisioning with no effect worker; adopt it.**
 
 Evidence. The retained product provisions inline inside the verdict request:
-`fulfillEngagement` (`backend-v2.js:14700-14830`) provisions the agent home
+`fulfillEngagement` (`backend-v2.js:14617`, body `fulfillEngagementOnce` at
+`:14635`) provisions the agent home
 (`provision-v1-agent-home.js`), mints the Matrix identity, binds the owner, admits
 the agent to the project room, and launches it — all **inside** the verdict
 handler, awaiting each step, with no background effect worker. ADR-022
@@ -104,9 +106,12 @@ this ADR records it and ADR-095's amendment carries the key rule.
 Evidence. The retained product has no engagement-derived session id at all: its
 agent localpart is `{agentPrefix}{agentName}` (`backend-v2.js:14791`), derived
 from the *agent name*, and its sessions are room/thread-scoped conversations, not
-per-engagement. Native, by contrast, keys a session to its engagement and room
-(ADR-011's backend-owned session model; the store's
-`register_session`/`SessionBinding`). The intake mints the session for the
+per-engagement. Native, by contrast, keys a session to its engagement: the
+store's `SessionBinding` (`hagency-core/src/tasks.rs:54`) carries an
+`engagement_id`, and the engagement's session row is registered under that
+binding (`register_session`, `domain/execution.rs:639`). No prior decision scopes
+native sessions to engagements — ADR-095's amendment (this commit) decides it
+here. The intake mints the session for the
 engagement it just made effective, and a deterministic `session_{engagement_id}`
 keeps that derivation idempotent across restart and replay: re-observing the same
 admission derives the same session id rather than minting a second row.
@@ -170,8 +175,9 @@ constraint without colliding with the host or any other engagement.
   store's claim/observe pair already models the effect without a worker; one adds
   a failure surface (queue, retry, ordering) the slice does not need.
 - *Derive the session id or sender from the room/thread or a random value.*
-  Rejected: room/thread derivation is not engagement-stable (ADR-011 keys the
-  session to the engagement), and a random id is not restart-idempotent.
+  Rejected: room/thread derivation is not engagement-stable (a native session is
+  keyed to its engagement by `SessionBinding`, `hagency-core/src/tasks.rs:54`),
+  and a random id is not restart-idempotent.
 
 ## Related
 
@@ -183,7 +189,5 @@ constraint without colliding with the host or any other engagement.
   (d).
 - **ADR-022** (resource-first agent allocation) — already decides inline
   provisioning; (b) is confirmed by it.
-- **ADR-011** (backend-owned ephemeral runner sessions) — the engagement-scoped
-  session model (c) derives from.
-- specs/task-rust-provisioning-ingress.spec.md — the ingress this ADR's second
+- specs/task-r...[credential-redacted].spec.md — the ingress this ADR's second
   half completes.
