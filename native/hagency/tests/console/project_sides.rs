@@ -149,12 +149,15 @@ async fn native_console_project_side_projection_omits_credentials() {
     f.close().await;
 }
 
-/// A foreign origin cannot read the project sides: the boundary refuses
-/// with `console_origin_required` before any store read, the session hoop
-/// refuses the transport-level forgeries with the access-required word —
-/// and no refusal body carries a side item. The page keeps the
-/// five-document exception: it serves as a non-document, so a cross-site
-/// navigation is refused and no query string is accepted at all.
+/// A foreign origin cannot reach the project sides in either direction: the
+/// boundary refuses the read with `console_origin_required` before any store
+/// read, the session hoop refuses the transport-level forgeries with the
+/// access-required word, no refusal body carries a side item — and the same
+/// six forged-header refusals guard the one mutation this surface now has,
+/// the registration POST (G11), so a foreign origin cannot register either.
+/// The page keeps the five-document exception: it serves as a non-document,
+/// so a cross-site navigation is refused and no query string is accepted
+/// at all.
 #[tokio::test]
 async fn native_console_project_side_refuses_foreign_origin() {
     let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
@@ -222,17 +225,61 @@ async fn native_console_project_side_refuses_foreign_origin() {
         .send(&service)
         .await;
     assert_eq!(queried.status_code, Some(StatusCode::BAD_REQUEST));
-    // No mutation exists: the router refuses a non-GET outright.
-    let post = TestClient::post(format!("{BASE}/console/api/project-sides"))
-        .add_header("host", "127.0.0.1:13300", true)
-        .add_header("origin", BASE, true)
-        .add_header("sec-fetch-site", "same-origin", true)
-        .add_header("cookie", &cookie, true)
-        .send(&service)
-        .await;
-    assert!(matches!(
-        post.status_code,
-        Some(StatusCode::NOT_FOUND | StatusCode::METHOD_NOT_ALLOWED)
-    ));
+    // A mutation now exists (the registration route, G11): the boundary must
+    // refuse every forged-header POST with the same words the GET loop asserts,
+    // before any store work — the guarantee "this surface cannot be mutated
+    // from a foreign origin" survives in stronger form now that a mutation
+    // exists.
+    for (name, value, status, code) in [
+        (
+            "host",
+            "evil.test",
+            StatusCode::FORBIDDEN,
+            "console_origin_required",
+        ),
+        (
+            "origin",
+            "https://evil.test",
+            StatusCode::UNAUTHORIZED,
+            "console_access_required",
+        ),
+        (
+            "sec-fetch-site",
+            "cross-site",
+            StatusCode::UNAUTHORIZED,
+            "console_access_required",
+        ),
+        (
+            "sec-fetch-site",
+            "none",
+            StatusCode::UNAUTHORIZED,
+            "console_access_required",
+        ),
+        (
+            "x-forwarded-for",
+            "127.0.0.1",
+            StatusCode::FORBIDDEN,
+            "console_origin_required",
+        ),
+        (
+            "forwarded",
+            "for=127.0.0.1",
+            StatusCode::FORBIDDEN,
+            "console_origin_required",
+        ),
+    ] {
+        let mut response = post("/console/api/project-sides", &cookie)
+            .add_header(name, value, true)
+            .send(&service)
+            .await;
+        assert_eq!(response.status_code, Some(status), "{name}: {value}");
+        let body = response.take_json::<Value>().await.unwrap();
+        assert_eq!(body["code"], code, "{name}: {value}");
+        assert_eq!(body["ok"], json!(false), "{name}: {value} is a refusal");
+        assert!(
+            body.get("side").is_none(),
+            "{name}: {value} answers no side item"
+        );
+    }
     f.close().await;
 }
