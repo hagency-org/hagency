@@ -271,3 +271,77 @@ test('router chain: call-expression args, identifier handlers, unknown-receiver 
   assert.equal(result.wired, 1);
   assert.equal(result.missing.length, 0);
 });
+
+test('receiver typing: fn parameter type resolves recv.method to the impl method', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let c = get_collector(); drive(&c); }\nfn get_collector() -> Collector { Collector }\n',
+      'native/hagency/src/driver.rs': 'use crate::Collector;\npub fn drive(collector: &Collector) { collector.intake(); }\n',
+      'native/hagency/src/collector.rs': 'pub struct Collector;\nimpl Collector {\n  pub fn intake(&self) {}\n}\n',
+    },
+    specs: '  Production caller: hagency::collector::Collector::intake\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 1);
+});
+
+test('receiver typing: struct field type via let x = self.field (cross-file struct)', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let c = get_collector(); c.serve(); }\nfn get_collector() -> Collector { Collector }\n',
+      // The struct field (inner: Arc<Inner>) lives in a different file than
+      // the impl method that clones it.
+      'native/hagency/src/collector.rs': 'pub struct Collector {\n  pub inner: Arc<Inner>,\n}\npub struct Inner;\n',
+      'native/hagency/src/intake.rs': 'use crate::collector::{Collector, Inner};\nimpl Collector {\n  pub fn serve(&self) { let inner = self.inner.clone(); inner.handoff(); }\n}\nimpl Inner {\n  pub fn handoff(&self) {}\n}\n',
+    },
+    specs: '  Production caller: hagency::intake::Inner::handoff\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 1);
+});
+
+test('receiver typing: let annotation resolves recv.method', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let c: Collector = build(); c.intake(); }\nfn build() -> Collector { Collector }\n',
+      'native/hagency/src/collector.rs': 'pub struct Collector;\nimpl Collector {\n  pub fn intake(&self) {}\n}\n',
+    },
+    specs: '  Production caller: hagency::collector::Collector::intake\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 1);
+});
+
+test('receiver typing: Self inside impl resolves self.method to the impl method', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let i = get_inner(); i.start(); }\nfn get_inner() -> Inner { Inner }\n',
+      'native/hagency/src/intake.rs': 'pub struct Inner;\nimpl Inner {\n  pub fn start(&self) { self.handoff(); }\n  fn handoff(&self) { self.provision(); }\n  fn provision(&self) {}\n}\n',
+    },
+    specs: '  Production caller: hagency::intake::Inner::provision\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 1);
+});
+
+test('receiver typing: constructor result (let x = T::new()) resolves recv.method', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let c = Collector::new(); c.intake(); }\n',
+      'native/hagency/src/collector.rs': 'pub struct Collector;\nimpl Collector {\n  pub fn new() -> Collector { Collector }\n  pub fn intake(&self) {}\n}\n',
+    },
+    specs: '  Production caller: hagency::collector::Collector::intake\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 1);
+});

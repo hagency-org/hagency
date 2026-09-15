@@ -163,12 +163,26 @@ function listRustFiles() {
 export function buildGraph(files, read) {
   // fns: name -> [{ file, body, calls, impls }]; a name with entries in
   // several files is a collision. fileFns: file -> defs (defs carry impls).
+  // structFields: structName -> Map(field -> type), built across all files so
+  // a `let x = self.field` hint works even when the struct is declared in
+  // another file of the crate.
   const fns = new Map();
   const fileFns = new Map();
+  const sources = new Map();
+  const structFields = new Map();
   for (const rel of files) {
     const src = stripTestItems(read(rel));
+    sources.set(rel, src);
+    for (const [structName, fields] of structFieldTypes(src)) {
+      const prev = structFields.get(structName) || new Map();
+      for (const [k, v] of fields) prev.set(k, v);
+      structFields.set(structName, prev);
+    }
+  }
+  for (const rel of files) {
+    const src = sources.get(rel);
     const defs = extractFns(src);
-    for (const def of defs) { def.impls = implsOf(src, def); def.types = typeHints(src); }
+    for (const def of defs) { def.impls = implsOf(src, def); def.types = typeHints(src, def.impls, structFields); }
     fileFns.set(rel, defs);
     for (const def of defs) {
       if (!fns.has(def.name)) fns.set(def.name, []);
@@ -182,7 +196,7 @@ export function buildGraph(files, read) {
       }
     }
   }
-  return { fns, fileFns };
+  return { fns, fileFns, structFields };
 }
 
 // The impl type names whose blocks contain the fn's definition, e.g.
@@ -190,7 +204,9 @@ export function buildGraph(files, read) {
 function implsOf(src, def) {
   const idx = def.index ?? src.indexOf(def.body);
   const impls = [];
-  const re = /\bimpl\b[^{]*\b([A-Z][A-Za-z0-9_]*)[^{]*\{/g;
+  // `impl T {`, `impl<'a> T {`, `impl Trait for T {` — capture the type name
+  // that follows the impl header, tolerating generics before and after it.
+  const re = /\bimpl\b(?:\s*<[^>]*>)?[^\n{]*?\b([A-Z][A-Za-z0-9_]*)[^\n{]*\{/g;
   let m;
   while ((m = re.exec(src))) {
     let depth = 0, end = src.indexOf('{', m.index);
@@ -203,12 +219,64 @@ function implsOf(src, def) {
   return impls;
 }
 
-// Simple receiver-type hints: `name: &Type`, `name: Type` in fn signatures
-// and let-bindings, and struct fields. Maps variable -> type name.
-export function typeHints(src) {
+// Receiver-type hints from the evidence Rust gives for free, per fn body:
+// - fn parameter types:            `collector: &Collector`
+// - let annotations:               `let x: Type = ...`
+// - constructor results:           `let x = Type::new(..)` / `Type::start(..)`
+// - Self inside an impl block:     `self.method(` -> the impl's type
+// - field bindings:                `let x = self.field...` -> the field's
+//   type in the impl's struct (structFields), wrappers unwrapped
+// Maps variable -> type name; `self` maps to the enclosing impl type.
+const WRAPPERS = /^(?:Arc|Box|Option|Vec|Rc|Mutex|RwLock|RefCell|Weak|Cell|OnceCell|LazyLock)$/;
+function unwrapType(t) {
+  let cur = t.trim();
+  for (;;) {
+    const m = cur.match(/^([A-Z][A-Za-z0-9_]*)\s*<\s*(.+)>$/);
+    if (!m || !WRAPPERS.test(m[1])) return cur.replace(/[<>\s].*$/, '');
+    cur = m[2].split(',')[0].trim().replace(/^&(?:'\w+\s+)?(?:mut\s+)?/, '');
+  }
+}
+
+// structName -> Map(field -> unwrapped inner type), from `struct T { ... }`
+// blocks. Brace-matched; tuple structs and unit structs yield nothing.
+export function structFieldTypes(src) {
+  const out = new Map();
+  const re = /\bstruct\s+([A-Z][A-Za-z0-9_]*)[^{;]*\{/g;
+  let m;
+  while ((m = re.exec(src))) {
+    let depth = 0, end = src.indexOf('{', m.index);
+    for (let i = end; i < src.length; i++) {
+      if (src[i] === '{') depth++;
+      else if (src[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
+    }
+    const body = src.slice(src.indexOf('{', m.index), end);
+    const fields = new Map();
+    for (const f of body.matchAll(/\b([a-z_][A-Za-z0-9_]*)\s*:\s*&?\s*(?:'\w+\s+)?(?:mut\s+)?([A-Z][A-Za-z0-9_<>: ,&']+?)\s*[,}]/g)) {
+      if (!fields.has(f[1])) fields.set(f[1], unwrapType(f[2]));
+    }
+    const prev = out.get(m[1]) || new Map();
+    for (const [k, v] of fields) prev.set(k, v);
+    out.set(m[1], prev);
+  }
+  return out;
+}
+
+export function typeHints(src, impls, structFields) {
   const hints = new Map();
-  for (const m of src.matchAll(/([a-z_][A-Za-z0-9_]*)\s*:\s*&?\s*(?:'\w+\s+)?(?:mut\s+)?([A-Z][A-Za-z0-9_]*)/g)) {
-    if (!hints.has(m[1])) hints.set(m[1], m[2]);
+  const set = (k, v) => { if (k && v && !hints.has(k)) hints.set(k, v); };
+  // name: [&]['a] [mut] Type  (params, fields, let annotations)
+  for (const m of src.matchAll(/\b([a-z_][A-Za-z0-9_]*)\s*:\s*&\s*(?:'\w+\s+)?(?:mut\s+)?([A-Z][A-Za-z0-9_]*)/g)) set(m[1], m[2]);
+  for (const m of src.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*:\s*([A-Z][A-Za-z0-9_]*)/g)) set(m[1], m[2]);
+  // let x = Type::new/start/build/open/..( — constructor result
+  for (const m of src.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*=\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*([A-Z][A-Za-z0-9_]*)::(?:new|start|build|open|connect|bind)\s*\(/g)) set(m[1], m[2]);
+  if (impls && impls.length) set('self', impls[0]);
+  // let x = self.field[.clone()|...] — the field's struct type (clone and
+  // Arc derefs preserve it). The struct may be declared in another file.
+  const fields = structFields && impls && impls.length ? structFields.get(impls[0]) : null;
+  if (fields) {
+    for (const m of src.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*=\s*self\.([a-z_][A-Za-z0-9_]*)/g)) {
+      set(m[1], fields.get(m[2]));
+    }
   }
   return hints;
 }
@@ -297,11 +365,15 @@ export function resolveReachable(graph, roots) {
   const keyOf = (file, name) => `${file}::${name}`;
   while (queue.length) {
     const { file, name, taint } = queue.shift();
-    const entry = (graph.fns.get(name) || []).find((e) => e.file === file);
-    if (!entry || !entry.calls) continue;
-    const def = (graph.fileFns.get(file) || []).find((d) => d.name === name);
-    const types = def?.types || new Map();
+    // Every same-named definition in the file contributes its calls (two impls
+    // may define the same method name in one file — e.g. Collector::intake and
+    // Inner::intake — and each body has its own receiver hints).
+    const defs = (graph.fileFns.get(file) || []).filter((d) => d.name === name);
     const local = new Set((graph.fileFns.get(file) || []).map((d) => d.name));
+    for (const def of defs) {
+    const entry = (graph.fns.get(name) || []).find((e) => e.file === file && e.body === def.body);
+    if (!entry || !entry.calls) continue;
+    const types = def.types || new Map();
     for (const call of entry.calls) {
       const via = `${file}::${name} -> ${call}`;
       // Method call recorded as `receiver.name(`.
@@ -349,7 +421,11 @@ export function resolveReachable(graph, roots) {
         // swapped for it, and relative to the caller's own module directory.
         const filesList = [...graph.fileFns.keys()];
         const callerCrate = file.match(/^native\/([^/]+)\/src\//)?.[1].replace(/-/g, '_');
-        const callerModDir = file.replace(/^native\/[^/]+\/src\//, '').replace(/\.rs$/, '');
+        // Module of the caller: `bootstrap/driver.rs` lives in module
+        // `bootstrap` (the stem is the module file, not a submodule); only
+        // mod.rs/lib.rs/main.rs keep their directory as the module path.
+        let callerModDir = file.replace(/^native\/[^/]+\/src\//, '').replace(/\.rs$/, '');
+        if (!/\/(mod|lib|main)$/.test(callerModDir)) callerModDir = callerModDir.replace(/\/[^/]+$/, '');
         const attempts = [call];
         if (callerCrate) {
           if (parts[0] === 'crate') attempts.push([callerCrate, ...parts.slice(1)].join('::'));
@@ -372,6 +448,7 @@ export function resolveReachable(graph, roots) {
         ambiguousEdge = candidates.length > 1;
       }
       for (const t of targets) seed(t.file, t.name, taint || ambiguousEdge, keyOf(file, name), via);
+    }
     }
   }
   return { best, parents };
