@@ -50,15 +50,23 @@ fn launch_with(state: &Path, address: SocketAddr, console: Option<&Path>) -> Run
             stream
                 .set_read_timeout(Some(Duration::from_secs(1)))
                 .unwrap();
-            write!(
+            // Readiness handshake: a reset, a timeout or a write failure on a
+            // just-accepted connection is a "not ready yet" signal — the
+            // server is live but has not written the response yet. Continue
+            // the poll; only a completed non-200 response or the loop's bound
+            // expiring is a failure.
+            let handshake = write!(
                 stream,
                 "GET /health HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
             )
-            .unwrap();
-            let mut response = String::new();
-            stream.read_to_string(&mut response).unwrap();
-            if response.starts_with("HTTP/1.1 200") {
-                return running;
+            .and_then(|()| {
+                let mut response = String::new();
+                stream.read_to_string(&mut response).map(|_| response)
+            });
+            match handshake {
+                Ok(response) if response.starts_with("HTTP/1.1 200") => return running,
+                Ok(_) => {}  // completed non-200: not ready yet, keep polling
+                Err(_) => {} // reset/timeout: not ready yet, keep polling
             }
         }
         assert!(
