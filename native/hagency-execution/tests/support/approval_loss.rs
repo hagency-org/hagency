@@ -1372,8 +1372,11 @@ async fn native_owned_approval_peer_gone_before_first_byte() {
 /// The final verdict's rule, untransmitted arm (design Q3/Q4): the probe ends
 /// the turn while the host is held at the recheck gate — the entry is in
 /// flight, the frame armed, not one byte on the wire. The turn end must never
-/// end the operation silently: with zero accepted bytes the verdict is
-/// `PeerUnavailable` (never transmitted), never `Completed`.
+/// end the operation silently: the host's own close with zero accepted bytes is
+/// the quiet family — the drive completes, the protocol is `Completed`, the
+/// failure is the host-close quiet set (never `PeerUnavailable`, never
+/// `SettlementUnknown`, never `Protocol`) — and the arm is stamped
+/// `turn-ended-in-flight-untransmitted`.
 #[tokio::test]
 async fn native_owned_approval_turn_end_untransmitted() {
     use std::sync::{Arc, atomic::Ordering};

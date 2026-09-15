@@ -163,7 +163,7 @@ Scenario: A turn end never completes over an untransmitted in-flight frame
   Test: native_owned_approval_turn_end_untransmitted
   Given an in-flight armed frame held at the recheck gate with zero accepted bytes
   When the probe ends the turn and exits before the first byte
-  Then the operation reports PeerUnavailable never Completed and the untransmitted arm is stamped
+  Then the operation completes the turn (protocol Completed) with the quiet host-close failure family (never PeerUnavailable, never SettlementUnknown, never Protocol) and the untransmitted arm is stamped turn-ended-in-flight-untransmitted
   And no frame is written and no accepted row exists
 
 Scenario: A turn end never completes over a transmitted receipt-less frame
