@@ -120,6 +120,8 @@ jobs:
       # in a bare checkout) and pinned by sha256 inside the fixture.
       - run: node native/scripts/approval-vectors.mjs --check
       - run: node native/scripts/check-rust-spec-bindings.mjs
+      - run: node --test native/scripts/check-production-callers.test.mjs
+      - run: node native/scripts/check-production-callers.mjs
       - id: native-tests
         # ADR-144's operator-run qualification test fails (never skips inside
         # a test) while its evidence record is a placeholder — by design.
