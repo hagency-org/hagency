@@ -162,7 +162,7 @@ Scenario: The owned claim path reconciles a started dispatch after host death
   Level: integration
   Test Double: actual SQLite writer with a started dispatch whose lease has expired
   Test: native_owned_claim_reconciles_started_dispatch_after_host_death
-  Production caller: hagency_store::domain::execution::claim_owned_dispatch_for_host
+  Production caller: hagency_store::domain_worker::claim_owned_dispatch_for_host
   Given a started dispatch whose host died and whose lease has lapsed
   When another host claims
   Then expire() routes the started row through lose(): started → outcome_unknown, session quarantined, workspace dirtied, no new attempt
