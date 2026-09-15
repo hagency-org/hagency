@@ -202,6 +202,15 @@ bins; every finding grep-confirmed per the original evidence rule).
 | G2 | `observe_effect` | `hagency-matrix/src/intake.rs:407` (the same effect observed complete) |
 | G3 | `resolve_verified_matrix_session` | `hagency-matrix/src/intake.rs:450` (the provisioned engagement's route binding) |
 
+**Open gaps added 2026-09-14 evening.** G10 — an operator can neither refuse a pending
+engagement request nor retire an active one: `reject` and `revoke` are the only
+callers of `end`, which is the sole writer of the Rejected and Revoked states, and
+neither has a production caller. G11 — no production path registers a project
+side, though `register` is the sole writer of that table outside tests. Both are
+parity gaps against the retained product, which exposes operator routes for all
+three acts; their spec slices carry `Production caller: owed (G10)` and `owed
+(G11)` until the code exists.
+
 **Correction to the brief (twice revised)**: the crash-reconciliation
 BEHAVIOUR is production-reached, and the duplicate-effect clause of the DoD is
 satisfied by it: the driver's claim (`hagency/src/bootstrap/driver.rs:257`,
@@ -243,12 +252,12 @@ reasoning stands.
 | `record_late_output` | domain/execution.rs:982 | facade domain_worker.rs:2308 has no production caller, yet its sibling lane IS wired: `complete_dispatch` (execution.rs:964) ← `admit_owned_dispatch` (owned_dispatch.rs:302) ← operation.rs:706. A dispatch that completes is recorded; one whose output arrives late is not | **new gap** (real product work; owner unassigned) |
 | `enqueue_inbox_dispatch` | domain/messages.rs:283 | **superseded-by** `select_receive_inbox` → `select_receive` (messages.rs:647, which performs the `enqueue_inbox` write at :703/:741) ← `hagency/src/bootstrap/inbox.rs:31`; the direct facade is a stale variant | superseded |
 | `create_canonical_task` | domain/execution.rs:679 | facade domain_worker.rs:2194 (self-call :2202) has no production caller; every candidate is test-enclosed — domain_worker.rs:428 and :710 in `mod clock_tests` (:354-1389), domain/accounts.rs:1301 in `mod tests` (:1154-1425), hagency/src/bootstrap/driver.rs:445 in `mod tests` (:378-691). The write is real: the body reaches the `canonical_tasks` insert | **new gap** (owner unassigned; the original audit missed this row entirely) |
-| `register` | domain.rs:730 | facade domain_worker.rs:2842 has no production caller; the `.register(` hits outside the store are a DIFFERENT type (`workspace.register` ← hagency/src/bootstrap/driver.rs:299, workspace.rs:68), and the in-store hits are test-enclosed (domain_worker.rs:373 and :1317 in `mod clock_tests`, accounts.rs:1280 in `mod tests`) | **new gap** (bootstrap-prerequisite shape; owner unassigned) |
+| `register` | domain.rs:730 | facade domain_worker.rs:2842 has no production caller; the `.register(` hits outside the store are a DIFFERENT type (`workspace.register` ← hagency/src/bootstrap/driver.rs:299, workspace.rs:68), and the in-store hits are test-enclosed (domain_worker.rs:373 and :1317 in `mod clock_tests`, accounts.rs:1280 in `mod tests`) | gap G11 (project-side registration) |
 | `claim_verified_task_notice` | domain/notice_custody.rs:99 | facade domain_worker.rs:1780 is the only production-source hit and is its own body; the wired notice lane enters through `begin_verified_task_notice_send` / `validate_verified_task_notice_send` ← hagency-matrix/src/outgoing.rs:266,438 | **superseded-by** the verified notice lane |
 | `deliver_verified_task_notice` | domain/notice_custody.rs:190 | facade domain_worker.rs:1828 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
 | `cancel_verified_task_notice` | domain/notice_custody.rs:232 | facade domain_worker.rs:1806 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
-| `reject` | domain.rs:1257 | facade domain_worker.rs:2921, inside `pub async fn reject` (:2919) in the production impl, is the only production-source hit and is its own body; every other `.reject(` hit is under hagency-store/tests | **new gap** (owner unassigned) |
-| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), is the only production-source hit for THIS type; the many other `.revoke(` hits are the console and resource access guards (`console/authority.rs:36-38`, `console.rs:359`), a bare-name collision | **new gap** (owner unassigned) |
+| `reject` | domain.rs:1257 | facade domain_worker.rs:2921, inside `pub async fn reject` (:2919) in the production impl, is the only production-source hit and is its own body; every other `.reject(` hit is under hagency-store/tests | gap G10 (operator refusal and retirement) |
+| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), is the only production-source hit for THIS type; the many other `.revoke(` hits are the console and resource access guards (`console/authority.rs:36-38`, `console.rs:359`), a bare-name collision | gap G10 (operator refusal and retirement) |
 
 Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 (`hagency/src/runner.rs:416`); the remaining candidate names are read APIs
