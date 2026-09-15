@@ -252,9 +252,20 @@ async fn native_matrix_upload_cancellation_custody() {
         let mut attempt = client.prepare(&media.encrypted).unwrap();
         let cancel = CancellationToken::new();
         let mut sending = Box::pin(attempt.send(&cancel));
+        // The fake must admit the request bytes before the client can enter
+        // the response wait whose elapsed bound is the only producer of
+        // Err(Timeout) (tokio's Timeout polls the inner future first, so a
+        // ready response always beats an elapsed delay). Admission is what
+        // readies fake.next(), so the observation arm is ready no later than
+        // the send arm: poll it FIRST under `biased`, making the both-ready
+        // case (a starved test task resuming after the client's bound fired)
+        // deterministically take the request instead of a random-arm coin
+        // flip onto the panic arm. If the send resolves while the fake never
+        // admitted, the panic still fires promptly.
         let request = tokio::select! {
-            result=&mut sending=>panic!("send completed before peer read: {result:?}"),
+            biased;
             request=fake.next()=>request,
+            result=&mut sending=>panic!("send completed before peer read: {result:?}"),
         };
         assert_eq!(request.body, ciphertext);
         match mode {
@@ -331,9 +342,16 @@ async fn native_matrix_upload_capacity() {
     ));
     let cancel = CancellationToken::new();
     let mut sending = Box::pin(first.send(&cancel));
+    // Same construction as the cancellation-custody select above: admission
+    // necessarily precedes the client's response wait, so poll the
+    // observation arm first under `biased` — the both-ready case (request
+    // admitted, then the client's bound fired while this task was starved)
+    // deterministically observes the request instead of coin-flipping onto
+    // the panic arm. A send resolving with no admission still panics promptly.
     let request = tokio::select! {
-        result=&mut sending=>panic!("send completed before peer read: {result:?}"),
+        biased;
         request=fake.next()=>request,
+        result=&mut sending=>panic!("send completed before peer read: {result:?}"),
     };
     assert_eq!(
         second.send(&cancel).await,

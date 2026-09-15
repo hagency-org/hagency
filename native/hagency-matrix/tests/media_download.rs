@@ -369,7 +369,12 @@ async fn native_matrix_media_integrity_eof() {
     {
         let run = client.download(&id, &descriptor, &cancel);
         tokio::pin!(run);
+        // Observation first under `biased`: admission precedes the client's
+        // response wait, so the both-ready case (starved test task resuming
+        // after the client's own bound resolved the run) takes the request,
+        // never the panic arm.
         let request = tokio::select! {
+            biased;
             request=fake.next()=>request,
             _=&mut run=>panic!("download ended before request"),
         };
@@ -554,7 +559,10 @@ async fn native_matrix_media_deadline_cancel() {
     let cancel = CancellationToken::new();
     let run = client.download(&id, &descriptor, &cancel);
     tokio::pin!(run);
-    let request = tokio::select! { request=fake.next()=>request, _=&mut run=>panic!("download ended before request") };
+    // Observation first under `biased` (same both-ready ordering as above):
+    // the request admitted here is the next assertion's subject regardless
+    // of whether the client's own bound fired while this task was starved.
+    let request = tokio::select! { biased; request=fake.next()=>request, _=&mut run=>panic!("download ended before request") };
     request.chunks(vec![
         (
             Duration::ZERO,
@@ -570,7 +578,7 @@ async fn native_matrix_media_deadline_cancel() {
         let cancel = CancellationToken::new();
         let run = client.download(&id, &descriptor, &cancel);
         tokio::pin!(run);
-        let request = tokio::select! { request=fake.next()=>request,_=&mut run=>panic!("download ended before request")};
+        let request = tokio::select! { biased; request=fake.next()=>request,_=&mut run=>panic!("download ended before request")};
         request.chunks(vec![(Duration::from_secs(2), body(&cipher))]);
     }
     let cancel = CancellationToken::new();
@@ -600,7 +608,7 @@ async fn native_matrix_media_capacity() {
     let (cipher, descriptor, _) = vector(16);
     let run = client.download(&id, &descriptor, &cancel);
     tokio::pin!(run);
-    let request = tokio::select! {request=fake.next()=>request,_=&mut run=>panic!("download ended before request")};
+    let request = tokio::select! { biased; request=fake.next()=>request,_=&mut run=>panic!("download ended before request")};
     assert_eq!(
         error(other.download(&id, &descriptor, &cancel).await),
         Failure::Transport(Error::Busy)
