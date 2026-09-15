@@ -13,6 +13,8 @@ mod browser;
 mod configuration;
 #[path = "console/engagements.rs"]
 mod engagements;
+#[path = "console/engagements_retire.rs"]
+mod engagements_retire;
 #[path = "console/fixture.rs"]
 mod fixture;
 #[path = "console/origin.rs"]

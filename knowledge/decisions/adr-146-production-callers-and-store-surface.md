@@ -86,7 +86,7 @@ collisions are resolved per type in the row's note.
 | `approve` | domain.rs:1145 | now called from production | **closed G2** (2026-09-14): hagency-matrix/src/intake.rs:397, inside `Inner::approve_provision` (the async fn opening at intake.rs:285) |
 | `claim_effect` | domain.rs:1338 | now called from production | **closed G2** (2026-09-14): hagency-matrix/src/intake.rs:405 (the inline provision-effect claim in the same handoff) |
 | `observe_effect` | domain.rs:1357 | now called from production | **closed G2** (2026-09-14): hagency-matrix/src/intake.rs:407 (the effect is observed complete in the same handoff) |
-| `retry_cleanup` | domain.rs:1265 | none outside tests/fixtures | gap G10 (the retirement slice's cleanup retry, carried under `owed (G10)` by the refusal and retirement specs; the former G2/G5 labels died with G2's closure and G5's revision to G5a) |
+| `retry_cleanup` | domain.rs:1265 | now called from production | **closed G10** (2026-09-15): `hagency::console::engagements::cleanup_retry` — `POST /console/api/engagements/{id}/cleanup-retry` under `Scope::AgentLifecycle`, per ADR-150 (the operator's only path back for a failed retirement; no sweeper). The row was reallocated from the dead G2/G5 ids — G2 closed 2026-09-14 and G5 was revised to G5a, closed by the recover-dispatch route |
 | `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | now called from production | **closed G3** (2026-09-14): hagency-matrix/src/intake.rs:450, the route binding for the provisioned engagement, in the same `Inner::approve_provision` handoff. The older bootstrap-driver citation is withdrawn: that call is a `#[cfg(test)]` fixture (at driver.rs:432 on this head, :393 when the row was written), not bootstrap configuration |
 | `begin_account_login` | domain/accounts.rs:785 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:64 |
 | `settle_account_login` | domain/accounts.rs:824 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:100 |
@@ -218,6 +218,12 @@ side, though `register` is the sole writer of that table outside tests. Both are
 parity gaps against the retained product, which exposes operator routes for all
 three acts; their spec slices carry `Production caller: owed (G10)` and `owed
 (G11)` until the code exists.
+**G10 status 2026-09-15: the retire half is closed** — `hagency::console::engagements::retire`
+wires `revoke` (ADR-150), and `cleanup_retry` is wired beside it, closing the
+row reallocated to G10 (its old G2/G5 ids are dead: G2 closed 2026-09-14, G5
+revised to G5a and closed by the recover-dispatch route). The refusal half
+(`reject`, a `Pending`-only refusal) remains open; its own spec slice still
+carries the owed lines legitimately.
 
 **Correction to the brief (twice revised)**: the crash-reconciliation
 BEHAVIOUR is production-reached, and the duplicate-effect clause of the DoD is
@@ -272,7 +278,7 @@ reasoning stands.
 | `deliver_verified_task_notice` | domain/notice_custody.rs:190 | facade domain_worker.rs:1828 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
 | `cancel_verified_task_notice` | domain/notice_custody.rs:232 | facade domain_worker.rs:1806 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
 | `reject` | domain.rs:1257 | facade domain_worker.rs:2921, inside `pub async fn reject` (:2919) in the production impl, is the only production-source hit and is its own body; every other `.reject(` hit is under hagency-store/tests | gap G10 (operator refusal and retirement) |
-| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), is the only production-source hit for THIS type; the many other `.revoke(` hits are the console and resource access guards (`console/authority.rs:36-38`, `console.rs:359`), a bare-name collision | gap G10 (operator refusal and retirement) |
+| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), in production | **closed G10 (retire half)** (2026-09-15): `hagency::console::engagements::retire` — `POST /console/api/engagements/{id}/retire` under `Scope::AgentLifecycle`, per ADR-150; the `reject` refusal half of G10 stays open (its spec slice still carries the owed lines) |
 
 Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 (`hagency/src/runner.rs:416`); the remaining candidate names are read APIs

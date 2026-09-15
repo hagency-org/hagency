@@ -146,67 +146,67 @@ gate will fail.**
 ## Acceptance Criteria
 
 Scenario: An active engagement is retired and its obligations are transferred
-  Owed Selector: native_engagement_retire_active_is_revoked (owed — no test yet; no Test: line here)
+  Test: native_engagement_retire_active_is_revoked
   Given an engagement in state active whose provision effect is complete
   When the operator retires it through the console retire route with the operator's command id
   Then the engagement's stored state is revoked, its provision effect is cancelled with its fence advanced, a retire-kind effect is scheduled pending for it with the engagement's cleanup obligation set to pending, and an engagement_ends row exists for it
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::retire
   Retained: POST /api/engagements/:id/revoke (backend-v2.js:15221-15251) -> lib/engagement-store.js:728-744 (revoke: state='ended' :733, endedReason='revoked' :735, withdrawal={state:'pending'} :736, record engagement.revoked :737, pruneEnded :741, one commit :742) -> :15239 beginWithdrawal -> lib/engagement-store.js:700-707; then retireEngagementAgent backend-v2.js:15190 or detachEngagement :14931 -> setWithdrawalOutcome :15241 -> lib/engagement-store.js:709-725
 
 Scenario: An already-ended engagement cannot be retired again
-  Owed Selector: native_engagement_retire_requires_a_live_engagement (owed — no test yet; no Test: line here)
+  Test: native_engagement_retire_requires_a_live_engagement
   Given an engagement already in revoked or rejected
   When the operator retires it again under a new command id
   Then the store returns a state error and neither the engagement's state nor its effects rows change
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::retire
   Retained: lib/engagement-store.js:731 throws EngagementError('conflict', `engagement is ${e.state}, not active`); the route's ended re-entry (backend-v2.js:15228) retries only detachment, it never re-writes the decision
 
 Scenario: A replayed retirement command is idempotent
-  Owed Selector: native_engagement_retire_replays_the_recorded_decision (owed — no test yet; no Test: line here)
+  Test: native_engagement_retire_replays_the_recorded_decision
   Given a retirement already recorded under a command id and its revoke digest
   When the identical command id and digest are presented again
   Then the prior engagement is returned and no second decisions row and no second effect write occurs
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::retire
   Retained: backend-v2.js:15189, :15223-15247 (the in-flight revocations record: concurrent identical revokes share one promise) and :15227-15228 (a settled revoke re-enters on state==='ended'); NOTE the port is more idempotent than the retained store: a replayed revoke against an ended engagement throws conflict here (lib/engagement-store.js:731), it does not replay
 
 Scenario: A retirement with a reused command id but different content is a conflict
-  Owed Selector: native_engagement_retire_rejects_a_changed_replay (owed — no test yet; no Test: line here)
+  Test: native_engagement_retire_rejects_a_changed_replay
   Given a retirement already recorded under a command id
   When the same command id is presented with a digest for a different engagement or decision kind
   Then the store returns a conflict and no write occurs
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::retire
   Retained: lib/engagement-store.js:731 (a conflicting decision on a non-active engagement is refused, never a silent second write)
 
 Scenario: A retirement naming an unknown engagement is not found
-  Owed Selector: native_engagement_retire_unknown_is_not_found (owed — no test yet; no Test: line here)
+  Test: native_engagement_retire_unknown_is_not_found
   Given an id that names no engagement
   When the operator retires it through the console retire route
   Then the store returns not-found and no rows are written
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::retire
   Retained: lib/engagement-store.js:730 throw EngagementError('not_found', 'engagement not found')
 
 Scenario: An operator retries a failed retirement
-  Owed Selector: native_engagement_retry_cleanup_requeues_a_failed_retire (owed — no test yet; no Test: line here)
+  Test: native_engagement_retry_cleanup_requeues_a_failed_retire
   Given an engagement in state revoked whose retire-kind effect is in state failed (the failed row supplied as the Given while the retire driver is unwired)
   When the operator retries cleanup through the console cleanup-retry route with the operator's command id
   Then exactly one retire-kind effect returns to state pending with its outcome digest cleared, and the engagement's stored state is unchanged
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::cleanup_retry
   Retained: backend-v2.js:15233-15234 ("The decision is already durable. Retry only detachment, rechecking other live allocations before removing a binding or Matrix room seat.") and :15239-15241 (the retry re-runs beginWithdrawal/retireEngagementAgent/detachEngagement + setWithdrawalOutcome)
 
 Scenario: A cleanup retry is refused when there is nothing failed to retry
-  Owed Selector: native_engagement_retry_cleanup_requires_a_failed_retire (owed — no test yet; no Test: line here)
+  Test: native_engagement_retry_cleanup_requires_a_failed_retire
   Given an engagement that is not in state revoked, or whose retire-kind effect is not in state failed
   When the operator retries cleanup
   Then the store returns a state error and no effects row is modified
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::cleanup_retry
   Retained: no separate guard exists in the retained product — it re-runs the idempotent detachment (backend-v2.js:15239-15241). The port's guard is a deliberate tightening of the shape, not a parity claim
 
 Scenario: A failed retirement is never retried without an operator
-  Owed Selector: native_engagement_failed_retire_waits_for_an_operator (owed — no test yet; no Test: line here)
+  Test: native_engagement_failed_retire_waits_for_an_operator
   Given an engagement in state revoked whose retire-kind effect is in state failed
   When no operator retries and an arbitrary period elapses (no sweeper pass, no tick, no timer fires)
   Then the retire effect remains failed, the engagement remains revoked, and no automatic retry write occurs
-  Production caller: owed (G10)
+  Production caller: hagency::console::engagements::cleanup_retry
   Retained: no sweeper — the only interval helper (backend-v2.js:17422-17426) is unused for withdrawals; the retry is the operator re-POSTing the revoke route (:15221-15251, comment :15233-15234)
   Also: the failed retire pins the engagement from the retention prune (native/hagency-store/src/domain/engagement_retention.rs:386-388)
 
