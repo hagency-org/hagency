@@ -56,6 +56,9 @@ async fn serve_bootstrap(fake: &mut common::Fake, pair: &PairFixture, agent: &Ho
                 },
             );
             states_served += 1;
+            // Diagnostic only: surface this script's progress so
+            // `common::scripted`'s panic arm can report how far it had got.
+            common::script_progress(states_served as u64);
             // Both rooms answered — the observation pass is complete; the
             // script ends here, deterministically.
             if states_served == 2 {

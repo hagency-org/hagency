@@ -4,6 +4,7 @@ use hagency_matrix::{CancellationToken, HostConfig, HostIdentity, HostRoom, Limi
 use hagency_store::{DomainRepository, DomainStore, EffectOutcome, EffectState};
 use serde_json::{Value, json};
 use std::{
+    cell::Cell,
     collections::BTreeMap,
     fmt::Debug,
     future::Future,
@@ -32,6 +33,22 @@ pub mod domain;
 pub mod pair;
 pub mod stall;
 pub const TOKEN: &str = "synthetic-Matrix-token-not-real";
+thread_local! {
+    /// Diagnostic round bookkeeping for `scripted()` (its panic arm reports
+    /// both). Every test owns its fixtures on its own current-thread runtime,
+    /// so a thread-local is exact for the suites that fail and adds no
+    /// cross-test synchronization. Serve tasks that hop threads read a
+    /// best-effort 0 for the round; these suites never do.
+    static SCRIPTED_ROUND: Cell<u64> = const { Cell::new(0) };
+    static SCRIPTED_PROGRESS: Cell<u64> = const { Cell::new(0) };
+}
+/// Diagnostic: a script's own progress counter (e.g. `states_served` in the
+/// two-agent bootstrap), surfaced in `scripted()`'s panic arm so a failing
+/// report says how far the script had got. Test-thread-local for the same
+/// reason as `SCRIPTED_ROUND`; never read on any passing path.
+pub fn script_progress(reached: u64) {
+    SCRIPTED_PROGRESS.with(|progress| progress.set(reached));
+}
 /// Tight fixture bounds for the transport-bound tests of this crate, which
 /// deliberately drive slow headers, idle bodies and deadlines against them.
 pub fn limits() -> Limits {
@@ -182,17 +199,23 @@ where
     // Diagnostic only: an early collector settlement is reported with its
     // elapsed time against the fixture bounds, so a starved fake peer under
     // whole-package load can be told from a real refusal.
+    SCRIPTED_ROUND.with(|round| round.set(round.get() + 1));
+    SCRIPTED_PROGRESS.with(|progress| progress.set(0));
+    let round = SCRIPTED_ROUND.with(|round| round.get());
     let started = std::time::Instant::now();
     tokio::pin!(collector, script);
     tokio::select! {
         biased;
         output = &mut script => (collector.await, output),
-        output = &mut collector => panic!(
-            "collector completed before its HTTP script: {output:?} (after {:?}; fixture request bounds {:?} tight, {:?} load)",
-            started.elapsed(),
-            limits().request,
-            load_limits().request
-        ),
+        output = &mut collector => {
+            let progress = SCRIPTED_PROGRESS.with(|progress| progress.get());
+            panic!(
+                "collector completed before its HTTP script: {output:?} (after {:?}; fixture request bounds {:?} tight, {:?} load; scripted round {round}, script progress {progress})",
+                started.elapsed(),
+                limits().request,
+                load_limits().request
+            );
+        }
     }
 }
 /// Observe the original domain shutdown once. A failure stays a failure; late
@@ -225,6 +248,10 @@ pub struct Request {
     pub target: String,
     pub headers: BTreeMap<String, String>,
     pub body: Vec<u8>,
+    /// Diagnostic admission ordinal: the fixture request counter's value when
+    /// this request was admitted, so `serve`'s send line and `next`'s receive
+    /// line correlate by seq. Never read by any assertion.
+    pub seq: u64,
     response: oneshot::Sender<ScriptedResponse>,
 }
 impl Request {
@@ -363,6 +390,15 @@ impl Fake {
         {
             eprintln!("scripted HTTP phase: {phase}");
         }
+        if let Ok(Some(request)) = &result {
+            eprintln!(
+                "[fake] recv round={} seq={} {} {}",
+                SCRIPTED_ROUND.with(|round| round.get()),
+                request.seq,
+                request.method,
+                request.target
+            );
+        }
         result
             .expect("scripted HTTP request missing after SDK plus HTTP budget")
             .expect("scripted HTTP peer closed")
@@ -457,18 +493,26 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
         bytes.extend_from_slice(&part[..n]);
     }
     let (response, rx) = oneshot::channel();
+    let seq = seen.fetch_add(1, Ordering::SeqCst) + 1;
+    // Diagnostic send line, matched with `next`'s receive line by seq. One
+    // stderr write per admitted request: no extra await, no behavior change.
+    eprintln!(
+        "[fake] send round={} seq={} {method} {target}",
+        SCRIPTED_ROUND.with(|round| round.get()),
+        seq
+    );
     let request = Request {
         method,
         target,
         headers,
         body: bytes[headers_end..headers_end + length].to_vec(),
+        seq,
         response,
     };
     // Admission: the request bytes were received and parsed. Counting here —
     // before any response — makes the counter insensitive to how the client
     // reacts to the response, so a late admitted request can never slip past
     // a later quiescence check.
-    seen.fetch_add(1, Ordering::SeqCst);
     if tx.send(request).await.is_err() {
         return;
     }
