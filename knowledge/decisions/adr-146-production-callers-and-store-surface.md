@@ -79,9 +79,9 @@ collisions are resolved per type in the row's note.
 | `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | only bootstrap driver setup code (hagency/src/bootstrap/driver.rs:393 — see the amendment: that file is production, and its calls are bootstrap configuration, not the runtime route insert) | gap G3 |
 | `begin_account_login` | domain/accounts.rs:785 | none outside tests/fixtures | gap G4 |
 | `settle_account_login` | domain/accounts.rs:824 | none outside tests/fixtures | gap G4 |
-| `reconcile_dispatches` | domain/execution.rs:1014 | none outside tests/fixtures | gap G5 |
-| `recover_dispatch` | domain/execution.rs:1025 | none outside tests/fixtures | gap G5 |
-| `shutdown_observed` | worker.rs:128, domain_worker.rs:2526 | none outside tests/fixtures | gap G5 |
+| `reconcile_dispatches` | domain/execution.rs:1014 | none outside tests/fixtures | gap G5a (operator recovery and resume) |
+| `recover_dispatch` | domain/execution.rs:1025 | none outside tests/fixtures | gap G5a (operator recovery and resume) |
+| `shutdown_observed` | worker.rs:128, domain_worker.rs:2526 | read-only snapshot — writes nothing (worker.rs:128-132); all call sites are inside `#[cfg(test)]` modules (worker.rs:374 covers :391/:410/:472/:493) | immaterial — not a gap |
 | `register_workspace` | domain/execution.rs:670 | only bootstrap driver setup code (hagency/src/bootstrap/driver.rs:414 — same amendment) | gap G6 |
 | `revoke_approval_grant` | domain/approvals.rs:676 | none outside tests/fixtures | gap G7 |
 | `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | none outside tests/fixtures | gap G8 |
@@ -186,30 +186,34 @@ bins; every finding grep-confirmed per the original evidence rule).
 | G8 | `pending_conversation_stops` | `hagency/src/bootstrap/driver.rs:358` |
 | G8 | `settle_conversation_stop` | `hagency/src/bootstrap/driver.rs:367` |
 
-**Correction to the brief (revised after integration review)**: G5 is narrower
-than this amendment first said. The named facades `reconcile_dispatches` and
-`recover_dispatch` (`domain_worker.rs:2318,2321`) do have zero production
-callers — that part stands. But the claim that *every* `shutdown_observed`
-call site is inside `#[tokio::test]` was wrong: it has four production call
-sites in the store's own worker (`native/hagency-store/src/worker.rs:391,410,
-472,493`). And the crash-survival behaviour the definition of done names IS
-production-reached by a different path: the driver's claim
-(`hagency/src/bootstrap/driver.rs:257`, also :573, :637) → `claim_owned_clock`
-(`execution.rs:765`) → `claim_clock` (:783) → `expire(&tx, now)` (:810),
-called before the candidate select; `expire` (:228) selects every row in
-('leased','started','parked') whose `lease_until` or `capability_until` has
-elapsed and drives it through `lose` (:189-203) to `outcome_unknown`,
-quarantining the session, and the candidate query then admits only claimable
-states, so the orphan is never re-claimed. A crashed host's in-flight dispatch
-is therefore reconciled at the next claim, lease-gated — the DoD line
-"allocation and task truth survive retries/crashes without silent duplicate
-effects" is satisfied by this path.
+**Correction to the brief (twice revised)**: the crash-reconciliation
+BEHAVIOUR is production-reached, and the duplicate-effect clause of the DoD is
+satisfied by it: the driver's claim (`hagency/src/bootstrap/driver.rs:257`,
+also :573, :637) → `claim_owned_clock` (`execution.rs:765`) → `claim_clock`
+(:783) → `expire(&tx, now)` (:810), called before the candidate select;
+`expire` (:228) selects every row in ('leased','started','parked') whose
+`lease_until` or `capability_until` has elapsed and drives it through `lose`
+(:189-203) to `outcome_unknown`, quarantining the session. An expired-lease
+reclaim therefore exists at `execution.rs:810`; the earlier clause "no
+expired-lease reclaim or crash reconciliation exists in any production path"
+is dropped as wrong. `shutdown_observed` is a read-only snapshot
+(`worker.rs:128-132` — it writes nothing, only delegates to
+`shutdown_tracked` and snapshots a probe), and all its call sites are inside
+`#[cfg(test)]` modules (the marker at `worker.rs:374` covers :391/:410/:472/
+:493) — so its absence is immaterial to the gap.
 
-What is actually missing is the recovery-artifact trail that only
-`recover_dispatch` writes — `INSERT INTO dispatch_recoveries`
-(`execution.rs:1118`) and `INSERT INTO dispatch_recovery_reports` (:1120) —
-which has no production writer, plus the unreached `reconcile_dispatches`
-facade. That narrower gap is **G5a (recovery artifacts)**, open. G2
+What has no production path at all is RECOVERY AND RESUME. `lose` settles the
+orphan to `outcome_unknown` and quarantines the session — satisfying the
+duplicate-effect half of the DoD — but performs none of what `recover_dispatch`
+(`execution.rs:1025`) additionally does: `DELETE FROM resource_leases` (:1102),
+clearing `quarantined=0` (:1107), clearing `dirty=0` (:1110), the supersede
+write (:1112), the replacement enqueue (:1115), and the recovery records
+(`INSERT INTO dispatch_recoveries` :1118, `INSERT INTO dispatch_recovery_reports`
+:1120). Without them the orphan stays in `unresolved_dispatches`, keeps
+counting against the live cap the claim query checks (`execution.rs:812`), and
+the session stays quarantined — permanently, with no production path to
+resume. An orphaned dispatch is currently settled but never resumed. That gap
+is **G5a (operator recovery and resume)**, open. G2
 (`approve`/`claim_effect`/`observe_effect`/`retry_cleanup`) confirmed still
 unreached (under review); G3 (`resolve_verified_matrix_session`) still has
 only the bootstrap driver setup call (`driver.rs:432`) — the first amendment's
