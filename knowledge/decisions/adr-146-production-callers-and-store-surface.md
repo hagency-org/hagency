@@ -186,15 +186,34 @@ bins; every finding grep-confirmed per the original evidence rule).
 | G8 | `pending_conversation_stops` | `hagency/src/bootstrap/driver.rs:358` |
 | G8 | `settle_conversation_stop` | `hagency/src/bootstrap/driver.rs:367` |
 
-**Correction to the brief**: G5 (restart recovery) is **not landed** on this
-head — the `reconcile_dispatches`/`recover_dispatch` facades
-(`domain_worker.rs:2318,2321`) have zero production callers, and every
-`shutdown_observed` call site is inside `#[tokio::test]`; no
-expired-lease reclaim or crash reconciliation exists in any production path.
-G5 stays an open gap. G2 (`approve`/`claim_effect`/`observe_effect`/
-`retry_cleanup`) confirmed still unreached (under review); G3
-(`resolve_verified_matrix_session`) still has only the bootstrap driver setup
-call (`driver.rs:432`) — the first amendment's reasoning stands.
+**Correction to the brief (revised after integration review)**: G5 is narrower
+than this amendment first said. The named facades `reconcile_dispatches` and
+`recover_dispatch` (`domain_worker.rs:2318,2321`) do have zero production
+callers — that part stands. But the claim that *every* `shutdown_observed`
+call site is inside `#[tokio::test]` was wrong: it has four production call
+sites in the store's own worker (`native/hagency-store/src/worker.rs:391,410,
+472,493`). And the crash-survival behaviour the definition of done names IS
+production-reached by a different path: the driver's claim
+(`hagency/src/bootstrap/driver.rs:257`, also :573, :637) → `claim_owned_clock`
+(`execution.rs:765`) → `claim_clock` (:783) → `expire(&tx, now)` (:810),
+called before the candidate select; `expire` (:228) selects every row in
+('leased','started','parked') whose `lease_until` or `capability_until` has
+elapsed and drives it through `lose` (:189-203) to `outcome_unknown`,
+quarantining the session, and the candidate query then admits only claimable
+states, so the orphan is never re-claimed. A crashed host's in-flight dispatch
+is therefore reconciled at the next claim, lease-gated — the DoD line
+"allocation and task truth survive retries/crashes without silent duplicate
+effects" is satisfied by this path.
+
+What is actually missing is the recovery-artifact trail that only
+`recover_dispatch` writes — `INSERT INTO dispatch_recoveries`
+(`execution.rs:1118`) and `INSERT INTO dispatch_recovery_reports` (:1120) —
+which has no production writer, plus the unreached `reconcile_dispatches`
+facade. That narrower gap is **G5a (recovery artifacts)**, open. G2
+(`approve`/`claim_effect`/`observe_effect`/`retry_cleanup`) confirmed still
+unreached (under review); G3 (`resolve_verified_matrix_session`) still has
+only the bootstrap driver setup call (`driver.rs:432`) — the first amendment's
+reasoning stands.
 
 **New rows** (unreached writes the original audit did not list):
 
@@ -213,7 +232,7 @@ Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 
 **Checker reconciliation**: `check-production-callers.mjs` on this head reads
 exit 0, count 14, wired 11, owed G2/G2/G3 — no discrepancy. The checker only
-sees spec-named `Production caller:` lines, and no spec line names the G5
-methods or the two new gaps, so neither tool contradicts the other; the
-asymmetry (audit covers the whole store surface, checker covers spec-named
-writes) is the intended division of labour.
+sees spec-named `Production caller:` lines, and no spec line names the G5a
+recovery-artifact writes or the two new gaps, so neither tool contradicts the
+other; the asymmetry (audit covers the whole store surface, checker covers
+spec-named writes) is the intended division of labour.
