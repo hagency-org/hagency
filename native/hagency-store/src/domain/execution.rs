@@ -690,35 +690,6 @@ impl DomainRepository {
         tx.commit()?;
         Ok(value)
     }
-    pub fn create_coordinator_task(
-        &mut self,
-        cap: &RunnerCapability,
-        id: &str,
-        target_session: &str,
-        title: &str,
-        now: u64,
-    ) -> Result<Task, Error> {
-        let tx = self
-            .db
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let creator = authorize_work(&tx, cap, now)?;
-        let a = session(&tx, &creator.session_id)?;
-        let b = session(&tx, target_session)?;
-        let same_project: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM engagements a JOIN engagements b ON a.fleet_id=b.fleet_id AND a.project_id=b.project_id WHERE a.id=?1 AND b.id=?2)",params![a.engagement_id(),b.engagement_id()],|r|r.get(0))?;
-        if !same_project {
-            return Err(Error::RunnerAuthority);
-        }
-        let value = create_task(
-            &tx,
-            id,
-            target_session,
-            Some(&creator.session_id),
-            title,
-            now,
-        )?;
-        tx.commit()?;
-        Ok(value)
-    }
     pub fn enqueue_dispatch(&mut self, input: &DispatchInput) -> Result<(), Error> {
         let tx = self
             .db

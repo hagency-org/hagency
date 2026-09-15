@@ -206,9 +206,11 @@ fn native_internal_task_isolation() {
     let first = participant(&one, &agents[1]);
     let second = participant(&two, &agents[1]);
     assert_ne!(first, second);
-    db.create_coordinator_task(&cap, "task_one", first, "First task", 1005)
+    // Coordinator-created work now flows through the delegation lane; this
+    // test asserts session isolation of tasks, not the creation authority.
+    db.create_canonical_task("task_one", first, "First task", 1005)
         .unwrap();
-    db.create_coordinator_task(&cap, "task_two", second, "Second task", 1005)
+    db.create_canonical_task("task_two", second, "Second task", 1005)
         .unwrap();
     db.enqueue_dispatch(&dispatch("first", first, Some("task_one")))
         .unwrap();

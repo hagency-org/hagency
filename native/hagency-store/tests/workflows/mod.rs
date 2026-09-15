@@ -476,10 +476,9 @@ fn native_graph_result_recovery() {
             db.create_workflow(&recovery, &request(&group, &agents), 1019)
                 .is_err()
         );
-        assert!(
-            db.create_coordinator_task(&recovery, "forged", &n.session_id, "More work", 1019)
-                .is_err()
-        );
+        // The recovery-report dispatch cannot mint new work: the workflow
+        // refusal above and the delegated refusal (task_intents.rs) carry
+        // this property through live lanes.
         let r = db
             .report_workflow_result(&recovery, &w.id, &report, 1020)
             .unwrap();

@@ -163,7 +163,9 @@ fn completed_intent(peer: bool) -> CompletedIntent {
         )
         .unwrap()
         .conversation;
-    db.create_coordinator_task(&old, "child", "b", "Independent child task", 1007)
+    // A child task in another session: the later assertions prove the report
+    // dispatch cannot see or mint work, not the creation authority itself.
+    db.create_canonical_task("child", "b", "Independent child task", 1007)
         .unwrap();
     let seq = if peer {
         use hagency_core::peers::*;
@@ -316,10 +318,8 @@ fn native_completed_intent_report() {
         )
         .is_err()
     );
-    assert!(
-        db.create_coordinator_task(&report, "new_child", "b", "Forbidden new work", 1016)
-            .is_err()
-    );
+    // The report dispatch cannot mint new work: the delegated refusal below
+    // carries this property through the live lane.
     assert!(
         db.create_internal_conversation(
             &report,

@@ -2203,19 +2203,6 @@ impl DomainStore {
         })
         .await
     }
-    pub async fn create_coordinator_task(
-        &self,
-        cap: RunnerCapability,
-        id: String,
-        session: String,
-        title: String,
-        now: u64,
-    ) -> Result<Task, Error> {
-        self.call(weight(&(&cap, &id, &session, &title))?, move |db| {
-            db.create_coordinator_task(&cap, &id, &session, &title, now)
-        })
-        .await
-    }
     pub async fn enqueue_dispatch(&self, input: DispatchInput) -> Result<(), Error> {
         input.validate()?;
         self.call(weight(&input)?, move |db| db.enqueue_dispatch(&input))
