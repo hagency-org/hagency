@@ -8539,3 +8539,38 @@ client qualification and ongoing identity/key management remain separate.
   retire prose read as landed; and ADR-146's six stale open-gap sentences —
   including two that claimed the `reject` refusal half "remains open" while the
   row above recorded it closed — now state the true open set.
+
+- 2026-09-15: the cutover record corrected, and three gaps recorded against it.
+  ADR-135 (two-host cutover runbook) carried two steps that had gone stale and
+  would misfire on a healthy cutover. Step 4's schema fence checks `user_version`
+  is "exactly 25" with "026 the next free migration"; the store now carries
+  022-033, so an operator following it literally sees 33, reads "stop — the old
+  runtime must not be started against it", and aborts a correct cutover. Step 3's
+  rollback says to "restore the state dir from the step-1 copy", but step 1 takes
+  no copy — and such a copy would be unsound anyway, since `database.rs:118` sets
+  `journal_mode=WAL` and `:114-117` sets `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE`, and
+  no backup or `VACUUM INTO` path exists in production code.
+
+  Three conditions the runbook does not carry are now recorded in it: a
+  matrix-configured profile cannot bootstrap on fresh state (the `engagements`
+  half of `Prepared::load`'s precondition has exactly one production writer,
+  `domain.rs:1138` inside `admit()`, reachable only through provisioning ingress
+  on a running serve — this runbook's own profile configures no matrix and is
+  unaffected); `operator.token` is written once under `O_EXCL` with no rotation
+  path, so losing it forfeits every authority surface of that state dir; and the
+  ADR-140/ADR-144 qualification evidence gate is enforced on no path, being red
+  locally against a checked-in placeholder and skipped by name in CI.
+
+  Three things were checked and are NOT gaps: the absent importer is the
+  runbook's deliberate fresh-install posture, rollback is specified (window R1
+  opens at step 3 and closes at the end of step 5, after which snapshot-restore is
+  refused), and dual-running is rejected by policy — the narrower true finding is
+  that the policy has no mechanical enforcement, since the only exclusive lock is
+  intra-native.
+
+  The file_service parallel-race is instrumented, not fixed: the probe now stamps
+  its protocol stages and the status probe names its failure arm, so the next
+  firing can separate pre-main exec starvation from the port-TOCTOU and
+  fake-server-starvation candidates. A 3-of-6 reproduction was observed under the
+  isolated `--test file_service` shape; whole-package runs pass and do not
+  discriminate.
