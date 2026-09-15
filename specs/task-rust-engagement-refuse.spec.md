@@ -119,51 +119,51 @@ in the same change or the gate will fail.**
 ## Acceptance Criteria
 
 Scenario: A pending engagement request is refused and recorded as rejected
-  Owed Selector: native_engagement_refuse_pending_is_rejected (owed — no test yet; no Test: line here)
+  Test: native_engagement_refuse_pending_is_rejected
   Given an engagement in state pending that has no provision effect (it was admitted but never approved)
   When the operator refuses it through the console verdict route with the operator's command id
   Then the engagement's stored state is rejected, its projection carries the refusal and no cleanup obligation, an engagement_ends row exists for it, and no effects row is written for it
-  Production caller: owed (G10)
+  Production caller: hagency::console::agents::refuse
   Retained: POST /api/engagements/:id/verdict else-branch (backend-v2.js:15160-15187) -> lib/engagement-store.js:593-613 (decide approve:false: requires pending :596, state='ended' :602, endedReason='rejected' :604, decidedAt/decidedBy :605-606, record engagement.rejected :607, pruneEnded :611, one commit :612); detachEngagement backend-v2.js:15182 -> :14931
 
 Scenario: A refusal is refused when the engagement is not pending
-  Owed Selector: native_engagement_refuse_requires_pending (owed — no test yet; no Test: line here)
+  Test: native_engagement_refuse_requires_pending
   Given an engagement in active (or any state other than pending)
   When the operator refuses it through the console verdict route
   Then the store returns a state error, no engagements row and no engagement_ends row is written, and the engagement's projection is unchanged
-  Production caller: owed (G10)
+  Production caller: hagency::console::agents::refuse
   Retained: lib/engagement-store.js:596 throws EngagementError('conflict', `engagement is ${e.state}, not pending`); respondEngagementError maps conflict to 409 (backend-v2.js:14953-14958)
 
 Scenario: A replayed refusal command is idempotent
-  Owed Selector: native_engagement_refuse_replays_the_recorded_decision (owed — no test yet; no Test: line here)
+  Test: native_engagement_refuse_replays_the_recorded_decision
   Given a refusal already recorded under a command id and its reject digest
   When the identical command id and digest are presented again
   Then the prior engagement is returned and no second decisions row and no second state write occurs
-  Production caller: owed (G10)
+  Production caller: hagency::console::agents::refuse
   Retained: backend-v2.js:15189, :15223-15247 (the in-flight revocations record makes concurrent identical requests share one promise) — NOTE the port is more idempotent than the retained store here: retained decide() replayed against an already-ended engagement throws conflict (:596), it does not replay
 
 Scenario: A refusal with a reused command id but different content is a conflict
-  Owed Selector: native_engagement_refuse_rejects_a_changed_replay (owed — no test yet; no Test: line here)
+  Test: native_engagement_refuse_rejects_a_changed_replay
   Given a refusal already recorded under a command id
   When the same command id is presented with a digest for a different engagement or decision kind
   Then the store returns a conflict and no write occurs
-  Production caller: owed (G10)
+  Production caller: hagency::console::agents::refuse
   Retained: lib/engagement-store.js:596 (a different decision on a non-pending engagement is a conflict, never a silent second write)
 
 Scenario: A refusal naming an unknown engagement is not found
-  Owed Selector: native_engagement_refuse_unknown_is_not_found (owed — no test yet; no Test: line here)
+  Test: native_engagement_refuse_unknown_is_not_found
   Given an id that names no engagement
   When the operator refuses it through the console verdict route
   Then the store returns not-found and no rows are written
-  Production caller: owed (G10)
+  Production caller: hagency::console::agents::refuse
   Retained: lib/engagement-store.js:595 throw EngagementError('not_found', 'engagement not found'); route 404 at backend-v2.js:15154-15155
 
 Scenario: A refusal schedules no retirement work
-  Owed Selector: native_engagement_refuse_schedules_no_retirement (owed — no test yet; no Test: line here)
+  Test: native_engagement_refuse_schedules_no_retirement
   Given an engagement in state pending with no provision effect
   When the operator refuses it
   Then no retire-kind effects row is inserted, the provision effect is not touched, and the engagement's cleanup obligation stays not-required
-  Production caller: owed (G10)
+  Production caller: hagency::console::agents::refuse
   Retained: backend-v2.js:15180-15183 (decide approve:false) and lib/engagement-store.js:700-702 (beginWithdrawal returns early unless state==='ended' and allocatedTokens>0) — a refusal never starts a withdrawal
 
 ## Out of Scope
