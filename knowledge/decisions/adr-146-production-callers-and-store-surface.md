@@ -71,21 +71,21 @@ collisions are resolved per type in the row's note.
 
 | Method | Defined | Production reachability (grep result) | Class |
 |---|---|---|---|
-| `admit` | domain.rs:1084 | the engagement-minting `DomainRepository::admit` has no production caller; the bare-name grep's outside-store hits are other types — `MediaBudget::admit` (hagency-media/src/lib.rs:122,145) and `control.admit` (hagency-runtime/src/codex/session/driver.rs:480) — not the store method | gap G1 — glm8 wiring in progress |
+| `admit` | domain.rs:1084 | the engagement-minting `DomainRepository::admit` is now called from production | **closed G1** (2026-09-14): hagency-matrix/src/intake.rs:275 |
 | `approve` | domain.rs:1145 | none outside tests/fixtures | gap G2 |
 | `claim_effect` | domain.rs:1338 | none outside tests/fixtures | gap G2 |
 | `observe_effect` | domain.rs:1357 | none outside tests/fixtures | gap G2 |
 | `retry_cleanup` | domain.rs:1265 | none outside tests/fixtures | gap G2/G5 (shared) |
 | `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | only bootstrap driver setup code (hagency/src/bootstrap/driver.rs:393 — see the amendment: that file is production, and its calls are bootstrap configuration, not the runtime route insert) | gap G3 |
-| `begin_account_login` | domain/accounts.rs:785 | none outside tests/fixtures | gap G4 |
-| `settle_account_login` | domain/accounts.rs:824 | none outside tests/fixtures | gap G4 |
+| `begin_account_login` | domain/accounts.rs:785 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:64 |
+| `settle_account_login` | domain/accounts.rs:824 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:100 |
 | `reconcile_dispatches` | domain/execution.rs:1014 | none outside tests/fixtures | gap G5a (operator recovery and resume) |
 | `recover_dispatch` | domain/execution.rs:1025 | none outside tests/fixtures | gap G5a (operator recovery and resume) |
 | `shutdown_observed` | worker.rs:128, domain_worker.rs:2526 | read-only snapshot — writes nothing (worker.rs:128-132); all call sites are inside `#[cfg(test)]` modules (worker.rs:374 covers :391/:410/:472/:493) | immaterial — not a gap |
-| `register_workspace` | domain/execution.rs:670 | only bootstrap driver setup code (hagency/src/bootstrap/driver.rs:414 — same amendment) | gap G6 |
-| `revoke_approval_grant` | domain/approvals.rs:676 | none outside tests/fixtures | gap G7 |
-| `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | none outside tests/fixtures | gap G8 |
-| `pending_conversation_stops` | domain/conversation_lifecycle.rs:354 | none outside tests/fixtures | gap G8 |
+| `register_workspace` | domain/execution.rs:670 | now called from production | **closed G6** (2026-09-14): hagency/src/bootstrap.rs:873 (receive-inbox plan workspace before the first claim; the older driver.rs:414 note was setup-code observation, superseded) |
+| `revoke_approval_grant` | domain/approvals.rs:676 | now called from production | **closed G7** (2026-09-14): hagency/src/console/approvals.rs:139 (console route) |
+| `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | now called from production | **closed G8** (2026-09-14): hagency/src/bootstrap/driver.rs:367 |
+| `pending_conversation_stops` | domain/conversation_lifecycle.rs:354 | now called from production | **closed G8** (2026-09-14): hagency/src/bootstrap/driver.rs:358 |
 
 15 distinct methods, 8 open gaps (G9 resolved as superseded, below).
 
