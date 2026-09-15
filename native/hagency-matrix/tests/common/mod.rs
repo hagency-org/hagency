@@ -353,11 +353,18 @@ impl Fake {
                     Some(_) = jobs.join_next(), if !jobs.is_empty() => {},
                     result = listener.accept(), if jobs.len() < 16 => {
                         let (stream,_) = result.unwrap();
+                        // Diagnostic accept line, mirroring the send/recv pair
+                        // below: before any admission seq exists this is the
+                        // only witness that a connection was established at
+                        // all. One stderr write per accepted connection, no
+                        // behavior change.
+                        eprintln!("[fake] accept");
                         let tx = tx.clone(); let acceptor = acceptor.clone();
                         let seen = seen.clone();
                         jobs.spawn(async move {
                             if let Some(acceptor) = acceptor {
                                 if let Ok(Ok(stream)) = timeout(Duration::from_secs(5), acceptor.accept(stream)).await { serve(stream, tx, &seen).await; }
+                                else { eprintln!("[fake] drop phase=tls_handshake reason=timeout_or_error"); }
                             } else { serve(stream, tx, &seen).await; }
                         });
                     }
@@ -455,13 +462,22 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
             break n + 4;
         }
         if bytes.len() > 32768 {
+            eprintln!(
+                "[fake] drop phase=headers reason=oversized bytes={}",
+                bytes.len()
+            );
             return;
         }
         let mut part = [0; 4096];
         let Ok(Ok(n)) = timeout(Duration::from_secs(2), stream.read(&mut part)).await else {
+            eprintln!(
+                "[fake] drop phase=headers reason=read_timeout bytes={}",
+                bytes.len()
+            );
             return;
         };
         if n == 0 {
+            eprintln!("[fake] drop phase=headers reason=eof bytes={}", bytes.len());
             return;
         }
         bytes.extend_from_slice(&part[..n]);
@@ -480,14 +496,23 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
         .map(|s| s.parse().unwrap())
         .unwrap_or(0);
     if length > 1024 * 1024 {
+        eprintln!("[fake] drop phase=admission reason=body_oversized length={length}");
         return;
     }
     while bytes.len() < headers_end + length {
         let mut part = [0; 4096];
         let Ok(Ok(n)) = timeout(Duration::from_secs(2), stream.read(&mut part)).await else {
+            eprintln!(
+                "[fake] drop phase=body reason=read_timeout have={} want={length}",
+                bytes.len() - headers_end
+            );
             return;
         };
         if n == 0 {
+            eprintln!(
+                "[fake] drop phase=body reason=eof have={} want={length}",
+                bytes.len() - headers_end
+            );
             return;
         }
         bytes.extend_from_slice(&part[..n]);
@@ -514,6 +539,7 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
     // reacts to the response, so a late admitted request can never slip past
     // a later quiescence check.
     if tx.send(request).await.is_err() {
+        eprintln!("[fake] drop phase=admission reason=receiver_dropped seq={seq}");
         return;
     }
     if let Ok(ScriptedResponse {
