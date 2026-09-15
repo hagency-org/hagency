@@ -140,6 +140,78 @@ a dry-run of the runbook's checks — version identity, ready gate, stop
 contract (SIGTERM → 503/exit shape), and pending-preserved across the
 stop-start pair — without either init system.
 
+## Amendment 2026-09-15: two stale steps, and three gaps the runbook does not yet carry
+
+The procedure below stands as written on its date. This amendment corrects two
+steps that have since gone stale and records three conditions the runbook does
+not cover. It does not rewrite the original text.
+
+**Correction A — step 4's migration fence is eight migrations stale.** Step 4
+checks `user_version` is "exactly `25`" with "`026` the next free migration".
+The store now carries migrations `022`-`033` (`native/hagency-store/src/migrations/`,
+32 files). An operator following step 4 literally against a current artifact sees
+`33`, reads "stop - the old runtime must not be started against it", and aborts a
+healthy cutover. A fence that fires on the correct case is worse than none: the
+check must compare against the artifact's own head, not a number written into the
+runbook.
+
+**Correction B — step 3's rollback names a copy that no step takes.** Step 3's
+rollback says to "restore the state dir from the step-1 copy". Step 1 takes no
+copy: its actions are `init`, a mode/ownership check, and evidence of `ls -l` plus
+the init stdout line. The "quiesced snapshot" at the head of this record is the
+migration plan's phrase for the *retained* side, not an instruction to copy native
+state. Worse, the copy as imagined would not be sound: `database.rs:118` sets
+`journal_mode=WAL` and `:114-117` sets `SQLITE_DBCONFIG_NO_CKPT_ON_CLOSE`, so a
+naive directory copy of a live store is both unsafe and incomplete. No backup or
+`VACUUM INTO` path exists anywhere in production code.
+
+**Gap 1 - a matrix-configured profile cannot bootstrap on fresh state. This
+runbook's own profile is NOT affected; it is recorded here because this is the
+cutover record.** Steps 0-4 configure no matrix host - there is no
+`development-driver.json` step and no matrix step anywhere in the procedure (the
+only "matrix" string in this record is step 8's `[bridge-matrix]` retirement), so
+the `/ready` gate at step 3 is reached without the precondition below ever firing.
+The constraint applies to any profile that DOES configure matrix, and a future
+revision of this runbook that adds one inherits it:
+`Prepared::load` (`native/hagency/src/bootstrap/config.rs:305-318`, straight-line,
+unskippable) requires `provisioning_registration_for_engagement(&engagement_id)`
+to return a row before a matrix serve starts. That query
+(`domain/verified_ingress.rs:206-207`) joins `engagements e JOIN registrations r
+ON r.fleet_id=e.fleet_id AND r.generation=e.generation WHERE e.id=?1` - it needs
+BOTH rows. G11 supplies the registrations half from the CLI (`registration::run`
+-> `DomainRepository::register`, `domain.rs:730`). The engagements half has
+exactly one production writer, `domain.rs:1138` inside `admit()`, reachable only
+through provisioning ingress on a RUNNING serve; the `Engagements` subcommand is
+read-only inspection against a running service, not a seeding path. It is a
+bootstrapping problem, not a migration one: a config string names an engagement,
+it does not materialise the row.
+
+**Gap 2 - `operator.token` has no rotation, and step 1's rollback assumes it is
+cheap.** `init` writes the token exactly once under `O_EXCL` (`main.rs:203`,
+`private.rs:158`); no CLI verb, console route or bootstrap path rewrites it, and
+`init` refuses a non-empty dir. Step 1's `rm -rf` rollback is correct only while
+the dir is untouched. Later, losing the token forfeits every authority surface of
+that state dir, and the only recovery is a fresh state dir with everything
+re-registered - a one-way door that belongs beside the crypto/generation/sent-event
+limits this record already names.
+
+**Gap 3 - the qualification evidence gate is enforced on no path.** Step 5's
+bounded acceptance task is where the ADR-140/ADR-144 evidence class should bite.
+Today `native_two_agent_qualification_records_its_evidence` and the two
+`native_codex_real_app_server_sandbox_*` tests fail locally against a checked-in
+placeholder ("no operator qualification run recorded") and are skipped by name in
+CI (`.github/workflows/rust.yml:136`). Red locally plus skipped in CI plus a
+placeholder on disk is zero enforcement on every path a merge can take.
+
+**Not gaps, recorded to stop them being re-raised.** The absence of an importer is
+this runbook's deliberate fresh-install posture (Decision, and Alternatives).
+Rollback *is* specified - window R1 opens at step 3 and closes at the end of step
+5, after which snapshot-restore is refused. Dual-running is rejected by policy
+("No unattended dual-writer phase is proposed"); the finding worth carrying is
+narrower: that policy has no mechanical enforcement, since the only exclusive lock
+is intra-native (a held-fd `try_lock` per store open), so nothing prevents the
+retained and native services running against one homeserver.
+
 ## Consequences
 
 Good, because every forward step has a named check, a named rollback, and
