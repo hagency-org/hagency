@@ -439,7 +439,10 @@ async fn native_provisioning_effect_produced() {
     // completes synchronously in the same handoff (ADR-022 createAgent inline),
     // the produced row is already complete here. test_completed asserts the
     // full claim->complete lifecycle.
-    assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
+    assert_eq!(
+        effect_row(&f),
+        Some(("provision".into(), "complete".into()))
+    );
     c.close().await.unwrap();
 }
 
@@ -465,7 +468,10 @@ async fn native_provisioning_effect_completed() {
     .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
     assert_eq!(summary.admitted, 2);
     assert_eq!(summary.replayed, 0);
-    assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
+    assert_eq!(
+        effect_row(&f),
+        Some(("provision".into(), "complete".into()))
+    );
     c.close().await.unwrap();
 }
 

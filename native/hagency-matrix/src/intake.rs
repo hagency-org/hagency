@@ -311,8 +311,7 @@ impl Inner {
             .await
             .map_err(|_| Error::Wire)?
             .ok_or(Error::Wire)?;
-        let request: ProjectRequest =
-            serde_json::from_str(&context).map_err(|_| Error::Wire)?;
+        let request: ProjectRequest = serde_json::from_str(&context).map_err(|_| Error::Wire)?;
         let audit: serde_json::Value = serde_json::from_str(&evidence).map_err(|_| Error::Wire)?;
         // The original request event's source observation is the evidence; the
         // approval event's own ids can never satisfy the request-type gate.
@@ -424,40 +423,34 @@ impl Inner {
         let mut route_joined = project_obs.joined.clone();
         route_joined.insert(engagement_sender.clone());
         self.domain
-            .observe_matrix_transport(
-                hagency_core::replies::MatrixTransportObservation {
-                    engagement_id: engagement_id.clone(),
-                    registration_generation: reg.generation,
-                    generation: t.generation,
-                    sender_mxid: engagement_sender.clone(),
-                    device_id: format!("DEVICE_{engagement_id}"),
-                },
-            )
+            .observe_matrix_transport(hagency_core::replies::MatrixTransportObservation {
+                engagement_id: engagement_id.clone(),
+                registration_generation: reg.generation,
+                generation: t.generation,
+                sender_mxid: engagement_sender.clone(),
+                device_id: format!("DEVICE_{engagement_id}"),
+            })
             .await?;
         self.domain
-            .observe_matrix_room(
-                hagency_core::replies::MatrixRoomObservation {
-                    engagement_id: engagement_id.clone(),
-                    registration_generation: reg.generation,
-                    transport_generation: t.generation,
-                    room_id: project_obs.room_id.clone(),
-                    generation: 1,
-                    privacy: RoomPrivacy::Group {},
-                    joined: route_joined,
-                    invite_only: project_obs.invite_only,
-                    encrypted: project_obs.encrypted,
-                },
-            )
+            .observe_matrix_room(hagency_core::replies::MatrixRoomObservation {
+                engagement_id: engagement_id.clone(),
+                registration_generation: reg.generation,
+                transport_generation: t.generation,
+                room_id: project_obs.room_id.clone(),
+                generation: 1,
+                privacy: RoomPrivacy::Group {},
+                joined: route_joined,
+                invite_only: project_obs.invite_only,
+                encrypted: project_obs.encrypted,
+            })
             .await?;
         self.domain
-            .resolve_verified_matrix_session(
-                hagency_core::tasks::SessionBinding {
-                    id: format!("session_{engagement_id}"),
-                    engagement_id,
-                    room_id: project_obs.room_id.clone(),
-                    thread_root: None,
-                },
-            )
+            .resolve_verified_matrix_session(hagency_core::tasks::SessionBinding {
+                id: format!("session_{engagement_id}"),
+                engagement_id,
+                room_id: project_obs.room_id.clone(),
+                thread_root: None,
+            })
             .await?;
         Ok(())
     }
