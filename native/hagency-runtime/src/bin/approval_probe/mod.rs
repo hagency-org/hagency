@@ -22,13 +22,19 @@ pub(super) fn announce(marker: &Path, extension: &str) -> io::Result<()> {
     fs::write(marker.with_extension(extension), b"ready")
 }
 
-/// Wait until the test writes the release marker, bounded by the derived
-/// harness wait (one tenth of the operation budget, doubled where the test
-/// side must first observe something of its own) — never a literal, which
-/// is what let the probe give up while a loaded host was still inside its
-/// operation budget. Expiry names what it was waiting for.
+/// Wait until the test writes the release marker. The release file is the
+/// real signal; the outer bound is the module's shared custody ceiling
+/// (`operation_budget_ms() * 3 / 2`, as `hold_reader_to_eof` uses) — never
+/// an independent short patience. The old `harness_wait() * 2` fuse (5 s of
+/// a 25 s budget) fired while the test was still lawfully working toward
+/// its release write (its own notice patience alone is allowed 7.5 s), the
+/// same shape as the usage-gate fuse: the fixture gave up while the thing
+/// under test was legitimately running. A stdin-close exit is unavailable
+/// here — `run` borrows the parent's `StdinLock`, and a second lock
+/// deadlocks on the guard — so the ceiling is the honest outer bound.
+/// Expiry names what it was waiting for.
 pub(super) fn await_release(marker: &Path, extension: &str) -> io::Result<()> {
-    let until = Instant::now() + harness_wait() * 2;
+    let until = Instant::now() + Duration::from_millis(operation_budget_ms() * 3 / 2);
     while !marker.with_extension(extension).is_file() {
         if Instant::now() >= until {
             return Err(io::Error::other(format!(
