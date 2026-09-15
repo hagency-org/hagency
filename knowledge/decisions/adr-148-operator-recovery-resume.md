@@ -29,13 +29,19 @@ decides before any code is written is **who triggers recovery and under what
 authority** — the question a builder answered on its own last time and had to
 have unwound.
 
+**Landed (2026-09-15).** The route this record decides now exists — `POST
+/console/api/agents/{id}/recover-dispatch` under `Scope::AgentLifecycle`
+(`native/hagency/src/console/agents.rs:33`, handler `:263`) — so the
+"no operator path back" below describes the pre-decision state, closed as G5a
+in ADR-146.
+
 **Boundary — two mutually exclusive clearers over the same state.** The
 stop-fenced sibling path `settle_conversation_stop`
 (`domain/conversation_lifecycle.rs:406-408`) already clears the same three pieces
 of state `recover_dispatch` clears — it deletes the lease, clears the workspace
 `dirty` flag and clears the session `quarantined` bit (guarded on no other
-unresolved dispatch sharing them) — and it **is** production-wired today (gap
-G8), called from the driver (`bootstrap/driver.rs:358,367`). `recover_dispatch`
+unresolved dispatch sharing them) — and it **is** production-wired (G8, since
+closed in ADR-146), called from the driver (`bootstrap/driver.rs:358,367`). `recover_dispatch`
 refuses outright when a `dispatch_stops` row exists for the original
 (`domain/execution.rs:1044-1050`). So the two paths are mutually exclusive over
 the same quarantine/dirty/lease state: **stop settlement owns the stop-fenced
