@@ -8420,3 +8420,30 @@ client qualification and ongoing identity/key management remain separate.
   slices for refusal, retirement with cleanup retry, and project-side
   registration are written with every selector owed; the delivery defect and
   two representation divergences have decision records in progress.
+- 2026-09-15: an operator can recover an orphaned dispatch. This was the last
+  wiring gap standing between the port and cutover: the store has always known
+  how to release the lease, clear the quarantine and the dirty flag, supersede
+  the attempt, enqueue its replacement and record what it did, but nothing in
+  production could ask it to, so a dispatch whose agent crashed stayed
+  quarantined for ever. A console route now reaches that path, behind the same
+  agent-lifecycle authority the roster and the start, stop and preset routes
+  already use. No scope was invented for it.
+  Nothing automatic reaches it, and that is deliberate rather than incidental:
+  an attempt whose outcome is unknown grants no authority to retry, reply, take
+  a lease or declare completion, so recovery is an operator's act or it is
+  nothing. The review searched for a sweep, a timer and a spawn rather than
+  accepting the claim. Recovery also refuses outright when the dispatch was
+  stopped through the conversation-stop path, which keeps the two clearers of
+  that state mutually exclusive by construction.
+  The proof is an inversion: the test seeds the opposite of every value it then
+  asserts, so it cannot pass unless the production path ran. The store's own
+  diff is empty, so none of the evidence recovery writes was weakened to make
+  the wiring fit.
+- 2026-09-15: two decisions land with it. One settles who recovers and resumes
+  an orphaned dispatch, and why automatic resumption is refused. The other
+  settles that the port keeps two terminal states where the retained product
+  has one, because a refusal declines a request before provisioning while a
+  retirement ends a provisioned engagement, and four consumers branch on the
+  difference; and that the effects table with its fence governs retirement,
+  with the retire driver owing an operator-triggered claim, observe and record
+  rather than a sweeper the retained product never had.
