@@ -117,25 +117,25 @@ and evidenced in `knowledge/decisions/adr-147-provisioning-verdict-effect-route.
 This spec's scenarios observe the rows and refusals that ADR names.
 
 Scenario: The provider approval produces the provision effect
-  Owed Selector: native_provisioning_effect_produced (parked — owed by the G2 wiring slice; no Test: line here yet)
+  Test: native_provisioning_effect_produced
   Given an admitted engagement pending provider approval
   When the provider approval is recorded by the wired approval path
   Then the effects row carries kind=provision for the engagement
-  Production caller: owed (G2)
+  Production caller: hagency_matrix::intake::Inner::approve_provision
 
 Scenario: The provision effect is claimed and observed complete
-  Owed Selector: native_provisioning_effect_completed (parked — owed by the G2 wiring slice; no Test: line here yet)
+  Test: native_provisioning_effect_completed
   Given a recorded provision effect for an admitted engagement
   When the wired effect worker claims the effect and reports the provision outcome
   Then the effects row carries kind=provision state=complete and the engagement_ends row is observed
-  Production caller: owed (G2)
+  Production caller: hagency_matrix::intake::Inner::approve_provision
 
 Scenario: The admitted engagement's project room binds a session route
-  Owed Selector: native_provisioning_session_route (parked — owed by the G3 wiring slice; no Test: line here yet)
+  Test: native_provisioning_session_route
   Given an admitted engagement with its project room and an intake plan naming a configured session id
   When the wired route registrar resolves the verified Matrix session
   Then the matrix_session_routes row binds the project room to the configured session id so the intake plan's session resolves
-  Production caller: owed (G3)
+  Production caller: hagency_matrix::intake::Inner::approve_provision
 
 ## Out of Scope
 
