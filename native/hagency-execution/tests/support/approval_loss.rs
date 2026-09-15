@@ -1415,14 +1415,24 @@ async fn native_owned_approval_turn_end_untransmitted() {
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
-    // Let the probe end its turn and exit while the host is still held.
+    // Let the probe end its turn while the host is still held at the gate.
     std::fs::write(work.join("owned-dispatch.approval-release"), b"release").unwrap();
-    let resolving = work.join("owned-dispatch.approval-resolving");
+    // Handshake on the host's own observed fact, never on the probe's marker
+    // round-trip (release-marker -> probe wake -> JSON flush -> marker ->
+    // test poll), which raced the gate's 2.5s derived deadline under load.
+    // The pump reads the turn end DURING the gate hold and stamps
+    // `turn-ended-in-flight-untransmitted` (observations.rs:106) before it
+    // awaits the gate future, so the mark proves the turn end was observed
+    // while in flight and armed — release the gate as soon as it is present.
     let end = tokio::time::Instant::now() + harness_wait();
-    while !resolving.exists() {
+    loop {
+        let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
+        if trace.contains("turn-ended-in-flight-untransmitted") {
+            break;
+        }
         assert!(
             tokio::time::Instant::now() < end,
-            "probe never emitted the turn end; probe markers present: {}",
+            "turn end never observed in flight; probe markers: {}; trace: {trace}",
             markers_present(&work)
         );
         tokio::time::sleep(Duration::from_millis(5)).await;
