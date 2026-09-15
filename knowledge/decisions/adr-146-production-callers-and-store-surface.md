@@ -90,8 +90,8 @@ collisions are resolved per type in the row's note.
 | `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | now called from production | **closed G3** (2026-09-14): hagency-matrix/src/intake.rs:450, the route binding for the provisioned engagement, in the same `Inner::approve_provision` handoff. The older bootstrap-driver citation is withdrawn: that call is a `#[cfg(test)]` fixture (at driver.rs:432 on this head, :393 when the row was written), not bootstrap configuration |
 | `begin_account_login` | domain/accounts.rs:785 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:64 |
 | `settle_account_login` | domain/accounts.rs:824 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:100 |
-| `reconcile_dispatches` | domain/execution.rs:1014 | none outside tests/fixtures | gap G5a (operator recovery and resume) |
-| `recover_dispatch` | domain/execution.rs:1025 | none outside tests/fixtures | gap G5a (operator recovery and resume) |
+| `reconcile_dispatches` | domain/execution.rs:1014 | none outside tests/fixtures | superseded facade — it only calls `expire`, which the driver already reaches via claim→`claim_clock`→`expire`→`lose` (bootstrap/driver.rs:257); ADR-148 names it an unreached facade and decides the recovery trigger separately |
+| `recover_dispatch` | domain/execution.rs:1025 | now called from production | **closed G5a** (2026-09-15): hagency/src/console/agents.rs:263 — `POST /console/api/agents/{id}/recover-dispatch` under `Scope::AgentLifecycle`, operator-triggered only, per ADR-148 |
 | `shutdown_observed` | worker.rs:128, domain_worker.rs:2526 | read-only snapshot — writes nothing (worker.rs:128-132); all call sites are inside `#[cfg(test)]` modules (worker.rs:374 covers :391/:410/:472/:493) | immaterial — not a gap |
 | `register_workspace` | domain/execution.rs:670 | now called from production | **closed G6** (2026-09-14): hagency/src/bootstrap.rs:873 (receive-inbox plan workspace before the first claim; the older driver.rs:414 note was setup-code observation, superseded) |
 | `revoke_approval_grant` | domain/approvals.rs:676 | now called from production | **closed G7** (2026-09-14): hagency/src/console/approvals.rs:139 (console route) |
@@ -237,8 +237,12 @@ write (:1112), the replacement enqueue (:1115), and the recovery records
 :1120). Without them the orphan stays in `unresolved_dispatches`, keeps
 counting against the live cap the claim query checks (`execution.rs:812`), and
 the session stays quarantined — permanently, with no production path to
-resume. An orphaned dispatch is currently settled but never resumed. That gap
-is **G5a (operator recovery and resume)**, open. G2
+resume. An orphaned dispatch was settled but never resumed. That gap was
+**G5a (operator recovery and resume)**; it is now closed by ADR-148's decision —
+the operator console route `POST /console/api/agents/{id}/recover-dispatch`
+(`hagency/src/console/agents.rs:263`) under `Scope::AgentLifecycle`, never
+automatic, carrying the operator's stopped-owner and workspace-inspection
+evidence into `dispatch_recoveries` unchanged. G2
 (`approve`/`claim_effect`/`observe_effect`/`retry_cleanup`) confirmed still
 unreached (under review); G3 (`resolve_verified_matrix_session`) still has
 only the bootstrap driver setup call (`driver.rs:432`) — the first amendment's

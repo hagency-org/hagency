@@ -94,6 +94,25 @@ Scenario: Start and stop are at-most-once over the store's own state
   And the second stop resolves the same dispatch id and fence through the unsettled stop row writing no second row and still reports stop_pending
   And stopped stays false because no production path settles
 
+Scenario: Operator recovery resumes an orphaned dispatch exactly once
+  Test: native_console_agent_recover_dispatch_recovers_orphan
+  Level: integration
+  Test Double: a settled orphan dispatch with held lease quarantined session and dirty workspace
+  Production caller: POST /console/api/agents/{id}/recover-dispatch (console/agents.rs) under Scope::AgentLifecycle calls DomainStore::recover_dispatch; the operator supplies the stopped-owner and workspace-inspection evidence and the store clears the lease quarantine and dirty state supersedes the orphan enqueues the replacement and writes dispatch_recoveries with the evidence
+  Given an engagement whose dispatch was settled to the orphan state with its lease held session quarantined and workspace dirty
+  When a read-only session posts recovery and then a lifecycle operator posts recovery with evidence
+  Then the read-only post is refused before any row changes
+  And the operator post clears the lease clears the quarantine clears the dirty flag supersedes the orphan and enqueues the replacement
+  And the recovery row records the operator evidence unchanged
+
+Scenario: Recovery refuses a dispatch already fenced by a stop
+  Test: native_console_agent_recover_dispatch_refuses_stopped_dispatch
+  Level: integration
+  Test Double: a dispatch carrying a dispatch_stops row and a real domain writer
+  Given an engagement whose dispatch has an unsettled stop row from the conversation-stop flow
+  When a lifecycle operator posts recover-dispatch for that dispatch
+  Then the route refuses with the named not-recoverable word and no lease quarantine dirty or recovery row changes
+
 Scenario: Preset-apply is bounded to one pending apply over published presets
   Test: native_console_agent_preset_apply_is_bounded
   Level: integration

@@ -265,13 +265,13 @@ async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Respon
         failed(res, Error::Invalid);
         return;
     }
-    let engagement = match engagement_id(req) {
-        Ok(id) => id,
-        Err(error) => {
-            failed(res, error);
-            return;
-        }
-    };
+    // Shape-validation only: the path names the agent whose dispatch is
+    // recovered, keeping the agents surface's path hygiene; the store call
+    // itself is keyed by the body's `original` dispatch id.
+    if let Err(error) = engagement_id(req) {
+        failed(res, error);
+        return;
+    }
     if !check_lifecycle(depot, res) {
         return;
     }
@@ -317,7 +317,6 @@ async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Respon
         failure(res, hagency_store::Error::OutcomeUnknown);
         return;
     }
-    let _ = engagement;
     match result {
         Ok(()) => res.render(Json(serde_json::json!({"ok": true}))),
         Err(hagency_store::Error::State) => {
