@@ -1,4 +1,5 @@
 use super::*;
+use sha2::Digest;
 
 /// The session-route room belongs to the fixture engagement's project; the
 /// provisioning request targets a fresh project room (the projects table keys
@@ -177,10 +178,24 @@ fn reception_state() -> Value {
 }
 
 fn project_state() -> Value {
+    // The retained product joins the provisioned agent's own MXID to the
+    // project room (backend-v2 createAgent): the engagement id is en_ + the
+    // sha256 of the [fleet_id, request_id] pair (authority.rs:120-124), so the
+    // member event is derived deterministically for request_one.
+    let agent_mxid = format!(
+        "@en_{}:example.test",
+        &format!(
+            "{:x}",
+            sha2::Sha256::digest(
+                serde_json::to_vec(&[&fleet_id(), &"request_one".to_string()]).unwrap()
+            )
+        )[..32]
+    );
     json!([
         member("@worker:example.test"),
         member(OWNER),
         member(&representative()),
+        member(&agent_mxid),
         {"type": "m.room.join_rules", "state_key": "", "content": {"join_rule": "invite"}},
         power_levels(json!({OWNER: 100, representative(): 50})),
         {
@@ -420,7 +435,11 @@ async fn native_provisioning_effect_produced() {
     .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
     assert_eq!(summary.admitted, 2);
     assert_eq!(summary.replayed, 0);
-    assert_eq!(effect_row(&f), Some(("provision".into(), "pending".into())));
+    // The verdict produces the provision effect row; because the provision
+    // completes synchronously in the same handoff (ADR-022 createAgent inline),
+    // the produced row is already complete here. test_completed asserts the
+    // full claim->complete lifecycle.
+    assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
     c.close().await.unwrap();
 }
 
@@ -447,5 +466,43 @@ async fn native_provisioning_effect_completed() {
     assert_eq!(summary.admitted, 2);
     assert_eq!(summary.replayed, 0);
     assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
+    c.close().await.unwrap();
+}
+
+/// The admitted engagement's project room binds a session route: after the
+/// verdict completes the provision, the intake resolves a verified Matrix
+/// session for the new engagement, so matrix_session_routes binds the project
+/// room and the intake plan's session id resolves to it.
+#[tokio::test]
+async fn native_provisioning_session_route() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let summary = run_provisioning(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![
+                request_event("$request_one", request_body("request_one", 250)),
+                approval_event("$approval_one", "request_one"),
+            ],
+        ),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
+    assert_eq!(summary.admitted, 2);
+    // The new engagement's project room is bound to a session route.
+    let bound: Option<(String, String)> = rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
+        .unwrap()
+        .query_row(
+            "SELECT r.session_id,r.room_id FROM matrix_session_routes r JOIN runner_sessions s ON s.id=r.session_id JOIN engagements e ON e.id=s.engagement_id WHERE e.request_id='request_one'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok();
+    assert_eq!(
+        bound.as_ref().map(|(_, room)| room.as_str()),
+        Some(PROJECT),
+        "expected a session route binding the provisioned project room"
+    );
     c.close().await.unwrap();
 }

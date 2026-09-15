@@ -385,6 +385,10 @@ impl Inner {
         };
         let verified =
             verify_request(&reg, request, request_observation).map_err(|_| Error::Wire)?;
+        let engagement_id = verified
+            .request()
+            .engagement_id()
+            .map_err(|_| Error::Wire)?;
         // The request id keys the decision: an identical re-delivery replays
         // the recorded verdict (replay_decision) instead of re-reserving.
         let command_id = format!("approve_{request_id}");
@@ -408,6 +412,53 @@ impl Inner {
                 )
                 .await?;
         }
+        // G3: the provisioned engagement becomes routable. Its project room is
+        // now the engagement's own project room (admit wrote the projects row),
+        // so the collector may publish it into matrix_room_scopes; the new
+        // engagement's transport reuses the host's worker sender/device; and
+        // the verified session binds the project room to a session id. All
+        // three writes replay-safe: identical re-delivery finds the existing
+        // rows and resolves to the prior binding.
+        let t = &self.config.identity.transport;
+        let engagement_sender = format!("@{}:{}", engagement_id, reg.server_name);
+        let mut route_joined = project_obs.joined.clone();
+        route_joined.insert(engagement_sender.clone());
+        self.domain
+            .observe_matrix_transport(
+                hagency_core::replies::MatrixTransportObservation {
+                    engagement_id: engagement_id.clone(),
+                    registration_generation: reg.generation,
+                    generation: t.generation,
+                    sender_mxid: engagement_sender.clone(),
+                    device_id: format!("DEVICE_{engagement_id}"),
+                },
+            )
+            .await?;
+        self.domain
+            .observe_matrix_room(
+                hagency_core::replies::MatrixRoomObservation {
+                    engagement_id: engagement_id.clone(),
+                    registration_generation: reg.generation,
+                    transport_generation: t.generation,
+                    room_id: project_obs.room_id.clone(),
+                    generation: 1,
+                    privacy: RoomPrivacy::Group {},
+                    joined: route_joined,
+                    invite_only: project_obs.invite_only,
+                    encrypted: project_obs.encrypted,
+                },
+            )
+            .await?;
+        self.domain
+            .resolve_verified_matrix_session(
+                hagency_core::tasks::SessionBinding {
+                    id: format!("session_{engagement_id}"),
+                    engagement_id,
+                    room_id: project_obs.room_id.clone(),
+                    thread_root: None,
+                },
+            )
+            .await?;
         Ok(())
     }
     /// The in-memory authority facts for a verify-only room, fetched from
