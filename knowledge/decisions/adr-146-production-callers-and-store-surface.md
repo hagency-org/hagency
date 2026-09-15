@@ -162,9 +162,10 @@ input, reported by integration + glm9.)
 - G1–G8 stay owned as scheduled (glm8 G1–G3, glm7 G4, glm9 G5/G6/G8, glm5 G7);
   G9 is closed as superseded, with glm5 owning the deletion decision for
   `enqueue_peer_dispatch` + `transfer_inputs` and the supersession notes above.
-- `register_session`/`resolve_session` are superseded *by design* even though
-  their replacement writer is itself gap G3 — the table records both facts
-  rather than letting the legacy pair look like the live path.
+- `register_session`/`resolve_session` are superseded *by design*; their
+  replacement writer `resolve_verified_matrix_session` closed as gap G3 on
+  2026-09-14 (`hagency-matrix/src/intake.rs:450`) — the table records both
+  facts rather than letting the legacy pair look like the live path.
 - Specs carrying owed scenarios use `Owed Selector:` lines (never `Test:`), so
   the Rust binding checker neither passes nor demands them until wiring lands.
 
