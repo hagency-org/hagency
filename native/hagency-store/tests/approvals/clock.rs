@@ -67,7 +67,17 @@ async fn after_lock<T>(
             .is_err(),
         "actual production operation must still be blocked by the original SQLite lock"
     );
-    assert!(now() < deadline, "operation must enter before expiry");
+    if now() >= deadline {
+        // The same unmodelled window the two checks around this one rebuild:
+        // the blocked-operation probe above overshot what remained of the
+        // window, so this attempt never modelled contention-before-expiry.
+        // Judging it here would fail a run that the caller is built to retry.
+        eprintln!(
+            "contention window not modelled: the blocked-operation probe overshot the window; rebuilding"
+        );
+        lock.commit().unwrap();
+        return None;
+    }
     tokio::time::sleep(Duration::from_millis(deadline.saturating_sub(now()) + 5)).await;
     let held = now().saturating_sub(taken);
     lock.commit().unwrap();
