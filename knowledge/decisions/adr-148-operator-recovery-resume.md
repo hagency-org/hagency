@@ -13,7 +13,7 @@ The 2026-09-14/15 audit re-run established that a crashed host's dispatch **is**
 reconciled in production: the driver's claim (`bootstrap/driver.rs:257`) →
 `claim_clock` → `expire` (`domain/execution.rs:810`) → `lose` (`:186-214`)
 settles it to `outcome_unknown`, quarantines the session, and the candidate query
-(`:812`) never re-claims it. That satisfies the definition-of-done clause about
+(`:820-821`) never re-claims it. That satisfies the definition-of-done clause about
 surviving crashes without duplicate effects. But nothing in production performs
 what `recover_dispatch` (`domain/execution.rs:1025`) does: `DELETE FROM
 resource_leases` (`:1103`), clear `quarantined=0` (`:1107`), clear `dirty=0`
@@ -28,6 +28,21 @@ session quarantined permanently, with no operator path back. The question this A
 decides before any code is written is **who triggers recovery and under what
 authority** — the question a builder answered on its own last time and had to
 have unwound.
+
+**Boundary — two mutually exclusive clearers over the same state.** The
+stop-fenced sibling path `settle_conversation_stop`
+(`domain/conversation_lifecycle.rs:406-408`) already clears the same three pieces
+of state `recover_dispatch` clears — it deletes the lease, clears the workspace
+`dirty` flag and clears the session `quarantined` bit (guarded on no other
+unresolved dispatch sharing them) — and it **is** production-wired today (gap
+G8), called from the driver (`bootstrap/driver.rs:358,367`). `recover_dispatch`
+refuses outright when a `dispatch_stops` row exists for the original
+(`domain/execution.rs:1044-1050`). So the two paths are mutually exclusive over
+the same quarantine/dirty/lease state: **stop settlement owns the stop-fenced
+case** (a dispatch the operator stopped through the conversation-stop flow), and
+**operator recovery owns the orphaned case** (a crashed host's dispatch with no
+`dispatch_stops` row). No second clearer may be wired over that state; a dispatch
+arrives at exactly one of the two.
 
 ## Decision
 
@@ -71,7 +86,7 @@ not a convenience one. ADR-053 is explicit that uncertainty must be preserved,
 not laundered into a retry: a command that may have committed "remains
 `OutcomeUnknown` and 'reconcile before retrying' stands unchanged … The new code
 is a diagnosis for the operator and grants no retry, reply, lease or completion
-authority" (`adr-053-native-owned-dispatch.md:145-146`). Re-enqueue-on-sight is
+authority" (`adr-053-native-owned-dispatch.md:145-147`). Re-enqueue-on-sight is
 exactly the uninspected duplicate-effect the DoD's "no duplicate effects" clause
 exists to forbid. Only an operator who has inspected the workspace and proven the
 old owner stopped may certify that resuming is safe — which is precisely the
@@ -100,7 +115,7 @@ existing custody and completion rules:
   ADR-053's settlement fencing makes the same demand — "Successful dispatch
   settlement requires Completed plus a retained stop report proving
   whole_tree_stopped, leader_exited and signals_accepted"
-  (`adr-053-native-owned-dispatch.md:147-149`).
+  (`adr-053-native-owned-dispatch.md:153-156`).
 - **The workspace is inspected, not assumed.** ADR-095's crash-recovery column is
   explicit: "uncertain effects require inspection"
   (`adr-095-native-state-ownership.md:26`), and "Inspect ambiguous
@@ -132,7 +147,7 @@ unsubstantiated evidence is not a recovery.
 - **Non-recoverable dispatch stays settled.** A dispatch whose workspace cannot
   be proven clean, or whose owner cannot be proven stopped, must remain
   `outcome_unknown`, session quarantined, lease held, and must never be
-  re-claimed or re-enqueued — the candidate query (`:812`) continues to exclude
+  re-claimed or re-enqueued — the candidate query (`:820-821`) continues to exclude
   it, and no sweep may resurrect it.
 
 ### 5. Placement
@@ -140,7 +155,7 @@ unsubstantiated evidence is not a recovery.
 **A new ADR is right; this is it.** No existing ADR owns the *decision* of who
 resumes an orphaned dispatch. ADR-146 names the gap but explicitly enumerates the
 unwired flows as a gap register (it says "a crashed dispatch is never reconciled"
-among the G1–G9 gaps, `adr-146-production-callers-and-store-surface.md:14-16`)
+among the G1–G9 gaps, `adr-146-production-callers-and-store-surface.md:17-18`)
 without deciding the trigger or authority. ADR-053 owns dispatch custody and
 *forbids* uninspected resume (`:145-146`) but does not decide who may perform an
 inspected one. ADR-060 owns completion/stop proof, ADR-095 owns state-ownership
