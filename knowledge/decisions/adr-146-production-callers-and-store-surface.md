@@ -229,7 +229,8 @@ three acts. **G11 status 2026-09-15: closed** — two production callers landed:
 `hagency::console::project_sides::save` (the POST route behind the shared
 `Scope::AgentLifecycle` check), both calling the facade `DomainStore::register`
 (`domain_worker.rs:2842`); the spec slice's `Production caller:` lines now name
-them, and the wiring audit's open set is the G10 refusal half alone.
+them, and with G11 closed the wiring audit's open set is **empty** — every
+allocated gap id is closed, superseded or deleted.
 **G10 status 2026-09-15: the retire half is closed** — `hagency::console::engagements::retire`
 wires `revoke` (ADR-150), and `cleanup_retry` is wired beside it, closing the
 row reallocated to G10 (its old G2/G5 ids are dead: G2 closed 2026-09-14, G5
