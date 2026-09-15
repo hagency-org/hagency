@@ -57,7 +57,7 @@ Scenario: Host execution scope cannot substitute for resource custody
 Scenario: Durable approval grants are exact and revocable
   Test: native_owner_approval_grants
   Test: native_console_approval_grant_revocation
-  Production caller: DELETE /console/api/approvals/grants/{id} (console/approvals.rs) revokes a saved grant through DomainStore::revoke_approval_grant; after revocation the authorization read no longer matches it.
+  Production caller: hagency::console::approvals::revoke_grant
   Given pending requests and authenticated owner choices
   When task or always grants are saved reused revoked or invalidated
   Then only matching current incarnations and live task epochs authorize another request
