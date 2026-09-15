@@ -1458,12 +1458,15 @@ async fn native_owned_approval_turn_end_untransmitted() {
     );
     // macOS close shape: the host's own `HostClosed` with no accepted byte
     // may surface as the cleanup failure, never a settlement or protocol
-    // verdict.
+    // verdict. `ApprovalCancelled` is deliberately NOT accepted: that arm
+    // requires an entry with no write that is *not* in flight
+    // (`approval/observations.rs:126-131`), and this scenario's single entry is
+    // in flight by its own Given, so the variant is unreachable here. It was
+    // reachable only through the pump's old re-mapping, which the turn-end rule
+    // now forbids (`approval/control.rs:209-215`). Tolerating it would swallow a
+    // regression that started cancelling this arm.
     let acceptable = if cfg!(target_os = "macos") {
-        matches!(
-            report.failure,
-            None | Some(Failure::ApprovalCancelled) | Some(Failure::CleanupUnknown)
-        )
+        matches!(report.failure, None | Some(Failure::CleanupUnknown))
     } else {
         report.failure.is_none()
     };
