@@ -1,4 +1,5 @@
 use super::*;
+use hagency_core::tasks::SessionBinding;
 use hagency_store::resource_publication_revision;
 
 /// The agent roster observation (ADR-126): the read is a bounded
@@ -518,5 +519,180 @@ async fn native_console_agent_preset_apply_is_bounded() {
         response.take_json::<Value>().await.unwrap()["code"],
         "agent_lifecycle_apply_pending"
     );
+    f.close().await;
+}
+
+/// G5a / ADR-148 — operator recovery of an orphaned dispatch through the
+/// console route. Seed an orphan (outcome_unknown, quarantined session, dirty
+/// workspace, lease held, NO dispatch_stops row) beside the owned fixture
+/// dispatch, then POST recover-dispatch as the lifecycle operator and assert
+/// the store's recovery rows. The route calls DomainStore::recover_dispatch;
+/// the orphan state, evidence record and row clears are the store's own.
+async fn seed_orphan_dispatch(f: &Fixture, engagement: &str, stopped: bool) {
+    // Session and task go through the fixture's OWN DomainStore (the running
+    // worker holds the SQLite lock, so a second DomainRepository::open would
+    // fail Locked). Only the orphan-specific flags are then forced by SQL.
+    f.domain
+        .register_session(SessionBinding {
+            id: "orphan_session".into(),
+            engagement_id: engagement.into(),
+            room_id: "!project:example.test".into(),
+            thread_root: Some("$orphan_thread".into()),
+        })
+        .await
+        .unwrap();
+    f.domain
+        .create_canonical_task(
+            "orphan_task".into(),
+            "orphan_session".into(),
+            "Orphan work".into(),
+            2000,
+        )
+        .await
+        .unwrap();
+    let mut db = rusqlite::Connection::open(f.root.path().join("state").join("domain.sqlite3")).unwrap();
+    let tx = db.transaction().unwrap();
+    tx.execute(
+        "UPDATE runner_sessions SET quarantined=1 WHERE id='orphan_session'",
+        [],
+    )
+    .unwrap();
+    // The input column must carry the full serialized DispatchInput production
+    // enqueue writes (recover_dispatch parses it at execution.rs:1079 and
+    // compares resources/payload against the replacement at :1080-1084).
+    tx.execute(
+        "INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state) \
+         VALUES('orphan_dispatch','orphan_session','orphan_task',\
+         '{\"id\":\"orphan_dispatch\",\"session_id\":\"orphan_session\",\"task_id\":\"orphan_task\",\"resources\":[{\"id\":\"orphan_workspace\",\"exclusive\":true}],\"payload\":{\"instruction\":\"original work\"}}',\
+         'orphan_digest','outcome_unknown')",
+        [],
+    ).unwrap();
+    tx.execute(
+        "INSERT INTO workspace_resources(id,dirty) VALUES('orphan_workspace',1)",
+        [],
+    ).unwrap();
+    tx.execute(
+        "INSERT INTO dispatch_resources(dispatch_id,resource_id,exclusive) VALUES('orphan_dispatch','orphan_workspace',1)",
+        [],
+    ).unwrap();
+    tx.execute(
+        "INSERT INTO resource_leases(resource_id,dispatch_id,exclusive) VALUES('orphan_workspace','orphan_dispatch',1)",
+        [],
+    ).unwrap();
+    if stopped {
+        // Both evidence and settled_at NULL satisfies the CHECK
+        // ((evidence IS NULL)=(settled_at IS NULL)); recover_dispatch's stop-row
+        // refusal (execution.rs:1044-1050) only needs the row to exist.
+        tx.execute(
+            "INSERT INTO dispatch_stops(dispatch_id,fence,reason,created_at) VALUES('orphan_dispatch',0,'operator stop',1)",
+            [],
+        ).unwrap();
+    }
+    tx.commit().unwrap();
+}
+
+fn recovery_body() -> Value {
+    json!({
+        "original": "orphan_dispatch",
+        "replacement": {
+            "id": "orphan_replacement",
+            "session_id": "orphan_session",
+            "task_id": "orphan_task",
+            "resources": [{"id":"orphan_workspace","exclusive":true}],
+            "payload": {"instruction":"resume inspected orphan"},
+        },
+        "evidence": "operator inspected workspace and stopped owner",
+    })
+}
+
+/// A lifecycle operator recovers the orphan: the route reaches recover_dispatch
+/// and the store clears the lease/quarantine/dirty, supersedes the orphan and
+/// writes the recovery record with the evidence. A read-only session is refused.
+#[tokio::test]
+async fn native_console_agent_recover_dispatch_recovers_orphan() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let state = f.root.path().join("state");
+    seed_orphan_dispatch(&f, &f.engagement, false).await;
+    // A read-only ticket cannot recover: the mutation needs Scope::AgentLifecycle.
+    let read_only = session(&service).await;
+    let refused = post(
+        &format!("/console/api/agents/{}/recover-dispatch", f.engagement),
+        &read_only,
+    )
+    .json(&recovery_body())
+    .send(&service)
+    .await;
+    assert_eq!(refused.status_code, Some(StatusCode::FORBIDDEN));
+    // Ticket issuance is rate-limited to one per second (authority.rs issued slot).
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let cookie = lifecycle_session(&service).await;
+    let mut response = post(
+        &format!("/console/api/agents/{}/recover-dispatch", f.engagement),
+        &cookie,
+    )
+    .json(&recovery_body())
+    .send(&service)
+    .await;
+    let status = response.status_code;
+    assert_eq!(status, Some(StatusCode::OK));
+    let body = response.take_json::<Value>().await.unwrap();
+    assert_eq!(body["ok"], true);
+    let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let leases: u32 = db
+        .query_row("SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'", [], |r| r.get(0))
+        .unwrap();
+    let quarantined: bool = db
+        .query_row("SELECT quarantined FROM runner_sessions WHERE id='orphan_session'", [], |r| r.get(0))
+        .unwrap();
+    let dirty: bool = db
+        .query_row("SELECT dirty FROM workspace_resources WHERE id='orphan_workspace'", [], |r| r.get(0))
+        .unwrap();
+    let replacement_state: String = db
+        .query_row("SELECT state FROM runner_dispatches WHERE id='orphan_replacement'", [], |r| r.get(0))
+        .unwrap();
+    let evidence: String = db
+        .query_row("SELECT evidence FROM dispatch_recoveries WHERE original_id='orphan_dispatch'", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(leases, 0, "the orphan's lease is deleted");
+    assert!(!quarantined, "the session quarantine is cleared");
+    assert!(!dirty, "the workspace dirty flag is cleared");
+    assert_eq!(
+        replacement_state, "queued",
+        "the replacement, not the orphan, is enqueued for resume"
+    );
+    assert_eq!(evidence, "operator inspected workspace and stopped owner");
+    f.close().await;
+}
+
+/// The stop-row refusal (execution.rs:1044-1050): a dispatch the operator stopped
+/// through the conversation-stop flow owns the stop-fenced case; operator
+/// recovery refuses it outright, and no row changes.
+#[tokio::test]
+async fn native_console_agent_recover_dispatch_refuses_stopped_dispatch() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    let state = f.root.path().join("state");
+    seed_orphan_dispatch(&f, &f.engagement, true).await;
+    let cookie = lifecycle_session(&service).await;
+    let mut response = post(
+        &format!("/console/api/agents/{}/recover-dispatch", f.engagement),
+        &cookie,
+    )
+    .json(&recovery_body())
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
+    let body = response.take_json::<Value>().await.unwrap();
+    assert_eq!(body["code"], "dispatch_not_recoverable");
+    let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    let quarantined: bool = db
+        .query_row("SELECT quarantined FROM runner_sessions WHERE id='orphan_session'", [], |r| r.get(0))
+        .unwrap();
+    let leases: u32 = db
+        .query_row("SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'", [], |r| r.get(0))
+        .unwrap();
+    assert!(quarantined, "the stop-fenced dispatch keeps its quarantine");
+    assert_eq!(leases, 1, "the stop-fenced dispatch keeps its lease");
     f.close().await;
 }
