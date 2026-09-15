@@ -109,6 +109,13 @@ through the Matrix admission chain, and the store's own `admit`/`approve`
 pair is the write surface — this slice only gives them their production
 caller.
 
+**The verdict, effect and route are decided by ADR-147.** How the provider's
+verdict arrives (a new pre-project wire event kind), how the provision effect
+is claimed and completed (inline, no worker), and how the new engagement's
+session id and transport sender are derived are product decisions, recorded
+and evidenced in `knowledge/decisions/adr-147-provisioning-verdict-effect-route.md`.
+This spec's scenarios observe the rows and refusals that ADR names.
+
 Scenario: The provider approval produces the provision effect
   Owed Selector: native_provisioning_effect_produced (parked — owed by the G2 wiring slice; no Test: line here yet)
   Given an admitted engagement pending provider approval
