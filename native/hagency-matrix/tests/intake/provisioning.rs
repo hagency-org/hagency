@@ -575,8 +575,16 @@ async fn native_provisioning_approval_refuses_a_non_representative_verdict() {
     .await;
     assert_eq!(result, Err(Error::Generation));
     assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
-    assert_eq!(effect_row(&f), None, "no effect row for the refused verdict");
-    assert_eq!(route_rows(&f), 0, "no session route for the refused verdict");
+    assert_eq!(
+        effect_row(&f),
+        None,
+        "no effect row for the refused verdict"
+    );
+    assert_eq!(
+        route_rows(&f),
+        0,
+        "no session route for the refused verdict"
+    );
     assert!(f.available().await);
     c.close().await.unwrap();
 }
@@ -635,7 +643,10 @@ async fn native_provisioning_approval_replays_a_second_verdict() {
     assert_eq!(rows(&f, "engagements"), before_engagements + 1);
     assert_eq!(rows(&f, "effects"), before_effects + 1);
     assert_eq!(rows(&f, "matrix_session_routes"), before_routes + 1);
-    assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
+    assert_eq!(
+        effect_row(&f),
+        Some(("provision".into(), "complete".into()))
+    );
     assert_eq!(route_rows(&f), 1);
     c.close().await.unwrap();
 }
