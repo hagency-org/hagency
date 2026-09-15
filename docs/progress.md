@@ -8447,3 +8447,46 @@ client qualification and ongoing identity/key management remain separate.
   difference; and that the effects table with its fence governs retirement,
   with the retire driver owing an operator-triggered claim, observe and record
   rather than a sweeper the retained product never had.
+
+- 2026-09-15: an operator can refuse and retire an engagement, and the retire
+  half of that gap is closed. Two console routes now reach the store's `revoke`
+  and its cleanup retry, behind the same agent-lifecycle authority the recovery
+  route already uses; no scope was invented. The refusal half stays open and is
+  named as the remainder rather than quietly folded in, because `reject` still
+  has no production caller and saying otherwise would have made the record
+  describe a world that does not exist.
+- 2026-09-15: the late-output gap is closed. A production route reaches
+  `record_late_output`, and it deliberately sits outside the Check hoop, because
+  Check authorises only dispatches in `started` and would therefore refuse the
+  very arrival the fence rule says must be recorded. What authenticates it
+  instead is the store's own attempt-row check — exact runner id and secret,
+  constant-time, no clock — so nothing was loosened to make the route fit. The
+  32 KiB output bound, the 128-row per-attempt cap and `accepted=0` are
+  unchanged, which is what keeps the evidence fenced and settling nothing. The
+  review that accepted it began by observing that no store file was touched at
+  all, and that fact carried half the verdict.
+- 2026-09-15: a dead surface was removed rather than wired. `create_coordinator_task`
+  had no production caller and its behaviour was already delivered by the wired
+  delegation lane, so it was deleted — write, facade and every call site — under
+  a hard rule that no test function may be removed. The tests that exercised it
+  were rewritten against the surviving path with their properties named one by
+  one, and the audit record now says deleted instead of carrying a gap id it was
+  never going to close.
+- 2026-09-15: the audit record's prose caught up with its tables, twice. Nine
+  corrections landed across the decision records for operator recovery, approval
+  delivery and terminal states, and a further pass found five more passages in
+  the wiring audit itself that still described closed gaps in the present tense.
+  The recurring defect is always the same shape: a correction applied in one
+  place while the paragraph beside it keeps the pre-correction world. Every
+  citation was checked against source before acceptance, and two proposed
+  corrections were refused because the correction was itself wrong.
+- 2026-09-15: a hosted intermittent in the approval-contention test was fixed at
+  its root rather than by widening anything. The fixture admits an attempt when
+  fifteen milliseconds remain, then spends five of them proving the production
+  operation is still blocked; on a starved runner that probe can consume the rest
+  of the window. Two of the function's three exits already treated that as a
+  window it failed to model and asked the caller to rebuild; the third asserted
+  instead. It now rebuilds like its neighbours. No bound, deadline or budget was
+  lengthened, and no assertion about the product was changed — the authority
+  rejection and every row-count check still run, on attempts that actually
+  modelled the window.

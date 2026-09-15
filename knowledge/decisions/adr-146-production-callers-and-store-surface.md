@@ -149,8 +149,9 @@ Counts at first writing: **31 superseded / 15 gap methods across 8 gaps
 (G1-G8) / 0 deleted (1 deletion decision owed)**. After the 2026-09-14 and
 2026-09-15 closures and additions, the open set is **G10's refusal half**
 (`reject`, a `Pending`-only refusal; the retire half and `retry_cleanup` closed
-2026-09-15) and **G11** (project-side registration); **G12** (late output) is
-closing under a slice now gating (`probe/stack-58`, not yet landed at this head).
+2026-09-15) and **G11** (project-side registration). **G12** (late output) is
+closed (2026-09-15) by the late-output route in `hagency::runner`'s
+`completion.rs` (`POST /api/native/v1/runner/late-output`).
 `create_coordinator_task` was deleted 2026-09-15 rather than wired;
 `create_canonical_task` carries a deletion decision rather than a gap id. Re-run the
 checkers rather than relying on any count in this paragraph.
@@ -296,10 +297,10 @@ Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 **Checker reconciliation**: on 88e05d5f `check-production-callers.mjs` read
 exit 0, count 14, wired 11, owed G2/G2/G3. Those figures are historical: no
 `Production caller:` line names G2 or G3 any more. At this head the checker
-reads count 43, wired 27, owed 16 — six refusal `owed (G10)` lines, eight
-registration `owed (G11)` lines, and two late-output `owed` lines that a slice
-now gating (`probe/stack-58`, not yet landed here) closes under G12, moving the
-figures to 29/14 with G12 closed. Re-run the checker
+reads count 43, wired 29, owed 14 — six refusal `owed (G10)` lines and eight
+registration `owed (G11)` lines, and nothing else; G12 closed with the
+late-output route, which both late-output binding lines now name as their
+production caller. Re-run the checker
 rather than quoting this paragraph. The checker only
 sees spec-named `Production caller:` lines, and no spec line names the G5a
 recovery-artifact writes or the un-numbered new-row surfaces, so neither tool
