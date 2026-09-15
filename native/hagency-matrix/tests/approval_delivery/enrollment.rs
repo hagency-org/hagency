@@ -192,8 +192,6 @@ async fn native_private_approval_fresh_enrollment_and_delivery_after_expired_ref
     // unanswered; drive them exactly as the fixture's own send does.
     let result = drive(
         f.collector
-    let result = drive(
-        f.collector
             .send_private_approval_card(expired, &CancellationToken::new()),
         &mut f.fake,
         &mut f.peer,
