@@ -550,7 +550,8 @@ async fn seed_orphan_dispatch(f: &Fixture, engagement: &str, stopped: bool) {
         )
         .await
         .unwrap();
-    let mut db = rusqlite::Connection::open(f.root.path().join("state").join("domain.sqlite3")).unwrap();
+    let mut db =
+        rusqlite::Connection::open(f.root.path().join("state").join("domain.sqlite3")).unwrap();
     let tx = db.transaction().unwrap();
     tx.execute(
         "UPDATE runner_sessions SET quarantined=1 WHERE id='orphan_session'",
@@ -570,7 +571,8 @@ async fn seed_orphan_dispatch(f: &Fixture, engagement: &str, stopped: bool) {
     tx.execute(
         "INSERT INTO workspace_resources(id,dirty) VALUES('orphan_workspace',1)",
         [],
-    ).unwrap();
+    )
+    .unwrap();
     tx.execute(
         "INSERT INTO dispatch_resources(dispatch_id,resource_id,exclusive) VALUES('orphan_dispatch','orphan_workspace',1)",
         [],
@@ -640,19 +642,39 @@ async fn native_console_agent_recover_dispatch_recovers_orphan() {
     assert_eq!(body["ok"], true);
     let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
     let leases: u32 = db
-        .query_row("SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     let quarantined: bool = db
-        .query_row("SELECT quarantined FROM runner_sessions WHERE id='orphan_session'", [], |r| r.get(0))
+        .query_row(
+            "SELECT quarantined FROM runner_sessions WHERE id='orphan_session'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     let dirty: bool = db
-        .query_row("SELECT dirty FROM workspace_resources WHERE id='orphan_workspace'", [], |r| r.get(0))
+        .query_row(
+            "SELECT dirty FROM workspace_resources WHERE id='orphan_workspace'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     let replacement_state: String = db
-        .query_row("SELECT state FROM runner_dispatches WHERE id='orphan_replacement'", [], |r| r.get(0))
+        .query_row(
+            "SELECT state FROM runner_dispatches WHERE id='orphan_replacement'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     let evidence: String = db
-        .query_row("SELECT evidence FROM dispatch_recoveries WHERE original_id='orphan_dispatch'", [], |r| r.get(0))
+        .query_row(
+            "SELECT evidence FROM dispatch_recoveries WHERE original_id='orphan_dispatch'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert_eq!(leases, 0, "the orphan's lease is deleted");
     assert!(!quarantined, "the session quarantine is cleared");
@@ -687,10 +709,18 @@ async fn native_console_agent_recover_dispatch_refuses_stopped_dispatch() {
     assert_eq!(body["code"], "dispatch_not_recoverable");
     let db = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
     let quarantined: bool = db
-        .query_row("SELECT quarantined FROM runner_sessions WHERE id='orphan_session'", [], |r| r.get(0))
+        .query_row(
+            "SELECT quarantined FROM runner_sessions WHERE id='orphan_session'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     let leases: u32 = db
-        .query_row("SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'", [], |r| r.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'",
+            [],
+            |r| r.get(0),
+        )
         .unwrap();
     assert!(quarantined, "the stop-fenced dispatch keeps its quarantine");
     assert_eq!(leases, 1, "the stop-fenced dispatch keeps its lease");
