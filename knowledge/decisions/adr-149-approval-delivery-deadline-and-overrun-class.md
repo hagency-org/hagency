@@ -110,6 +110,8 @@ messages. The change is that the delivery path must stop *manufacturing* a
 cancellation out of its own expired timer: the arm at `approval_delivery.rs:102`
 must not `cancel.cancel()` the token it then awaits. A deadline must surface as
 `Error::Timeout` through the existing `timeout_at` arm (`http.rs:482`) or the
+`checkpoint` deadline arm (`enrollment.rs:268-269`), exactly as
+`attachments.rs:262`, `upload.rs:196` and `receive.rs:102` already do.
 
 **Correction (2026-09-15).** `http.rs` needs no edit. `put`/`perform` already
 self-derive a per-trip deadline from their own limits (`http.rs:407-408`), so the
@@ -117,8 +119,6 @@ delivery clock does not govern there; it reaches the four `checkpoint(cancel,
 deadline)` calls at `approval_delivery.rs:334`, `:342`, `:373` and `:383`. The
 decision is unchanged — the bound is per round trip — but the edit belongs in the
 delivery path, not the transport.
-`checkpoint` deadline arm (`enrollment.rs:268-269`), exactly as
-`attachments.rs:262`, `upload.rs:196` and `receive.rs:102` already do.
 
 **What depends on the distinction — searched, and the case is weakened, so it is
 recorded rather than hidden.** Every consumer of these two classes was inspected
@@ -148,12 +148,14 @@ at `66c5a184`:
 
 ### 3. Where the bound lives
 
-**Per round trip, on the existing `timeout_at` (`http.rs:482`), fed by a
-delivery deadline that starts at first attempt.** The bound is enforced at the
-I/O boundary, where a stall actually occurs — the same place
-`attachments.rs:259-265`, `upload.rs:193-197` and `receive.rs:99-102` put it —
-and the body read re-applies it per chunk
-(`http.rs:446-453`, `body_idle`). The delivery continues to carry a
+**Per round trip, carried into the delivery path's four `checkpoint(cancel,
+deadline)` calls (`approval_delivery.rs:334`, `:342`, `:373`, `:383`), fed by a
+delivery deadline that starts at first attempt.** The transport already bounds
+every trip independently from its own limits (`http.rs:407-408`, re-applied per
+chunk via `body_idle` at `http.rs:446-453`), so the delivery clock and the
+transport's per-trip bound compose rather than compete — the same separation
+`attachments.rs:259-265`, `upload.rs:193-197` and `receive.rs:99-102` keep. The
+delivery continues to carry a
 whole-obligation ceiling (`approval_delivery.rs:92-94`) so the send cannot run
 unbounded, but that ceiling is a *last resort*, evaluated on the delivery clock,
 and its expiry is a `Timeout`.
@@ -188,15 +190,17 @@ every sibling that classifies at the I/O boundary (`attachments.rs:259-265`,
   `pump.close()`'s 2 s are unchanged; the lengthening is the point — delivery
   stops spending the owner's window — and is recorded here rather than slipped
   past this rule.
-- `pump.close()`'s 2 s bound and the shutdown ordering
+- `pump.close()`'s 2 s bound
+  (`native/hagency/src/bootstrap/approval.rs:132`, inside `close()` at
+  `:131-136`) and the shutdown ordering
   (`native/hagency/src/bootstrap.rs:1078-1084`) are unchanged.
 
 **The fixture's 25 ms poll and the single shared fake-peer queue are
 observability artifacts and are explicitly NOT the fix.** The poll
 (`native/hagency/tests/bootstrap/approval.rs:136` and `:171`,
 `Duration::from_millis(25)`) and the one `mpsc::channel(32)` request queue
-shared by two identities (`native/hagency-matrix/tests/common/mod.rs:275-280`,
-`:306`) make the intermittent reproducible under parallel load. They do not
+shared by two identities (`native/hagency-matrix/tests/common/mod.rs`: `:316` on
+the current head, `:275-280`, `:306` when written) make the intermittent reproducible under parallel load. They do not
 cause it. A path that cancels its own send at ~1000 ms is broken at any load
 level; lengthening the watchdog or making the poll faster would hide the defect
 that this record exists to fix. No harness timing may be adjusted to make the
@@ -226,7 +230,7 @@ a genuine token cancellation still yields `Err(Error::Cancelled)`.
 |---|---|
 | `native/hagency-matrix/src/approval_delivery.rs:92-94` | Anchor the ceiling on a delivery clock started at first attempt, not on `card.owner_expires_at()`; keep the owner expiry as the card's admission gate (`card.rs:46-50`), unchanged. |
 | `native/hagency-matrix/src/approval_delivery.rs:96,101-102` | Replace the deadline arm with a returning `Err(Error::Timeout)` arm (sibling shape); do not cancel the child token, and do not await the inner work unboundedly from the deadline arm. |
-| `native/hagency-matrix/src/http.rs:479-483` | Unchanged in shape — it already carries the correct split; confirm the delivery's deadline (not a self-cancelled token) reaches it. |
+| `native/hagency-matrix/src/http.rs:479-483` | No edit: `put`/`perform` self-derive a per-trip deadline from their own limits (`http.rs:407-408`), which is a second, independent bound; the delivery clock never reaches this file. |
 | `native/hagency-matrix/src/enrollment.rs:265-273` | Unchanged; `checkpoint` already returns `Timeout` on an expired deadline once the token is not falsely cancelled. |
 | `native/hagency-matrix/tests/approval_delivery/privacy.rs:97,111-114` and `…/enrollment.rs:188-193` | Pin the class on the expiry scenario instead of `is_err()`. |
 | `native/hagency-store/tests/approvals/reissue.rs:27` | Already the intended literal; no change — it is the evidence the product should match. |
