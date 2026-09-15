@@ -14,13 +14,15 @@ reconciled in production: the driver's claim (`bootstrap/driver.rs:257`) →
 `claim_clock` → `expire` (`domain/execution.rs:810`) → `lose` (`:186-214`)
 settles it to `outcome_unknown`, quarantines the session, and the candidate query
 (`:820-821`) never re-claims it. That satisfies the definition-of-done clause about
-surviving crashes without duplicate effects. But nothing in production performs
-what `recover_dispatch` (`domain/execution.rs:1025`) does: `DELETE FROM
+surviving crashes without duplicate effects. When this record was written,
+nothing in production performed what `recover_dispatch`
+(`domain/execution.rs:1025`) does: `DELETE FROM
 resource_leases` (`:1103`), clear `quarantined=0` (`:1107`), clear `dirty=0`
 (`:1110`), supersede the queued rows (`:1112`), enqueue the replacement (`:1115`),
 and write the recovery records (`:1118`, `:1120`). `reconcile_dispatches`
-(`:1014`) is likewise an unreached facade — it only calls `expire`, never
-`recover_dispatch`.
+(`:1014`) likewise remains an unreached facade — it only calls `expire`, never
+`recover_dispatch`. The route this record decided landed on 2026-09-15 (see the
+landing note below).
 
 Consequence: an orphaned dispatch is settled but never resumed — it holds its
 resource lease, keeps counting against the live-dispatch cap, and leaves its

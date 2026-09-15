@@ -117,30 +117,28 @@ The retained per-record shape (`lib/engagement-store.js:700-725`,
 the table, the fence and the shared claim path, and would break the retention pin
 that reads the `retire` row.
 
-**What the retire-effect driver owes — and it is operator-triggered, never a
-sweeper.**
+**What the retire-effect driver owed — and what landed (2026-09-15).**
 
-`claim_effect` already selects both kinds (`domain.rs:1342`); today only the
-`provision` arm is driven, inline by the provisioning intake
-(`native/hagency-matrix/src/intake.rs:405-415`). The `retire` arm has no driver
-at all. The driver owes, in this order:
-
-1. **An operator-triggered claim and observe.** A caller that claims a pending
-   `retire` effect (`:1342`) and observes its outcome (`observe_effect`, `:1357`
-   — `Complete` sets `cleanup = Complete` `:1402`, `Uncertain` `:1424`,
-   `Pending` `:1418`). It belongs behind the same console retire surface as
-   `revoke`, mirroring the retained re-POST
-   (`backend-v2.js:15233-15234`, "The decision is already durable. Retry only
-   detachment…").
-2. **The retry pairing.** A `failed` effect is reset by `retry_cleanup`
-   (`:1274-1280`) — an operator act, part of the retire slice, not a third slice.
-3. **The retirement effect itself.** The retained product performs a **remote**
-   retirement and verifies it strictly (`lib/palpo-agent-retirement.js:9-24`,
-   `POST /retire-agent`, requiring `state==='retired'`,
-   `matrixIdentity==='deactivated'`, `appserviceAccess==='revoked'`, empty
-   `joinedRooms`). **The port has no counterpart to this step** (a grep for
-   `retire-agent`/`retire_agent` across `native/` finds no hit at all — not
-   even a fixture inventory entry). See the deferral below.
+`claim_effect` already selects both kinds (`domain.rs:1342`); the provision arm
+is driven inline by the provisioning intake
+(`native/hagency-matrix/src/intake.rs:405-407`). The console retire surface
+landed at `native/hagency/src/console/engagements.rs:28-29` — `{id}/retire`
+performs the retirement decision (`revoke`) and `{id}/cleanup-retry` resets a
+failed retire effect (`retry_cleanup`, `:157-169`), the operator-triggered,
+no-sweeper shape this section decided. Still open on that surface: the
+claim-and-observe leg (a caller that claims a pending `retire` effect
+(`:1342`) and observes its outcome (`observe_effect`, `:1357` — `Complete`
+sets `cleanup = Complete` `:1402`, `Uncertain` `:1424`, `Pending` `:1418`));
+the landed routes stop at the decision and the failed reset. The pairing
+mirrors the retained re-POST (`backend-v2.js:15233-15234`, "The decision is
+already durable. Retry only detachment…"). One obligation remains open on
+that surface: the remote retirement step itself. The retained product performs
+a **remote** retirement and verifies it strictly
+(`lib/palpo-agent-retirement.js:9-24`, `POST /retire-agent`, requiring
+`state==='retired'`, `matrixIdentity==='deactivated'`, `appserviceAccess==='revoked'`, empty
+`joinedRooms`). **The port has no counterpart to this step** (a grep for
+`retire-agent`/`retire_agent` across `native/` finds no hit at all — not
+even a fixture inventory entry). See the deferral below.
 
 **No automatic retry, in any form.** The retained product has no sweeper: its
 only interval helper (`backend-v2.js:17422-17426`) is not used for withdrawals,
