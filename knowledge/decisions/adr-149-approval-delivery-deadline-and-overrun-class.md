@@ -81,10 +81,12 @@ changes no part of that machinery; it relies on it to have seen the defect at al
 **The host's delivery obligation is bounded by a delivery clock that starts at
 the first send attempt, not by the owner's decision deadline.** Delivery and
 deciding are different obligations with different owners: the owner decides
-whether to allow the action, the host delivers the card that asks. Today they
-share one deadline because the delivery deadline is computed from
-`card.owner_expires_at()` (`approval_delivery.rs:92-94`), which is the owner's
-window expressed as a wall clock.
+whether to allow the action, the host delivers the card that asks. When this
+record was written they shared one deadline: the delivery deadline was computed
+from `card.owner_expires_at()` (`approval_delivery.rs:92-94` as it then stood),
+the owner's window expressed as a wall clock. The landed fix replaces it with a
+delivery clock (`approval_delivery.rs:92` on this head) while
+`owner_expires_at()` keeps its gate role, below.
 
 `card.owner_expires_at()` **continues to govern the owner's decision window, and
 nothing else changes hands**:
@@ -161,7 +163,8 @@ unbounded, but that ceiling is a *last resort*, evaluated on the delivery clock,
 and its expiry is a `Timeout`.
 
 **Rejected: one wrapper around the whole job.** Wrapping the entire delivery in a
-single `sleep_until` is what `:102` does today. Its costs are concrete:
+single `sleep_until` was what `:102` did before this record landed (it cancelled
+the child token and awaited the work). Its costs were concrete:
 (a) it cannot report which leg overran, so its expiry is uninformative;
 (b) it *destroys* the class distinction by cancelling the token the inner work
 holds, which is exactly how a `Timeout` becomes a `Cancelled`;
@@ -208,21 +211,23 @@ selector pass.
 
 ### 5. Consequences — the sites a builder touches, and the test that must fail first
 
-**The test that must fail first, on the current product, and pass after.**
-A delivery whose budget expires must return `Error::Timeout`, not
-`Error::Cancelled`. `native_private_approval_delivery_is_wired` cannot carry
-this: it observes delivery of a card that *does* arrive in the happy case, and
+**Landed (2026-09-15), with the fail-first test that pinned it.** A delivery
+whose budget expires now returns `Error::Timeout`, never `Error::Cancelled`
+(`approval_delivery.rs:106-107`: the deadline arm returns — it does not cancel a
+token and does not await the inner work). The asserting test landed as
+`native_private_approval_delivery_overrun_is_a_timeout`
+(`native/hagency-matrix/tests/approval_delivery/overrun.rs:12`): the SDK owner
+is held at phase 3, time advances past the 45 s delivery ceiling, and the send
+must resolve `Err(Error::Timeout)` (`:55`) with the denial row carrying the
+"timed out" reason (`:79`) — red on the pre-fix product, green on this head.
+`native_private_approval_delivery_is_wired` could never carry this: it observes
+delivery of a card that *does* arrive in the happy case, and
 its only deadline-sensitive assertion is the fixture watchdog (`:191-193`,
 `:243-245`) — it is red on the hosted lanes for the separate, already-recorded
-PC-C0b reason (ADR-138:106-121). The asserting test belongs in the delivery
-suite, where the deadline is already exercised: the expiry scenario at
-`native/hagency-matrix/tests/approval_delivery/privacy.rs:97,111-114` and the
-post-expiry refusal at
-`native/hagency-matrix/tests/approval_delivery/enrollment.rs:176-193`. Both
-currently assert only `is_err()` (`privacy.rs:112`, `enrollment.rs:188-193`) —
-the class is unpinned today, which is why the defect survived. The new assertion
-must pin the class: an expired delivery budget yields `Err(Error::Timeout)`, and
-a genuine token cancellation still yields `Err(Error::Cancelled)`.
+PC-C0b reason (ADR-138:106-121). The privacy/enrollment expiry scenarios keep
+their `is_err()` assertions (`privacy.rs:112`): their refusals are store-verdict
+refusals, not deadline overruns, so the class assertion belongs to the overrun
+test alone.
 
 **Exact sites a builder touches:**
 
