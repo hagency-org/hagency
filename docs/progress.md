@@ -8490,3 +8490,52 @@ client qualification and ongoing identity/key management remain separate.
   lengthened, and no assertion about the product was changed — the authority
   rejection and every row-count check still run, on attempts that actually
   modelled the window.
+
+- 2026-09-15: the wiring audit's open set is empty. G11 — project-side
+  registration — was the last allocated gap, and with it closed every id (G1–G12,
+  including G5a and both halves of G10) is closed, superseded or deleted. The
+  production-callers checker reads `count 43, wired 43, owed []`.
+
+  **G11.** `DomainRepository::register` (`domain.rs:730`) now has two production
+  callers through the existing facade `DomainStore::register`
+  (`domain_worker.rs:2842`): `hagency::bootstrap::registration::run`, the CLI
+  `Registration` subcommand (`main.rs:215` → `bootstrap/registration.rs:29` →
+  `:58`), and `hagency::console::project_sides::save`, the `POST /api/project-sides`
+  route behind the shared `Scope::AgentLifecycle` check (`project_sides.rs:101-122`).
+  Neither caller is test-enclosed.
+
+  That closure cost one regression and its correction. The new POST route broke
+  `project_sides::native_console_project_side_refuses_foreign_origin`, whose final
+  clause asserted `NOT_FOUND | METHOD_NOT_ALLOWED` — encoding "this surface has no
+  mutation route" as its proof that a foreign origin cannot mutate it. G11
+  obsoleted the invariant, not the guard: the shared hoop applies
+  `common_authority` and `same_origin(mutation=true)` to POST before any handler,
+  so the route already refused all six forged-header shapes. The clause was
+  replaced with those six cases asserted directly against the POST route — strictly
+  stronger than what it replaced. Whole-target console: 56 passed / 0 failed, twice.
+
+  **The Windows lane had been dead before its test phase, for a non-Windows
+  reason.** `corpus-retention-vectors.mjs --check` byte-compared its fixture raw
+  while every sibling oracle normalises; that fixture sits in
+  `hagency-store/tests/fixtures/`, outside the `/native/fixtures/*.json text eol=lf`
+  pin, so a Windows checkout gets CRLF and the compare fails. Because that step
+  precedes the test phase, every later step was skipped. Fixed by normalising the
+  comparison rather than guarding the step off on Windows — a guard would have
+  disabled a working check to hide a portability bug. The same class was then swept:
+  `approval_vectors.rs` hashed unpinned root sources raw (fixed at the hash site),
+  and `native/**/tests/fixtures/*.json` is now pinned `text eol=lf`, verified to
+  rewrite nothing (all eight matched files already `i/lf` in the index).
+
+  **Two fixture fuses removed, neither widened.** The `usage-gate` probe
+  self-expired after 5 s against a 25 s operation budget while its test never
+  writes `usage-release`, so the fixture retired the workspace binding out from
+  under the test it was meant to observe; `usage_gate_hold` now ends on the release
+  file or the host's stdin close. `await_release` carried the same shape one layer
+  deeper and now ends on the custody ceiling. In both, the 25 s budget, every
+  assertion and the dev+ino root check are unchanged.
+
+  **Prose corrections.** ADR-095's ingress-absent amendment marked superseded by
+  the G1 closure, dated framing preserved; ADR-148's recovery prose and ADR-150's
+  retire prose read as landed; and ADR-146's six stale open-gap sentences —
+  including two that claimed the `reject` refusal half "remains open" while the
+  row above recorded it closed — now state the true open set.
