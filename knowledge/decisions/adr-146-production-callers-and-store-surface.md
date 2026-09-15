@@ -55,7 +55,18 @@ is only the starting enumeration — it under-strips (paths containing `tests/`
 only, so `#[cfg(test)]` modules and `#[test]` fns inside production files still
 hit; e.g. the literal command returns accounts.rs:1273, inside `mod tests`, as
 a false production hit for `approve`) and it collides on bare names (see the
-`admit` row). Every row below was therefore judged with the checker spec's
+`admit` row). **Method correction (2026-09-14):** the grep under-strips in a
+second way this warning did not name — it classifies a hit by the FILE it lands
+in, not by the ITEM that encloses it. `create_canonical_task` is the
+counter-example the sentence lacked: its four candidate callers all sit inside
+`#[cfg(test)]` modules whose ranges open far above them (`domain_worker.rs`
+:354-1389, `accounts.rs` :1154-1425, `driver.rs` :378-691), so reading the
+nearest marker below a hit calls two test calls production and the method
+wired. Classify every hit by its enclosing item's range, resolve `#[path]` and
+`mod` includes, and exclude a facade's own `self.call(` body — that body is the
+only caller of most store writes and is never evidence of production
+reachability. The original audit missed `create_canonical_task` entirely for
+exactly this reason. Every row below was therefore judged with the checker spec's
 strip: `#[cfg(test)]` items and `#[test]` fns removed, `*/tests/*`,
 `native/fixtures/**`, and the probe/fixture binaries
 (`hagency-platform/src/bin/hagency-platform-probe.rs`,
@@ -231,6 +242,13 @@ reasoning stands.
 | `create_coordinator_task` | domain/execution.rs:693 | facade domain_worker.rs:2206 has no production caller (its body at :2215 is the only caller of the write, and every other call is under hagency-store/tests/); the behaviour is already delivered in production by the wired delegation lane, `runner.rs:33` → `:161` → `delegate_task` (task_intents.rs:411) | **dead surface** — deletion proposal under review 2026-09-14; verified independently by two lanes |
 | `record_late_output` | domain/execution.rs:982 | facade domain_worker.rs:2308 has no production caller, yet its sibling lane IS wired: `complete_dispatch` (execution.rs:964) ← `admit_owned_dispatch` (owned_dispatch.rs:302) ← operation.rs:706. A dispatch that completes is recorded; one whose output arrives late is not | **new gap** (real product work; owner unassigned) |
 | `enqueue_inbox_dispatch` | domain/messages.rs:283 | **superseded-by** `select_receive_inbox` → `select_receive` (messages.rs:647, which performs the `enqueue_inbox` write at :703/:741) ← `hagency/src/bootstrap/inbox.rs:31`; the direct facade is a stale variant | superseded |
+| `create_canonical_task` | domain/execution.rs:679 | facade domain_worker.rs:2194 (self-call :2202) has no production caller; every candidate is test-enclosed — domain_worker.rs:428 and :710 in `mod clock_tests` (:354-1389), domain/accounts.rs:1301 in `mod tests` (:1154-1425), hagency/src/bootstrap/driver.rs:445 in `mod tests` (:378-691). The write is real: the body reaches the `canonical_tasks` insert | **new gap** (owner unassigned; the original audit missed this row entirely) |
+| `register` | domain.rs:730 | facade domain_worker.rs:2842 has no production caller; the `.register(` hits outside the store are a DIFFERENT type (`workspace.register` ← hagency/src/bootstrap/driver.rs:299, workspace.rs:68), and the in-store hits are test-enclosed (domain_worker.rs:373 and :1317 in `mod clock_tests`, accounts.rs:1280 in `mod tests`) | **new gap** (bootstrap-prerequisite shape; owner unassigned) |
+| `claim_verified_task_notice` | domain/notice_custody.rs:99 | facade domain_worker.rs:1780 is the only production-source hit and is its own body; the wired notice lane enters through `begin_verified_task_notice_send` / `validate_verified_task_notice_send` ← hagency-matrix/src/outgoing.rs:266,438 | **superseded-by** the verified notice lane |
+| `deliver_verified_task_notice` | domain/notice_custody.rs:190 | facade domain_worker.rs:1828 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
+| `cancel_verified_task_notice` | domain/notice_custody.rs:232 | facade domain_worker.rs:1806 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
+| `reject` | domain.rs:1257 | facade domain_worker.rs:2921, inside `pub async fn reject` (:2919) in the production impl, is the only production-source hit and is its own body; every other `.reject(` hit is under hagency-store/tests | **new gap** (owner unassigned) |
+| `revoke` | domain.rs:1260 | facade domain_worker.rs:2927, inside `pub async fn revoke` (:2925), is the only production-source hit for THIS type; the many other `.revoke(` hits are the console and resource access guards (`console/authority.rs:36-38`, `console.rs:359`), a bare-name collision | **new gap** (owner unassigned) |
 
 Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 (`hagency/src/runner.rs:416`); the remaining candidate names are read APIs
