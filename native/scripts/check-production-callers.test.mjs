@@ -426,3 +426,84 @@ test('r5 comment probe: a comment-only mention of foo() never satisfies a caller
   assert.equal(result.missing.length, 1);
   assert.match(result.missing[0].caller, /::foo$/);
 });
+
+test('r6 free/impl collision: the path shape decides which handoff is named', () => {
+  // pub fn handoff() beside impl A { fn handoff } — a Type-less path names
+  // the free fn, a Type path names the impl method; never "2 definitions".
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let a = A::new(); a.handoff(); free_handoff(); }\n',
+      'native/hagency/src/collide.rs': [
+        'pub fn free_handoff() {}',
+        'pub struct A;',
+        'impl A {',
+        '  pub fn new() -> A { A }',
+        '  pub fn handoff(&self) {}',
+        '}',
+      ].join('\n'),
+    },
+    specs: [
+      '  Production caller: hagency::collide::free_handoff',
+      '  Production caller: hagency::collide::A::handoff',
+    ].join('\n') + '\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 2);
+  assert.equal(result.unresolved.length, 0);
+});
+
+test('r6 trait impl: a Type::fn path resolves a method provided by impl Trait for Type', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let c = Collector::new(); c.serve(); }\n',
+      'native/hagency/src/svc.rs': [
+        'pub trait Serve { fn serve(&self); }',
+        'pub struct Collector;',
+        'impl Collector {',
+        '  pub fn new() -> Collector { Collector }',
+        '}',
+        'impl Serve for Collector {',
+        '  fn serve(&self) {}',
+        '}',
+      ].join('\n'),
+    },
+    specs: [
+      '  Production caller: hagency::svc::Collector::serve',
+      '  Production caller: hagency::svc::Serve::serve',
+    ].join('\n') + '\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 2);
+});
+
+test('r6 two-traits ambiguity: a method from two traits for one type is unresolved, both named', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { run(); }\nfn run() { let c = Collector::new(); c.serve(); }\n',
+      'native/hagency/src/svc.rs': [
+        'pub trait Serve { fn serve(&self); }',
+        'pub trait Serve2 { fn serve(&self); }',
+        'pub struct Collector;',
+        'impl Collector {',
+        '  pub fn new() -> Collector { Collector }',
+        '}',
+        'impl Serve for Collector {',
+        '  fn serve(&self) {}',
+        '}',
+        'impl Serve2 for Collector {',
+        '  fn serve(&self) {}',
+        '}',
+      ].join('\n'),
+    },
+    specs: '  Production caller: hagency::svc::Collector::serve\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.equal(ok, false);
+  assert.equal(result.unresolved.length, 1);
+  assert.match(result.unresolved[0].reason, /Serve.*Serve2|Serve2.*Serve/);
+});

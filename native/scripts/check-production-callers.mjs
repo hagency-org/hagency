@@ -255,9 +255,11 @@ export function buildGraph(files, read) {
 function implsOf(src, def) {
   const idx = def.index ?? src.indexOf(def.body);
   const impls = [];
-  // `impl T {`, `impl<'a> T {`, `impl Trait for T {` — capture the type name
-  // that follows the impl header, tolerating generics before and after it.
-  const re = /\bimpl\b(?:\s*<[^>]*>)?[^\n{]*?\b([A-Z][A-Za-z0-9_]*)[^\n{]*\{/g;
+  // Inherent `impl T {` / `impl<'a> T {` keys as [T]. A trait impl
+  // `impl Trait for T {` keys as [Trait, T] so BOTH a line naming the trait
+  // and a line naming the concrete type resolve (the receiver is a T, and
+  // the trait's method is callable through it).
+  const re = /\bimpl\b(?:\s*<[^>]*>)?([^\n{]*)\{/g;
   let m;
   while ((m = re.exec(src))) {
     let depth = 0, end = src.indexOf('{', m.index);
@@ -265,9 +267,16 @@ function implsOf(src, def) {
       if (src[i] === '{') depth++;
       else if (src[i] === '}') { depth--; if (depth === 0) { end = i; break; } }
     }
-    if (idx > m.index && idx < end) impls.push(m[1]);
+    if (!(idx > m.index && idx < end)) continue;
+    const header = m[1];
+    const traitFor = header.match(/\b([A-Z][A-Za-z0-9_]*)\s+for\s+([A-Z][A-Za-z0-9_]*)/);
+    if (traitFor) impls.push(traitFor[1], traitFor[2]);
+    else {
+      const t = header.match(/\b([A-Z][A-Za-z0-9_]*)/);
+      if (t) impls.push(t[1]);
+    }
   }
-  return impls;
+  return [...new Set(impls)];
 }
 
 // Receiver-type hints from the evidence Rust gives for free, per fn body:
@@ -366,11 +375,32 @@ export function resolvePath(graph, files, full) {
   const file = candidates.find((c) => files.includes(c));
   if (!file) return { def: null, reason: `no module file for ${segs.join('::')}` };
   const defs = (graph.fileFns.get(file) || []).filter((d) => d.name === fnName);
-  const inImpl = typeName ? defs.filter((d) => (d.impls || []).includes(typeName)) : defs;
-  const chosen = typeName ? inImpl : defs;
-  if (chosen.length === 1) return { def: { file, name: fnName, impls: chosen[0].impls || [] }, reason: null };
-  if (chosen.length === 0) return { def: null, reason: `no fn ${fnName}${typeName ? ` in impl ${typeName}` : ''} in ${file}` };
-  return { def: null, reason: `${chosen.length} definitions of ${fnName} in ${file}` };
+  if (!typeName) {
+    // crate::module::fn — a Type-less path. The FREE function wins when both
+    // a free fn and an impl method share the name (shape decides). With no
+    // free fn, a single impl method of that name resolves (spec lines name
+    // impl methods without the Type segment too — e.g.
+    // hagency::bootstrap::open_with_options is Bootstrap::open_with_options);
+    // more than one impl providing it is unresolved.
+    const free = defs.filter((d) => !(d.impls || []).length);
+    if (free.length === 1) return { def: { file, name: fnName, impls: [] }, reason: null };
+    if (free.length > 1) return { def: null, reason: `${free.length} free definitions of ${fnName} in ${file}` };
+    const methods = defs.filter((d) => (d.impls || []).length);
+    if (methods.length === 1) return { def: { file, name: fnName, impls: methods[0].impls }, reason: null };
+    if (methods.length === 0) return { def: null, reason: `no fn ${fnName} in ${file}` };
+    const keys = methods.map((d) => `${(d.impls || []).join('&')}::${fnName}`);
+    return { def: null, reason: `no free fn ${fnName} in ${file} and the method is provided by more than one impl: ${keys.join(', ')}` };
+  }
+  // crate::module::Type::fn — inherent impl of Type first, then trait impls
+  // FOR Type (implsOf records both names). A trait-name path resolves the
+  // same way since the trait is in the impls list.
+  const withType = defs.filter((d) => (d.impls || []).includes(typeName));
+  if (withType.length === 1) return { def: { file, name: fnName, impls: withType[0].impls }, reason: null };
+  if (withType.length === 0) return { def: null, reason: `no fn ${fnName} in impl ${typeName} in ${file}` };
+  // Two impls both reachable through `Type::fn` — e.g. the method comes from
+  // two different traits implemented for Type. Genuinely ambiguous.
+  const keys = withType.map((d) => `${(d.impls || []).join('&')}::${fnName}`);
+  return { def: null, reason: `${fnName} for ${typeName} is provided by more than one impl: ${keys.join(', ')}` };
 }
 
 function parseCaller(raw) {
