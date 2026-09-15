@@ -150,20 +150,14 @@ impl Inner {
         &self,
         msg: &hagency_core::messages::InboundMessage,
     ) -> Result<(hagency_core::project::Engagement, bool), Error> {
-        let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|e| {
-            eprintln!("PROVISION-DIAG body parse failed: {e:?}");
-            Error::Wire
-        })?;
+        let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
         let reg = self
             .domain
             .provisioning_registration_for_engagement(
                 self.config.identity.transport.engagement_id.clone(),
             )
             .await
-            .map_err(|e| {
-                eprintln!("PROVISION-DIAG registration read failed: {e:?}");
-                Error::Wire
-            })?;
+            .map_err(|_| Error::Wire)?;
         let owner_room = self
             .domain
             .provisioning_owner_room(
@@ -174,10 +168,7 @@ impl Inner {
                 reg.server_name.clone(),
             )
             .await
-            .map_err(|e| {
-                eprintln!("PROVISION-DIAG owner room read failed: {e:?}");
-                Error::Wire
-            })?;
+            .map_err(|_| Error::Wire)?;
         // The retained single-owner flow: the requester is the project owner.
         let requester = body
             .get("requester")
@@ -271,10 +262,8 @@ impl Inner {
             project,
             owner_room: owner,
         };
-        let verified = verify_request(&reg, request, request_observation).map_err(|e| {
-            eprintln!("PROVISION-DIAG verify_request failed: {e:?}");
-            Error::Wire
-        })?;
+        let verified =
+            verify_request(&reg, request, request_observation).map_err(|_| Error::Wire)?;
         let id = verified
             .request()
             .engagement_id()
@@ -282,20 +271,8 @@ impl Inner {
         let exists = self
             .domain
             .provisioning_engagement_exists(id.clone())
-            .await
-            .map_err(|e| {
-                eprintln!("PROVISION-DIAG engagement_exists failed: {e:?}");
-                e
-            })?;
-        eprintln!("PROVISION-DIAG admit: id={id} exists={exists}");
-        let engagement = self
-            .domain
-            .admit(verified, msg.origin_ts)
-            .await
-            .map_err(|e| {
-                eprintln!("PROVISION-DIAG admit failed: {e:?}");
-                e
-            })?;
+            .await?;
+        let engagement = self.domain.admit(verified, msg.origin_ts).await?;
         Ok((engagement, !exists))
     }
     /// The in-memory authority facts for a verify-only room, fetched from
@@ -468,12 +445,6 @@ impl Inner {
         }
         let mut admitted = 0;
         let mut replayed = batch.acknowledgements.len();
-        eprintln!(
-            "PROVISION-DIAG handoff: pre_project={} events={} acks={}",
-            batch.pre_project.len(),
-            batch.events.len(),
-            batch.acknowledgements.len()
-        );
         // ADR-095: pre-project provisioning events are admitted before target
         // resolution and carry no route, ack or disposition. Reprocessing is
         // safe: provision is idempotent on `request_id`, so a restored batch
