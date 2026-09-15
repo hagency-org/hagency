@@ -1366,3 +1366,175 @@ async fn native_runner_http_inbox_and_limits() {
     drop(inspect);
     f.close().await;
 }
+
+// ---- G12 (ADR-146): fenced late output on the routed runner surface ----
+
+fn late_post(cap: &RunnerCapability, body: &Value) -> RequestBuilder {
+    auth(TestClient::post(format!("{BASE}/runner/late-output")), cap).json(body)
+}
+fn late_sql(root: &std::path::Path, sql: &'static str, cap: &RunnerCapability) -> i64 {
+    rusqlite::Connection::open(root.join("state").join("domain.sqlite3"))
+        .unwrap()
+        .query_row(sql, rusqlite::params![cap.dispatch_id, cap.fence], |r| {
+            r.get(0)
+        })
+        .unwrap()
+}
+const UNACCEPTED: &str =
+    "SELECT COUNT(*) FROM runner_outputs WHERE dispatch_id=?1 AND fence=?2 AND accepted=0";
+
+/// G12: output arriving after the completion decision is recorded through
+/// the production route as fenced, unaccepted evidence; nothing settles
+/// because of it.
+#[tokio::test]
+async fn native_late_output_records_fenced_evidence() {
+    let f = Fixture::new(true).await;
+    // The completion decision has moved on: the dispatch left `started`, so
+    // the ordinary runner surface (the Check hoop) refuses this capability —
+    // exactly the arrival the late route exists to record.
+    f.domain
+        .complete_dispatch(f.cap.clone(), json!({"result":"finished"}), now())
+        .await
+        .unwrap();
+    let response = late_post(&f.cap, &json!({"text":"arrived after completion"}))
+        .send(&f.service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    assert_eq!(late_sql(f._root.path(), UNACCEPTED, &f.cap), 1);
+    let root = f._root.path().to_path_buf();
+    let settled: (String, String) =
+        rusqlite::Connection::open(root.join("state").join("domain.sqlite3"))
+            .unwrap()
+            .query_row(
+                "SELECT d.state, COALESCE(json_extract(t.config,'$.status'),'none') \
+             FROM runner_dispatches d LEFT JOIN canonical_tasks t ON t.id='task' WHERE d.id=?1",
+                [&f.cap.dispatch_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+    assert_eq!(
+        settled.0, "completed",
+        "no dispatch is settled by late output"
+    );
+    assert_eq!(
+        settled.1, "in_progress",
+        "no task is settled by late output"
+    );
+    f.close().await;
+}
+
+/// G12: a capability from a different runner refuses without a row.
+#[tokio::test]
+async fn native_late_output_refuses_foreign_attempt() {
+    let f = Fixture::new(true).await;
+    f.domain
+        .complete_dispatch(f.cap.clone(), json!({}), now())
+        .await
+        .unwrap();
+    let mut foreign = f.cap.clone();
+    foreign.runner_id = "another_runner".into();
+    let response = late_post(&foreign, &json!({"text":"forged"}))
+        .send(&f.service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::FORBIDDEN));
+    assert_eq!(late_sql(f._root.path(), UNACCEPTED, &f.cap), 0);
+    f.close().await;
+}
+
+/// G12: the per-attempt bound refuses further rows and changes nothing.
+/// The store counts every row for the dispatch_id and fence — including the
+/// completion's accepted row — so the route accepts exactly 127 late rows
+/// before the 128-row bound refuses.
+#[tokio::test]
+async fn native_late_output_refuses_at_capacity() {
+    let f = Fixture::new(true).await;
+    f.domain
+        .complete_dispatch(f.cap.clone(), json!({}), now())
+        .await
+        .unwrap();
+    let mut accepted = 0;
+    for n in 0..200u32 {
+        let response = late_post(&f.cap, &json!({"n":n})).send(&f.service).await;
+        if response.status_code == Some(StatusCode::OK) {
+            accepted += 1;
+        } else {
+            assert_eq!(
+                response.status_code,
+                Some(StatusCode::SERVICE_UNAVAILABLE),
+                "the bound refuses with capacity, not silently"
+            );
+            break;
+        }
+    }
+    assert_eq!(
+        accepted, 127,
+        "128 rows minus the completion's accepted row"
+    );
+    assert_eq!(late_sql(f._root.path(), UNACCEPTED, &f.cap), 127);
+    let again = late_post(&f.cap, &json!({"n":999})).send(&f.service).await;
+    assert_eq!(again.status_code, Some(StatusCode::SERVICE_UNAVAILABLE));
+    f.close().await;
+}
+
+/// G12: a capability that survives a backend restart still authenticates
+/// against its attempt row — the write takes no clock by design.
+#[tokio::test]
+async fn native_late_output_survives_restart() {
+    let mut f = Fixture::new(true).await;
+    f.domain
+        .complete_dispatch(f.cap.clone(), json!({}), now())
+        .await
+        .unwrap();
+    let cap = f.cap.clone();
+    // Keep the state directory alive across the fixture's close.
+    let root = std::mem::replace(&mut f._root, tempfile::tempdir().unwrap());
+    f.close().await;
+    // Backend restart: fresh stores over the same state; the capability
+    // survived outside the process (the runner kept its credential headers).
+    let state = root.path().join("state");
+    let custody = Store::start(Repository::open(&state).unwrap(), 16).unwrap();
+    let db = DomainRepository::open(&state).unwrap();
+    let domain = DomainStore::start(db, 16).unwrap();
+    let service = Service::new(
+        App::new(
+            custody.clone(),
+            TOKEN.as_bytes(),
+            "127.0.0.1:13300".parse().unwrap(),
+        )
+        .unwrap()
+        .with_domain(domain.clone())
+        .router(),
+    );
+    let response = late_post(&cap, &json!({"text":"survived the restart"}))
+        .send(&service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    assert_eq!(late_sql(root.path(), UNACCEPTED, &cap), 1);
+    let dispatch_state: String = rusqlite::Connection::open(state.join("domain.sqlite3"))
+        .unwrap()
+        .query_row(
+            "SELECT state FROM runner_dispatches WHERE id=?1",
+            [&cap.dispatch_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(dispatch_state, "completed", "no current dispatch settles");
+    drop(service);
+    domain.shutdown_observed().await.0.unwrap();
+    custody.shutdown_observed().await.0.unwrap();
+}
+
+/// G12: the route is registered on the production router — an
+/// unauthenticated POST answers 401 (credential required), never 404. The
+/// wired-graph obligation itself is enforced by check-production-callers.mjs.
+#[tokio::test]
+async fn native_late_output_route_has_production_caller() {
+    let f = Fixture::new(false).await;
+    let response = TestClient::post(format!("{BASE}/runner/late-output"))
+        .add_header("host", "127.0.0.1:13300", true)
+        .json(&json!({"text":"route presence"}))
+        .send(&f.service)
+        .await;
+    assert_eq!(response.status_code, Some(StatusCode::UNAUTHORIZED));
+    f.close().await;
+}

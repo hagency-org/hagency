@@ -41,16 +41,18 @@ with no `Test:` line until the route lands.
 
 ## Constraints
 
-- **No `Test:` line for an unwired obligation.** A `Test:` naming a nonexistent test
-  fails the Rust binding gate; these scenarios use `Owed Selector:` only.
+- **No `Test:` line without the route.** A `Test:` naming a nonexistent test
+  fails the Rust binding gate; the parked `Owed Selector:` lines below were
+  converted to `Test:` lines in the same commit as the route.
 - **The store write is not weakened.** The route is added *around* `record_late_output`;
   its authentication, its no-clock property and its `accepted=0` verdict are the
   contract, not obstacles to it.
-- **No ADR is allocated here.** The gap id `G10` is the wiring-audit gap number for
-  `record_late_output` in ADR-146's new-gap row, not a decision number.
-- The production caller is **not** invented. No production function reaches
-  `record_late_output` on this head; the one honest `Production caller:` value is
-  `owed (G10)`.
+- **No ADR is allocated here.** The gap id `G12` is the wiring-audit gap number for
+  `record_late_output` in ADR-146's gap table, not a decision number. (An earlier
+  revision of this spec wrote `G10` here and in its `Production caller:` lines —
+  a transcription error against the central allocation; corrected with the route.)
+- The production caller is **not** invented: `hagency::runner::completion::late`,
+  registered on the routed runner surface in the same commit as the `Test:` lines.
 
 ## Boundaries
 
@@ -120,38 +122,38 @@ property to make a route easier would satisfy [REQ-TSS-AUTHORITY-SEPARATION] in 
 only.
 
 Scenario: A fenced late submission is retained as unaccepted evidence
-  Owed Selector: native_late_output_records_fenced_evidence (parked — owed by the G10 wiring slice; no Test: line here yet)
+  Test: native_late_output_records_fenced_evidence
   Given a capability whose attempt row authenticates and whose dispatch has left started
   When the runner submits output through the late route
   Then the runner_outputs row carries accepted=0 for that dispatch_id and fence
   And no dispatch is settled by it
-  Production caller: owed (G10)
+  Production caller: hagency::runner::completion::late
 
 Scenario: A late submission from a different runner refuses without a row
-  Owed Selector: native_late_output_refuses_foreign_attempt (parked — owed by the G10 wiring slice; no Test: line here yet)
+  Test: native_late_output_refuses_foreign_attempt
   Given a capability whose runner_id does not match the attempt row for that dispatch_id and fence
   When the runner submits output through the late route
   Then the route refuses with runner authority and writes no runner_outputs row
 
 Scenario: A late submission that exceeds the per-attempt bound refuses
-  Owed Selector: native_late_output_refuses_at_capacity (parked — owed by the G10 wiring slice; no Test: line here yet)
+  Test: native_late_output_refuses_at_capacity
   Given an attempt row whose runner_outputs rows for one dispatch_id and fence number 128
   When the runner submits further output through the late route
   Then the route refuses with capacity and the existing rows are unchanged
 
 Scenario: A capability surviving a restart still authenticates against its attempt row
-  Owed Selector: native_late_output_survives_restart (parked — owed by the G10 wiring slice; no Test: line here yet)
+  Test: native_late_output_survives_restart
   Given a capability for an older fence generation that survives outside the process
   When it submits output after the backend restarts
   Then the runner_outputs row records the submission as unaccepted evidence for that fence
   And no current dispatch settles
 
 Scenario: The late route reaches the store write from production
-  Owed Selector: native_late_output_route_has_production_caller (parked — owed by the G10 wiring slice; no Test: line here yet)
+  Test: native_late_output_route_has_production_caller
   Given the late-output route registered on the routed runner surface
   When the production call graph is computed with tests, fixtures and the bootstrap probe stripped
   Then the route is reachable from a product root and its handler reaches record_late_output
-  Production caller: owed (G10)
+  Production caller: hagency::runner::completion::late
 
 ## Decisions
 
@@ -161,12 +163,15 @@ the requirement is a MUST, the store implements it, and the scenario that states
 bound to a test that does not exist. Deleting the write would delete the implementation
 of a standing requirement.
 
-**`Production caller: owed (G10)` is the only honest value.** No production function
-reaches `record_late_output` on this head — `grep -rn '\.record_late_output(\|::record_late_output('
-native --include='*.rs'` returns only `domain_worker.rs:2314`, the facade's own body.
-Naming a would-be caller would fabricate the one thing this spec exists to check. `G10`
-is the ADR-146 new-gap row id for this method, so the production-caller checker resolves
-it (the checker reads `gap Gn` from ADR-146's table rows).
+**The caller was `owed` until the route landed — and the id was wrong until then too.**
+At spec-writing time no production function reached `record_late_output` —
+`grep -rn '\.record_late_output(\|::record_late_output(' native --include='*.rs'`
+returned only `domain_worker.rs:2314`, the facade's own body — so the honest binding
+was `owed`, and the parked lines carried a gap id. That id was written `G10`, a
+transcription error: the allocated id for `record_late_output` is **G12** (G10 is the
+operator-refusal/retirement gap). The wrong-but-valid id passed the checker because
+the checker only verifies that an owed id names SOME row in ADR-146's table; with the
+route landed the bindings name the real caller and the id question is closed.
 
 **The wired sibling is the owned lane, not `complete_dispatch`.** Wiring the late route
 must not be modeled on the legacy `complete_dispatch`, which is itself test-only. The
