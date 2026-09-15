@@ -61,7 +61,7 @@ async fn native_matrix_enrollment_existing() {
         assert_eq!(f.peer.claims, 0);
         assert!(!f.base.available().await);
         assert_eq!(f.run().await, Err(expected));
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.close().await;
     }
     // A real SDK-generated local identity alone is also an existing account;
@@ -133,7 +133,7 @@ async fn native_matrix_enrollment_anchors() {
         );
         assert_eq!(f.peer.claims, 0);
         assert!(!f.base.available().await);
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.close().await;
     }
 }
@@ -187,7 +187,7 @@ async fn native_matrix_enrollment_sessions() {
             sdk_status(&f.collector).await,
             Err(Error::OutcomeUnknown)
         ));
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.close().await;
     }
 }
@@ -222,7 +222,7 @@ async fn native_matrix_enrollment_current_scope() {
         assert_eq!(f.peer.writes.len(), 1);
         assert_eq!(f.peer.claims, 0);
         assert!(!f.base.available().await);
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.close().await;
     }
 }

@@ -25,7 +25,7 @@ async fn native_private_approval_fresh_enrollment_and_delivery() {
         .unwrap();
     assert!(replay.replayed);
     assert_eq!(replay.state, PrivateApprovalDeliveryState::Accepted);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     f.close().await;
 }
 #[tokio::test]
@@ -63,7 +63,7 @@ async fn native_private_approval_enrollment_refusals() {
             result,
             "non-rearmable {variant}"
         );
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         assert_eq!(f.peer.writes.len(), writes);
         assert_eq!(f.peer.claims, claims);
         f.close().await;
@@ -139,7 +139,7 @@ async fn native_private_approval_enrollment_refusals_original_custody() {
                 .await
                 .is_err()
         );
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         assert_eq!(
             f.peer.writes.len(),
             match phase {
@@ -165,7 +165,7 @@ async fn native_private_approval_enrollment_refusals_original_custody() {
         } else {
             assert!(matches!(history, Err(Error::OutcomeUnknown)));
         }
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         owner.close().await.unwrap();
         common::shutdown_domain(&f.base.store, "approval-enrollment-original").await;
         f.fake.close().await;
@@ -191,7 +191,7 @@ async fn native_private_approval_fresh_enrollment_and_delivery_after_expired_ref
             .await
             .is_err()
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     let status = f
         .collector
         .private_approval_delivery_status()

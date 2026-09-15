@@ -146,7 +146,7 @@ async fn native_matrix_attachment_verified_metadata() {
         assert_eq!(rows(&f, "matrix_attachments"), 2);
         assert_eq!(status(&c, &mut fake).await.stage, "idle");
         // Scripted intake consumed only whoami/sync/state. No eager media GET.
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         finish(c, f, fake).await;
     }
 }
@@ -182,7 +182,7 @@ async fn native_matrix_attachment_restart_replay() {
     repeated["next_batch"] = json!("file_exact_replay");
     let result = run(&c, &mut fake, repeated, true).await.unwrap();
     assert_eq!((result.admitted, result.replayed), (0, 1));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     finish(c, f, fake).await;
 }
 
@@ -258,7 +258,7 @@ async fn native_matrix_attachment_privacy_refusals() {
     let r = run(&c, &mut fake, old, true).await.unwrap();
     assert_eq!((r.admitted, r.rejected), (0, 1));
     assert_eq!(rows(&f, "matrix_attachments"), 0);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     finish(c, f, fake).await;
 }
 
@@ -307,7 +307,7 @@ async fn native_matrix_attachment_manifest_bounds() {
     assert_eq!(serde_json::to_value(manifests(&c).await).unwrap(), before);
     assert_eq!(rows(&f, "matrix_attachments"), 128);
     assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     finish(c, f, fake).await;
 }
 
@@ -441,7 +441,7 @@ async fn native_matrix_attachment_lookup_scope() {
         .handoff_fault
         .store(0, std::sync::atomic::Ordering::SeqCst);
     assert!(c.attachment_manifest(cap, ticket, &cancel).await.is_err());
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     finish(c, f, fake).await;
 }
 
@@ -486,6 +486,6 @@ async fn native_matrix_attachment_storage_failure() {
     // Failed collection also fenced the exact old device incarnation. Inspection
     // above remains possible, but normal intake refuses before another HTTP call.
     assert_eq!(c.intake(plan(), &cancel).await, Err(Error::Generation));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     finish(c, f, fake).await;
 }

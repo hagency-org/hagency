@@ -583,7 +583,7 @@ async fn native_matrix_intake_sdk_custody_interrupted_apply_retains_exact_raw_an
     })
     .await;
     assert_eq!(result, Err(Error::OutcomeUnknown));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(rows(&f, "admitted_messages"), 0);
     c.close().await.unwrap();
     for name in ["matrix-sdk-state.sqlite3", "matrix-sdk-crypto.sqlite3"] {

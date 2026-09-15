@@ -99,7 +99,7 @@ async fn native_file_publication_recipient() {
         );
         assert_eq!(receipt.event_id.as_deref(), Some("$file-accepted"));
         assert_eq!(op.run(&cancel).await, Err(Error::Conflict));
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         drop(op);
         f.finish().await;
     }
@@ -145,7 +145,7 @@ async fn native_file_publication_association() {
     };
     assert_eq!(refused.error(), Error::Capacity);
     drop(refused.into_input());
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     let weak = Arc::downgrade(&f.collector.inner);
     drop((a, b));
     f.finish().await;
@@ -197,7 +197,7 @@ async fn native_file_publication_current_scope() {
     assert_eq!(op.run(&cancel).await, Err(Error::Conflict));
     let resumed = f.collector.resume_outgoing_custody(&cancel).await.unwrap();
     assert_eq!(resumed.state, OutgoingState::Uncertain);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop((inner, op));
     f.finish().await;
 }
@@ -230,7 +230,7 @@ async fn native_file_publication_privacy() {
             }
         }).await;
         assert!(result.is_err());
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         if identity {
             assert!(!f.base.available().await);
         }
@@ -291,7 +291,7 @@ async fn native_file_publication_uncertain() {
         OutgoingState::Uncertain
     );
     assert_eq!(op.run(&cancel).await, Err(Error::Conflict));
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     let weak = Arc::downgrade(&f.collector.inner);
     drop(op);
     f.finish().await;
@@ -349,7 +349,7 @@ async fn native_file_publication_custody() {
         OutgoingState::Delivered
     );
     drop(script);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop(op);
     let (original, cancelled_id, _) = accepted(&mut f, "cancelled", None).await.unwrap();
     let (claim, send) = publication(&f, cancelled_id.clone()).await;
@@ -395,7 +395,7 @@ async fn native_file_publication_custody() {
     );
     assert_eq!(cancelled.outcome().unwrap(), Some(Err(Error::Cancelled)));
     assert_eq!(f.collector.close().await, Err(Error::Busy));
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     let weak = Arc::downgrade(&f.collector.inner);
     drop(cancelled);
     f.finish().await;
@@ -532,7 +532,7 @@ async fn native_file_publication_journal() {
             hagency_core::file_delivery::FileEventState::WritePossible
         );
         assert!(receipt.event_id.is_none());
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         drop((op, peer));
         f.finish().await;
     }

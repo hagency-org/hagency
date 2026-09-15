@@ -152,7 +152,7 @@ async fn native_matrix_media_origin() {
         error(untrusted.download(&id, &descriptor, &cancel).await),
         Failure::Transport(Error::Transport)
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     let client = client(&fake, 1024, 1, 1);
     let result = exchange(
         &client,
@@ -190,7 +190,7 @@ async fn native_matrix_media_origin() {
             ),
             Failure::Transport(failure)
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
     }
     fake.close().await;
     assert!(matches!(
@@ -543,14 +543,14 @@ async fn native_matrix_media_deadline_cancel() {
         fake.close().await;
     }
     let mut fake = Fake::start(true).await;
-    let client = configured(&fake, timing, 1024, 1, 1);
+    let client = configured(&fake, timing.clone(), 1024, 1, 1);
     let cancel = CancellationToken::new();
     cancel.cancel();
     assert_eq!(
         error(client.download(&id, &descriptor, &cancel).await),
         Failure::Transport(Error::Cancelled)
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &timing).await;
     let cancel = CancellationToken::new();
     let run = client.download(&id, &descriptor, &cancel);
     tokio::pin!(run);
@@ -586,7 +586,7 @@ async fn native_matrix_media_deadline_cancel() {
     .unwrap();
     assert_eq!(result.bytes().len(), 16);
     drop(result);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &timing).await;
     fake.close().await;
 }
 
@@ -605,9 +605,14 @@ async fn native_matrix_media_capacity() {
         error(other.download(&id, &descriptor, &cancel).await),
         Failure::Transport(Error::Busy)
     );
-    fake.no_request().await;
+    // Sequencing point: the concurrent caller returned Busy — it can never
+    // have initiated a request. Capture the counter here, then complete the
+    // withheld transfer first: a quiet window must not gate a scripted
+    // response while the client's own request deadline keeps running.
+    let busy = fake.requests();
     request.raw(body(&cipher));
     let held = run.await.unwrap();
+    fake.quiesced(busy, &common::limits()).await;
     // Transfer buffers and completed codec results have separate explicit caps.
     // A full codec refuses another result after its bounded download, never
     // releasing an earlier caller's checked plaintext permit.

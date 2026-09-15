@@ -73,7 +73,7 @@ async fn native_private_approval_send_cancellation_and_loss() {
             .await
             .is_err()
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     f.close().await;
 
     // No actual typed response means WritePossible, not fabricated NotSent.
@@ -108,7 +108,7 @@ async fn native_private_approval_send_cancellation_and_loss() {
             .await
             .unwrap();
         assert_eq!(history.state, PrivateApprovalDeliveryState::Uncertain);
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         reopened.close().await.unwrap();
         common::shutdown_domain(&f.base.store, "unknown-card-reopen").await;
         f.fake.close().await;
@@ -169,7 +169,7 @@ async fn native_private_approval_retained_close() {
                 .await
                 .is_err()
         );
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         let reopened = Owner::open_existing(&f.collector.inner.config)
             .await
             .unwrap();
@@ -219,6 +219,6 @@ async fn native_private_approval_send_cancellation_and_loss_retains_intake() {
     assert!(sent.is_err());
     assert_eq!(f.peer.shares, 0);
     assert!(f.peer.events.is_empty());
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     f.close().await;
 }

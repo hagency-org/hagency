@@ -641,7 +641,7 @@ async fn native_matrix_upload_custody_storage_failure() {
         .unwrap();
     fault(&owner, 6).await;
     owner.close().await.unwrap();
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     fake.close().await;
 }
 

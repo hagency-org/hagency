@@ -56,7 +56,7 @@ async fn ready(direct: bool, values: Vec<Value>) -> (common::Fixture, common::Fa
     prime(&c, &f, &mut fake, true).await;
     let value = packet(&c, values, "receive_batch").await;
     assert!(run(&c, &mut fake, value, true).await.unwrap().admitted > 0);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     (f, fake, c)
 }
 async fn start(
@@ -311,7 +311,7 @@ async fn native_matrix_receive_visibility() {
                 .is_err()
         );
     }
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     let got = receive(&c, &mut fake, &cap, "$selected").await;
     drop(got);
     close(c, f, fake).await;
@@ -387,7 +387,7 @@ async fn native_matrix_receive_retirement() {
                 .await
                 .is_err()
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &c.inner.config.limits).await;
         if case == "revoke" {
             // Revoked engagement no longer permits Collector::close's transport
             // mutation. Close the actual retained SDK first, and preserve that
@@ -484,7 +484,7 @@ async fn native_matrix_receive_capacity() {
             .await,
         Err(ReceiveError::Authority(Error::Capacity))
     ));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     drop(held.pop());
     held.push(receive(&copy, &mut fake, &cap, "$file").await); // existing SDK reopen
     assert!(matches!(
@@ -492,7 +492,7 @@ async fn native_matrix_receive_capacity() {
             .await,
         Err(ReceiveError::Authority(Error::Capacity))
     ));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     drop(copy);
     drop(held);
     let c = Arc::try_unwrap(c).ok().unwrap();
@@ -519,7 +519,7 @@ async fn native_matrix_receive_deadline() {
         Err(ReceiveError::Authority(Error::Cancelled))
     ));
     drop(lock);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     // Keep actual SDK/domain preparation inside its normal ten-second budget;
     // reaching GET must not depend on that work finishing within100ms on CI.
     // The independent HTTP sublimits are deliberately longer than the total.
@@ -592,7 +592,7 @@ async fn native_matrix_received_scope() {
             Err(ReceiveError::Authority(Error::Domain | Error::Generation))
         ));
     }
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     close(c, f, fake).await;
 }
 
@@ -617,7 +617,7 @@ async fn native_matrix_receive_lower_limit() {
                 Err(ReceiveError::Download(crate::MediaDownloadError::Config))
             ));
         }
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &c.inner.config.limits).await;
         let mut run = Box::pin(c.receive_attachment_until(
             cap.clone(),
             "$file".into(),
@@ -638,7 +638,7 @@ async fn native_matrix_receive_lower_limit() {
                 crate::MediaDownloadError::Transport(Error::BodyTooLarge)
             ))
         ));
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &c.inner.config.limits).await;
         let allowed = if declared == 1 { 257 } else { 999 };
         let mut run = Box::pin(c.receive_attachment_until(
             cap.clone(),
@@ -710,6 +710,6 @@ async fn native_matrix_received_scope_deadline() {
         scope.revalidate(&fresh, read_deadline).await,
         Err(ReceiveError::Authority(Error::Domain | Error::Generation))
     ));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &c.inner.config.limits).await;
     close(c, f, fake).await;
 }

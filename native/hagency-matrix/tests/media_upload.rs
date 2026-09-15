@@ -118,7 +118,7 @@ async fn native_matrix_upload_ciphertext_origin() {
     );
     assert_eq!(attempt.failure(), None);
     assert_eq!(attempt.send(&cancel).await, Err(Failure::Terminal));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(media.encrypted.ciphertext(), cipher);
     assert_eq!(
         media.encrypted.descriptor().private_event_json(),
@@ -297,7 +297,7 @@ async fn native_matrix_upload_cancellation_custody() {
             attempt.send(&CancellationToken::new()).await,
             Err(Failure::Terminal)
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         assert_eq!(media.encrypted.ciphertext(), ciphertext);
         assert_eq!(
             media.encrypted.descriptor().private_event_json(),
@@ -312,7 +312,7 @@ async fn native_matrix_upload_cancellation_custody() {
         Err(Failure::Transport(Error::Cancelled))
     );
     assert_eq!(attempt.state(), UploadState::Prepared); // Nothing was polled.
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     drop(attempt);
     fake.close().await;
 }
@@ -362,7 +362,7 @@ async fn native_matrix_upload_capacity() {
         tiny.prepare(&media.encrypted),
         Err(Failure::Transport(Error::BodyTooLarge))
     ));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     for (bytes, active, held) in [
         (0, 1, 1),
         (16 * 1024 * 1024 + 1, 1, 1),
@@ -406,7 +406,9 @@ async fn native_matrix_upload_refusals() {
         assert_eq!(attempt.state(), UploadState::WritePossible);
         assert_eq!(attempt.send(&cancel).await, Err(Failure::Terminal));
     }
-    alternate.no_request().await;
+    alternate
+        .quiesced(alternate.requests(), &common::limits())
+        .await;
     let unavailable = Fake::start(true).await;
     let unreachable = uploader(&unavailable, 1024, 1, 1);
     unavailable.close().await;

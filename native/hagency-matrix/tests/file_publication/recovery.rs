@@ -154,7 +154,7 @@ async fn late_recovery(case: RecoveryCase) {
         assert_eq!(acceptance(), original_acceptance);
         assert_eq!(op.outcome().unwrap(), Some(Err(Error::OutcomeUnknown)));
         assert_eq!(f.collector.close().await, Err(Error::Busy));
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         // Restore only the actual original SDK receipt saved before mutation,
         // then reopen protected storage and prove normal recovery still works.
         f.collector
@@ -203,7 +203,7 @@ async fn late_recovery(case: RecoveryCase) {
             .state,
         OutgoingState::Idle
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop((op, peer));
     f.finish().await;
 }
@@ -368,6 +368,6 @@ pub(super) async fn restart(f: Fixture, id: &str) {
             .unwrap()
             .contains("1 passed")
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     fake.close().await;
 }

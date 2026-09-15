@@ -411,7 +411,7 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
             .is_err(),
         "a cross-engagement private-room route must be refused"
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     // Refusal: an ambiguous sender — the peer answering an identity other
     // than the configured agent's — is refused before any send. A fresh
     // collector is required: an already-open owner skips whoami entirely.
@@ -430,7 +430,7 @@ async fn native_two_agents_share_one_room_with_independent_delivery() {
     })
     .await;
     assert_eq!(result.err(), Some(Error::Identity));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     drop(impostor);
     ca.close().await.unwrap();
     cb.close().await.unwrap();

@@ -93,7 +93,7 @@ async fn native_matrix_transport_identity_wrong_account_device_or_missing_device
         assert_eq!(result, Err(Error::Identity));
         assert!(!f.available().await);
         assert!(!f.root.path().join("sdk").exists());
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         f.store.shutdown().await.unwrap();
         fake.close().await;
     }
@@ -135,7 +135,7 @@ async fn native_matrix_transport_bounds_json_framing_status_and_deadlines() {
         });
         assert_eq!(result, Err(expected));
         assert!(!format!("{result:?}").contains(TOKEN));
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         f.store.shutdown().await.unwrap();
         fake.close().await;
     }

@@ -559,7 +559,7 @@ async fn native_matrix_approval_recovery_lost_commit_reopens_exact_receipt_after
     let result = c.resume_custody(&cancel).await.unwrap();
     assert_eq!(result.replayed, 1);
     assert_eq!(result.accepted, 0);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(
         c.custody_status().await.unwrap().stage,
         ApprovalCustodyStage::Idle
@@ -621,7 +621,7 @@ async fn native_matrix_approval_recovery_busy_then_negative_room_settles_unaccep
     let result = c.resume_custody(&cancel).await.unwrap();
     assert_eq!(result.rejected, 1);
     assert_eq!(result.pending, 0);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(
         f.store
             .approval_summary(target.request_id)
@@ -668,7 +668,7 @@ async fn native_matrix_approval_recovery_sdk_applying_reopens_inspectable_withou
     assert_eq!(status.frozen_targets, 1);
     assert_eq!(status.completed_batches, 0);
     assert_eq!(c.resume_custody(&cancel).await, Err(Error::OutcomeUnknown));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     shutdown(f, fake, c).await;
 }
 #[tokio::test]
@@ -824,7 +824,7 @@ async fn native_matrix_approval_bounds_receipt_and_source_capacity_refuse_withou
                 .await,
             Err(Error::Capacity)
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         c.inner
             .owner
             .lock()
@@ -891,7 +891,7 @@ async fn native_matrix_approval_bounds_corrupt_encrypted_journal_cannot_resume_a
                 .state,
             "pending"
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         shutdown(f, fake, c).await;
     }
 }
@@ -1073,7 +1073,7 @@ async fn native_matrix_approval_recovery_ack_journal_rollback_requires_reopen_an
     let result = c.resume_custody(&cancel).await.unwrap();
     assert_eq!(result.replayed, 1);
     assert_eq!(result.accepted, 0);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(
         f.store
             .approval_grants(target.authority.engagement_id, String::new(), 100)

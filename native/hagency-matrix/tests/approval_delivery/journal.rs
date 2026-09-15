@@ -79,7 +79,7 @@ async fn native_private_approval_historical_restart_and_capacity() {
             .receipts,
         1
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     reopened.close().await.unwrap();
     common::shutdown_domain(&f.base.store, "card-complete-reopen").await;
     f.fake.close().await;
@@ -107,7 +107,7 @@ async fn native_private_approval_historical_restart_and_capacity() {
                 .is_err(),
             "protected corruption {variant}"
         );
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         common::shutdown_domain(&f.base.store, "card-corrupt-reopen").await;
         f.fake.close().await;
     }
@@ -128,7 +128,7 @@ async fn native_private_approval_historical_restart_and_capacity() {
             .await,
         Err(Error::Conflict)
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     f.close().await;
 
     let mut f = Fixture::new().await;
@@ -170,7 +170,7 @@ async fn native_private_approval_historical_restart_and_capacity() {
     assert_eq!(after.len(), 64);
     assert_eq!(after[0].request_id, before.request_id);
     assert_eq!(after[0].attempt_digest, before.attempt_digest);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     f.close().await;
 
     // Actual legal metadata expands beyond the unchanged encrypted event cap.
@@ -201,6 +201,6 @@ async fn native_private_approval_historical_restart_and_capacity() {
     assert_eq!(f.send(card).await, Err(Error::Capacity));
     assert_eq!(f.peer.shares, 0);
     assert!(f.peer.events.is_empty());
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     f.close().await;
 }

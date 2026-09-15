@@ -212,7 +212,7 @@ async fn native_matrix_outgoing_plain_final_actual_https_formatted_and_idempoten
     );
     assert!(body.get("m.relates_to").is_none());
     assert!(c.send_final(claim, &cancel).await.unwrap().replayed);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -269,7 +269,7 @@ async fn native_matrix_outgoing_recovery_accepted_response_survives_busy_lost_do
         .unwrap();
         assert_eq!(r.state, OutgoingState::Delivered);
         assert!(r.replayed);
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         assert_eq!(state(&f, &claim.id), "delivered");
         observed(
             Trace::new("accepted recovery close", variant_label, None),
@@ -327,12 +327,12 @@ async fn native_matrix_outgoing_recovery_lost_http_and_begin_do_not_replay() {
             .state,
             OutgoingState::Uncertain
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         assert_eq!(
             c.send_final(claim, &cancel).await,
             Err(Error::OutcomeUnknown)
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         observed(
             Trace::new("lost write recovery close", variant_label, None),
             c.close(),
@@ -559,7 +559,7 @@ async fn native_matrix_outgoing_crypto_unverified_missing_or_changed_keys_never_
         )
         .await;
         assert!(matches!(r, Err(Error::Recipients | Error::Identity)));
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         assert_eq!(
             observed(
                 Trace::new("crypto refusal resume", Some(variant), None),
@@ -592,7 +592,7 @@ async fn native_matrix_outgoing_scope_unsafe_private_snapshot_stops_before_begin
         fake.next().await.json(200,unsafe_room);
     }).await;
     assert!(r.is_err());
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert!(
         !f.store
             .matrix_room_state(
@@ -616,7 +616,7 @@ async fn native_matrix_outgoing_scope_wrong_claim_secret_cannot_send() {
     let cancel = CancellationToken::new();
     claim.secret = "wrong".into();
     assert!(c.send_final(claim, &cancel).await.is_err());
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert!(f.available().await);
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
@@ -663,7 +663,7 @@ async fn native_matrix_outgoing_bounds_wire_failures_retain_possible_writes() {
             .state,
             OutgoingState::Uncertain
         );
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         observed(
             Trace::new("wire refusal close", Some(kind), None),
             c.close(),
@@ -706,7 +706,7 @@ async fn native_matrix_outgoing_recovery_actual_journal_rollback_does_not_publis
         c.resume_outgoing_custody(&cancel).await.unwrap().state,
         OutgoingState::Uncertain
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -739,7 +739,7 @@ async fn native_matrix_outgoing_scope_retirement_after_possible_persist_prevents
         })
         .await;
         assert!(r.is_err());
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         assert_eq!(
             c.resume_outgoing_custody(&cancel).await.unwrap().state,
             OutgoingState::Uncertain
@@ -763,7 +763,7 @@ async fn native_matrix_outgoing_scope_failed_whoami_retires_cached_route() {
     .await;
     assert_eq!(r, Err(Error::Identity));
     assert!(!f.available().await);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -792,7 +792,7 @@ async fn native_matrix_outgoing_bounds_real_receipts_stop_capacity_without_evict
         c.send_final(next.clone(), &cancel).await,
         Err(Error::Capacity)
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(state(&f, &next.id), "claimed");
     assert!(
         c.send_final(first.unwrap(), &cancel)
@@ -811,7 +811,7 @@ async fn native_matrix_outgoing_bounds_real_receipts_stop_capacity_without_evict
         OutgoingState::Idle
     );
     assert_eq!(c.send_final(next, &cancel).await, Err(Error::Capacity));
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -897,7 +897,7 @@ async fn native_matrix_outgoing_recovery_restore_rejects_inconsistent_protected_
             "variant {variant}"
         );
         assert_eq!(state(&f, &claim.id), "sending");
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         observed(
             Trace::new("protected history close", variant_label, None),
             c.close(),
@@ -951,7 +951,7 @@ async fn native_matrix_outgoing_domain_late_notice_acceptance_never_activates_re
             .state,
         "delivered"
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -994,12 +994,12 @@ async fn native_matrix_outgoing_crypto_lost_key_share_response_never_sends_room_
         c.resume_outgoing_custody(&cancel).await.unwrap().state,
         OutgoingState::Uncertain
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     assert_eq!(
         c.send_final(claim, &cancel).await,
         Err(Error::OutcomeUnknown)
     );
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -1037,7 +1037,7 @@ async fn native_matrix_outgoing_recovery_sdk_accept_response_lost_still_settles_
         OutgoingState::Delivered
     );
     assert_eq!(state(&f, &claim.id), "delivered");
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -1112,7 +1112,7 @@ async fn native_matrix_outgoing_domain_changed_receipt_or_fence_cannot_settle() 
     );
     assert_eq!(state(&f, &claim.id), "delivered");
     assert!(f.available().await);
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
@@ -1158,7 +1158,7 @@ async fn native_matrix_outgoing_first_unsafe_snapshot_surfaces_the_safety_reason
         ),
         other => panic!("the first unsafe snapshot must surface UnsafeSnapshot, got {other:?}"),
     }
-    fake.no_request().await;
+    fake.quiesced(fake.requests(), &common::limits()).await;
     // The refused first observation created no scope row: the room remains
     // unobserved, free to be admitted safely at generation 1 later.
     assert!(

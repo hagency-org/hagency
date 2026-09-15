@@ -322,7 +322,7 @@ async fn native_matrix_operation_observation_intake_subphases() {
         }
         owner.close().await.unwrap();
         common::shutdown_domain(&f.store, "original intake subphase fixture").await;
-        fake.no_request().await;
+        fake.quiesced(fake.requests(), &common::limits()).await;
         fake.close().await;
     }
 }

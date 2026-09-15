@@ -241,7 +241,7 @@ async fn native_matrix_enrollment_custody() {
                 Err(Error::OutcomeUnknown)
             ));
         }
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         let weak = Arc::downgrade(&f.collector.inner);
         f.close().await;
         assert!(
@@ -303,7 +303,7 @@ async fn native_matrix_enrollment_unknown() {
                 View::Unit => "unit",
             })
         );
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.close().await;
     }
 
@@ -384,7 +384,7 @@ async fn native_matrix_enrollment_unknown() {
         } else {
             assert!(matches!(reopened, Err(Error::OutcomeUnknown)));
         }
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.close().await;
     }
 
@@ -417,7 +417,7 @@ async fn native_matrix_enrollment_unknown() {
         sdk_status(&f.collector).await,
         Err(Error::OutcomeUnknown)
     ));
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.close().await;
 }
 
@@ -591,6 +591,6 @@ async fn native_matrix_enrollment_restore() {
         store.set_custom_value(KEY, original).await.unwrap();
     })
     .await;
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.close().await;
 }

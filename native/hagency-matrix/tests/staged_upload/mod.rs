@@ -58,7 +58,7 @@ async fn native_staged_upload_complete() {
         let done: bool = sql.query_row("SELECT json_extract(config,'$.status')='done' FROM canonical_tasks WHERE id='task'", [], |r|r.get(0)).unwrap();
         assert!(!done);
     }
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop(sql);
     f.settle_in_new_process(id, true).await;
 }
@@ -130,7 +130,7 @@ async fn native_staged_upload_scope() {
         op.run(&CancellationToken::new()).await,
         Err(Error::Conflict)
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop(op);
     f.finish().await;
     let mut f = Fixture::new().await;
@@ -170,7 +170,7 @@ async fn native_staged_upload_scope() {
     let (result, ()) = common::scripted(op.run(&cancel), script).await;
     assert_eq!(result, Err(Error::Identity));
     assert!(!f.base.available().await);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop(op);
     other.close().await.unwrap();
     f.finish().await;
@@ -213,7 +213,7 @@ async fn native_staged_upload_fence() {
         f.base.store.inspect_upload(identity).await.unwrap().upload,
         hagency_core::uploads::UploadState::WritePossible
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop(op);
     f.finish().await;
     // Negative account evidence survives abandoning the caller while its
@@ -244,7 +244,7 @@ async fn native_staged_upload_fence() {
     assert!(!f.base.available().await);
     assert_eq!(op.outcome().unwrap(), Some(Err(Error::Identity)));
     f.collector.release_unstarted_upload(op.id()).unwrap();
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     drop(op);
     f.finish().await;
 }
@@ -299,7 +299,7 @@ async fn native_staged_upload_cancellation() {
         f.collector.settle_upload(op.id(), &cancel).await,
         Err(Error::OutcomeUnknown)
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.finish().await;
     for truncated in [false, true] {
         let mut f = Fixture::new().await;
@@ -338,7 +338,7 @@ async fn native_staged_upload_cancellation() {
             f.base.store.inspect_upload(identity).await.unwrap().upload,
             hagency_core::uploads::UploadState::WritePossible
         );
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &common::limits()).await;
         f.finish().await;
     }
 }
@@ -388,7 +388,7 @@ async fn native_outbound_partial_upload_is_recorded_unknown() {
         .unwrap();
     assert!(claim_hash.is_none());
     drop(sql);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.finish().await;
 }
 #[tokio::test]
@@ -431,7 +431,7 @@ async fn native_staged_upload_recovery() {
             .unwrap()
             .replayed
     );
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.finish().await;
     // Fully validated response observation survives caller cancellation before
     // any SDK acceptance wait; historical settlement never repeats HTTP.
@@ -461,7 +461,7 @@ async fn native_staged_upload_recovery() {
     let receipt = f.collector.settle_upload(&id, &recovery).await.unwrap();
     assert_eq!(receipt.upload, hagency_core::uploads::UploadState::Accepted);
     assert!(receipt.cancel_requested);
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.finish().await;
     // Actual SDK acceptance precedes this failed first domain commit. Only
     // protected history reaches a fresh process; no original cap survives.
@@ -523,6 +523,6 @@ async fn native_staged_upload_capacity() {
     f.collector.release_unstarted_upload(third.id()).unwrap();
     drop((second, third));
     f.collector.close().await.unwrap();
-    f.fake.no_request().await;
+    f.fake.quiesced(f.fake.requests(), &common::limits()).await;
     f.finish().await;
 }

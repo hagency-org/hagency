@@ -20,7 +20,7 @@ async fn native_private_approval_current_private_authority() {
         assert!(result.is_err(), "{variant}");
         assert_eq!(f.peer.shares, 0);
         assert!(f.peer.events.is_empty());
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         assert!(
             f.base.available().await,
             "approval failure must not fence Agent authority"
@@ -112,7 +112,7 @@ async fn native_private_approval_current_private_authority() {
         assert!(result.is_err(), "{change}");
         assert_eq!(f.peer.shares, 0);
         assert!(f.peer.events.is_empty());
-        f.fake.no_request().await;
+        f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
         let close = f.collector.close().await;
         assert!(
             close.is_ok() || change == "task",
