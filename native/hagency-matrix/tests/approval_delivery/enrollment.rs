@@ -185,12 +185,21 @@ async fn native_private_approval_fresh_enrollment_and_delivery_after_expired_ref
             .unwrap(),
     );
     tokio::time::sleep(Duration::from_millis(120)).await;
-    assert!(
+    // ADR-149: the delivery bound is no longer the owner's window, so the
+    // expired card is refused by the STORE's verdict gate (card_current), not
+    // by the deadline — and the refusal path first refreshes the approval
+    // room view (whoami + one state GET). The bare send left those requests
+    // unanswered; drive them exactly as the fixture's own send does.
+    let result = drive(
         f.collector
-            .send_private_approval_card(expired, &CancellationToken::new())
-            .await
-            .is_err()
-    );
+    let result = drive(
+        f.collector
+            .send_private_approval_card(expired, &CancellationToken::new()),
+        &mut f.fake,
+        &mut f.peer,
+    )
+    .await;
+    assert!(result.is_err());
     f.fake.quiesced(f.fake.requests(), &fixture::limits()).await;
     let status = f
         .collector
