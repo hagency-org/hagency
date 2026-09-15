@@ -86,7 +86,7 @@ collisions are resolved per type in the row's note.
 | `approve` | domain.rs:1145 | now called from production | **closed G2** (2026-09-14): hagency-matrix/src/intake.rs:397, inside `Inner::approve_provision` (the async fn opening at intake.rs:285) |
 | `claim_effect` | domain.rs:1338 | now called from production | **closed G2** (2026-09-14): hagency-matrix/src/intake.rs:405 (the inline provision-effect claim in the same handoff) |
 | `observe_effect` | domain.rs:1357 | now called from production | **closed G2** (2026-09-14): hagency-matrix/src/intake.rs:407 (the effect is observed complete in the same handoff) |
-| `retry_cleanup` | domain.rs:1265 | none outside tests/fixtures | gap G2/G5 (shared) |
+| `retry_cleanup` | domain.rs:1265 | none outside tests/fixtures | gap G10 (the retirement slice's cleanup retry, carried under `owed (G10)` by the refusal and retirement specs; the former G2/G5 labels died with G2's closure and G5's revision to G5a) |
 | `resolve_verified_matrix_session` | domain/matrix_routes.rs:471 | now called from production | **closed G3** (2026-09-14): hagency-matrix/src/intake.rs:450, the route binding for the provisioned engagement, in the same `Inner::approve_provision` handoff. The older bootstrap-driver citation is withdrawn: that call is a `#[cfg(test)]` fixture (at driver.rs:432 on this head, :393 when the row was written), not bootstrap configuration |
 | `begin_account_login` | domain/accounts.rs:785 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:64 |
 | `settle_account_login` | domain/accounts.rs:824 | now called from production | **closed G4** (2026-09-14): hagency/src/bootstrap/accounts.rs:100 |
@@ -98,7 +98,7 @@ collisions are resolved per type in the row's note.
 | `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | now called from production | **closed G8** (2026-09-14): hagency/src/bootstrap/driver.rs:367 |
 | `pending_conversation_stops` | domain/conversation_lifecycle.rs:354 | now called from production | **closed G8** (2026-09-14): hagency/src/bootstrap/driver.rs:358 |
 
-15 distinct methods, 8 open gaps (G9 resolved as superseded, below).
+15 distinct methods. Of the original G1-G8 none remains open in this table: G1, G2, G3, G4, G6, G7 and G8 closed on 2026-09-14 and G5a on 2026-09-15, each as its row records; G9 is resolved as superseded, below. The gaps opened later carry their own ids.
 
 ### Superseded — a wired newer path exists; the old method keeps only test/fixture callers
 
@@ -145,8 +145,13 @@ deletion is a separate decision, not made here.
 |---|---|---|
 | `transfer_inputs` | domain/peers.rs:131, domain/messages.rs:106 | `pub(super)` helper of the superseded peer-dispatch path; delete together with `enqueue_peer_dispatch` when glm5 confirms the G9 supersession |
 
-Counts: **31 superseded / 15 gap methods across 8 open gaps (G1–G8) / 0
-deleted (1 deletion decision owed)**.
+Counts at first writing: **31 superseded / 15 gap methods across 8 gaps
+(G1-G8) / 0 deleted (1 deletion decision owed)**. After the 2026-09-14 and
+2026-09-15 closures and additions, the open set is **G10** (operator refusal and
+retirement, with `retry_cleanup`'s cleanup retry), **G11** (project-side
+registration) and **G12** (late output); `create_coordinator_task` and
+`create_canonical_task` carry deletion decisions rather than gap ids. Re-run the
+checkers rather than relying on any count in this paragraph.
 
 **(c) Definition of done.** The migration plan's §12 gains one line making this
 a gate, not an audit: a store write is not "done" when a test reaches it but
@@ -162,15 +167,18 @@ that. The file is therefore **not stripped**; its fns participate in the
 production call graph like any other. The gap rows above that cited it as
 "the bootstrap probe" keep their classification: the calls there are
 bootstrap-time configuration (fixture-shaped development bootstrap), not the
-runtime route/session insert the intake plan needs — G3 and G6 stay gaps on
-that reasoning, now stated correctly. (Checker defect found by its first real
+runtime route/session insert the intake plan needs. That reasoning held only
+until the intake handoff landed: G3 and G6 closed on 2026-09-14
+(`intake.rs:450`; `bootstrap.rs:873`), and the withdrawn driver citations remain
+in the rows above as history. (Checker defect found by its first real
 input, reported by integration + glm9.)
 
 ## Consequences
 
 - The nine-flow audit becomes a standing gate: new store writes cannot merge
   behind test-only reachability once the owed checker lands.
-- G1–G8 stay owned as scheduled (glm8 G1–G3, glm7 G4, glm9 G5/G6/G8, glm5 G7);
+- G1-G8 were owned as scheduled (glm8 G1-G3, glm7 G4, glm9 G5/G6/G8, glm5 G7);
+  all eight have since closed as their rows record, G5a last on 2026-09-15;
   G9 is closed as superseded, with glm5 owning the deletion decision for
   `enqueue_peer_dispatch` + `transfer_inputs` and the supersession notes above.
 - `register_session`/`resolve_session` are superseded *by design*; their
@@ -242,10 +250,13 @@ resume. An orphaned dispatch was settled but never resumed. That gap was
 the operator console route `POST /console/api/agents/{id}/recover-dispatch`
 (`hagency/src/console/agents.rs:263`) under `Scope::AgentLifecycle`, never
 automatic, carrying the operator's stopped-owner and workspace-inspection
-evidence into `dispatch_recoveries` unchanged. G2
-(`approve`/`claim_effect`/`observe_effect`/`retry_cleanup`) confirmed still
-unreached (under review); G3 (`resolve_verified_matrix_session`) still has
-only the bootstrap driver setup call (`driver.rs:432`) — the first amendment's
+evidence into `dispatch_recoveries` unchanged. Of the G2 set only
+`retry_cleanup` remains unreached, now carried under G10; `approve`,
+`claim_effect` and `observe_effect` closed at `intake.rs:397`, `:405` and `:407`,
+and G3 (`resolve_verified_matrix_session`) at `intake.rs:450`, all inside
+`Inner::approve_provision` (`intake.rs:285`). The bootstrap driver call this
+paragraph once cited (`driver.rs:432`) is test-enclosed and was withdrawn from
+the G3 row — the first amendment's
 reasoning stands.
 
 **New rows** (unreached writes the original audit did not list):
@@ -253,9 +264,9 @@ reasoning stands.
 | Method | Defined | Finding | Class |
 |---|---|---|---|
 | `create_coordinator_task` | domain/execution.rs:693 | facade domain_worker.rs:2206 has no production caller (its body at :2215 is the only caller of the write, and every other call is under hagency-store/tests/); the behaviour is already delivered in production by the wired delegation lane, `runner.rs:33` → `:161` → `delegate_task` (task_intents.rs:411) | **dead surface** — deletion proposal under review 2026-09-14; verified independently by two lanes |
-| `record_late_output` | domain/execution.rs:982 | facade domain_worker.rs:2308 has no production caller. CORRECTION (2026-09-15): the earlier evidence here named `complete_dispatch` as the wired sibling; it is not wired — its only production-source hits are its own definition (execution.rs:964), its facade (domain_worker.rs:2297) and that facade's body (:2304), and this record already classifies it as superseded by `admit_owned_dispatch`. The real asymmetry is that production completions run through the owned lane (`admit_owned_dispatch` domain/owned_dispatch.rs:302 <- hagency-execution/src/operation.rs:706) while output arriving after the completion decision has no route at all | **new gap** (real product work; owner unassigned) |
+| `record_late_output` | domain/execution.rs:982 | facade domain_worker.rs:2308 has no production caller. CORRECTION (2026-09-15): the earlier evidence here named `complete_dispatch` as the wired sibling; it is not wired — its only production-source hits are its own definition (execution.rs:964), its facade (domain_worker.rs:2297) and that facade's body (:2304), and this record already classifies it as superseded by `admit_owned_dispatch`. The real asymmetry is that production completions run through the owned lane (`admit_owned_dispatch` domain/owned_dispatch.rs:302 <- hagency-execution/src/operation.rs:706) while output arriving after the completion decision has no route at all | **gap G12** (real product work; owner unassigned) |
 | `enqueue_inbox_dispatch` | domain/messages.rs:283 | **superseded-by** `select_receive_inbox` → `select_receive` (messages.rs:647, which performs the `enqueue_inbox` write at :703/:741) ← `hagency/src/bootstrap/inbox.rs:31`; the direct facade is a stale variant | superseded |
-| `create_canonical_task` | domain/execution.rs:679 | facade domain_worker.rs:2194 (self-call :2202) has no production caller; every candidate is test-enclosed — domain_worker.rs:428 and :710 in `mod clock_tests` (:354-1389), domain/accounts.rs:1301 in `mod tests` (:1154-1425), hagency/src/bootstrap/driver.rs:445 in `mod tests` (:378-691). The write is real: the body reaches the `canonical_tasks` insert | **new gap** (owner unassigned; the original audit missed this row entirely) |
+| `create_canonical_task` | domain/execution.rs:679 | facade domain_worker.rs:2194 (self-call :2202) has no production caller; every candidate is test-enclosed — domain_worker.rs:428 and :710 in `mod clock_tests` (:354-1389), domain/accounts.rs:1301 in `mod tests` (:1154-1425), hagency/src/bootstrap/driver.rs:445 in `mod tests` (:378-691). The write is real: the body reaches the `canonical_tasks` insert | **delete** (decision accepted 2026-09-15, implementation in flight; deliberately given no gap id, since a surface being removed is not a gap to be wired. The original audit missed this row entirely) |
 | `register` | domain.rs:730 | facade domain_worker.rs:2842 has no production caller; the `.register(` hits outside the store are a DIFFERENT type (`workspace.register` ← hagency/src/bootstrap/driver.rs:299, workspace.rs:68), and the in-store hits are test-enclosed (domain_worker.rs:373 and :1317 in `mod clock_tests`, accounts.rs:1280 in `mod tests`) | gap G11 (project-side registration) |
 | `claim_verified_task_notice` | domain/notice_custody.rs:99 | facade domain_worker.rs:1780 is the only production-source hit and is its own body; the wired notice lane enters through `begin_verified_task_notice_send` / `validate_verified_task_notice_send` ← hagency-matrix/src/outgoing.rs:266,438 | **superseded-by** the verified notice lane |
 | `deliver_verified_task_notice` | domain/notice_custody.rs:190 | facade domain_worker.rs:1828 is the only production-source hit and is its own body | **superseded-by** the verified notice lane |
@@ -270,8 +281,11 @@ Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
 `grow`, `period_keys`, `zero`, `outbound_at`, `queue_remaining`, the
 `pub(super)` `enqueue_inbox`), or rows already classified above.
 
-**Checker reconciliation**: `check-production-callers.mjs` on this head reads
-exit 0, count 14, wired 11, owed G2/G2/G3 — no discrepancy. The checker only
+**Checker reconciliation**: on 88e05d5f `check-production-callers.mjs` read
+exit 0, count 14, wired 11, owed G2/G2/G3. Those figures are historical: no
+`Production caller:` line names G2 or G3 any more, and the owed set is now G10
+and G11, with G12 owed once the late-output spec names it. Re-run the checker
+rather than quoting this paragraph. The checker only
 sees spec-named `Production caller:` lines, and no spec line names the G5a
 recovery-artifact writes or the two new gaps, so neither tool contradicts the
 other; the asymmetry (audit covers the whole store surface, checker covers
