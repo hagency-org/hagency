@@ -122,7 +122,11 @@ const vectors = {
 const fixture = JSON.stringify({ kind: 'corpus-retention-vectors', vectors }, null, 2) + '\n';
 const fixturePath = new URL('../hagency-store/tests/fixtures/corpus-retention-vectors.json', import.meta.url);
 if (process.argv.includes('--check')) {
-  const current = readFileSync(fixturePath, 'utf-8');
+  // Git checks text files with no eol attribute out as CRLF on Windows
+  // (this fixture lives in hagency-store/tests/fixtures, not the pinned
+  // /native/fixtures the .gitattributes marks eol=lf). Compare normalized,
+  // exactly as matrix-format/metering/ceiling already do.
+  const current = readFileSync(fixturePath, 'utf-8').replaceAll('\r\n', '\n');
   if (current !== fixture) {
     console.error('corpus-retention-vectors.json drifts from the oracle; regenerate with:');
     console.error('  node native/scripts/corpus-retention-vectors.mjs');
