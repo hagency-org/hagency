@@ -31,6 +31,7 @@ pub(super) fn router() -> Router {
         .push(Router::with_path("{id}/stop").post(stop))
         .push(Router::with_path("{id}/preset").post(preset))
         .push(Router::with_path("{id}/recover-dispatch").post(recover_dispatch))
+        .push(Router::with_path("{id}/refuse").post(refuse))
 }
 
 /// Exactly seven keys, in the ADR-126 order. Every key except `name` is
@@ -241,6 +242,71 @@ async fn stop(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     match result {
         Ok(value) => res.render(Json(value)),
+        Err(error) => failure(res, error),
+    }
+}
+
+/// Refuse — the operator's verdict against a pending engagement request
+/// (parity: the retained `POST /api/engagements/:id/verdict` else-branch,
+/// backend-v2.js:15160-15187 → lib/engagement-store.js:593-613). Reaches the
+/// store's own refusal arm `DomainStore::reject` → `end(..., revoke = false)`
+/// — never a second write path; the pending-only guard, decision idempotency
+/// and the engagement_ends stamp stay the store's. Triggered ONLY by this
+/// route, under the existing `Scope::AgentLifecycle` (same class as retire);
+/// no timer, no sweep, and a refusal schedules no retirement work.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct Refuse {
+    command_id: String,
+}
+
+#[handler]
+async fn refuse(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if query(req, &[], 0).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let id = match engagement_id(req) {
+        Ok(id) => id,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let input: Refuse =
+        match serde_json::from_slice::<Refuse>(&body(req, 512).await.unwrap_or_default()) {
+            Ok(input) if identifier(&input.command_id, 128).is_ok() => input,
+            _ => {
+                failed(res, Error::Invalid);
+                return;
+            }
+        };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.reject(input.command_id, id).await;
+    if result.is_ok() && recheck(depot).is_err() {
+        failure(res, hagency_store::Error::OutcomeUnknown);
+        return;
+    }
+    match result {
+        Ok(engagement) => res.render(Json(serde_json::json!({"engagement": engagement}))),
+        Err(hagency_store::Error::State) => {
+            // The pending-only guard (domain.rs:1294-1300): refusal of an
+            // already-terminal or reserved/active engagement, conflict word as
+            // the retained verdict route maps it (409).
+            refusal(res, StatusCode::CONFLICT, "engagement_not_pending")
+        }
+        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+        Err(hagency_store::Error::Conflict) => {
+            // Reused command id with a different decision digest
+            // (replay_decision, domain.rs:359-381): a changed replay, never a
+            // silent second write.
+            refusal(res, StatusCode::CONFLICT, "decision_conflict")
+        }
         Err(error) => failure(res, error),
     }
 }
