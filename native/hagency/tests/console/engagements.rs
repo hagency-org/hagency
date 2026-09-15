@@ -327,8 +327,7 @@ async fn native_engagement_refuse_rejects_a_changed_replay() {
     // second call would return the same, now-rejected engagement), so the
     // second subject is one of the seed's other pending engagements.
     let other: String = {
-        let sql =
-            rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+        let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
         sql.query_row(
             "SELECT id FROM engagements WHERE state='pending' AND id<>?1 LIMIT 1",
             [&pending],
@@ -342,7 +341,10 @@ async fn native_engagement_refuse_rejects_a_changed_replay() {
     assert_eq!(body["code"], "decision_conflict");
     let (state, _, _, _, decisions) = engagement_row(&f, &other, "refuse_conflict");
     assert_eq!(state, "pending", "no write on the changed replay");
-    assert_eq!(decisions, 1, "no second receipt under the reused command id");
+    assert_eq!(
+        decisions, 1,
+        "no second receipt under the reused command id"
+    );
     f.close().await;
 }
 
@@ -351,7 +353,13 @@ async fn native_engagement_refuse_unknown_is_not_found() {
     let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
     let service = f.service();
     let lifecycle = lifecycle_session(&service).await;
-    let mut response = refuse(&service, &lifecycle, "engagement_nonexistent", "refuse_missing").await;
+    let mut response = refuse(
+        &service,
+        &lifecycle,
+        "engagement_nonexistent",
+        "refuse_missing",
+    )
+    .await;
     assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND));
     let body: Value = response.take_json().await.unwrap();
     assert_eq!(body["code"], "not_found");
