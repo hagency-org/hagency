@@ -94,6 +94,34 @@ fn request_event(event_id: &str, body: String) -> Value {
     })
 }
 
+/// The provider's decision event: a separate pre-project admission carrying
+/// the request id it approves (ADR-095: the verdict is the separate `approve`
+/// write, never folded into the mint).
+fn approval_event(event_id: &str, request_id: &str) -> Value {
+    json!({
+        "event_id": event_id,
+        "sender": representative(),
+        "type": "m.room.message",
+        "origin_server_ts": now(),
+        "content": {
+            "msgtype": "com.hagency.engagement.approval.v1",
+            "body": json!({"requestId": request_id, "decision": "approve"}).to_string()
+        }
+    })
+}
+
+/// The provision effect row for the minted engagement, if one exists.
+fn effect_row(f: &common::Fixture) -> Option<(String, String)> {
+    rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
+        .unwrap()
+        .query_row(
+            "SELECT kind,state FROM effects WHERE kind='provision'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .ok()
+}
+
 fn provisioning_sync(token: &str, events: Vec<Value>) -> Value {
     // The target project room never appears in the sync: sync_bounds only
     // accepts observed rooms (config.rooms + reception). The request event
@@ -367,5 +395,30 @@ async fn native_provisioning_ingress_refuses_unverified_before_admit() {
     assert_eq!(rows(&f, "engagements"), before);
     assert!(f.available().await);
     assert_eq!(status(&c, &mut fake).await.stage, "quarantined");
+    c.close().await.unwrap();
+}
+
+/// The provider approval is observed after the mint as the separate `approve`
+/// write: the intake admits the request, then the decision event drives
+/// `approve`, which reserves the engagement and records the provision effect.
+#[tokio::test]
+async fn native_provisioning_effect_produced() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let summary = run_provisioning(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![
+                request_event("$request_one", request_body("request_one", 250)),
+                approval_event("$approval_one", "request_one"),
+            ],
+        ),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
+    assert_eq!(summary.admitted, 1);
+    assert_eq!(summary.replayed, 0);
+    assert_eq!(effect_row(&f), Some(("provision".into(), "pending".into())));
     c.close().await.unwrap();
 }
