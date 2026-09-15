@@ -122,20 +122,33 @@ export function extractCalls(body) {
   // method or bare: .name( or name(. Method calls are recorded with a
   // `receiver.` prefix so resolution can (a) restrict to method definitions
   // (impls non-empty) and (b) prefer the impl matching a receiver type hint.
+  // A receiver that is itself a call chain is recorded via the clone-chain
+  // rule below or as `?.name` (unknown receiver — never dropped).
   const mre = /([a-z_][A-Za-z0-9_]*)\s*\.\s*([a-z_][A-Za-z0-9_]*)\s*\(/g;
   while ((m = mre.exec(body))) {
     if (!SKIP_WORDS.has(m[2])) calls.add(`${m[1]}.${m[2]}`);
+  }
+  // Call-chain receivers: `self.app.clone().router()` — the receiver of the
+  // outer method is the field `app` (clone preserves the type), recorded as
+  // `app.router` so the receiver-type hint resolves it. A fully unknown
+  // chain receiver falls back to `?.name` (ambiguous over method defs).
+  const cre = /(?:self\s*\.\s*)?([a-z_][A-Za-z0-9_]*)\s*\.\s*clone\s*\(\s*\)\s*\.\s*([a-z_][A-Za-z0-9_]*)\s*\(/g;
+  while ((m = cre.exec(body))) {
+    if (!SKIP_WORDS.has(m[2])) calls.add(`${m[1]}.${m[2]}`);
+  }
+  const xre = /\)\s*\.\s*([a-z_][A-Za-z0-9_]*)\s*\(/g;
+  while ((m = xre.exec(body))) {
+    if (!SKIP_WORDS.has(m[1])) calls.add(`?.${m[1]}`);
   }
   const bre = /(?:^|[^.:\w])([a-z_][A-Za-z0-9_]*)\s*\(/g;
   while ((m = bre.exec(body))) {
     const name = m[1];
     if (!SKIP_WORDS.has(name)) calls.add(name);
   }
-  // Handler/edge references passed as bare identifiers:
-  // .get(handler) .post(..) .put(..) .delete(..) .push(..) .hoop(..) and
-  // tokio::spawn(worker) — Salvo route registration and worker spawns pass the
-  // fn by name, invisible to the call extraction above.
-  const hre = /\.(?:get|post|put|delete|push|hoop)\s*\(\s*([a-z_][A-Za-z0-9_]*)/g;
+  // Handler/edge references passed as arguments — identifiers or qualified
+  // call expressions: .get(handler), .delete(revoke_grant),
+  // .push(approvals::router()), .hoop(guard), and tokio::spawn(worker).
+  const hre = /\.(?:get|post|put|delete|push|hoop)\s*\(\s*([A-Za-z_][A-Za-z0-9_]*(?:::[A-Za-z_][A-Za-z0-9_]*)*)/g;
   while ((m = hre.exec(body))) calls.add(m[1]);
   const sre = /\bspawn\s*\(\s*([a-z_][A-Za-z0-9_]*)/g;
   while ((m = sre.exec(body))) calls.add(m[1]);
@@ -292,6 +305,17 @@ export function resolveReachable(graph, roots) {
     for (const call of entry.calls) {
       const via = `${file}::${name} -> ${call}`;
       // Method call recorded as `receiver.name(`.
+      // Method call recorded as `receiver.name(` — or `?.name(` when the
+      // receiver is a call chain with an unknown type: resolve over
+      // same-named METHOD definitions, ambiguous when several, never dropped.
+      const um = call.match(/^\?\.([a-z_][A-Za-z0-9_]*)$/);
+      if (um) {
+        const meth = um[1];
+        const candidates = (graph.fns.get(meth) || []).filter((c) => (c.impls || []).length > 0);
+        const ambiguousEdge = candidates.length > 1;
+        for (const c of candidates) seed(c.file, meth, taint || ambiguousEdge, keyOf(file, name), via);
+        continue;
+      }
       const mm = call.match(/^([a-z_][A-Za-z0-9_]*)\.([a-z_][A-Za-z0-9_]*)$/);
       if (mm) {
         const [, recv, meth] = mm;
@@ -435,8 +459,52 @@ function listRustFilesAt(root) {
   return out.split('\n').filter((f) => f.endsWith('.rs') && !isStripped(f));
 }
 
+// `--explain crate::path[::Type]::fn`: print, for the target definition, the
+// nearest reached definition and the call sites between it and the target
+// that the graph did NOT resolve into an edge — or "no reached caller of any
+// name" when nothing sharing the short name is reached at all.
+export function explain(full) {
+  const files = listRustFiles();
+  const graph = buildGraph(files, (rel) => readFileSync(path.join(repoRoot, rel), 'utf8'));
+  const main = 'native/hagency/src/main.rs';
+  const roots = files.includes(main) ? (graph.fileFns.get(main) || []).map((d) => ({ file: main, name: d.name })) : [];
+  const reach = resolveReachable(graph, roots);
+  const r = resolvePath(graph, files, full);
+  if (!r.def) return { target: full, resolved: false, reason: r.reason };
+  const key = `${r.def.file}::${r.def.name}`;
+  const state = reach.best.get(key) || 'unreached';
+  const short = r.def.name;
+  // Candidate callers: every definition whose extracted calls mention the
+  // short name (as bare, method, qualified, or handler argument).
+  const candidates = [];
+  for (const [file, defs] of graph.fileFns) {
+    for (const d of defs) {
+      const entry = (graph.fns.get(d.name) || []).find((e) => e.file === file && e.body === d.body);
+      if (!entry?.calls) continue;
+      const mentions = entry.calls.filter((c) => c === short || c.endsWith(`::${short}`) || c.endsWith(`.${short}`));
+      if (mentions.length) candidates.push({ at: `${file}::${d.name}`, via: mentions, state: reach.best.get(`${file}::${d.name}`) || 'unreached' });
+    }
+  }
+  const reached = candidates.filter((c) => c.state === 'clean' || c.state === 'tainted');
+  const nearest = reached[0] || null;
+  return {
+    target: full,
+    definition: key,
+    state,
+    taintChain: state === 'tainted' ? taintChain(reach, r.def) : undefined,
+    nearestReachedCaller: nearest,
+    unresolvedCallSites: reached.slice(1).concat(candidates.filter((c) => c.state === 'unreached')).slice(0, 12),
+    note: nearest ? undefined : 'no reached caller of any name',
+  };
+}
+
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  const { result, ok } = checkProductionCallers();
-  console.log(JSON.stringify(result, null, 2));
-  if (!result.count || !ok) process.exitCode = 1;
+  const explainIdx = process.argv.indexOf('--explain');
+  if (explainIdx !== -1) {
+    console.log(JSON.stringify(explain(process.argv[explainIdx + 1]), null, 2));
+  } else {
+    const { result, ok } = checkProductionCallers();
+    console.log(JSON.stringify(result, null, 2));
+    if (!result.count || !ok) process.exitCode = 1;
+  }
 }

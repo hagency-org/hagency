@@ -232,3 +232,42 @@ test('a production file that also carries mod tests: production fns reachable, t
   assert.equal(result.unresolved.length, 1);
   assert.match(result.unresolved[0].caller, /only_test$/);
 });
+
+test('router chain: call-expression args, identifier handlers, unknown-receiver methods all produce edges', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: [
+        'fn main() { run(); }',
+        'fn run() {',
+        '  let mut server = Server::new();',
+        '  server.try_serve(make_app().router());',
+        '}',
+      ].join('\n'),
+      'native/hagency/src/app.rs': [
+        'pub struct App;',
+        'impl App {',
+        '  pub fn router(self) -> Router { console::router() }',
+        '}',
+        'pub fn make_app() -> App { App }',
+      ].join('\n'),
+      'native/hagency/src/console.rs': [
+        'pub fn router() -> Router {',
+        '  Router::new().push(approvals::router())',
+        '}',
+        'pub mod approvals;',
+      ].join('\n'),
+      'native/hagency/src/console/approvals.rs': [
+        'pub fn router() -> Router {',
+        '  Router::with_path("grants/{id}").delete(revoke_grant)',
+        '}',
+        'async fn revoke_grant() {}',
+      ].join('\n'),
+    },
+    specs: '  Production caller: hagency::console::approvals::revoke_grant\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.ok(ok, JSON.stringify(result));
+  assert.equal(result.wired, 1);
+  assert.equal(result.missing.length, 0);
+});
