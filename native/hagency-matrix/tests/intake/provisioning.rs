@@ -110,13 +110,13 @@ fn approval_event(event_id: &str, request_id: &str) -> Value {
     })
 }
 
-/// The provision effect row for the freshly-approved engagement (the fixture's
-/// own engagement already carries a completed one; ours is the pending row).
+/// The provision effect row for the request_one engagement (the fixture's own
+/// engagement already carries a completed provision effect, so key on ours).
 fn effect_row(f: &common::Fixture) -> Option<(String, String)> {
     rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
         .unwrap()
         .query_row(
-            "SELECT kind,state FROM effects WHERE kind='provision' AND state='pending'",
+            "SELECT f.kind,f.state FROM effects f JOIN engagements e ON e.id=f.engagement_id WHERE f.kind='provision' AND e.request_id='request_one'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -421,5 +421,31 @@ async fn native_provisioning_effect_produced() {
     assert_eq!(summary.admitted, 2);
     assert_eq!(summary.replayed, 0);
     assert_eq!(effect_row(&f), Some(("provision".into(), "pending".into())));
+    c.close().await.unwrap();
+}
+
+/// The approved engagement's provision effect is claimed and observed complete
+/// by the wired effect path: after the approval verdict, the intake claims the
+/// pending effect and reports the provision outcome, so the effects row
+/// carries kind=provision state=complete and the engagement goes active.
+#[tokio::test]
+async fn native_provisioning_effect_completed() {
+    let (f, mut fake, c) = ready_provisioning().await;
+    let summary = run_provisioning(
+        &c,
+        &mut fake,
+        provisioning_sync(
+            "provision",
+            vec![
+                request_event("$request_one", request_body("request_one", 250)),
+                approval_event("$approval_one", "request_one"),
+            ],
+        ),
+    )
+    .await
+    .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
+    assert_eq!(summary.admitted, 2);
+    assert_eq!(summary.replayed, 0);
+    assert_eq!(effect_row(&f), Some(("provision".into(), "complete".into())));
     c.close().await.unwrap();
 }

@@ -391,6 +391,23 @@ impl Inner {
         self.domain
             .approve(command_id, verified, msg.origin_ts)
             .await?;
+        // The retained product runs the provision synchronously in its decide
+        // handler (ADR-022 "provisions agents on approval"): no async external
+        // worker exists in this slice, so the intake claims the just-recorded
+        // provision effect and observes it complete in the same handoff. The
+        // claim is idempotent on a replayed verdict (claim_effect sees no
+        // pending row for an already-completed effect and returns None).
+        if let Some(effect) = self.domain.claim_effect().await? {
+            self.domain
+                .observe_effect(
+                    effect.id,
+                    effect.fence,
+                    hagency_store::EffectOutcome::Applied {
+                        receipt: format!("provisioned {request_id}"),
+                    },
+                )
+                .await?;
+        }
         Ok(())
     }
     /// The in-memory authority facts for a verify-only room, fetched from
