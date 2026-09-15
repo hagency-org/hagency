@@ -1,5 +1,7 @@
 mod common;
 use common::*;
+use hagency_core::messages::{InboundMessage, MessageTarget};
+use hagency_core::task_intents::{Delegation, TaskDefinition};
 use hagency_core::tasks::*;
 use hagency_store::{DomainRepository, EffectOutcome, Error};
 use serde_json::json;
@@ -588,7 +590,39 @@ async fn native_dispatch_resource_and_coordinator_scope() {
     for id in ["s2", "s3", "worker"] {
         bind(&mut db, id, &engagement);
     }
-    db.enqueue_dispatch(&input("d1", "s1", None, false))
+    // The delegation lane's root message must be a top-level room message
+    // (create_intent refuses a threaded root), so the creating dispatch rides
+    // a dedicated non-thread session. The message is frozen into d1 as an
+    // inbox dispatch: delegate_task's input-custody check accepts only
+    // sequences assigned to the creating dispatch or already processed.
+    db.register_session(&SessionBinding {
+        id: "coord".into(),
+        engagement_id: engagement.clone(),
+        room_id: "!project:example.test".into(),
+        thread_root: None,
+    })
+    .unwrap();
+    let seq = db
+        .ingest_message(
+            &InboundMessage {
+                server_name: "example.test".into(),
+                room_id: "!project:example.test".into(),
+                event_id: "$delegate_root".into(),
+                sender_mxid: "@owner:example.test".into(),
+                thread_root: None,
+                body: "Delegate this step".into(),
+                kind: "m.text".into(),
+                origin_ts: 1000,
+            },
+            &[MessageTarget {
+                session_id: "coord".into(),
+                wake: true,
+            }],
+            1000,
+        )
+        .unwrap()
+        .sequence;
+    db.enqueue_inbox_dispatch(&input("d1", "coord", None, false), &[seq])
         .unwrap();
     db.enqueue_dispatch(&input("d2", "s2", None, false))
         .unwrap();
@@ -614,17 +648,36 @@ async fn native_dispatch_resource_and_coordinator_scope() {
     );
     db.start_dispatch(&a, 1001).unwrap();
     db.start_dispatch(&b, 1001).unwrap();
-    let child = db
-        .create_coordinator_task(&a, "child", "worker", "Implement delegated step", 1002)
-        .unwrap();
-    db.create_coordinator_task(&a, "child", "worker", "Implement delegated step", 1002)
-        .unwrap();
-    assert_eq!(db.runner_task(&a, &child.id, 1002).unwrap().id, child.id);
+    // Coordinator-created work now flows through the delegation lane: the
+    // same authorize_work gate, plus input custody the dead write lacked.
+    // The delegated child records the creating dispatch's session as its
+    // creator, so the visibility and isolation properties below are exactly
+    // the dead write's own.
+    let delegation = Delegation {
+        call_id: "child_work".into(),
+        assignee_engagement: engagement.clone(),
+        root_sequence: Some(seq),
+        input_sequences: vec![seq],
+        definition: TaskDefinition {
+            title: "Implement delegated step".into(),
+            ..Default::default()
+        },
+    };
+    let child = db.delegate_task(&a, &delegation, 1002).unwrap();
+    // The duplicate call replays the same intent (idempotency on
+    // request scope + call id), never a second task.
+    let replayed = db.delegate_task(&a, &delegation, 1002).unwrap();
+    assert!(replayed.replayed);
+    assert_eq!(replayed.task_id, child.task_id);
+    assert_eq!(
+        db.runner_task(&a, &child.task_id, 1002).unwrap().id,
+        child.task_id
+    );
     assert!(
-        db.mutate_task(&a, &child.id, "no", &transition(TaskState::Done), 1002)
+        db.mutate_task(&a, &child.task_id, "no", &transition(TaskState::Done), 1002)
             .is_err()
     );
-    assert!(db.runner_task(&b, &child.id, 1002).is_err());
+    assert!(db.runner_task(&b, &child.task_id, 1002).is_err());
     assert!(db.runner_tasks(&b, "", 100, 1002).unwrap().is_empty());
     db.park_dispatch(&a, true, 1003).unwrap();
     db.complete_dispatch(&b, &json!({}), 1003).unwrap();
@@ -635,15 +688,15 @@ async fn native_dispatch_resource_and_coordinator_scope() {
     assert_eq!(c.dispatch_id, "d3");
     db.start_dispatch(&c, 1007).unwrap();
     db.complete_dispatch(&c, &json!({}), 1008).unwrap();
-    db.enqueue_dispatch(&input("later", "s1", None, false))
+    db.enqueue_dispatch(&input("later", "coord", None, false))
         .unwrap();
-    db.enqueue_dispatch(&input("same_session", "s1", None, false))
+    db.enqueue_dispatch(&input("same_session", "coord", None, false))
         .unwrap();
     let later = claim(&mut db, 1009);
     db.start_dispatch(&later, 1010).unwrap();
     assert_eq!(
         db.runner_tasks(&later, "", 100, 1011).unwrap()[0].id,
-        "child"
+        child.task_id
     );
     assert!(
         db.claim_dispatch("extra", 1011, 100, 100, 8)
