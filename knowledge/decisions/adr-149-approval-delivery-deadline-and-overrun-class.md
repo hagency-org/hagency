@@ -110,6 +110,13 @@ messages. The change is that the delivery path must stop *manufacturing* a
 cancellation out of its own expired timer: the arm at `approval_delivery.rs:102`
 must not `cancel.cancel()` the token it then awaits. A deadline must surface as
 `Error::Timeout` through the existing `timeout_at` arm (`http.rs:482`) or the
+
+**Correction (2026-09-15).** `http.rs` needs no edit. `put`/`perform` already
+self-derive a per-trip deadline from their own limits (`http.rs:407-408`), so the
+delivery clock does not govern there; it reaches the four `checkpoint(cancel,
+deadline)` calls at `approval_delivery.rs:334`, `:342`, `:373` and `:383`. The
+decision is unchanged — the bound is per round trip — but the edit belongs in the
+delivery path, not the transport.
 `checkpoint` deadline arm (`enrollment.rs:268-269`), exactly as
 `attachments.rs:262`, `upload.rs:196` and `receive.rs:102` already do.
 
