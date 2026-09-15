@@ -30,6 +30,7 @@ pub(super) fn router() -> Router {
         .push(Router::with_path("{id}/start").post(start))
         .push(Router::with_path("{id}/stop").post(stop))
         .push(Router::with_path("{id}/preset").post(preset))
+        .push(Router::with_path("{id}/recover-dispatch").post(recover_dispatch))
 }
 
 /// Exactly seven keys, in the ADR-126 order. Every key except `name` is
@@ -240,6 +241,90 @@ async fn stop(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     }
     match result {
         Ok(value) => res.render(Json(value)),
+        Err(error) => failure(res, error),
+    }
+}
+
+/// Recover-dispatch — operator recovery and resume of an orphaned dispatch
+/// (ADR-148). The operator names the crashed dispatch's replacement and the
+/// evidence of what was inspected; the store enforces the orphan state, the
+/// stop-row refusal and the evidence record. Triggered ONLY by this route,
+/// under the existing `Scope::AgentLifecycle` — never automatic, never a sweep,
+/// and no second clearer over the stop-fenced sibling's state.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct RecoverDispatch {
+    original: String,
+    replacement: hagency_core::tasks::DispatchInput,
+    evidence: String,
+}
+
+#[handler]
+async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if query(req, &[], 0).is_err() {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let engagement = match engagement_id(req) {
+        Ok(id) => id,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let raw = match body(req, 8192).await {
+        Ok(raw) => raw,
+        Err(_) => {
+            failed(res, Error::Invalid);
+            return;
+        }
+    };
+    let input: RecoverDispatch = match serde_json::from_slice(&raw) {
+        Ok(input) => input,
+        Err(_) => {
+            failed(res, Error::Invalid);
+            return;
+        }
+    };
+    if input.replacement.validate().is_err()
+        || identifier(&input.original, 128).is_err()
+        || input.evidence.is_empty()
+        || input.evidence.chars().count() > 4096
+    {
+        failed(res, Error::Invalid);
+        return;
+    }
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+        .unwrap_or_default();
+    let result = store
+        .recover_dispatch(
+            input.original.clone(),
+            input.replacement,
+            input.evidence,
+            now,
+        )
+        .await;
+    if result.is_ok() && recheck(depot).is_err() {
+        failure(res, hagency_store::Error::OutcomeUnknown);
+        return;
+    }
+    let _ = engagement;
+    match result {
+        Ok(()) => res.render(Json(serde_json::json!({"ok": true}))),
+        Err(hagency_store::Error::State) => {
+            // The orphan-state guard or the stop-row refusal (execution.rs:1044-1050).
+            refusal(res, StatusCode::CONFLICT, "dispatch_not_recoverable")
+        }
+        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
         Err(error) => failure(res, error),
     }
 }
