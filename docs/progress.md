@@ -8375,3 +8375,48 @@ client qualification and ongoing identity/key management remain separate.
   replacement and the recovery record. Separately, a claim that four production
   call sites existed for the shutdown observation was wrong: all four sit
   inside a test module, and the read is a snapshot that writes nothing.
+- 2026-09-14 evening: the provisioning pair is recorded closed in the wiring
+  audit's table, with the callers named: the representative's verdict is
+  admitted, the provision effect is claimed and observed complete in the same
+  handoff, and the provisioned engagement's Matrix route is bound, all four
+  inside the production intake's approval path.
+- 2026-09-14 evening: the console can show an agent that the port provisioned
+  itself. A fake peer delivers the engagement request and the approval into the
+  reception room, the production intake provisions the agent, and the console
+  roster read serves it. The test asserts store rows rather than the roster
+  alone — the minted engagement id read back by request id and never
+  re-derived, the provision effect observed complete, exactly one session route
+  row — so a roster item cannot satisfy it on its own. This is the first
+  end-to-end evidence that the native port can take an agent from request to
+  operator-visible, and it is the proof the ingress work existed to make
+  possible.
+- 2026-09-14 evening: a completeness sweep of the wiring audit found seven more
+  store writes it had missed or misclassified, and named the mechanism of the
+  miss: each grep hit was classified by the FILE it landed in rather than by
+  the ITEM enclosing it, so calls inside test modules whose ranges open far
+  above them read as production callers. One write was absent from the table
+  entirely. The audit's method now requires classifying by the enclosing
+  item's range, resolving path and module includes, and excluding a facade's
+  own body, which is the only caller of most store writes and is never
+  evidence of production reachability.
+- 2026-09-14 evening: two specification corrections, both in the direction of
+  claiming less. A scenario's Then demanded an outcome its own test asserts the
+  opposite of, and now states what the test can actually refute. And a
+  tolerated failure variant that the product cannot produce in that scenario
+  was removed from the accepted set: the arm requires an entry that is not in
+  flight, while the scenario's entry is in flight by its own Given. A tolerated
+  outcome that can never occur is indistinguishable from a live one and would
+  have swallowed any regression that began producing it.
+- 2026-09-14 evening: two cutover-blocking gaps are now documented with specs
+  rather than discovered later. An operator can neither refuse a pending
+  engagement request nor retire an active one: the two terminal states are
+  written in a single store function that nothing in production reaches. And
+  the approval delivery path cancels a send it should have completed, because
+  its deadline is anchored on the owner's decision window and the job cancels
+  the token it handed to its own send, so a budget overrun is reported as a
+  cancellation rather than a timeout. The retained product performs all three
+  acts through operator routes and retries cleanup only when an operator asks,
+  so an automatic retry here would be new behaviour rather than parity. Spec
+  slices for refusal, retirement with cleanup retry, and project-side
+  registration are written with every selector owed; the delivery defect and
+  two representation divergences have decision records in progress.
