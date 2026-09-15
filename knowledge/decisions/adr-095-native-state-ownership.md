@@ -430,6 +430,16 @@ command.
 
 ## Amendment 2026-09-14 — the production provisioning ingress is absent
 
+> **Superseded 2026-09-14, later the same day: the gap this amendment records
+> is closed.** `DomainRepository::admit` has a production caller — the Matrix
+> intake admission chain wires it at `hagency-matrix/src/intake.rs:275`
+> (`Inner::provision`), exactly the ingress this amendment decided; the
+> companion writes (`approve`, `claim_effect`, `observe_effect`,
+> `resolve_verified_matrix_session`) are wired in the same handoff
+> (`intake.rs:397/:405/:407/:450`). ADR-146 records the closure as **G1
+> (closed 2026-09-14)** with the same citation. The text below is preserved
+> unchanged as the record of what was true when it was written.
+
 **The gap, read from the tree.** The only statement that mints an engagement
 is `DomainRepository::admit(proof: &VerifiedRequest)` (`domain.rs:1081`,
 the INSERT at `:1135`) — the single minting write, idempotent on
