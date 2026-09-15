@@ -273,6 +273,27 @@ impl DomainRepository {
             |r| r.get(0),
         )?)
     }
+    /// The admitted engagement's stored request (`context`) and admission
+    /// evidence (`evidence`, the serialized RequestObservation), keyed by the
+    /// requester's native-valid `request_id`. The provisioning ingress reads
+    /// these to re-verify the request against current authority before the
+    /// provider verdict (`approve`); the request id is the idempotency key.
+    pub fn provisioning_request_evidence(
+        &self,
+        fleet_id: &str,
+        request_id: &str,
+    ) -> Result<Option<(String, String)>, Error> {
+        identifier(fleet_id, 128)?;
+        identifier(request_id, 128)?;
+        Ok(self
+            .db
+            .query_row(
+                "SELECT context,evidence FROM engagements WHERE fleet_id=?1 AND request_id=?2",
+                params![fleet_id, request_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?)
+    }
     /// Host-only snapshot for one current intake target. A returned route is
     /// copied into authenticated custody, then checked again by admission.
     pub fn matrix_intake_route(&self, session: &str) -> Result<ReplyRoute, Error> {

@@ -275,6 +275,124 @@ impl Inner {
         let engagement = self.domain.admit(verified, msg.origin_ts).await?;
         Ok((engagement, !exists))
     }
+    /// ADR-095 provider verdict: the approval event names the requester's
+    /// idempotency key (`requestId`); the verified request is rebuilt from the
+    /// admitted engagement's stored context + evidence, re-verified against
+    /// current room authority (fresh room snapshots, fresh observed_at_ms —
+    /// the same re-check the retained `decide()` performs), then `approve` is
+    /// called exactly once. The verdict is idempotent on the request id, so a
+    /// restored batch replays the prior decision instead of double-reserving.
+    async fn approve_provision(
+        &self,
+        msg: &hagency_core::messages::InboundMessage,
+    ) -> Result<(), Error> {
+        let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
+        if body.get("decision").and_then(serde_json::Value::as_str) != Some("approve") {
+            return Err(Error::Wire);
+        }
+        let request_id = body
+            .get("requestId")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Wire)?;
+        let reg = self
+            .domain
+            .provisioning_registration_for_engagement(
+                self.config.identity.transport.engagement_id.clone(),
+            )
+            .await
+            .map_err(|_| Error::Wire)?;
+        // Only the fleet's representative may deliver the provider verdict.
+        if msg.sender_mxid != reg.representative_mxid {
+            return Err(Error::Wire);
+        }
+        let (context, evidence) = self
+            .domain
+            .provisioning_request_evidence(reg.fleet_id.clone(), request_id.to_owned())
+            .await
+            .map_err(|_| Error::Wire)?
+            .ok_or(Error::Wire)?;
+        let request: ProjectRequest =
+            serde_json::from_str(&context).map_err(|_| Error::Wire)?;
+        let audit: serde_json::Value = serde_json::from_str(&evidence).map_err(|_| Error::Wire)?;
+        // The original request event's source observation is the evidence; the
+        // approval event's own ids can never satisfy the request-type gate.
+        let source_value = audit.get("source").ok_or(Error::Wire)?;
+        let owner_room = self
+            .domain
+            .provisioning_owner_room(request.requester_mxid.clone(), reg.server_name.clone())
+            .await
+            .map_err(|_| Error::Wire)?;
+        let source_room = source_value
+            .get("room_id")
+            .and_then(serde_json::Value::as_str)
+            .ok_or(Error::Wire)?;
+        let (reception_obs, reception_facts) = self
+            .verify_room_facts(source_room, 1, RoomPrivacy::Group {})
+            .await?;
+        let (project_obs, project_facts) = self
+            .verify_room_facts(&request.target_room_id, 1, RoomPrivacy::Group {})
+            .await?;
+        let room_observation = |obs: &hagency_core::replies::MatrixRoomObservation,
+                                facts: &RoomAuthorityFacts| {
+            RoomObservation {
+                room_id: obs.room_id.clone(),
+                joined: obs.joined.clone(),
+                invite_only: obs.invite_only,
+                encryption: obs.encrypted.then(|| "m.megolm.v1.aes-sha2".to_string()),
+                powers: facts.powers.clone(),
+                default_power: facts.default_power,
+                invite_power: facts.invite_power,
+                binding: facts.binding.clone(),
+                name: facts.name.clone(),
+            }
+        };
+        let reception = room_observation(&reception_obs, &reception_facts);
+        let project = room_observation(&project_obs, &project_facts);
+        let owner = RoomObservation {
+            room_id: owner_room.room_id.clone(),
+            joined: owner_room.joined.clone(),
+            invite_only: owner_room.invite_only,
+            encryption: owner_room
+                .encrypted
+                .then(|| "m.megolm.v1.aes-sha2".to_string()),
+            powers: BTreeMap::new(),
+            default_power: 0,
+            invite_power: 0,
+            binding: None,
+            name: None,
+        };
+        let request_observation = RequestObservation {
+            registration_generation: reg.generation,
+            observed_at_ms: msg.origin_ts,
+            source: SourceObservation {
+                event_id: source_value
+                    .get("event_id")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or(Error::Wire)?
+                    .to_owned(),
+                room_id: source_room.to_owned(),
+                sender: source_value
+                    .get("sender")
+                    .and_then(serde_json::Value::as_str)
+                    .ok_or(Error::Wire)?
+                    .to_owned(),
+                event_type: "com.hagency.engagement.request.v1".into(),
+                content: source_value.get("content").cloned().ok_or(Error::Wire)?,
+            },
+            reception,
+            project,
+            owner_room: owner,
+        };
+        let verified =
+            verify_request(&reg, request, request_observation).map_err(|_| Error::Wire)?;
+        // The request id keys the decision: an identical re-delivery replays
+        // the recorded verdict (replay_decision) instead of re-reserving.
+        let command_id = format!("approve_{request_id}");
+        self.domain
+            .approve(command_id, verified, msg.origin_ts)
+            .await?;
+        Ok(())
+    }
     /// The in-memory authority facts for a verify-only room, fetched from
     /// /state on demand when the collector has not observed the room yet.
     async fn verify_room_facts(
@@ -454,8 +572,15 @@ impl Inner {
                 return Err(Error::Cancelled);
             }
             observe!(Provision);
-            match self.provision(&msg).await {
-                Ok((_engagement, created)) => {
+            // ADR-095: the request event mints via admit; the provider's
+            // approval event is the separate verdict that reserves via approve.
+            let result = if msg.kind == "com.hagency.engagement.approval.v1" {
+                self.approve_provision(&msg).await.map(|_| true)
+            } else {
+                self.provision(&msg).await.map(|(_e, created)| created)
+            };
+            match result {
+                Ok(created) => {
                     if created {
                         admitted += 1;
                     } else {

@@ -2876,6 +2876,16 @@ impl DomainStore {
         })
         .await
     }
+    pub async fn provisioning_request_evidence(
+        &self,
+        fleet_id: String,
+        request_id: String,
+    ) -> Result<Option<(String, String)>, Error> {
+        self.call(weight(&(&fleet_id, &request_id))?, move |db| {
+            db.provisioning_request_evidence(&fleet_id, &request_id)
+        })
+        .await
+    }
     pub async fn admit(&self, proof: VerifiedRequest, now: u64) -> Result<Engagement, Error> {
         self.call(
             weight(&(

@@ -348,8 +348,14 @@ impl Batch {
         // resolution. The reception room is pre-project, so no ReplyRoute can
         // name it; the event becomes a pre-project candidate instead and
         // `provision()` verifies it against the store-recorded registration
-        // (which refuses any other room fail-closed).
-        if msgtype == "com.hagency.engagement.request.v1" {
+        // (which refuses any other room fail-closed). The provider's decision
+        // rides the same lane: the approval event names the request it
+        // approves, and the handoff rebuilds the verified request from the
+        // admitted engagement's stored evidence before calling `approve`.
+        if matches!(
+            msgtype,
+            "com.hagency.engagement.request.v1" | "com.hagency.engagement.approval.v1"
+        ) {
             let body = content
                 .get("body")
                 .and_then(Value::as_str)

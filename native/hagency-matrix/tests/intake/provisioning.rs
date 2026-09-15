@@ -110,12 +110,13 @@ fn approval_event(event_id: &str, request_id: &str) -> Value {
     })
 }
 
-/// The provision effect row for the minted engagement, if one exists.
+/// The provision effect row for the freshly-approved engagement (the fixture's
+/// own engagement already carries a completed one; ours is the pending row).
 fn effect_row(f: &common::Fixture) -> Option<(String, String)> {
     rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3"))
         .unwrap()
         .query_row(
-            "SELECT kind,state FROM effects WHERE kind='provision'",
+            "SELECT kind,state FROM effects WHERE kind='provision' AND state='pending'",
             [],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
@@ -417,7 +418,7 @@ async fn native_provisioning_effect_produced() {
     )
     .await
     .unwrap_or_else(|e| panic!("intake failed: {e:?}"));
-    assert_eq!(summary.admitted, 1);
+    assert_eq!(summary.admitted, 2);
     assert_eq!(summary.replayed, 0);
     assert_eq!(effect_row(&f), Some(("provision".into(), "pending".into())));
     c.close().await.unwrap();
