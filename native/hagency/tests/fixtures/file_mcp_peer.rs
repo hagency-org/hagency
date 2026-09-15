@@ -88,6 +88,13 @@ fn receipt(stage: &str, value: Value) -> io::Result<()> {
     fs::write(&temporary, serde_json::to_vec(&value)?)?;
     fs::rename(temporary, target)
 }
+/// Bounded protocol-stage markers, one file per stage reached, so a failing
+/// parallel pass can say whether this probe ever consumed the initialize
+/// request before the host's response budget elapsed. Fixed names, no
+/// content — the same no-interpolation rule the snapshot report follows.
+fn stage(name: &str) -> io::Result<()> {
+    fs::write(format!("file-mcp.stage-{name}"), b"1")
+}
 fn helper(params: &Value) -> io::Result<()> {
     let config = &params["config"];
     let table = &config["mcp_servers.hagency_task_writer"];
@@ -264,11 +271,14 @@ fn fake() -> io::Result<()> {
     let mut log = fs::File::create("file-mcp.requests")?;
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
+    stage("spawned")?;
     let init = request(&mut input, "initialize", &mut log)?;
+    stage("initialize-read")?;
     send(
         &mut output,
         json!({"id":init["id"],"result":{"userAgent":"offline/0.153.4","platformFamily":"fixture","platformOs":"fixture","codexHome":"/fixture"}}),
     )?;
+    stage("initialize-answered")?;
     request(&mut input, "initialized", &mut log)?;
     let thread = request(&mut input, "thread/start", &mut log)?;
     let params = &thread["params"];
@@ -292,7 +302,9 @@ fn fake() -> io::Result<()> {
         &mut output,
         json!({"id":turn["id"],"result":{"turn":{"id":"owned-turn","status":"inProgress","items":[]}}}),
     )?;
+    stage("turn-started")?;
     helper(params)?;
+    stage("helper-exited")?;
     {
         send(
             &mut output,

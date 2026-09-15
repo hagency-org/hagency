@@ -78,6 +78,19 @@ impl HelperObservation {
         }
         Value::Object(result)
     }
+    /// The last protocol stage the probe peer reached, as a bounded label read
+    /// from its stage markers — the discriminator between "the probe never
+    /// consumed initialize" and "the answer never reached the host" on a
+    /// failing parallel pass. Absent markers report `none`.
+    fn probe_stage(&self) -> &'static str {
+        let mut last = "none";
+        for name in PROBE_STAGES {
+            if self.root.join(format!("file-mcp.stage-{name}")).is_file() {
+                last = name;
+            }
+        }
+        last
+    }
     fn receipt(&self, index: usize, name: &str) -> &'static str {
         match self.baseline[index] {
             ReceiptBaseline::Present => return "preexisting",
@@ -168,6 +181,7 @@ impl Running {
             "last_http":observation.last_http,"requests":observation.requests,
             "status":observation.status,"elapsed_ms":observation.started.elapsed().as_millis().min(u64::MAX as u128) as u64,
             "helper":self.helper.snapshot(),"child":child,"stderr":stderr,"stderr_bytes":bytes.len().min(8192),"stderr_truncated":bytes.len()>8192,
+            "probe_stage":self.helper.probe_stage(),
             "bootstrap_phase":boundary_phase(&bytes, b"native startup boundary: ", &[
                 "runtime_entered", "runtime_ready", "bootstrap_entered", "configuration_entered",
                 "executable_verify_entered", "executable_hash_entered", "executable_hash_completed",
@@ -212,6 +226,25 @@ impl Drop for Running {
         }
     }
 }
+/// The probe peer's protocol stages, in order, so the Drop-time snapshot can
+/// report the last stage reached as a bounded label (no raw output).
+///
+/// Resolved under parallel load (sampled live): a failing pass reports
+/// `probe_stage: "none"` while the work process sits 100% in `_dyld_start`
+/// with ~96K resident — the stall is pre-main, inside exec. The first
+/// observer is therefore the serve child's own transport (`stage:
+/// initialize`, `transport_cause: timeout` on its configured response
+/// budget); missing admission/upload artifacts are downstream of that one
+/// timeout, and the fixture's status probe records no arm (capabilities
+/// are served throughout). Distinct per-fixture cwds ruled out shared
+/// temp-dir ownership or lifetime as the cause.
+const PROBE_STAGES: [&str; 5] = [
+    "spawned",
+    "initialize-read",
+    "initialize-answered",
+    "turn-started",
+    "helper-exited",
+];
 fn boundary_phase(bytes: &[u8], marker: &[u8], labels: &[&'static str]) -> &'static str {
     // Closed vocabulary only. Preserve separate bootstrap and worker phases;
     // concurrent worker logging cannot overwrite the other operation's phase.
