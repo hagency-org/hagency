@@ -8327,3 +8327,47 @@ client qualification and ongoing identity/key management remain separate.
   in-process lane now mints the scoped link only when the driver asks for it
   after the read-only walk; the executable lane has no scoped walk; the
   post-exchange wait targets the resources page, which carries no ready marker.
+- 2026-09-14: the cutover-blocking provisioning gap is closed end to end and
+  landed. A request in the pre-project reception room now reaches
+  `DomainRepository::admit` through the production intake — the discriminator
+  is matched during batch derivation, before target resolution, so the request
+  is classified as a provisioning candidate instead of being dropped as
+  not-for-us — and the representative's verdict then makes the engagement
+  effective and routable: the verdict is admitted, the provision effect is
+  claimed and observed complete in the same handoff, and the provisioned
+  engagement's Matrix route is bound. Before this, every agent in every native
+  test had been admitted by a test helper, so a native deployment could not
+  provision an agent through its own ingress at all.
+- 2026-09-14: that gap turned out to be one of nine. A production-wiring audit
+  of the whole tree — strip `#[cfg(test)]` items and `#[test]` fns, exclude
+  test, fixture, example and probe trees, then walk the store's own call graph
+  from each production root — found nine flows whose store writes were reached
+  only by tests. Seven are now closed with an evidenced production caller, one
+  was superseded, and one remains: operator recovery and resume, which has a
+  decision record but no code yet. The audit's method is now enforced rather
+  than remembered: a spec `Production caller:` line must resolve in the
+  production call graph, and `native/scripts/check-production-callers.mjs`
+  fails the build on a caller that is absent, ambiguous or unresolved, with a
+  tracked gap id required for anything still owed.
+- 2026-09-14: the checker earned its keep by being given real input. Run
+  against the tree it was written for, it reported the audit's own defining gap
+  as wired, stripped a production bootstrap file as a probe, missed router
+  handler edges, could not type a receiver, and did not strip comments. Each
+  was a real defect, each was fixed, and the fixture suite grew to cover them.
+  A checker that only ever sees clean input cannot be trusted to refuse dirty
+  input.
+- 2026-09-14: four intermittent tests were fixed by handshake rather than by
+  widening anything — a media deadline, two no-resend scenarios and the
+  turn-end untransmitted arm — plus the CLI console readiness poll, which
+  treated a reset connection during startup as a failure instead of retrying
+  until its own deadline. The rule applied throughout: every wait is derived
+  from the client's own limits rather than written as a literal, and an
+  ordering is proven by a marker, a lock or an observed diagnostics mark, never
+  by a sleep. No deadline, budget or gate was widened to make a test pass.
+- 2026-09-14: two corrections to earlier claims in this log, both recorded
+  rather than quietly fixed. The recovery gap was first written down as landed
+  and then softened to an artifact trail; neither was right, and the real gap
+  is operator recovery and resume — lease, quarantine, dirty flag, supersession,
+  replacement and the recovery record. Separately, a claim that four production
+  call sites existed for the shutdown observation was wrong: all four sit
+  inside a test module, and the read is a snapshot that writes nothing.
