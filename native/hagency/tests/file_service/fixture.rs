@@ -269,6 +269,17 @@ impl Fixture {
         observation.phase = phase;
         self.observation.set(observation);
     }
+    /// Record which arm of the one-shot status probe failed, with the arm's
+    /// own error, so the next failing parallel pass names the first observer.
+    /// eprintln lands in the captured failure output (the fixture root is a
+    /// TempDir deleted on unwind, so the file copy alone would vanish).
+    fn probe_arm(&self, arm: &'static str, error: &std::io::Error) {
+        eprintln!("file_service probe arm {arm}: {error}");
+        let _ = fs::write(
+            self.root.path().join("file-mcp.probe-arm"),
+            format!("{arm}: {error}"),
+        );
+    }
     pub(super) async fn next(&mut self, phase: &'static str) -> common::Request {
         self.phase(phase);
         let request = self.fake.next_phase(Some(phase)).await;
@@ -767,26 +778,74 @@ impl Fixture {
     /// bootstrap contract keep using `capabilities()`; polling loops use
     /// this so an unanswered probe never blinds the fake Matrix server
     /// past the child's operation budget. The loop is the only retry.
+    /// The failure arm the probe observed, so a failing pass names WHICH site
+    /// saw the loss first (connect refused vs write failed vs read timeout vs
+    /// status/body malformed). Absent on every green run; written under the
+    /// fixture root, never asserted on the green path.
     pub(super) async fn probe_capabilities(&self) -> Option<Value> {
-        let mut stream = tokio::net::TcpStream::connect(self.address).await.ok()?;
+        let mut stream = match tokio::net::TcpStream::connect(self.address).await {
+            Ok(stream) => stream,
+            Err(error) => {
+                self.probe_arm("connect", &error);
+                return None;
+            }
+        };
         let token = String::from_utf8(
             private::read_secret(&self.state_dir.join("operator.token")).unwrap(),
         )
         .unwrap();
-        stream
+        if let Err(error) = stream
             .write_all(format!("GET /api/native/v1/capabilities HTTP/1.1\r\nHost: {}\r\nAuthorization: Bearer {}\r\nConnection: close\r\n\r\n", self.address, token).as_bytes())
             .await
-            .ok()?;
-        let mut bytes = Vec::new();
-        tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut bytes))
-            .await
-            .ok()?
-            .ok()?;
-        let response = String::from_utf8(bytes).ok()?;
-        if !response.starts_with("HTTP/1.1 200") {
+        {
+            self.probe_arm("write", &error);
             return None;
         }
-        let value: Value = serde_json::from_str(response.split_once("\r\n\r\n")?.1).ok()?;
+        let mut bytes = Vec::new();
+        let read =
+            tokio::time::timeout(Duration::from_secs(2), stream.read_to_end(&mut bytes)).await;
+        match read {
+            Err(_) => {
+                self.probe_arm(
+                    "read-timeout",
+                    &std::io::Error::new(
+                        std::io::ErrorKind::TimedOut,
+                        "read budget elapsed before the response completed",
+                    ),
+                );
+                return None;
+            }
+            Ok(Err(error)) => {
+                self.probe_arm("read", &error);
+                return None;
+            }
+            Ok(Ok(_)) => {}
+        }
+        let response = match String::from_utf8(bytes) {
+            Ok(response) => response,
+            Err(error) => {
+                self.probe_arm("decode", &std::io::Error::other(error.to_string()));
+                return None;
+            }
+        };
+        if !response.starts_with("HTTP/1.1 200") {
+            self.probe_arm(
+                "status",
+                &std::io::Error::other(response.lines().next().unwrap_or("<no status line>")),
+            );
+            return None;
+        }
+        let body = response.split_once("\r\n\r\n");
+        let value: Value = match body.map(|(_, body)| serde_json::from_str(body)) {
+            Some(Ok(value)) => value,
+            _ => {
+                self.probe_arm(
+                    "body",
+                    &std::io::Error::other("capabilities body malformed"),
+                );
+                return None;
+            }
+        };
         let mut observation = self.observation.get();
         observation.status = match value["development_execution"]["state"].as_str() {
             Some("disabled") => "disabled",
