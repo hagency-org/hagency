@@ -167,3 +167,53 @@ input, reported by integration + glm9.)
   rather than letting the legacy pair look like the live path.
 - Specs carrying owed scenarios use `Owed Selector:` lines (never `Test:`), so
   the Rust binding checker neither passes nor demands them until wiring lands.
+
+## Amendment 2026-09-14 (second) — audit re-run on the landed head (88e05d5f)
+
+The audit was re-run after ~40 commits. Method unchanged (strip `#[cfg(test)]`
+items and `#[test]` fns; exclude tests/, native/fixtures/, examples/, probe
+bins; every finding grep-confirmed per the original evidence rule).
+
+**Closed gaps** (production caller now reaches the write):
+
+| Gap | Method | Production caller (evidence) |
+|---|---|---|
+| G1 | `admit` | `hagency-matrix/src/intake.rs:275` (`self.domain.admit(verified, msg.origin_ts)` in the provisioning ingress) |
+| G4 | `begin_account_login` | `hagency/src/bootstrap/accounts.rs:64` |
+| G4 | `settle_account_login` | `hagency/src/bootstrap/accounts.rs:100` |
+| G6 | `register_workspace` | `hagency/src/bootstrap.rs:873` (receive-inbox plan workspace registered before the first claim) |
+| G7 | `revoke_approval_grant` | `hagency/src/console/approvals.rs:139` (console route) |
+| G8 | `pending_conversation_stops` | `hagency/src/bootstrap/driver.rs:358` |
+| G8 | `settle_conversation_stop` | `hagency/src/bootstrap/driver.rs:367` |
+
+**Correction to the brief**: G5 (restart recovery) is **not landed** on this
+head — the `reconcile_dispatches`/`recover_dispatch` facades
+(`domain_worker.rs:2318,2321`) have zero production callers, and every
+`shutdown_observed` call site is inside `#[tokio::test]`; no
+expired-lease reclaim or crash reconciliation exists in any production path.
+G5 stays an open gap. G2 (`approve`/`claim_effect`/`observe_effect`/
+`retry_cleanup`) confirmed still unreached (under review); G3
+(`resolve_verified_matrix_session`) still has only the bootstrap driver setup
+call (`driver.rs:432`) — the first amendment's reasoning stands.
+
+**New rows** (unreached writes the original audit did not list):
+
+| Method | Defined | Finding | Class |
+|---|---|---|---|
+| `create_coordinator_task` | domain/execution.rs:693 | facade domain_worker.rs:2206 has no production caller; no coordinator-task creation path is wired | **new gap** (owner unassigned) |
+| `record_late_output` | domain/execution.rs:982 | facade domain_worker.rs:2308 has no production caller; no late-output recording path is wired | **new gap** (owner unassigned) |
+| `enqueue_inbox_dispatch` | domain/messages.rs:283 | **superseded-by** `select_receive_inbox` → `select_receive` (messages.rs:647, which performs the `enqueue_inbox` write at :703/:741) ← `hagency/src/bootstrap/inbox.rs:31`; the direct facade is a stale variant | superseded |
+
+Not findings: `mutate_task` is wired through `RunnerCommand::Mutate`
+(`hagency/src/runner.rs:416`); the remaining candidate names are read APIs
+(`runner_*`, `retention_status`, `canonical_task`, `effect`,
+`delivery_denial_reason`, `is_admitted`, …), internal helpers (`counts_*`,
+`grow`, `period_keys`, `zero`, `outbound_at`, `queue_remaining`, the
+`pub(super)` `enqueue_inbox`), or rows already classified above.
+
+**Checker reconciliation**: `check-production-callers.mjs` on this head reads
+exit 0, count 14, wired 11, owed G2/G2/G3 — no discrepancy. The checker only
+sees spec-named `Production caller:` lines, and no spec line names the G5
+methods or the two new gaps, so neither tool contradicts the other; the
+asymmetry (audit covers the whole store surface, checker covers spec-named
+writes) is the intended division of labour.
