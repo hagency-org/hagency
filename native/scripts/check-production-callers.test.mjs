@@ -147,7 +147,7 @@ test('native_production_callers_missing: an unreachable full path is missing and
   assert.equal(ok, false);
   assert.equal(result.missing.length, 1);
   assert.match(result.missing[0].caller, /approve$/);
-  assert.match(result.missing[0].definition, /domain\.rs::approve$/);
+  assert.match(result.missing[0].definition, /domain\.rs::DomainRepository::approve$/);
 });
 
 test('native_production_callers_ambiguous: a homonym collision reached only through ambiguous edges fails', () => {
@@ -167,7 +167,7 @@ test('native_production_callers_ambiguous: a homonym collision reached only thro
   assert.equal(ok, false);
   assert.equal(result.missing.length, 0);
   assert.equal(result.ambiguous.length, 1);
-  assert.match(result.ambiguous[0].definition, /domain\.rs::admit$/);
+  assert.match(result.ambiguous[0].definition, /domain\.rs::DomainRepository::admit$/);
   assert.ok(result.ambiguous[0].chain.length > 0);
 });
 
@@ -344,4 +344,85 @@ test('receiver typing: constructor result (let x = T::new()) resolves recv.metho
   const { result, ok } = checkProductionCallers({ root, read, files });
   assert.ok(ok, JSON.stringify(result));
   assert.equal(result.wired, 1);
+});
+
+test('r5 wrong-type probe: a param typed &A whose value is really a B must not wire A::handoff', () => {
+  // Reviewer's probe: before per-function hints + Type-keyed reachability,
+  // the file-level hint leak reported the UNCALLED A::handoff as wired and
+  // the truly called B::handoff as missing. Corrected verdicts: A::handoff
+  // missing (nothing calls it), B::handoff wired.
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: [
+        'fn main() { run(); }',
+        'fn run() {',
+        '  let b = B::new();',
+        '  drive(&b);',
+        '}',
+        // The param is TYPED &A but main passes a &B — the type hint is what
+        // it is; the point is that the hint must be scoped to drive() and the
+        // verdict keyed by impl, so drive()-> a.handoff() resolves to A and
+        // B::handoff is reached only if B is actually the receiver somewhere.
+        'fn drive(a: &A) { a.handoff(); }',
+      ].join('\n'),
+      'native/hagency/src/ab.rs': [
+        'pub struct A;',
+        'impl A {',
+        '  pub fn handoff(&self) {}',
+        '}',
+        'pub struct B;',
+        'impl B {',
+        '  pub fn new() -> B { B }',
+        '  pub fn handoff(&self) {}',
+        '}',
+      ].join('\n'),
+    },
+    specs: [
+      '  Production caller: hagency::ab::A::handoff',
+      '  Production caller: hagency::ab::B::handoff',
+    ].join('\n') + '\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.equal(ok, false);
+  // A::handoff is wired by drive()'s &A receiver (clean, type-hinted) — the
+  // impl-keyed verdict names the right function.
+  // B::handoff: `b` is typed B via the B::new() constructor; b is passed to
+  // drive(&A) — there is NO b.handoff() call anywhere, so B::handoff is
+  // missing. The wrong-function verdict (A wired-by-leak / B missing) is
+  // impossible: the definitions are distinct keys.
+  assert.equal(result.wired, 1);
+  assert.equal(result.missing.length, 1);
+  assert.match(result.missing[0].definition, /ab\.rs::B::handoff$/);
+  // Sanity: A::handoff did not come back missing too.
+  assert.equal(result.missing.filter((m) => /A::handoff/.test(m.definition)).length, 0);
+});
+
+test('r5 comment probe: a comment-only mention of foo() never satisfies a caller line', () => {
+  const { root, read, files } = makeFixture({
+    rust: {
+      [MAIN]: [
+        'fn main() { run(); }',
+        'fn run() {',
+        '  // foo() would be called here once the ingress lands',
+        '  /* also foo() in a block comment */',
+        '  bar();',
+        '}',
+      ].join('\n'),
+      'native/hagency/src/thing.rs': [
+        'pub fn foo() {}',
+        'pub fn bar() {}',
+      ].join('\n'),
+    },
+    specs: [
+      '  Production caller: hagency::thing::foo',
+      '  Production caller: hagency::thing::bar',
+    ].join('\n') + '\n',
+    adr: '| `x` | gap G1 |\n',
+  });
+  const { result, ok } = checkProductionCallers({ root, read, files });
+  assert.equal(ok, false);
+  assert.equal(result.wired, 1); // bar only
+  assert.equal(result.missing.length, 1);
+  assert.match(result.missing[0].caller, /::foo$/);
 });

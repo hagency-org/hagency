@@ -94,19 +94,70 @@ export function extractFns(source) {
     const window = source.slice(i, i + 4000).replace(/\/\/[^\n]*/g, '');
     const semi = window.indexOf(';');
     const brace = window.indexOf('{');
-    if (brace === -1 || (semi !== -1 && semi < brace)) { fns.push({ name, body: '' }); continue; }
+    if (brace === -1 || (semi !== -1 && semi < brace)) { fns.push({ name, body: '', sig: '' }); continue; }
     const braceAbs = i + brace;
     let depth = 0, end = braceAbs;
     for (; end < source.length; end++) {
       if (source[end] === '{') depth++;
       else if (source[end] === '}') { depth--; if (depth === 0) { end++; break; } }
     }
-    fns.push({ name, body: source.slice(braceAbs, end), index: m.index });
+    fns.push({ name, body: source.slice(braceAbs, end), index: m.index, sig: source.slice(m.index, braceAbs) });
   }
   return fns;
 }
 
+// Remove `//` line comments and `/* */` block comments while preserving
+// string and char literals (so `"//"` inside a literal is not eaten and a
+// literal's contents survive). Handles escapes inside literals.
+export function stripComments(src) {
+  let out = '';
+  let i = 0;
+  const n = src.length;
+  while (i < n) {
+    const c = src[i];
+    const two = src.slice(i, i + 2);
+    if (two === '//') {
+      const nl = src.indexOf('\n', i);
+      i = nl === -1 ? n : nl;
+      continue;
+    }
+    if (two === '/*') {
+      let depth = 1;
+      i += 2;
+      while (i < n && depth > 0) {
+        if (src.slice(i, i + 2) === '/*') { depth++; i += 2; }
+        else if (src.slice(i, i + 2) === '*/') { depth--; i += 2; }
+        else i++;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      // char vs lifetime: `'a'` literal vs `'a` lifetime — treat as literal
+      // only when it closes within a short span and the next char is `'`.
+      const quote = c;
+      let j = i + 1;
+      let lit = c;
+      let closed = false;
+      while (j < n) {
+        if (src[j] === '\\') { lit += src.slice(j, j + 2); j += 2; continue; }
+        if (src[j] === '\n') break;
+        lit += src[j];
+        if (src[j] === quote) { closed = true; j++; break; }
+        j++;
+      }
+      if (quote === "'" && !closed) { out += c; i++; continue; } // lifetime
+      out += lit;
+      i = j;
+      continue;
+    }
+    out += c;
+    i++;
+  }
+  return out;
+}
+
 export function extractCalls(body) {
+  body = stripComments(body);
   const calls = new Set();
   // path-qualified: a::b::name(  -> full "a::b::name" ONLY. Registering the
   // short tail as well would make `palpo::Owner::start(` collide with every
@@ -182,7 +233,7 @@ export function buildGraph(files, read) {
   for (const rel of files) {
     const src = sources.get(rel);
     const defs = extractFns(src);
-    for (const def of defs) { def.impls = implsOf(src, def); def.types = typeHints(src, def.impls, structFields); }
+    for (const def of defs) { def.impls = implsOf(src, def); def.types = typeHints(def.sig || '', def.body, def.impls, structFields); }
     fileFns.set(rel, defs);
     for (const def of defs) {
       if (!fns.has(def.name)) fns.set(def.name, []);
@@ -261,22 +312,34 @@ export function structFieldTypes(src) {
   return out;
 }
 
-export function typeHints(src, impls, structFields) {
+export function typeHints(sig, body, impls, structFields) {
+  // Scoped to ONE function: its signature and body only. Hints must never
+  // leak across functions of a file (a param typed &A in fn1 must not type
+  // fn2's receiver).
   const hints = new Map();
   const set = (k, v) => { if (k && v && !hints.has(k)) hints.set(k, v); };
-  // name: [&]['a] [mut] Type  (params, fields, let annotations)
-  for (const m of src.matchAll(/\b([a-z_][A-Za-z0-9_]*)\s*:\s*&\s*(?:'\w+\s+)?(?:mut\s+)?([A-Z][A-Za-z0-9_]*)/g)) set(m[1], m[2]);
-  for (const m of src.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*:\s*([A-Z][A-Za-z0-9_]*)/g)) set(m[1], m[2]);
-  // let x = Type::new/start/build/open/..( — constructor result
-  for (const m of src.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*=\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*([A-Z][A-Za-z0-9_]*)::(?:new|start|build|open|connect|bind)\s*\(/g)) set(m[1], m[2]);
+  const text = `${sig}\n${stripComments(body || '')}`;
+  // name: [&]['a] [mut] Type  (fn params in the signature, typed lets)
+  for (const m of text.matchAll(/\b([a-z_][A-Za-z0-9_]*)\s*:\s*&\s*(?:'\w+\s+)?(?:mut\s+)?([A-Z][A-Za-z0-9_]*)/g)) set(m[1], m[2]);
+  for (const m of text.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*:\s*([A-Z][A-Za-z0-9_]*)/g)) set(m[1], m[2]);
+  // let x = Type::new/start/build/open/connect/bind( — constructor result
+  for (const m of text.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*=\s*(?:[A-Za-z_][A-Za-z0-9_]*::)*([A-Z][A-Za-z0-9_]*)::(?:new|start|build|open|connect|bind)\s*\(/g)) set(m[1], m[2]);
   if (impls && impls.length) set('self', impls[0]);
+  // Destructuring: let Type { a, b, .. } = expr; — the type name is explicit,
+  // so field types come from structFields regardless of the source value.
+  for (const m of text.matchAll(/\blet\s+([A-Z][A-Za-z0-9_]*)\s*\{([^}]*)\}\s*=/g)) {
+    const fields = structFields && structFields.get(m[1]);
+    if (!fields) continue;
+    for (let fname of m[2].split(',')) {
+      fname = fname.trim().replace(/^#\[[^\]]*\]\s*/g, '').replace(/^(?:ref\s+|mut\s+)/, '').split(':')[0].trim();
+      if (/^[a-z_][A-Za-z0-9_]*$/.test(fname)) set(fname, fields.get(fname));
+    }
+  }
   // let x = self.field[.clone()|...] — the field's struct type (clone and
   // Arc derefs preserve it). The struct may be declared in another file.
-  const fields = structFields && impls && impls.length ? structFields.get(impls[0]) : null;
-  if (fields) {
-    for (const m of src.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*=\s*self\.([a-z_][A-Za-z0-9_]*)/g)) {
-      set(m[1], fields.get(m[2]));
-    }
+  const own = structFields && impls && impls.length ? structFields.get(impls[0]) : null;
+  if (own) {
+    for (const m of text.matchAll(/\blet\s+(?:mut\s+)?([a-z_][A-Za-z0-9_]*)\s*=\s*self\.([a-z_][A-Za-z0-9_]*)/g)) set(m[1], own.get(m[2]));
   }
   return hints;
 }
@@ -305,7 +368,7 @@ export function resolvePath(graph, files, full) {
   const defs = (graph.fileFns.get(file) || []).filter((d) => d.name === fnName);
   const inImpl = typeName ? defs.filter((d) => (d.impls || []).includes(typeName)) : defs;
   const chosen = typeName ? inImpl : defs;
-  if (chosen.length === 1) return { def: { file, name: fnName }, reason: null };
+  if (chosen.length === 1) return { def: { file, name: fnName, impls: chosen[0].impls || [] }, reason: null };
   if (chosen.length === 0) return { def: null, reason: `no fn ${fnName}${typeName ? ` in impl ${typeName}` : ''} in ${file}` };
   return { def: null, reason: `${chosen.length} definitions of ${fnName} in ${file}` };
 }
@@ -349,43 +412,45 @@ export function resolveReachable(graph, roots) {
   // (c) otherwise ALL same-named definitions — the edge is ambiguous iff the
   // call binds more than one definition. Ambiguous edges propagate: a node
   // reached only through them is `ambiguous`, never `wired`.
-  const best = new Map(); // key file::name -> 'clean' | 'tainted'
+  // Node identity is (file, name, impls): a method inside `impl T` is a
+  // different node from a same-named free fn or a method of another impl in
+  // the same file, so a verdict never names the wrong function.
+  const best = new Map(); // key file::Type::name (or file::name) -> 'clean' | 'tainted'
   const parents = new Map(); // key -> { from, via } of the first tainting edge
   const queue = [];
-  const seed = (file, name, taint, from, via) => {
-    const key = `${file}::${name}`;
+  const norm = (impls) => [...(impls || [])].sort().join('&');
+  const keyOf = (file, name, impls) => (norm(impls) ? `${file}::${norm(impls)}::${name}` : `${file}::${name}`);
+  const seed = (file, name, impls, taint, from, via) => {
+    const key = keyOf(file, name, impls);
     const cur = best.get(key);
     if (cur === 'clean' || (cur === 'tainted' && taint)) return;
     if (cur === 'tainted' && !taint) best.set(key, 'clean'); // upgrade
     else if (!cur) best.set(key, taint ? 'tainted' : 'clean');
     if (taint && !parents.has(key)) parents.set(key, { from, via });
-    queue.push({ file, name, taint });
+    queue.push({ file, name, impls, taint });
   };
-  for (const r of roots) seed(r.file, r.name, false, null, null);
-  const keyOf = (file, name) => `${file}::${name}`;
+  for (const r of roots) seed(r.file, r.name, r.impls || [], false, null, null);
   while (queue.length) {
-    const { file, name, taint } = queue.shift();
-    // Every same-named definition in the file contributes its calls (two impls
-    // may define the same method name in one file — e.g. Collector::intake and
-    // Inner::intake — and each body has its own receiver hints).
-    const defs = (graph.fileFns.get(file) || []).filter((d) => d.name === name);
-    const local = new Set((graph.fileFns.get(file) || []).map((d) => d.name));
-    for (const def of defs) {
+    const { file, name, impls, taint } = queue.shift();
+    // The node is one definition: (file, name, impls). Its body drives the
+    // calls; its own hints drive receiver typing.
+    const def = (graph.fileFns.get(file) || []).find((d) => d.name === name && norm(d.impls) === norm(impls));
+    if (!def) continue;
     const entry = (graph.fns.get(name) || []).find((e) => e.file === file && e.body === def.body);
     if (!entry || !entry.calls) continue;
     const types = def.types || new Map();
+    const local = new Set((graph.fileFns.get(file) || []).filter((d) => !d.impls?.length).map((d) => d.name));
     for (const call of entry.calls) {
-      const via = `${file}::${name} -> ${call}`;
-      // Method call recorded as `receiver.name(`.
-      // Method call recorded as `receiver.name(` — or `?.name(` when the
-      // receiver is a call chain with an unknown type: resolve over
-      // same-named METHOD definitions, ambiguous when several, never dropped.
+      const via = `${keyOf(file, name, impls)} -> ${call}`;
+      // Method call recorded as `?.name(` — receiver is a call chain with an
+      // unknown type: resolve over same-named METHOD definitions, ambiguous
+      // when several, never dropped.
       const um = call.match(/^\?\.([a-z_][A-Za-z0-9_]*)$/);
       if (um) {
         const meth = um[1];
         const candidates = (graph.fns.get(meth) || []).filter((c) => (c.impls || []).length > 0);
         const ambiguousEdge = candidates.length > 1;
-        for (const c of candidates) seed(c.file, meth, taint || ambiguousEdge, keyOf(file, name), via);
+        for (const c of candidates) seed(c.file, meth, c.impls, taint || ambiguousEdge, keyOf(file, name, impls), via);
         continue;
       }
       const mm = call.match(/^([a-z_][A-Za-z0-9_]*)\.([a-z_][A-Za-z0-9_]*)$/);
@@ -401,16 +466,16 @@ export function resolveReachable(graph, roots) {
         }
         if (candidates.length === 0) continue; // no method definition: no edge
         const ambiguousEdge = candidates.length > 1;
-        for (const c of candidates) seed(c.file, meth, taint || ambiguousEdge, keyOf(file, name), via);
+        for (const c of candidates) seed(c.file, meth, c.impls, taint || ambiguousEdge, keyOf(file, name, impls), via);
         continue;
       }
       const parts = call.split('::');
       const short = parts[parts.length - 1];
-      // Unqualified calls bind the same-file definition first; qualified
+      // Unqualified calls bind the same-file FREE definition first; qualified
       // calls resolve their path (a same-file short-name coincidence must
       // not swallow `bootstrap::accounts::run` just because main.rs also
       // defines a `run`).
-      if (parts.length === 1 && local.has(short)) { seed(file, short, taint, keyOf(file, name), via); continue; }
+      if (parts.length === 1 && local.has(short)) { seed(file, short, [], taint, keyOf(file, name, impls), via); continue; }
       let targets = [];
       let ambiguousEdge = false;
       if (parts.length > 1) {
@@ -444,25 +509,29 @@ export function resolveReachable(graph, roots) {
         else targets = []; // unresolvable qualified path: no edge, not ambiguous
       } else {
         const candidates = graph.fns.get(short) || [];
-        targets = candidates.map((c) => ({ file: c.file, name: short }));
+        targets = candidates.map((c) => ({ file: c.file, name: short, impls: c.impls }));
         ambiguousEdge = candidates.length > 1;
       }
-      for (const t of targets) seed(t.file, t.name, taint || ambiguousEdge, keyOf(file, name), via);
-    }
+      for (const t of targets) seed(t.file, t.name, t.impls || [], taint || ambiguousEdge, keyOf(file, name, impls), via);
     }
   }
   return { best, parents };
 }
 
+const keyFor = (def) => {
+  const norm = [...(def.impls || [])].sort().join('&');
+  return norm ? `${def.file}::${norm}::${def.name}` : `${def.file}::${def.name}`;
+};
+
 // True when `def` is reachable from a root through unambiguous edges only.
 export function isCleanlyReachable(reach, def) {
-  return reach.best.get(`${def.file}::${def.name}`) === 'clean';
+  return reach.best.get(keyFor(def)) === 'clean';
 }
 
 // The chain by which a tainted node was reached (for diagnostics).
 export function taintChain(reach, def) {
   const chain = [];
-  let key = `${def.file}::${def.name}`;
+  let key = keyFor(def);
   let guard = 0;
   while (reach.parents.has(key) && guard++ < 50) {
     const p = reach.parents.get(key);
@@ -511,7 +580,7 @@ export function checkProductionCallers({ root = repoRoot, read, files: givenFile
     const r = resolvePath(graph, files, item.parsed.full);
     if (!r.def) { unresolved.push({ ...ref, reason: r.reason }); continue; }
     if (isCleanlyReachable(reach, r.def)) { wired.push(ref); continue; }
-    const key = `${r.def.file}::${r.def.name}`;
+    const key = keyFor(r.def);
     if (reach.best.has(key)) ambiguous.push({ ...ref, definition: key, chain: taintChain(reach, r.def) });
     else missing.push({ ...ref, definition: key });
   }
@@ -548,7 +617,7 @@ export function explain(full) {
   const reach = resolveReachable(graph, roots);
   const r = resolvePath(graph, files, full);
   if (!r.def) return { target: full, resolved: false, reason: r.reason };
-  const key = `${r.def.file}::${r.def.name}`;
+  const key = keyFor(r.def);
   const state = reach.best.get(key) || 'unreached';
   const short = r.def.name;
   // Candidate callers: every definition whose extracted calls mention the
@@ -559,7 +628,7 @@ export function explain(full) {
       const entry = (graph.fns.get(d.name) || []).find((e) => e.file === file && e.body === d.body);
       if (!entry?.calls) continue;
       const mentions = entry.calls.filter((c) => c === short || c.endsWith(`::${short}`) || c.endsWith(`.${short}`));
-      if (mentions.length) candidates.push({ at: `${file}::${d.name}`, via: mentions, state: reach.best.get(`${file}::${d.name}`) || 'unreached' });
+      if (mentions.length) candidates.push({ at: keyFor({ file, name: d.name, impls: d.impls }), via: mentions, state: reach.best.get(keyFor({ file, name: d.name, impls: d.impls })) || 'unreached' });
     }
   }
   const reached = candidates.filter((c) => c.state === 'clean' || c.state === 'tainted');
