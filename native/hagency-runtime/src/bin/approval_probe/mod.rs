@@ -165,17 +165,25 @@ pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::R
         // this marker before releasing the host's gate, so the resolution can
         // never be emitted before the host is in flight nor after its send.
         fs::write(marker.with_extension("approval-resolving"), b"resolving")?;
+        // End the turn here (the turn-untransmitted pattern) so the drive can
+        // complete and the host can stop ownership while this mode still
+        // holds the reader — the frame watch below must not wait on a close
+        // that only the terminal turn can cause.
+        note(
+            "turn/completed",
+            json!({ "threadId": "owned-thread", "turn": { "id": "owned-turn", "status": "completed", "items": [] } }),
+        )?;
         // A frame arriving after the resolution is a REAL defect, so the
-        // watch is bounded by the budget — never a short literal that can
-        // pass vacuously when the frame is merely late.
-        if let Ok(extra) = timeout_read(harness_wait() * 2) {
-            return Err(io::Error::other(format!(
-                "frame after pre-first-byte resolution: {extra:?}"
-            )));
-        }
-        // Return into the parent's terminal turn: turn/completed ends the
-        // drive promptly, quietly, with no approval frame on the wire.
-        return Ok(true);
+        // watch ends on the real signal — the host's stdin close, the proof
+        // the drive ended — under the custody ceiling, never a fuse that can
+        // expire while a late frame is still in flight and pass vacuously.
+        // The hold is itself the no-frame proof: it returns Ok only at EOF
+        // with an empty buffer, and a buffered frame would keep fill_buf
+        // non-empty until the ceiling and fail instead.
+        hold_reader_to_eof(reader, marker)?;
+        // The quiet end: EOF with no frame on the wire; the drive completed
+        // through the resolution, never through a sent frame.
+        return Ok(false);
     }
     if mode == "owned-approval-turn-untransmitted" {
         // The final verdict.s rule, untransmitted arm: end the turn while
