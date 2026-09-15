@@ -24,7 +24,14 @@ fn fixture() -> Value {
 }
 
 fn sha256(path: &PathBuf) -> String {
-    Sha256::digest(std::fs::read(path).unwrap_or_default())
+    // The generator (approval-vectors.mjs:44) hashes LF-normalized text:
+    // git checks these unpinned root sources out as CRLF on Windows, so a
+    // raw byte digest of the checkout would only match on POSIX. Hash the
+    // same normalized content the generator pinned.
+    let text = std::fs::read_to_string(path)
+        .unwrap_or_default()
+        .replace("\r\n", "\n");
+    Sha256::digest(text.as_bytes())
         .iter()
         .map(|b| format!("{b:02x}"))
         .collect()
