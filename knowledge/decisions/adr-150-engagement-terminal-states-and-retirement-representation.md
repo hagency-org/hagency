@@ -27,9 +27,11 @@ does not modify.
 
 **The two divergences.**
 
-1. **Terminal states.** The port writes two distinct terminal states —
-   `EngagementState::Rejected` and `EngagementState::Revoked`
-   (`native/hagency-core/src/project.rs:236-243`). The retained product has
+1. **Terminal states.** The port writes three terminal states — `Rejected`,
+   `Revoked` and `Failed` (`native/hagency-core/src/project.rs:236-243`) — and
+   this record concerns only the first two; `Failed` (provision not applied,
+   `domain.rs:1406-1408`) has no retained counterpart to diverge from and stays
+   as is. The retained product has
    **one** terminal state: `STATES = ['pending','active','ended']`
    (`lib/engagement-store.js:39`), with the distinction carried as free text in
    `endedReason` (`'rejected'` `:604`, `'revoked'` `:735`).
@@ -136,9 +138,9 @@ at all. The driver owes, in this order:
    retirement and verifies it strictly (`lib/palpo-agent-retirement.js:9-24`,
    `POST /retire-agent`, requiring `state==='retired'`,
    `matrixIdentity==='deactivated'`, `appserviceAccess==='revoked'`, empty
-   `joinedRooms`). **The port has no counterpart to this step** (grep for
-   `retire-agent`/`retire_agent` across `native/` finds only a fixture inventory
-   entry). See the deferral below.
+   `joinedRooms`). **The port has no counterpart to this step** (a grep for
+   `retire-agent`/`retire_agent` across `native/` finds no hit at all — not
+   even a fixture inventory entry). See the deferral below.
 
 **No automatic retry, in any form.** The retained product has no sweeper: its
 only interval helper (`backend-v2.js:17422-17426`) is not used for withdrawals,
