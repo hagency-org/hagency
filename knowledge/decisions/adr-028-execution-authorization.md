@@ -53,3 +53,18 @@ deep-cloning historical payloads. Terminal request receipts are retained through
 seven days after expiry and pruned on subsequent creation. A pruned request cannot
 be replayed as an authorization. Independent persistent grants retain their full
 binding/incarnation authority and continue to be explicitly revocable.
+
+## Canonical projection integration
+
+Canonical requests now share an atomic transaction with projection rows, indexes,
+publisher state and receipts. The outer rollback guard snapshots the full state;
+terminal request object identity is not an API guarantee. This supersedes the
+mutable-record-only optimization above and retains the disclosed O(N) snapshot
+and JSON persistence cost. Failed writes must restore all state and disk bytes,
+including grants and outbox work.
+
+The seven-day pruning threshold now also requires every retained projection for
+the request to have a durable receipt. Unresolved delivery can retain a historical
+request beyond seven days; there is no hard history-size bound. Once delivery is
+complete, later creation can prune the request without revoking an independent
+grant. A pruned request still cannot be consumed or replayed.

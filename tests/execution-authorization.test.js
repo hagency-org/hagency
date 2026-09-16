@@ -1,5 +1,5 @@
 import { afterEach, expect, test, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { ApprovalStore } from '../lib/approval-store.js';
@@ -17,24 +17,57 @@ const verdict = (r, action, overrides = {}) => ({ sender_mxid: r.owner_mxid, roo
   agent: r.agent, project: r.project, project_room_id: r.project_room_id, input_digest: r.input_digest,
   action, event_id: `$${r.id}`, ...overrides });
 
-test('approval rollback copies mutable records only and prunes expired historical requests without revoking grants', () => {
+test('approval rollback preserves projection state and pruning waits for delivery without revoking grants', () => {
   const root = mkdtempSync(path.join(os.tmpdir(), 'approval-retention-')); roots.push(root);
+  const filename = path.join(root, 'approvals.json');
   let now = 1000;
-  const store = new ApprovalStore(path.join(root, 'approvals.json'), { now: () => now });
+  const store = new ApprovalStore(filename, { now: () => now });
   store.upsertBinding(binding);
   const record = store.createRequest(body('original'), { execution: command() });
+  let receiptNumber = 0;
+  const deliverDue = () => {
+    for (let pass = 0; pass < 3; pass++) {
+      const due = store.listDueProjections().filter(row => row.request_id === record.id);
+      if (!due.length) return;
+      for (const row of due) {
+        const plan = store.prepareProjection(row.cas_token, {
+          publisher_scope: 'local_bot', publisher_mxid: '@bot:test', homeserver: 'test',
+          credential_kind: 'local_bot', credential_generation: 'g1', payload_version: 1,
+          prepared_event_type: 'm.room.message', prepared_payload: { body: row.channel },
+        }).plan;
+        const identity = { publisher_scope: plan.publisher_scope, publisher_mxid: plan.publisher_mxid,
+          room_id: row.target_room_id, credential_generation: plan.credential_generation,
+          transaction_id: plan.transaction_id };
+        store.beginProjectionSend(plan.cas_token, identity);
+        store.receiptProjection(plan.cas_token, { ...identity, event_id: `$receipt${++receiptNumber}` });
+      }
+    }
+    throw new Error('fixture did not finish the bounded projection drain');
+  };
+  deliverDue();
   store.submitMatrixVerdict(record.id, verdict(record, 'approve_always'));
-  const terminal = store.state.requests[record.id];
+  const before = structuredClone(store.state);
+  const diskBefore = readFileSync(filename, 'utf8');
   const originalSave = store._save.bind(store);
   store._save = () => { throw new Error('disk full'); };
   expect(() => store.createRequest(body('failed'))).toThrow('disk full');
-  expect(store.state.requests[record.id]).toBe(terminal);
+  expect(store.state).toStrictEqual(before);
+  expect(readFileSync(filename, 'utf8')).toBe(diskBefore);
   expect(Object.keys(store.state.requests)).toEqual([record.id]);
   store._save = originalSave;
   now += 8 * 24 * 60 * 60_000;
   const next = store.createRequest(body('next'), { execution: command() });
-  expect(store.getRequest(record.id)).toBeNull();
+  expect(store.getRequest(record.id).status).toBe('approved');
+  expect(store.listDueProjections().some(row => row.request_id === record.id
+    && row.channel === 'private_status')).toBe(true);
   expect(next.status).toBe('approved');
+  deliverDue();
+  expect(store.state.projectionOutbox.filter(row => row.requestId === record.id)
+    .every(row => row.eventId)).toBe(true);
+  const afterDelivery = store.createRequest(body('after-delivery'), { execution: command() });
+  expect(store.getRequest(record.id)).toBeNull();
+  expect(store.consumeDecision(record.id, 'edison', record.input_digest).code).toBe('not_found');
+  expect(afterDelivery.status).toBe('approved');
   expect(store.listGrants('edison').filter(grant => grant.active)).toHaveLength(1);
 });
 

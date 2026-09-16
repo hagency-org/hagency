@@ -81,6 +81,14 @@ Scenario: Private cards present supported scopes
   When the Matrix bridge publishes and consumes approval cards
   Then supported decisions retain digest and authenticated sender binding while public notices stay redacted
 
+Scenario: Retention and failed writes preserve durable projection authority
+  Test: approval rollback preserves projection state and pruning waits for delivery without revoking grants
+  Given a terminal request with an independent grant and an undelivered status
+  When a write fails or the historical request exceeds seven days
+  Then a failed write restores every state field and the original disk bytes
+  And the request remains available until its projection has a durable receipt
+  And later pruning rejects request replay without revoking the separate grant
+
 ## Out of Scope
 
 - Claude YOLO, granting OS permissions, undoing completed operations, replacing native sandboxing.

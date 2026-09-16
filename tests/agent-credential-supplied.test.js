@@ -297,6 +297,7 @@ describe('ensureAgentAccount — supplied credentials only', () => {
     await expect(mod.ensureAgentAccountForTest(AGENT)).resolves.toBe('syt_supplied');
     // Adopted, so the next call is a single whoami rather than a re-read of the environment.
     expect(mod.agentTokenStateForTest()[AGENT]?.accessToken).toBe('syt_supplied');
+    expect(mod.agentTokenStateForTest()[AGENT]?.credentialGeneration).toMatch(/^[a-f0-9]{32}$/);
   });
 
   test('rotation: a dead stored token falls through to the fresh env one', async () => {
@@ -418,6 +419,7 @@ describe('ensureAgentAccount — supplied credentials only', () => {
 
     await expect(mod.ensureAgentAccountForTest(AGENT)).resolves.toBe('syt_same');
     expect(whoamiCalls).toEqual(['syt_same']);
+    expect(mod.agentTokenStateForTest()[AGENT]?.credentialGeneration).toMatch(/^[a-f0-9]{32}$/);
   });
 
   test('re-adopting the same token does not rewrite state', async () => {

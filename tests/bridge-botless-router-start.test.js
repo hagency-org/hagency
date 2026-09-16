@@ -10,6 +10,7 @@ describe('appservice startup drains thread outboxes without a bot', () => {
   let MatrixBridge;
   let runtimeDir;
   let envSnapshot;
+  let bridge;
 
   beforeAll(async () => {
     runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'hagency-botless-router-'));
@@ -29,7 +30,11 @@ describe('appservice startup drains thread outboxes without a bot', () => {
     ({ MatrixBridge } = await import(`${pathToFileURL(path.resolve('bridge-matrix.js')).href}?botless-router-start`));
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    bridge?.stopApprovalProjectionWorker();
+    await bridge?._approvalProjectionDrainPromise;
+    vi.clearAllTimers();
+    bridge = null;
     vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
@@ -43,7 +48,7 @@ describe('appservice startup drains thread outboxes without a bot', () => {
   test('a pending task acknowledgement and a later reply both leave after bot login fails', async () => {
     vi.useFakeTimers();
     vi.stubGlobal('fetch', async () => new Response('{"ok":true}', { status: 200 }));
-    const bridge = new MatrixBridge();
+    bridge = new MatrixBridge();
     // Replace unrelated startup I/O; start(), both outbox polls, and delivery stay real.
     for (const method of ['replayPendingMatrixDeliveries', 'refreshActingCredentials',
       'pollAgentInvites', 'pollRegistrations', 'startAppserviceIntake', 'connectSSE', 'writeHealthRecord']) {
@@ -60,27 +65,66 @@ describe('appservice startup drains thread outboxes without a bot', () => {
       threadRootEventId: '$root', body: id, transactionId: id, claimToken: 'claim' });
     const pending = { matrix: command('task-ack'), reply: null };
     const receipts = [];
-    bridge.callBackendApi = async (_method, route, body) => {
-      if (_method === 'GET' && route === '/api/matrix/direct-agents') return { agents: [] };
-      if (_method === 'POST' && route === '/api/matrix-work/claim') return { job: null };
-      const claim = /\/(matrix|reply)-outbox\/claim$/.exec(route);
-      if (claim) {
+    const approvalReads = [];
+    const unexpected = [];
+    const approvalPages = new Map([
+      ['/api/approvals/matrix/projections', 'projections'],
+      ['/api/approval-bindings/matrix/rooms', 'rooms'],
+      ['/api/approval-bindings/matrix/markers', 'markers'],
+    ]);
+    bridge.callBackendApi = async (method, route, body) => {
+      if (method === 'GET' && route === '/api/matrix/direct-agents') return { agents: [] };
+      if (method === 'POST' && route === '/api/matrix-work/claim') return { job: null };
+      const url = new URL(route, 'http://fixture');
+      const field = approvalPages.get(url.pathname);
+      if (method === 'GET' && field) {
+        expect(url.searchParams.get('limit')).toBe('20');
+        expect(body).toBeNull();
+        approvalReads.push(url.pathname);
+        return { [field]: [] };
+      }
+      const claim = /^\/api\/router\/(matrix|reply)-outbox\/claim$/.exec(route);
+      if (method === 'POST' && claim) {
         const next = pending[claim[1]];
         pending[claim[1]] = null;
         return { command: next };
       }
-      receipts.push({ route, body });
-      return { ok: true };
+      if (method === 'POST' && /^\/api\/router\/(matrix|reply)-outbox\/[^/]+\/delivered$/.test(route)) {
+        receipts.push({ route, body });
+        return { ok: true };
+      }
+      unexpected.push({ method, route });
+      throw new Error(`unexpected fixture route: ${method} ${route}`);
     };
 
     await bridge.start();
+    await bridge._approvalProjectionDrainPromise;
+    expect(approvalReads).toEqual([...approvalPages.keys()]);
+    expect(unexpected).toEqual([]);
     expect(sends.map((args) => args[2].body)).toEqual(['task-ack']);
     expect(sends[0][0]).toBe(sender);
     expect(sends[0][2]['m.relates_to'].event_id).toBe('$root');
-    expect(receipts[0].route).toBe('/api/router/matrix-outbox/task-ack/delivered');
+    expect(receipts).toEqual([{ route: '/api/router/matrix-outbox/task-ack/delivered',
+      body: { claim_token: 'claim', event_id: '$sent' } }]);
     pending.reply = command('task-result');
     await vi.advanceTimersByTimeAsync(250);
     expect(sends.map((args) => args[2].body)).toEqual(['task-ack', 'task-result']);
-    expect(receipts[1].route).toBe('/api/router/reply-outbox/task-result/delivered');
+    expect(receipts).toEqual([
+      { route: '/api/router/matrix-outbox/task-ack/delivered', body: { claim_token: 'claim', event_id: '$sent' } },
+      { route: '/api/router/reply-outbox/task-result/delivered', body: { claim_token: 'claim', event_id: '$sent' } },
+    ]);
+    for (const [index, id] of ['task-ack', 'task-result'].entries()) {
+      expect(sends[index][1]).toBe('!room:palpo.test');
+      expect(sends[index][2]['m.relates_to'].event_id).toBe('$root');
+      expect(sends[index][4]).toEqual({ transactionId: id, throwOnFailure: true });
+    }
+    // The approval worker remains real and independently polls its three empty
+    // canonical pages; those GETs must never enter the router receipt ledger.
+    await vi.advanceTimersByTimeAsync(4750);
+    await bridge._approvalProjectionDrainPromise;
+    expect(approvalReads).toEqual([...approvalPages.keys(), ...approvalPages.keys()]);
+    expect(receipts).toHaveLength(2);
+    expect(sends).toHaveLength(2);
+    expect(unexpected).toEqual([]);
   });
 });

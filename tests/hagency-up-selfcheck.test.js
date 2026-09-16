@@ -1,13 +1,17 @@
 import { describe, expect, test } from 'vitest';
-import { spawnSync, execSync, spawn } from 'child_process';
-import { mkdtempSync, readdirSync, statSync, readFileSync, writeFileSync, rmSync } from 'fs';
+import { execFile, execFileSync } from 'child_process';
+import { chmodSync, mkdirSync, mkdtempSync, readdirSync, statSync, readFileSync, writeFileSync, rmSync } from 'fs';
 import http from 'http';
 import os from 'os';
 import path from 'path';
+import { promisify } from 'util';
 
 const repoRoot = path.resolve('.');
-const tmuxProbe = spawnSync('which', ['tmux'], { encoding: 'utf8' });
-const tmuxBin = tmuxProbe.status === 0 ? tmuxProbe.stdout.trim() : null;
+const execFileAsync = promisify(execFile);
+
+function shellQuote(value) {
+  return `'${String(value).replaceAll("'", `'"'"'`)}'`;
+}
 
 function listen(handler) {
   return new Promise((resolve, reject) => {
@@ -35,13 +39,13 @@ function snap(dir) {
 }
 
 describe('12-r2: --print-pane-target is zero-side-effect', () => {
-  test.skipIf(!tmuxBin)('no runtime files created, no backend requests, output =<session>:1.1', async () => {
+  test('no runtime files created, no backend requests, output =<session>:1.1', async () => {
     const runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'hagency-12r2-'));
     // Pre-create the runtime skeleton the script would use, so we can detect writes to it.
     const agentsDir = path.join(runtimeDir, 'agents');
     const tmpDir = path.join(runtimeDir, 'tmp');
     for (const d of [agentsDir, tmpDir]) {
-      spawnSyncSafe(`mkdir -p ${d}`);
+      mkdirSync(d, { recursive: true });
     }
     const requests = [];
     const { server, port } = await listen((req, res) => {
@@ -50,46 +54,49 @@ describe('12-r2: --print-pane-target is zero-side-effect', () => {
       res.end('{}');
     });
 
-    // Isolated tmux server with base-index 1 + PATH shim for `tmux`.
-    const conf = path.join(runtimeDir, 'tmux.conf');
-    writeFileSync(conf, 'set -g base-index 1\nset -g pane-base-index 1\n');
-    const sock = `hagency-selfcheck-${path.basename(runtimeDir)}`;
-    const binDir = path.join(runtimeDir, 'bin');
-    spawnSyncSafe(`mkdir -p ${binDir}`);
-    writeFileSync(path.join(binDir, 'tmux'), `#!/usr/bin/env bash\nexec ${tmuxBin} -L ${sock} "$@"\n`);
-    spawnSyncSafe(`chmod +x ${path.join(binDir, 'tmux')}`);
-    spawnSyncSafe(`${tmuxBin} -L ${sock} -f ${conf} new-session -d -s t12 'sleep 8'`);
+    let tmuxPath = null;
+    const sock = `hagency-12r2-${process.pid}-${path.basename(runtimeDir)}`;
+    try {
+      // Isolated tmux server with base-index 1 + PATH shim for `tmux`.
+      const conf = path.join(runtimeDir, 'tmux.conf');
+      writeFileSync(conf, 'set -g base-index 1\nset -g pane-base-index 1\n');
+      const session = `t12-${process.pid}`;
+      const binDir = path.join(runtimeDir, 'bin');
+      mkdirSync(binDir);
+      tmuxPath = execFileSync('/usr/bin/env', ['sh', '-c', 'command -v tmux'], { encoding: 'utf8' }).trim();
+      if (!path.isAbsolute(tmuxPath)) throw new Error(`tmux did not resolve to an absolute path: ${tmuxPath}`);
+      writeFileSync(path.join(binDir, 'tmux'), `#!/usr/bin/env bash\nexec ${shellQuote(tmuxPath)} -L ${shellQuote(sock)} "$@"\n`);
+      chmodSync(path.join(binDir, 'tmux'), 0o755);
+      execFileSync(tmuxPath, ['-L', sock, '-f', conf, 'new-session', '-d', '-s', session, 'sleep 30']);
+      const before = snap(runtimeDir);
+      const { stdout, stderr } = await execFileAsync('/bin/bash', ['bin/hagency-up', '--print-pane-target', session], {
+        cwd: repoRoot,
+        encoding: 'utf8',
+        timeout: 5_000,
+        env: {
+          ...process.env,
+          PATH: `${binDir}:${process.env.PATH || ''}`,
+          HAGENCY_INTERNAL_DISPATCH: '1',
+          HAGENCY_RUNTIME_DIR: runtimeDir,
+          HAGENCY_API: `http://127.0.0.1:${port}`,
+        },
+      });
 
-    const before = snap(runtimeDir);
-    const out = spawnSyncSafe(
-      `cd ${repoRoot} && PATH=${JSON.stringify(binDir)}:$PATH HAGENCY_INTERNAL_DISPATCH=1 HAGENCY_RUNTIME_DIR=${JSON.stringify(runtimeDir)} HAGENCY_API=http://127.0.0.1:${port} bash bin/hagency-up --print-pane-target t12`,
-    );
+      expect(stderr).not.toMatch(/Error|error/);
+      expect(stdout.trim()).toBe(`=${session}:1.1`);
 
-    expect(out.stderr).not.toMatch(/Error|error/);
-    expect(out.stdout.trim()).toBe('=t12:1.1');
-
-    // ZERO side effects: the runtime tree is byte-identical (same files, same fingerprints)
-    const after = snap(runtimeDir);
-    expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
-    for (const k of Object.keys(before)) expect(after[k]).toBe(before[k]);
-    // and the backend saw NOTHING — no lifecycle, no registration, no heartbeat
-    expect(requests).toEqual([]);
-
-    spawnSyncSafe(`${tmuxBin} -L ${sock} kill-server`);
-    server.close();
-    rmSync(runtimeDir, { recursive: true, force: true });
+      // ZERO side effects: the runtime tree is byte-identical (same files, same fingerprints)
+      const after = snap(runtimeDir);
+      expect(Object.keys(after).sort()).toEqual(Object.keys(before).sort());
+      for (const k of Object.keys(before)) expect(after[k]).toBe(before[k]);
+      // and the backend saw NOTHING — no lifecycle, no registration, no heartbeat
+      expect(requests).toEqual([]);
+    } finally {
+      if (tmuxPath) {
+        try { execFileSync(tmuxPath, ['-L', sock, 'kill-server'], { stdio: 'ignore' }); } catch { /* already gone */ }
+      }
+      await new Promise(resolve => server.close(resolve));
+      rmSync(runtimeDir, { recursive: true, force: true });
+    }
   });
 });
-
-function spawnSyncSafe(cmd) {
-  if (cmd.startsWith('cd ')) {
-    try {
-      const stdout = execSync(cmd, { shell: '/bin/bash', encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
-      return { stdout: stdout ?? '', stderr: '' };
-    } catch (e) {
-      return { stdout: e.stdout ?? '', stderr: (e.stderr || '') + String(e.message) };
-    }
-  }
-  execSync(cmd, { stdio: 'ignore' });
-  return { stdout: '', stderr: '' };
-}

@@ -2313,8 +2313,9 @@ describe('16-impl-r5: matrix, real backfill, rotation convergence', () => {
       version: 1,
       sides: { [SIDE]: {
         id: SIDE, serverName: SIDE, apiBaseUrl: 'http://127.0.0.1:1', createdAt: 1, updatedAt: 1,
-        active: true, projects: {},
-        credential: { kind: 'appservice', hsToken, asToken, senderLocalpart: 'hagency', namespace: '@ac_.*', url: null },
+        active: true, accessState: 'accepted', projects: {},
+        credential: { kind: 'appservice', hsToken, asToken, senderLocalpart: 'hagency', namespace: '@ac_.*',
+          url: null, outboundGeneration: 'r7-initial-generation' },
         representative: { mxid: REP, localpart: 'hagency', observedAt: 1 },
       } },
       audit: [],
@@ -2361,6 +2362,10 @@ describe('16-impl-r5: matrix, real backfill, rotation convergence', () => {
     expect(self.appserviceInboundSnapshot.get(SIDE)?.registration).toBe(reg1);
     const acting1 = self.actingCredentials.get(SIDE);
     expect(acting1?.registration).toBe(reg1);
+    expect(self.actingSideFor(SIDE)).toMatchObject({
+      side: { active: true, accessState: 'accepted', representative: { mxid: REP } },
+      credential: { kind: 'appservice', outboundGeneration: expect.any(String) },
+    });
     // the apiBaseUrl lives in the STORE; point it at the fake Palpo through the REAL API (the
     // backend owns its store; the API is the only write path it observes)
     await request(ctx.app).post('/api/project-sides')

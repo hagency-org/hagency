@@ -1316,7 +1316,9 @@ describe('the ACTING credential — a second, wider grant', () => {
     expect(r.status).toBe(200);
     expect(r.body.sides[0]).toMatchObject({
       sideId: SERVER, kind: 'appservice', asToken, senderLocalpart: 'hagency', namespace: '@ac_.*',
+      active: true, accessState: 'unverified',
     });
+    expect(r.body.sides[0].outboundGeneration).toMatch(/^[0-9a-f]{32}$/);
   });
 
   test('THE GRANTS STAY SEPARATE: acting does not carry hsToken, inbound does not carry asToken', async () => {
@@ -1362,8 +1364,22 @@ describe('the ACTING credential — a second, wider grant', () => {
       credential: { kind: 'registrationToken', registrationToken: REG_TOKEN, representativeToken: 'rep_tok_x' },
     });
     const body = (await acting(app)).body;
-    expect(body.sides[0]).toMatchObject({ sideId: SERVER, kind: 'registrationToken', representativeToken: 'rep_tok_x' });
+    expect(body.sides[0]).toMatchObject({ sideId: SERVER, kind: 'registrationToken',
+      representativeToken: 'rep_tok_x', active: true, accessState: 'unverified' });
+    expect(body.sides[0].outboundGeneration).toMatch(/^[0-9a-f]{32}$/);
     expect(JSON.stringify(body)).not.toContain(REG_TOKEN);
+    const { MatrixBridge } = await import('../bridge-matrix.js');
+    const bridge = Object.assign(Object.create(MatrixBridge.prototype), {
+      actingCredentials: new Map(),
+      backendApiForActing: async () => body,
+      forgetRoomsOnSides: () => {},
+    });
+    await bridge.refreshActingCredentials();
+    // The protected cache preserves readiness metadata; projection actor resolution enforces it.
+    expect(bridge.actingSideFor(SERVER)).toMatchObject({
+      side: { active: true, accessState: 'unverified' },
+      credential: { kind: 'registrationToken', outboundGeneration: expect.any(String) },
+    });
   });
 
   test('a DEACTIVATED side is omitted', async () => {

@@ -4,14 +4,13 @@
  * ADR-003: every remote-execution approval uses BOTH the encrypted owner DM and the redacted
  * public notice, or neither. The "or neither" half is what happens when delivery fails, and it
  * had no coverage of its own end to end. `denyPending` (store) has unit tests now; this file
- * pins the two surfaces above it: the `delivery-failed` ENDPOINT, and the BRIDGE integration
- * `onApprovalRequested` that calls it.
+ * pins the explicit `delivery-failed` endpoint and the bridge boundary that now wakes the durable
+ * projection worker without turning a transient publication failure into a verdict.
  *
  * Why it matters: a request left `pending` after a failed delivery is not benign. The owner
  * never saw the approve/deny buttons, so no verdict can ever arrive — the request sits until it
- * expires, and for its whole TTL an operator reading the queue sees a decision "awaiting the
- * owner" that the owner was never actually shown. Fail-closed turns that into an explicit denial
- * the moment delivery is known to have failed.
+ * expires. The canonical projection outbox now owns retries and receipts, so the old direct-send
+ * handler must not invoke this endpoint on a transient Matrix failure.
  */
 
 import { afterAll, afterEach, beforeAll, describe, expect, test, vi } from 'vitest';
@@ -112,138 +111,20 @@ describe('POST /api/approvals/:id/delivery-failed', () => {
   });
 });
 
-describe('bridge onApprovalRequested — deliver both surfaces or fail closed', () => {
-  let runtimeDir;
-  let MatrixBridge;
-  const saved = {};
-
-  const approval = {
-    id: '$approval-1',
-    agent: 'wf_coordinator',
-    project: 'robrix2',
-    project_room_id: '!project:hq.example',
-    owner_mxid: '@alex:hq.example',
-    owner_dm_room_id: '!owner-dm:hq.example',
-    upstream_request_id: 'u-1',
-    input_digest: 'a'.repeat(64),
-    runtime: 'claude',
-    tool_name: 'Bash',
-    description: 'Create a GitHub issue',
-    input_preview: '{"command":"gh issue create"}',
-    expires_at: Date.now() + 60_000,
-    status: 'pending',
-  };
-
-  beforeAll(async () => {
-    runtimeDir = mkdtempSync(path.join(os.tmpdir(), 'approval-failclosed-bridge-'));
-    for (const k of ['HAGENCY_RUNTIME_DIR', 'MATRIX_AGENT_PREFIX']) saved[k] = process.env[k];
-    process.env.HAGENCY_RUNTIME_DIR = runtimeDir;
-    process.env.MATRIX_AGENT_PREFIX = 'ac_';
-    const url = pathToFileURL(path.resolve('bridge-matrix.js')).href;
-    ({ MatrixBridge } = await import(`${url}?failclosed-test=${Date.now()}`));
-  });
-
-  afterAll(() => {
-    rmSync(runtimeDir, { recursive: true, force: true });
-    for (const [k, v] of Object.entries(saved)) {
-      if (v === undefined) delete process.env[k];
-      else process.env[k] = v;
-    }
-  });
-
-  /** A bridge whose backend calls and both senders are recorded. */
-  function harness({ privateFails = false, publicResult = '$public' } = {}) {
-    const backendCalls = [];
+describe('bridge onApprovalRequested — canonical worker wake', () => {
+  test('queues durable projection work without direct sends or delivery-failed denial', async () => {
+    const { MatrixBridge } = await import('../bridge-matrix.js');
     const bridge = new MatrixBridge();
-    bridge.callBackendApi = vi.fn().mockImplementation(async (method, routePath, body) => {
-      backendCalls.push({ method, routePath, body });
-      if (routePath.endsWith('/matrix')) return { approval };
-      return { ok: true };
-    });
-    bridge.ensureApprovalDmSecurity = vi.fn().mockResolvedValue(undefined);
-    bridge.botClient = {
-      sendMessage: vi.fn().mockImplementation(async () => {
-        if (privateFails) throw new Error('E2EE is unavailable for the owner DM');
-        return '$private';
-      }),
-    };
-    bridge.getAgentToken = vi.fn().mockReturnValue('agent-token');
-    bridge.sendAsAgentContent = vi.fn().mockResolvedValue(publicResult);
-    bridge.rememberMatrixEvent = vi.fn();
-    return { bridge, backendCalls };
-  }
-
-  const deliveryFailedCall = (calls) =>
-    calls.find((c) => c.method === 'POST' && c.routePath.includes('/delivery-failed'));
-
-  test('when the private DM send fails, the request is failed closed — not left pending', async () => {
-    /*
-     * The encrypted owner DM is the surface that carries the approve/deny buttons. If it does not
-     * arrive, the owner cannot decide, so leaving the request pending would wait forever. The
-     * bridge must call delivery-failed. The public send must NOT have happened — "both or
-     * neither" forbids a public status for a request whose owner was never asked.
-     */
-    const { bridge, backendCalls } = harness({ privateFails: true });
-
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-
-    expect(result.ok).toBe(false);
-    const failed = deliveryFailedCall(backendCalls);
-    expect(failed, 'delivery-failed was not called').toBeTruthy();
-    expect(failed.routePath).toContain(encodeURIComponent(approval.id));
-    // The public notice must not go out for a request nobody can act on.
-    expect(bridge.sendAsAgentContent).not.toHaveBeenCalled();
-  });
-
-  test('when the PUBLIC status send fails, it is also failed closed', async () => {
-    /*
-     * The second surface. A falsy return from the public send is a failure the code raises
-     * itself ("public approval status delivery failed"), so a delivered private DM with no
-     * public notice must not be left as a half-published approval.
-     */
-    const { bridge, backendCalls } = harness({ publicResult: null });
-
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-
-    expect(result.ok).toBe(false);
-    expect(deliveryFailedCall(backendCalls)).toBeTruthy();
-  });
-
-  test('a fail-closed update that itself fails does not throw out of the handler', async () => {
-    /*
-     * The last-ditch case: delivery failed AND the deny POST failed too (backend also down).
-     * The handler must still return a structured failure rather than throwing, or the SSE
-     * dispatch that called it loses the event with no record. The request stays pending — which
-     * is why this path also logs — but the process does not fall over.
-     */
-    const backendCalls = [];
-    const bridge = new MatrixBridge();
-    bridge.callBackendApi = vi.fn().mockImplementation(async (method, routePath) => {
-      backendCalls.push({ method, routePath });
-      if (routePath.endsWith('/matrix')) return { approval };
-      throw new Error('backend unreachable');
-    });
-    bridge.ensureApprovalDmSecurity = vi.fn().mockResolvedValue(undefined);
-    bridge.botClient = { sendMessage: vi.fn().mockRejectedValue(new Error('E2EE down')) };
-    bridge.getAgentToken = vi.fn().mockReturnValue('agent-token');
+    bridge.wakeApprovalProjectionWorker = vi.fn(async () => ({ ok: true }));
+    bridge.callBackendApi = vi.fn();
+    bridge.botClient = { sendMessage: vi.fn() };
     bridge.sendAsAgentContent = vi.fn();
-    bridge.rememberMatrixEvent = vi.fn();
 
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-
-    expect(result.ok).toBe(false);
-    // It TRIED to fail closed even though that call then threw.
-    expect(backendCalls.some((c) => c.routePath.includes('/delivery-failed'))).toBe(true);
-  });
-
-  test('a request that is no longer pending is left alone, not re-published', async () => {
-    // The owner may have already decided between the SSE event and this handler running.
-    const { bridge } = harness();
-    bridge.callBackendApi = vi.fn().mockResolvedValue({ approval: { ...approval, status: 'approved' } });
-
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-
-    expect(result).toMatchObject({ ok: false, reason: 'request_not_pending' });
+    await expect(bridge.onApprovalRequested({ request_id: '$approval-1' }))
+      .resolves.toEqual({ ok: true, requestId: '$approval-1', queued: true });
+    expect(bridge.wakeApprovalProjectionWorker).toHaveBeenCalledOnce();
+    expect(bridge.callBackendApi).not.toHaveBeenCalled();
     expect(bridge.botClient.sendMessage).not.toHaveBeenCalled();
+    expect(bridge.sendAsAgentContent).not.toHaveBeenCalled();
   });
 });

@@ -376,45 +376,17 @@ describe('Matrix owner approval bridge', () => {
     expect(records.size).toBe(0);
   });
 
-  test('publishes encrypted private details before redacted public status', async () => {
-    /*
-     * REQ-MATRIX-THREAD-PLAINTEXT-SCOPE, second clause: "encrypted approvals MUST retain their
-     * crypto-client path". The split asserted here is exactly that boundary — the payload
-     * carrying `gh issue create` goes through botClient.sendMessage after
-     * ensureApprovalDmEncrypted, while sendAsAgentContent (the raw agent-token sender that
-     * thread delivery uses) only ever receives content the test proves is redacted. The
-     * ordering assertion keeps the encrypted room from being set up after the private send.
-     */
+  test('approval_requested only wakes canonical durable publication', async () => {
     const bridge = new MatrixBridge();
-    const order = [];
-    bridge.callBackendApi = vi.fn().mockResolvedValue({ ok: true, approval });
-    bridge.ensureApprovalDmEncrypted = vi.fn().mockImplementation(async () => { order.push('encrypted'); });
-    bridge.botClient = {
-      sendMessage: vi.fn().mockImplementation(async (_room, content) => {
-        order.push('private');
-        expect(content['com.agentchat.approval'].input_preview).toContain('gh issue create');
-        return '$private';
-      }),
-    };
-    bridge.getAgentToken = vi.fn().mockReturnValue('agent-token');
-    bridge.sendAsAgentContent = vi.fn().mockImplementation(async (_token, _room, content) => {
-      order.push('public');
-      expect(JSON.stringify(content)).not.toContain('gh issue create');
-      return '$public';
-    });
-    bridge.rememberMatrixEvent = vi.fn();
+    bridge.wakeApprovalProjectionWorker = vi.fn(async () => ({}));
+    bridge.botClient = { sendMessage: vi.fn() };
+    bridge.sendAsAgentContent = vi.fn();
 
-    /*
-     * REQ-OWNER-UI-APPROVAL-DM and REQ-OWNER-UI-APPROVAL-PUBLIC also rest on the two
-     * expectations inside the mocks above plus the `order` assertion below: the only sender
-     * that sees `gh issue create` is botClient.sendMessage, and it only runs after
-     * ensureApprovalDmEncrypted has settled, so the full request exists nowhere but the
-     * encrypted DM. The project-room send is asserted to carry none of it.
-     */
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-
-    expect(result).toMatchObject({ ok: true, privateEventId: '$private', publicEventId: '$public' });
-    expect(order).toEqual(['encrypted', 'private', 'public']);
+    await expect(bridge.onApprovalRequested({ request_id: approval.id }))
+      .resolves.toEqual({ ok: true, requestId: approval.id, queued: true });
+    expect(bridge.wakeApprovalProjectionWorker).toHaveBeenCalledOnce();
+    expect(bridge.botClient.sendMessage).not.toHaveBeenCalled();
+    expect(bridge.sendAsAgentContent).not.toHaveBeenCalled();
   });
 
   test('plaintext approval diagnostics require explicit non-production opt-in', () => {

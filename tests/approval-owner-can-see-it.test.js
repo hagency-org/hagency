@@ -11,7 +11,7 @@
  * somebody who could not see it being asked for — until the request expired and was denied for timing out.
  * Nothing in the product checks this: `resolveOwnerFor` takes the mxid and the room id as given, and
  * `upsertBinding` requires both without checking that one is in the other. The backend cannot check, since
- * reading a room's membership needs a Matrix credential for a room usually on Hagency's own homeserver.
+ * reading a room's membership needs a Matrix credential for a room usually on HAgency's own homeserver.
  *
  * So the check lives at the one place holding both the room and a credential for it, it runs AFTER the
  * send, and it never blocks one — a message keeps, and a human who joins later will read it. What was
@@ -185,159 +185,20 @@ describe('an owner DM room on a project side', () => {
  * about itself, and the same one the appservice invite path fell through for months. A method that works
  * and is never invoked is indistinguishable from no method at all.
  */
-describe('the publish path invokes it', () => {
-  const approval = {
-    id: '$approval-wired', agent: 'wf_coordinator', project: 'acme',
-    project_room_id: `!project:${OURS}`, owner_mxid: OWNER, owner_dm_room_id: DM,
-    upstream_request_id: 'u-1', input_digest: 'a'.repeat(64), runtime: 'claude',
-    tool_name: 'Bash', description: 'do a thing', input_preview: '{}',
-    expires_at: 4_000_000_000_000, status: 'pending',
-  };
-
-  /** A bridge with both surfaces stubbed to succeed, so only the visibility check is under test. */
-  function wired({ members }) {
+describe('approval requested wake boundary', () => {
+  test('does not run the old visibility or direct-publication pipeline', async () => {
     const bridge = new bridgeModule.MatrixBridge();
-    const warnings = [];
-    bridge.callBackendApi = async (_method, routePath) => (
-      routePath.endsWith('/matrix') ? { approval } : { ok: true }
-    );
-    bridge.ensureApprovalDmSecurity = async () => {};
-    bridge.botClient = {
-      sendMessage: async () => '$private',
-      getJoinedRoomMembers: async () => members,
-    };
-    bridge.getAgentToken = () => 'agent-token';
-    bridge.sendAsAgentContent = async () => '$public';
-    bridge.rememberMatrixEvent = () => {};
-    bridge.postWarning = (message, meta) => { warnings.push({ message, ...meta }); };
-    return { bridge, warnings };
-  }
+    bridge.wakeApprovalProjectionWorker = vi.fn(async () => ({}));
+    bridge.warnIfOwnerCannotSeeApprovalRoom = vi.fn();
+    bridge.botClient = { sendMessage: vi.fn() };
+    bridge.sendAsAgentContent = vi.fn();
 
-  test('an approval whose owner is absent warns, and the delivery still succeeds', async () => {
-    const { bridge, warnings } = wired({ members: ['@hagency:hagency.test'] });
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-
-    // BOTH halves. The warning must not come at the cost of the delivery it is warning about.
-    expect(result.ok).toBe(true);
-    expect(result.privateEventId).toBe('$private');
-    expect(warnings.map((w) => w.message).join(' ')).toContain(OWNER);
-    expect(warnings[0].kind).toBe('approval-owner-absent');
-  });
-
-  test('and an approval whose owner is present warns about nothing', async () => {
-    const { bridge, warnings } = wired({ members: ['@hagency:hagency.test', OWNER] });
-    const result = await bridge.onApprovalRequested({ request_id: approval.id });
-    expect(result.ok).toBe(true);
-    expect(warnings).toEqual([]);
-  });
-});
-
-/*
- * AND THE OTHER SURFACE — the redacted public notice, which could not be sent AT ALL for the agents this
- * product actually dispatches.
- *
- * ADR-003 is "both surfaces or neither", so a public notice that cannot go out fails the whole approval
- * closed. `onApprovalRequested` resolved that sender with `getAgentToken`, and an appservice project side
- * mints NO per-agent token — the namespace is what makes the agent ours to act for, which is the entire
- * reason a project-side agent needs no registration. So the throw fired for exactly the normal case.
- *
- * Walked on the rig before the fix: an approval for `soaker` in its own project room logged
- * `missing Matrix token for approval agent soaker` and came back `status: denied`. A request its owner was
- * never asked about, refused on the requester's behalf, with the reason visible only in a log.
- *
- * `agentSenderFor` is the resolver every other agent send already uses, and it asks the question the ROOM
- * asks rather than the one the credential inventory answers.
- */
-describe('the public notice, for an agent with no token of its own', () => {
-  const approvalFor = (roomId) => ({
-    id: '$approval-public', agent: 'soaker', project: 'soakroom', project_room_id: roomId,
-    owner_mxid: OWNER, owner_dm_room_id: DM, upstream_request_id: 'u-1',
-    input_digest: 'a'.repeat(64), runtime: 'claude', tool_name: 'Bash', description: 'do it',
-    input_preview: '{}', expires_at: 4_000_000_000_000, status: 'pending',
-  });
-
-  /*
-   * THE SHAPE `actingCredentials` STORES, not the one `actingSideFor` returns — a distinction that cost
-   * two failing tests. The map holds the raw rows the backend's acting-credentials endpoint sends; the
-   * `{ side, credential }` pair is what the lookup BUILDS from a row. A fixture written in the return
-   * shape makes every lookup answer null, and the code under test then reports "no credential" correctly
-   * about a fixture that was wrong.
-   */
-  const acting = (serverName) => ({
-    sideId: serverName, serverName, apiBaseUrl: 'http://127.0.0.1:8008',
-    kind: 'appservice', asToken: 'as_secret_never_logged', senderLocalpart: 'hagency', namespace: '@ac_.*',
-  });
-
-  /** A bridge with the private surface stubbed and the PUBLIC one recorded, sender shape and all. */
-  function publishing({ approval, sides = new Map(), token = null }) {
-    const bridge = new bridgeModule.MatrixBridge();
-    const sent = [];
-    bridge.callBackendApi = async (_m, routePath) => (routePath.endsWith('/matrix') ? { approval } : { ok: true });
-    bridge.ensureApprovalDmSecurity = async () => {};
-    bridge.botClient = { sendMessage: async () => '$private', getJoinedRoomMembers: async () => [OWNER] };
-    bridge.actingCredentials = sides;
-    bridge.getAgentToken = () => token;
-    bridge.sendAsAgentContent = async (sender, roomId, content) => {
-      sent.push({ sender, roomId, content });
-      return '$public';
-    };
-    bridge.rememberMatrixEvent = () => {};
-    bridge.postWarning = () => {};
-    return { bridge, sent };
-  }
-
-  test('THE DEFECT: a room on a project side is spoken into by that side\'s appservice', async () => {
-    const roomId = `!project:${SIDE}`;
-    const { bridge, sent } = publishing({
-      approval: approvalFor(roomId), sides: new Map([[SIDE, acting(SIDE)]]),
-    });
-
-    const result = await bridge.onApprovalRequested({ request_id: '$approval-public' });
-
-    expect(result).toMatchObject({ ok: true, privateEventId: '$private', publicEventId: '$public' });
-    expect(sent).toHaveLength(1);
-    expect(sent[0].sender.kind).toBe('appservice');
-    expect(sent[0].sender.agentUserId).toBe(`@ac_soaker:${SIDE}`);
-    expect(sent[0].sender.credential.asToken).toBe('as_secret_never_logged');
-    // Still redacted — the fix changes WHO speaks, never WHAT the project room is told.
-    expect(JSON.stringify(sent[0].content)).not.toContain('input_preview');
-  });
-
-  test('and so is a room on OUR server when we hold that side\'s credential — the co-located case', async () => {
-    /*
-     * `sideForRoom` deliberately answers null for our own server, so this reaches the fallback branch
-     * instead. It is the shape the walkthrough rig runs: one homeserver serving both Hagency and the
-     * customer, which is the topology the operator guide documents.
-     */
-    const roomId = `!project:${OURS}`;
-    const { bridge, sent } = publishing({
-      approval: approvalFor(roomId), sides: new Map([[OURS, acting(OURS)]]),
-    });
-
-    const result = await bridge.onApprovalRequested({ request_id: '$approval-public' });
-    expect(result.ok).toBe(true);
-    expect(sent[0].sender.kind).toBe('appservice');
-    expect(sent[0].sender.agentUserId).toBe(`@ac_soaker:${OURS}`);
-  });
-
-  test('with NO sender available it still fails closed, and says which room', async () => {
-    /*
-     * "Both surfaces or neither" is not relaxed by this. What changes is that the refusal now happens
-     * only when there is genuinely no way to speak, rather than whenever an agent holds no token.
-     */
-    const roomId = `!project:${SIDE}`;
-    const { bridge, sent } = publishing({ approval: approvalFor(roomId), sides: new Map() });
-    const failures = [];
-    bridge.callBackendApi = async (_m, routePath) => {
-      if (routePath.endsWith('/matrix')) return { approval: approvalFor(roomId) };
-      if (routePath.includes('/delivery-failed')) failures.push(routePath);
-      return { ok: true };
-    };
-
-    const result = await bridge.onApprovalRequested({ request_id: '$approval-public' });
-    expect(result.ok).toBe(false);
-    expect(sent).toHaveLength(0);
-    expect(failures).toHaveLength(1);
+    await expect(bridge.onApprovalRequested({ request_id: '$approval-wired' }))
+      .resolves.toEqual({ ok: true, requestId: '$approval-wired', queued: true });
+    expect(bridge.wakeApprovalProjectionWorker).toHaveBeenCalledOnce();
+    expect(bridge.warnIfOwnerCannotSeeApprovalRoom).not.toHaveBeenCalled();
+    expect(bridge.botClient.sendMessage).not.toHaveBeenCalled();
+    expect(bridge.sendAsAgentContent).not.toHaveBeenCalled();
   });
 });
 

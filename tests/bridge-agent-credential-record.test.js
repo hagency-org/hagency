@@ -76,6 +76,7 @@ describe('migrating a bare token string', () => {
       serverName: 'hs.test',
       mxid: null,
       accessToken: 'syt_alpha',
+      credentialGeneration: null,
     });
   });
 
@@ -118,6 +119,7 @@ describe('an entry that is already a record', () => {
       serverName: 'other.example',
       mxid: '@ac_alpha:other.example',
       accessToken: 'syt_other',
+      credentialGeneration: null,
     });
   });
 
@@ -127,6 +129,7 @@ describe('an entry that is already a record', () => {
     const mod = await loadBridge();
     expect(mod.agentTokenStateForTest().alpha).toEqual({
       homeserver: 'https://hs.test', serverName: 'hs.test', mxid: null, accessToken: 'syt_alpha',
+      credentialGeneration: null,
     });
   });
 
@@ -213,6 +216,7 @@ describe('persistence round-trips the record', () => {
     const onDisk = JSON.parse(readFileSync(statePath, 'utf-8'));
     expect(onDisk.agentTokens.alpha).toEqual({
       homeserver: 'https://hs.test', serverName: 'hs.test', mxid: null, accessToken: 'syt_alpha',
+      credentialGeneration: null,
     });
   });
 

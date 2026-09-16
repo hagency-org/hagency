@@ -562,6 +562,28 @@ describe('staging a credential, and the guard the endpoint makes unreachable', (
     expect(s.pendingCredentialFor(SERVER)).toBeNull();
   });
 
+  test('outbound generation follows the credential that authorizes Matrix sends', () => {
+    const s = store();
+    side(s, cred('live'));
+    const first = s.credentialFor(SERVER).outboundGeneration;
+    expect(first).toMatch(/^[a-f0-9]{32}$/);
+    s.setCredential(SERVER, cred('live'));
+    expect(s.credentialFor(SERVER).outboundGeneration).toBe(first);
+    s.setCredential(SERVER, cred('rotated'));
+    expect(s.credentialFor(SERVER).outboundGeneration).not.toBe(first);
+  });
+
+  test('registration representative generation is unavailable until the actual send token exists', () => {
+    const s = store();
+    side(s, regTokenCred());
+    expect(s.credentialFor(SERVER).outboundGeneration).toBeNull();
+    s.setCredential(SERVER, { ...regTokenCred(), representativeToken: 'representative-live-token' });
+    const first = s.credentialFor(SERVER).outboundGeneration;
+    expect(first).toMatch(/^[a-f0-9]{32}$/);
+    s.setCredential(SERVER, { ...regTokenCred(), representativeToken: 'representative-live-token' });
+    expect(s.credentialFor(SERVER).outboundGeneration).toBe(first);
+  });
+
   test('the staged flag is named without the word credential, and that is load-bearing', () => {
     /*
      * The health writer's redaction guard silently DROPS any key matching /credential/ (ADR-014 decision 6).

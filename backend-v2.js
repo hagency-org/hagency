@@ -2516,6 +2516,10 @@ async function requestThreadSessionOwnerApproval(agent, projectRoomId, request, 
   } : null });
   if (created.status === 'pending') {
     broadcastSSE('approval_requested', { request_id: created.id, agent: created.agent });
+    broadcastSSE('approval_changed', {
+      request_id: created.id,
+      revision: approvalStore.getProjectionRevision(created.id),
+    });
   }
   let record = created;
   while (record.status === 'pending') {
@@ -2525,6 +2529,10 @@ async function requestThreadSessionOwnerApproval(agent, projectRoomId, request, 
   }
   const consumed = approvalStore.consumeDecision(record.id, agent.name, record.input_digest || null);
   if (!consumed.ok) throw new Error(`owner approval consume failed: ${consumed.code}`);
+  broadcastSSE('approval_changed', {
+    request_id: consumed.record.id,
+    revision: approvalStore.getProjectionRevision(consumed.record.id),
+  });
   return { decisionEventId: consumed.decision_event_id, decision: consumed.decision };
 }
 
@@ -8796,6 +8804,10 @@ app.post('/api/router/approvals/claude', requireAgentToken((req) => req.body?.ag
       }, { routerApprovalId: approvalId });
       if (approval.status === 'pending') {
         broadcastSSE('approval_requested', { request_id: approval.id, agent: approval.agent });
+        broadcastSSE('approval_changed', {
+          request_id: approval.id,
+          revision: approvalStore.getProjectionRevision(approval.id),
+        });
       }
     }
     return res.status(parked.replayed ? 200 : 201).json({
@@ -9084,6 +9096,112 @@ app.get('/api/approval-bindings', requireApprovalBridgeSecret, (req, res) => {
     return respondApprovalStoreError(res, error, 'failed to list approval bindings');
   }
 });
+
+function validateMarkerPublisher(body = {}) {
+  const room = String(body.approval_room_id || '');
+  const server = room.includes(':') ? room.slice(room.indexOf(':') + 1).toLowerCase() : '';
+  const localServer = String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase();
+  const expectedScope = server === localServer && MATRIX_BOT_MXID_FOR_PROBE
+    ? 'local_bot'
+    : `side-representative:${server}`;
+  const publisher = approvalStore.projectionPublisher(expectedScope);
+  if (!publisher || body.publisher_scope !== expectedScope
+    || publisher.publisherMxid !== body.publisher_mxid
+    || publisher.homeserver !== server
+    || publisher.credentialKind !== body.credential_kind
+    || publisher.credentialGeneration !== body.credential_generation) {
+    throw new ApprovalStoreError('conflict', 'marker publisher is unavailable, stale, or mismatched');
+  }
+  if (expectedScope.startsWith('side-representative:')) {
+    const sideId = expectedScope.slice('side-representative:'.length);
+    const side = projectSideStore.getSide(sideId);
+    const credential = projectSideStore.credentialFor(sideId);
+    const expectedMxid = credential?.kind === 'appservice'
+      ? `@${credential.senderLocalpart}:${side?.serverName}`
+      : side?.representative?.mxid;
+    if (!side || !side.active || side.accessState !== 'accepted' || !credential
+      || credential.outboundGeneration !== publisher.credentialGeneration
+      || credential.kind !== publisher.credentialKind || expectedMxid !== publisher.publisherMxid) {
+      throw new ApprovalStoreError('conflict', 'marker publisher credential is no longer current');
+    }
+  }
+}
+
+app.post('/api/approval-bindings/matrix/markers/sync', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    if (req.body?.publisher_scope) validateMarkerPublisher(req.body);
+    return res.json({ ok: true, marker: approvalStore.syncBindingMarker(req.body || {}) });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to synchronize approval room marker');
+  }
+});
+
+app.post('/api/approval-bindings/matrix/markers/migrate-v2', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    if (Object.hasOwn(req.body || {}, 'approval_room_id')) validateMarkerPublisher(req.body);
+    return res.json({ ok: true, migration: approvalStore.migrateMarkerRoomsV2(req.body || {}) });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to migrate approval room markers');
+  }
+});
+
+app.post('/api/approval-bindings/matrix/markers/reconcile-retirements', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    if (req.body?.legacy_state_observed_nonempty === true) {
+      validateMarkerPublisher(req.body);
+    }
+    return res.json({
+      ok: true,
+      reconciliation: approvalStore.reconcileMarkerRetirements(req.body || {}),
+    });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to reconcile approval marker retirement');
+  }
+});
+
+app.get('/api/approval-bindings/matrix/rooms', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    const limit = req.query?.limit === undefined ? 20 : Number(req.query.limit);
+    const rooms = approvalStore.listMarkerRooms({ limit, after: req.query?.after });
+    return res.json({
+      ok: true,
+      rooms,
+      next: rooms.length === Math.min(limit, 200) ? rooms[rooms.length - 1].cursor : null,
+    });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to list approval reconciliation rooms');
+  }
+});
+
+app.get('/api/approval-bindings/matrix/markers', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 100, 1), 200);
+    const markers = approvalStore.listDueMarkers({ limit, after: req.query?.after });
+    return res.json({ ok: true, markers, next: markers.length === limit ? markers[markers.length - 1].cursor : null });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to list approval room markers');
+  }
+});
+
+for (const operation of ['prepare', 'begin-send', 'receipt', 'retry']) {
+  app.post(`/api/approval-bindings/matrix/markers/${operation}`, requireApprovalBridgeSecret, (req, res) => {
+    try {
+      const body = req.body || {};
+      if (operation !== 'receipt'
+        && (body.marker_channel === 'room_marker_v2'
+          || body.marker_channel === 'room_marker_v1_retirement')) {
+        validateMarkerPublisher(body);
+      }
+      const result = operation === 'prepare' ? approvalStore.prepareMarker(body.cas_token, body)
+        : operation === 'begin-send' ? approvalStore.beginMarkerSend(body.cas_token, body)
+          : operation === 'receipt' ? approvalStore.receiptMarker(body.cas_token, body)
+            : approvalStore.retryMarker(body.cas_token, body);
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return respondApprovalStoreError(res, error, `failed to ${operation} approval room marker`);
+    }
+  });
+}
 
 /*
  * ── 项目方 Project sides (ADR-016 decisions 1, 3 and 8) ────────────────────────────────────
@@ -9774,6 +9892,10 @@ app.get('/api/project-sides/acting-credentials', requireApprovalBridgeSecret, (r
           representative: side.representative ?? null,
           senderLocalpart: credential.senderLocalpart,
           namespace: credential.namespace,
+          outboundGeneration: credential.outboundGeneration,
+          active: side.active,
+          accessState: side.accessState,
+          representativeMxid: side.representative?.mxid || null,
           /*
            * 16-impl-r5 rotation: the SAME derived identity the inbound projection emits, so the
            * bridge can compare the acting generation against the snapshot generation.
@@ -9790,6 +9912,10 @@ app.get('/api/project-sides/acting-credentials', requireApprovalBridgeSecret, (r
           representativeToken: credential.representativeToken,
           representative: side.representative ?? null,
           registration: derivedRegistrationId(side.id, credential.representativeToken),
+          outboundGeneration: credential.outboundGeneration,
+          active: side.active,
+          accessState: side.accessState,
+          representativeMxid: side.representative?.mxid || null,
         };
       }
       /*
@@ -10902,6 +11028,10 @@ app.post('/api/approvals', requireAgentToken(_tokenFromApprovalBody), (req, res)
       // Tool details never enter the shared SSE stream. The bridge fetches them
       // through the secret-authenticated Matrix endpoint below.
       broadcastSSE('approval_requested', { request_id: record.id, agent: record.agent });
+      broadcastSSE('approval_changed', {
+        request_id: record.id,
+        revision: approvalStore.getProjectionRevision(record.id),
+      });
     }
     return res.status(record.status === 'pending' ? 201 : 200).json({ ok: true, approval: record });
   } catch (error) {
@@ -10933,6 +11063,319 @@ app.get('/api/approvals/:id/matrix', requireApprovalBridgeSecret, (req, res) => 
   }
 });
 
+app.get('/api/approvals/matrix/projections', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    runApprovalProjectionMaintenance();
+    const limit = Math.min(Math.max(Number(req.query?.limit) || 100, 1), 200);
+    const projections = approvalStore.listDueProjections({ limit, after: req.query?.after }).map((projection) => {
+      const original = projection.channel === 'private_status'
+        ? approvalStore.privateRequestPublisher(projection.request_id) : null;
+      const approval = approvalStore.getProjectionRequest(projection.request_id);
+      const room = String(projection.target_room_id || '');
+      const server = room.includes(':') ? room.slice(room.indexOf(':') + 1).toLowerCase() : '';
+      const localServer = String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase();
+      const publisherScope = projection.channel === 'private_status' ? original?.scope
+        : projection.channel === 'public_notice' ? `agent:${approval?.agent || ''}:${server}`
+          : (server === localServer && MATRIX_BOT_MXID_FOR_PROBE ? 'local_bot' : `side-representative:${server}`);
+      return {
+        ...projection,
+        approval,
+        publisher_scope: publisherScope || null,
+        ...(projection.channel === 'private_status' ? { publisher: original ? {
+          scope: original.scope, publisher_mxid: original.publisherMxid, homeserver: original.homeserver,
+          credential_kind: original.credentialKind, credential_generation: original.credentialGeneration,
+        } : null } : {}),
+      };
+    });
+    return res.json({
+      ok: true,
+      projections,
+      next: projections.length === limit ? projections[projections.length - 1].cursor : null,
+    });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to list approval projections');
+  }
+});
+
+// Only the bridge can attest authenticated historical event observations. The backend
+// checks their consistency/current send authority; it does not retrieve or decrypt events.
+app.get('/api/approvals/:id/matrix/legacy-original', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    return res.json({ ok: true, ...approvalStore.legacyOriginalForProjection(req.query?.cas_token, req.params.id),
+      status_publisher: approvalStore.legacyStatusPublisher(req.params.id) });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to read legacy original evidence');
+  }
+});
+
+app.post('/api/approvals/:id/matrix/legacy-original', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    const body = req.body || {};
+    const row = approvalStore.projectionForCas(body.cas_token);
+    if (!row || row.request_id !== req.params.id || body.request_id !== req.params.id
+      || row.migration_kind !== 'legacy_v1' || row.channel !== 'private_status') {
+      throw new ApprovalStoreError('conflict', 'legacy attestation route identity mismatch');
+    }
+    validateLegacyProjectionPublisher(row, body.publisher, body.original?.sender, body.private_context);
+    const result = approvalStore.attestLegacyOriginal(req.params.id, body);
+    return res.json({ ok: true, ...result, persistence: { committed: true, degraded: approvalStore.persistenceHealth().degraded } });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to attest legacy original evidence');
+  }
+});
+
+function validateLegacyProjectionPublisher(row, proposed = {}, originalSender, privateContext) {
+  if (!proposed || typeof proposed !== 'object' || Array.isArray(proposed)) {
+    throw new ApprovalStoreError('conflict', 'legacy publisher context is required');
+  }
+  const approval = approvalStore.getProjectionRequest(row.request_id);
+  const server = String(row.target_room_id || '').split(':').slice(1).join(':').toLowerCase();
+  const publisher = approvalStore.projectionPublisher(proposed.publisher_scope);
+  if (!approval || !publisher || publisher.publisherMxid !== originalSender
+    || proposed.publisher_mxid !== originalSender || publisher.homeserver !== server
+    || publisher.homeserver !== proposed.homeserver || publisher.credentialKind !== proposed.credential_kind
+    || publisher.credentialGeneration !== proposed.credential_generation) {
+    throw new ApprovalStoreError('conflict', 'legacy original publisher is unavailable or stale');
+  }
+  if (publisher.scope === 'local_bot') {
+    if (!MATRIX_BOT_MXID_FOR_PROBE || publisher.publisherMxid !== MATRIX_BOT_MXID_FOR_PROBE
+      || server !== String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase()
+      || publisher.credentialKind !== 'local_bot') {
+      throw new ApprovalStoreError('conflict', 'legacy local publisher is not configured');
+    }
+  } else if (publisher.scope === `side-representative:${server}`) {
+    const side = projectSideStore.getSide(server);
+    const credential = projectSideStore.credentialFor(server);
+    const expected = credential?.kind === 'appservice'
+      ? `@${credential.senderLocalpart}:${side?.serverName}` : side?.representative?.mxid;
+    if (!side || !side.active || side.accessState !== 'accepted' || !credential
+      || credential.outboundGeneration !== publisher.credentialGeneration
+      || credential.kind !== publisher.credentialKind || expected !== originalSender) {
+      throw new ApprovalStoreError('conflict', 'legacy side publisher is no longer current');
+    }
+  } else {
+    throw new ApprovalStoreError('conflict', 'legacy status requires an original private publisher');
+  }
+  if (!approvalStore.legacyStatusPublisher(row.request_id)) {
+    // Before the first status pin, the recovered sender cannot distinguish two
+    // currently valid private credential scopes. Do not choose one by preference.
+    const local = approvalStore.projectionPublisher('local_bot');
+    const sidePublisher = approvalStore.projectionPublisher(`side-representative:${server}`);
+    const side = projectSideStore.getSide(server);
+    const credential = projectSideStore.credentialFor(server);
+    const sideSender = credential?.kind === 'appservice'
+      ? `@${credential.senderLocalpart}:${side?.serverName}` : side?.representative?.mxid;
+    const localMatches = local && MATRIX_BOT_MXID_FOR_PROBE === originalSender
+      && local.publisherMxid === originalSender && local.homeserver === server && local.credentialKind === 'local_bot'
+      && server === String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase();
+    const sideMatches = sidePublisher && side?.active && side.accessState === 'accepted' && credential
+      && sidePublisher.publisherMxid === originalSender && sideSender === originalSender
+      && sidePublisher.homeserver === server && sidePublisher.credentialKind === credential.kind
+      && sidePublisher.credentialGeneration === credential.outboundGeneration;
+    if (localMatches && sideMatches) {
+      throw new ApprovalStoreError('conflict', 'legacy original publisher has ambiguous current private contexts');
+    }
+  }
+  // Fresh private-context observations are authenticated bridge assertions, not
+  // independent backend membership/crypto proof. Reuse the existing ADR-003 opt-in.
+  if (!privateContext || privateContext.room_id !== row.target_room_id
+    || privateContext.owner_mxid !== approval.owner_mxid || privateContext.ready !== true
+    || privateContext.joined !== true || typeof privateContext.encrypted !== 'boolean') {
+    throw new ApprovalStoreError('conflict', 'legacy private context is unavailable');
+  }
+  const projectSidePlaintext = publisher.scope === `side-representative:${server}`;
+  if (privateContext.encrypted && projectSidePlaintext) {
+    throw new ApprovalStoreError('conflict', 'legacy side publisher has no private-room crypto context');
+  }
+  if (!privateContext.encrypted && !projectSidePlaintext && !(
+    String(process.env.HAGENCY_APPROVAL_DM_MODE || 'required').trim().toLowerCase() === 'plaintext-test'
+    && String(process.env.HAGENCY_ALLOW_PLAINTEXT_APPROVAL_TEST || '').trim() === '1'
+    && String(process.env.NODE_ENV || '').trim().toLowerCase() !== 'production')) {
+    throw new ApprovalStoreError('conflict', 'legacy plaintext approval diagnostics are not authorized');
+  }
+  if (proposed.prepared_event_type && ((proposed.prepared_event_type === 'm.room.encrypted') !== privateContext.encrypted)) {
+    throw new ApprovalStoreError('conflict', 'legacy prepared event does not match private room security');
+  }
+}
+
+app.put('/api/approvals/matrix/publishers', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    const body = req.body || {};
+    const scope = String(body.scope || '');
+    const server = String(body.homeserver || '').toLowerCase();
+    if (scope === 'local_bot') {
+      if (!MATRIX_BOT_MXID_FOR_PROBE || body.publisher_mxid !== MATRIX_BOT_MXID_FOR_PROBE
+        || server !== String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase()
+        || body.credential_kind !== 'local_bot') {
+        throw new ApprovalStoreError('conflict', 'local projection publisher does not match configured bot identity');
+      }
+    } else if (scope.startsWith('side-representative:')) {
+      const sideId = scope.slice('side-representative:'.length);
+      const side = projectSideStore.getSide(sideId);
+      const credential = projectSideStore.credentialFor(sideId);
+      const expected = credential?.kind === 'appservice'
+        ? `@${credential.senderLocalpart}:${side?.serverName}`
+        : side?.representative?.mxid;
+      if (!side || !side.active || side.accessState !== 'accepted' || !credential
+        || credential.outboundGeneration !== body.credential_generation
+        || body.credential_kind !== credential.kind || body.publisher_mxid !== expected || server !== side.serverName) {
+        throw new ApprovalStoreError('conflict', 'project-side projection publisher is stale or mismatched');
+      }
+    } else if (scope.startsWith('agent:')) {
+      const agentName = normalizeAgentName(body.agent);
+      const sideId = String(body.side_id || '').trim().toLowerCase();
+      if (!agentName || !sideId || scope !== `agent:${agentName}:${sideId}`) {
+        throw new ApprovalStoreError('bad_request', 'agent publisher scope must match agent and side_id');
+      }
+      const side = projectSideStore.getSide(sideId);
+      const credential = side ? projectSideStore.credentialFor(sideId) : null;
+      const agent = agents[agentName];
+      const expectedMxid = `@${MATRIX_AGENT_PREFIX_FOR_REGISTRATION}${agentName}:${sideId}`.toLowerCase();
+      const sideMismatch = side && (!side.active || side.accessState !== 'accepted'
+        || !credential || credential.kind !== 'appservice'
+        || credential.outboundGeneration !== body.credential_generation
+        || body.credential_kind !== 'appservice' || body.publisher_mxid !== expectedMxid);
+      const localMismatch = !side && (sideId !== String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase()
+        || body.credential_kind !== 'agent_token' || body.publisher_mxid !== expectedMxid);
+      if (!agent || server !== sideId || sideMismatch || localMismatch) {
+        throw new ApprovalStoreError('conflict', 'agent projection publisher is stale or mismatched');
+      }
+    } else {
+      throw new ApprovalStoreError('bad_request', 'unknown projection publisher scope');
+    }
+    return res.json({ ok: true, publisher: approvalStore.upsertProjectionPublisher(body) });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to register approval projection publisher');
+  }
+});
+
+function projectionPlanIdentity(body = {}, params = {}) {
+  return {
+    request_id: params.id,
+    revision: params.revision,
+    channel: body.channel,
+    publisher_scope: body.publisher_scope,
+    publisher_mxid: body.publisher_mxid,
+    room_id: body.room_id,
+    credential_generation: body.credential_generation,
+    transaction_id: body.transaction_id,
+  };
+}
+
+function validateProjectionPublisher(body = {}) {
+  const row = approvalStore.projectionForCas(body.cas_token);
+  if (!row) throw new ApprovalStoreError('conflict', 'projection row changed');
+  if (row.channel === 'private_status' && row.migration_kind === 'legacy_v1') {
+    const { evidence } = approvalStore.legacyOriginalForProjection(row.cas_token, row.request_id);
+    if (!evidence) throw new ApprovalStoreError('conflict', 'legacy original evidence is required');
+    validateLegacyProjectionPublisher(row, row.plan || body, evidence.original_sender, body.private_context);
+    return;
+  }
+  const approval = approvalStore.getProjectionRequest(row.request_id);
+  const room = String(row.target_room_id || '');
+  const server = room.includes(':') ? room.slice(room.indexOf(':') + 1).toLowerCase() : '';
+  const localServer = String(process.env.MATRIX_SERVER_NAME || '').trim().toLowerCase();
+  const originalPublisher = row.channel === 'private_status'
+    ? approvalStore.privateRequestPublisher(row.request_id) : null;
+  const expectedScope = row.channel === 'private_status'
+    ? originalPublisher?.scope
+    : row.channel === 'public_notice'
+    ? `agent:${approval?.agent || ''}:${server}`
+    : (server === localServer && MATRIX_BOT_MXID_FOR_PROBE ? 'local_bot' : `side-representative:${server}`);
+  if (row.channel === 'private_status'
+    && expectedScope !== 'local_bot' && expectedScope !== `side-representative:${server}`) {
+    throw new ApprovalStoreError('conflict', 'private status original publisher scope is unavailable');
+  }
+  const publisher = row.channel === 'private_status'
+    ? originalPublisher : approvalStore.projectionPublisher(expectedScope);
+  const proposed = row.plan || body;
+  if (!publisher || proposed.publisher_scope !== expectedScope || publisher.publisherMxid !== proposed.publisher_mxid
+    || publisher.homeserver !== server || publisher.credentialKind !== proposed.credential_kind
+    || publisher.credentialGeneration !== proposed.credential_generation) {
+    throw new ApprovalStoreError('conflict', 'projection publisher is unavailable, stale, or mismatched');
+  }
+  if (row.channel === 'private_status') {
+    const current = approvalStore.projectionPublisher(expectedScope);
+    if (!current || current.publisherMxid !== publisher.publisherMxid
+      || current.homeserver !== publisher.homeserver || current.credentialKind !== publisher.credentialKind
+      || current.credentialGeneration !== publisher.credentialGeneration) {
+      throw new ApprovalStoreError('conflict', 'private status publisher credential is no longer current');
+    }
+  }
+  if (publisher.scope.startsWith('side-representative:') || publisher.credentialKind === 'appservice') {
+    const sideId = publisher.sideId || publisher.homeserver;
+    const side = projectSideStore.getSide(sideId);
+    const credential = projectSideStore.credentialFor(sideId);
+    const expectedMxid = publisher.scope.startsWith('side-representative:')
+      ? (credential?.kind === 'appservice'
+        ? `@${credential.senderLocalpart}:${side?.serverName}`
+        : side?.representative?.mxid)
+      : publisher.publisherMxid;
+    if (!side || !side.active || side.accessState !== 'accepted' || !credential
+      || credential.outboundGeneration !== publisher.credentialGeneration
+      || credential.kind !== publisher.credentialKind || expectedMxid !== publisher.publisherMxid) {
+      throw new ApprovalStoreError('conflict', 'projection publisher credential is no longer current');
+    }
+  }
+}
+
+let approvalProjectionMaintenanceRunning = false;
+function runApprovalProjectionMaintenance() {
+  if (approvalProjectionMaintenanceRunning) return { skipped: true };
+  approvalProjectionMaintenanceRunning = true;
+  try {
+    const expiry = approvalStore.sweepExpired({ limit: 100 });
+    const migration = approvalStore.migrateLegacyBatch();
+    const wakeRows = approvalStore.listDueProjections({ limit: 200 });
+    const wakes = new Set();
+    for (const row of wakeRows) {
+      const key = `${row.request_id}\0${row.revision}`;
+      if (wakes.has(key)) continue;
+      wakes.add(key);
+      broadcastSSE('approval_changed', {
+        request_id: row.request_id,
+        revision: row.revision,
+      });
+    }
+    return { skipped: false, ok: true, expiry, migration, wakes: wakes.size };
+  } catch (error) {
+    console.error(`[approval-projection] maintenance failed: ${error.message}`);
+    return { skipped: false, ok: false, error_code: error.code || 'maintenance_failed' };
+  } finally {
+    approvalProjectionMaintenanceRunning = false;
+  }
+}
+
+app.post('/api/approvals/:id/matrix/projections/:revision/prepare', requireApprovalBridgeSecret, (req, res) => {
+  try {
+    validateProjectionPublisher(req.body || {});
+    const result = approvalStore.prepareProjection(req.body?.cas_token, {
+      ...(req.body || {}), request_id: req.params.id, revision: req.params.revision,
+    });
+    return res.json({ ok: true, ...result });
+  } catch (error) {
+    return respondApprovalStoreError(res, error, 'failed to prepare approval projection');
+  }
+});
+
+for (const operation of ['begin-send', 'receipt', 'retry']) {
+  app.post(`/api/approvals/:id/matrix/projections/:revision/${operation}`, requireApprovalBridgeSecret, (req, res) => {
+    try {
+      const body = req.body || {};
+      const identity = projectionPlanIdentity(body, req.params);
+      if (operation !== 'receipt') validateProjectionPublisher(body);
+      const result = operation === 'begin-send'
+        ? approvalStore.beginProjectionSend(body.cas_token, identity)
+        : operation === 'receipt'
+          ? approvalStore.receiptProjection(body.cas_token, { ...identity, event_id: body.event_id })
+          : approvalStore.retryProjection(body.cas_token, { ...identity, retry_at: body.retry_at, error_code: body.error_code });
+      return res.json({ ok: true, ...result });
+    } catch (error) {
+      return respondApprovalStoreError(res, error, `failed to ${operation} approval projection`);
+    }
+  });
+}
+
 app.post('/api/approvals/:id/verdict', requireApprovalBridgeSecret, (req, res) => {
   try {
     const result = approvalStore.submitMatrixVerdict(req.params.id, req.body || {});
@@ -10948,6 +11391,10 @@ app.post('/api/approvals/:id/verdict', requireApprovalBridgeSecret, (req, res) =
       agent: result.record.agent,
       status: result.record.status,
     });
+    broadcastSSE('approval_changed', {
+      request_id: result.record.id,
+      revision: approvalStore.getProjectionRevision(result.record.id),
+    });
     return res.json({ ok: true, approval: result.record });
   } catch (error) {
     return respondApprovalStoreError(res, error, 'failed to apply approval verdict');
@@ -10959,6 +11406,10 @@ app.post('/api/approvals/:id/delivery-failed', requireApprovalBridgeSecret, (req
     const record = approvalStore.denyPending(req.params.id, req.body?.reason || 'matrix_delivery_failed');
     if (!record) return res.status(404).json({ error: 'approval request not found' });
     broadcastSSE('approval_verdict', { request_id: record.id, agent: record.agent, status: record.status });
+    broadcastSSE('approval_changed', {
+      request_id: record.id,
+      revision: approvalStore.getProjectionRevision(record.id),
+    });
     return res.json({ ok: true, approval: record });
   } catch (error) {
     return respondApprovalStoreError(res, error, 'failed to deny undeliverable approval');
@@ -10979,6 +11430,10 @@ app.post('/api/approvals/:id/consume', requireAgentToken(_tokenFromApprovalRecor
       const status = result.code === 'pending' ? 202 : (result.code === 'expired' ? 410 : 409);
       return res.status(status).json({ ok: false, code: result.code, approval: result.record });
     }
+    broadcastSSE('approval_changed', {
+      request_id: result.record.id,
+      revision: approvalStore.getProjectionRevision(result.record.id),
+    });
     return res.json({ ok: true, decision: result.decision, approval: result.record });
   } catch (error) {
     return respondApprovalStoreError(res, error, 'failed to consume approval decision');
@@ -17480,6 +17935,9 @@ function startBackgroundLoops() {
   // SSE keepalive: send comment pings every 30s to prevent proxy idle timeout.
   sseAdapter.startKeepalive(trackLifecycleInterval);
 
+  runApprovalProjectionMaintenance();
+  trackLifecycleInterval(runApprovalProjectionMaintenance, 30_000);
+
   trackLifecycleInterval(() => {
     refreshServerLiveness();
   }, SERVER_SWEEP_INTERVAL_MS);
@@ -17685,6 +18143,8 @@ export const __backendV2TestInternals = {
   },
   dispatchLeaseStoreForTest: dispatchLeaseStore,
   approvalStoreForTest: approvalStore,
+  projectSideStoreForTest: projectSideStore,
+  runApprovalProjectionMaintenanceForTest: runApprovalProjectionMaintenance,
   approvalAdapterTimeoutMsForTest: APPROVAL_ADAPTER_TIMEOUT_MS,
   routerStoreForTest: routerStore,
   liveThreadSessionRunnersForTest: liveThreadSessionRunners,
