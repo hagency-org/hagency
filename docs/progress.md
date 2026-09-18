@@ -8574,3 +8574,2770 @@ client qualification and ongoing identity/key management remain separate.
   fake-server-starvation candidates. A 3-of-6 reproduction was observed under the
   isolated `--test file_service` shape; whole-package runs pass and do not
   discriminate.
+
+- 2026-09-15: the Rust-migration review removed two lifecycle success claims
+  that had no transition behind them. `start` previously returned success for
+  every non-active engagement without re-arming a dispatch, and preset-apply
+  stored a session-local pointer that changed no engagement, budget, account or
+  provision effect and could never complete. Both compatibility routes now
+  validate lifecycle authority and fail closed with named 501 words; the grant
+  carries no pending pseudo-state, and the roster exposes only stop, whose fence
+  is a real durable domain write. ADR-130, the task spec, integration tests and
+  browser assertions now describe that same smaller truth.
+
+- 2026-09-15: the migration branch's deterministic CI gaps are closed locally.
+  Approval-vector source extraction normalises CRLF before matching its literal
+  anchors, the migration inventory classifies the native installer and launchd
+  registration, dashboard fixtures follow the current resource and usage wire
+  schemas, and the production-caller tests register with whichever Node harness
+  invoked them so the Vitest JSON catalog is not polluted by TAP. That catalog
+  also exposed five artifact-retention selectors whose implementation ADR-129
+  explicitly deferred; they are now recorded as owed instead of being presented
+  as passing tests that do not exist.
+
+- 2026-09-16: real qualification on mini3 Palpo and the Robrix2 headless
+  client remains **incomplete**, not an entire-port or soak success. In the
+  isolated qualification worktree and private fresh native state, the real
+  Robrix device sent three owner-DM messages as `m.room.encrypted` (the server
+  events have no plaintext body). The Rust SDK verified and decrypted those
+  messages, and canonical inbox selection created three tasks/owned attempts.
+  No final reply was delivered and no soak interval has started.
+
+  The real server ignores the requested room filter, so collect now validates
+  the complete bounded sync before narrowing room sections, preserving global
+  crypto data. Room-event bounds count actual event sections, not nested
+  power-level keys. SDK replay custody keys exact `(cursor, digest)` receipts,
+  since a server can change key-count metadata without changing its cursor.
+  A verified peer inbound key share legitimately adds an Olm session after
+  enrollment; restore now requires all protected original session IDs to remain
+  present, while retaining exact recipient/identity checks and the existing
+  per-peer session ceiling. An independent SDK crypto fixture proves this
+  restore path without claims, identity reset or another key publication.
+
+  The pinned Linux Codex 0.154.0 stream exposed optional int64 `emittedAtMs`,
+  a global remote-control notice, thread-scoped MCP startup without turn IDs,
+  and global account rate-limit snapshots. Sanitized schema-digest fixtures
+  cover their narrow compatibility handling. Timestamp metadata cannot extend
+  deadlines; notices cannot approve, complete or supply canonical usage.
+  Failed/cancelled canonical task-writer startup remains a named refusal.
+  Initial protocol-envelope and turn-start malformed failures are corrected;
+  the third live attempt reaches update and refuses an unsupported callback,
+  with whole-tree cleanup observed. Fixed callback-shape diagnostics have
+  been added to the original owned report, without callback text or secrets.
+
+  Local checks: protocol/session/transport 48 tests passed before the additional
+  fixed-label test (which also passes), Matrix package 170 passed, Palpo service
+  4 passed, runtime-status projection passed, and all-target runtime/service
+  Clippy passed before the fixed-label amendment. These offline checks do not
+  substitute for real model/tool completion, encrypted reply rendering, bounded
+  sustained sync retention, restart/recovery, effective sandbox qualification,
+  lifecycle/API parity or a measured soak. Operator adoption is a fresh-state
+  bridge, not automatic fleet provisioning. Those integration gates remain owed.
+
+- 2026-09-16 follow-up: real mini3 Palpo / Robrix2 owner-DM roundtrips now
+  work for the narrow canonical task/reply path. Two initial requests and six
+  subsequent soak pulses each reached an owned real-model attempt, canonical
+  task completion, observed whole-tree cleanup, server-accepted final reply,
+  and exact reply text in the real Robrix headless client. The initial request
+  and reply server events were checked as encrypted, with no plaintext body.
+  The same encrypted DM/device route was used by the six soak pulses; their
+  operator observations bind each accepted reply event ID and rendered frame.
+  There are eight delivered final replies, eight completed dispatches, and
+  four older failed qualification dispatches retained as outcome-unknown.
+
+  This is **not a successful soak or entire-port qualification**. The requested
+  one-hour operator soak stopped after 375.775 seconds (6m15.775s), with six
+  pulses passed and the seventh pending. Native status refused refresh with
+  Matrix capacity at the 64-entry completed-sync receipt limit; transport
+  generation 8 is unavailable. No protected SDK state was cleared to continue.
+
+  The local successor uses immutable authenticated replay/source history to
+  retain older proofs while keeping 64 live receipts. Focused rollover/reopen,
+  terminal-source, and corruption/root-publication rollback tests pass. An
+  initial all-target Matrix Clippy check passed, but the broader package run
+  exposed a pre-apply limited-timeline regression that dropped quarantined raw
+  custody. The correction now retains Prepared custody before source lookup
+  and quarantines refusal before SDK mutation. Its broader recheck, deployment,
+  and a fresh measured soak are still owed; the failed live run remains failed.
+
+  The native task-MCP launch now carries the legacy router's exact per-tool
+  approval override for the four canonical task tools only (ADR-057); this
+  does not grant shell/file permissions or answer native MCP elicitation.
+  Historical outgoing custody inspection is again attempted even when current
+  refresh is fenced, without granting current readiness or another HTTP write.
+
+  A separate real Linux Codex 0.153.4 operator sandbox probe failed both
+  verdicts on UnsupportedEvent before observing a write tool. Whole-tree
+  cleanup was observed, but neither target file was created, no tool attempt
+  or ungranted approval was observed, and absence alone is not a refusal proof.
+  Effective sandbox qualification remains red. Automatic fleet provisioning,
+  full lifecycle/API parity, real owner-approval/media/restart/recovery paths,
+  other bounded receipt histories, and production qualification are not
+  established by the successful owner-DM roundtrips.
+
+- 2026-09-16 continuation: the corrected protected sync-history implementation
+  passes all 175 Matrix package tests (152 unit and 23 integration tests),
+  all-target service/Matrix/runtime Clippy, and `git diff --check`. The
+  fixed-category notification diagnostic passes its offline regression, and
+  the read-only encrypted-custody operator example passes two private-state,
+  authentication/bounds and redaction checks. `agent-spec` is unavailable in
+  this environment; its parse/lint checks were not run.
+
+  The history implementation was deployed to mini3 without clearing the SDK
+  identity or protected state. Generation 9 then retained the seventh failed
+  soak request in known SDK-derived domain-refusal quarantine. The new explicit
+  `intake-refuse-stale-session` command (ADR-151) proved the exact pre-session
+  boundary and terminally rejected one unacknowledged candidate, without any
+  effect retry. Read-only inspection shows no pending observation/batch and
+  64 live receipts with protected archive present. The eight completed replies
+  and four older uncertain dispatches remained unchanged. This is negative
+  settlement of a synthetic request, not its successful execution or a repair
+  of the failed soak verdict.
+
+  Fresh authenticated adoption established generation 10 on the same encrypted
+  account/device state. A new 3600-second real Robrix2 headless / mini3 Palpo
+  owner-DM soak started at 2026-09-16 08:48:41 UTC, with task/reply pulses every
+  120 seconds and health checks every 30 seconds. Its first pulse completed,
+  was durably delivered and rendered in Robrix, and both request/reply server
+  events are `m.room.encrypted` with no plaintext body. There are now nine
+  completed dispatches/delivered replies and the original four uncertain
+  attempts. This fresh run is **in progress**, not a passing hour. Its scope
+  is sustained sync and owner-DM replies; 30 pulses do not qualify the still
+  bounded outgoing-receipt history or entire-port parity.
+
+  The real Codex 0.153.4 sandbox operator omitted `CODEX_HOME`, unlike production.
+  Forwarding the prepared private namespace fixed authentication. On the
+  isolated Linux qualification container with namespace prerequisites enabled,
+  the inside-workspace probe now observes an actual tool write, completed
+  upstream turn, file creation and whole-tree cleanup. The outside probe still
+  completes without a tool/approval attempt: no outside file appears, but that
+  is **not** sandbox-refusal proof. The combined gate remains failed and the
+  native soak container's default kernel setup is not qualified by that separate
+  probe. Full fleet/API/lifecycle, owner approval, media, recovery, further
+  receipt rollover and production qualification remain owed.
+
+- 2026-09-16 continuation, observed through 09:21:30 UTC: the same generation-10
+  real mini3 Palpo / actual Robrix2 headless owner-DM soak remains running.
+  Seventeen task/reply pulses have durably delivered and rendered, the latest
+  at elapsed 1956.059 seconds (32m36.059s), with a 15.198-second response.
+  Independent server inspection of the latest twenty DM events shows
+  `m.room.encrypted` and no plaintext body; the captured pulse-14 frame was
+  visually inspected and contains the exact reply. Read-only encrypted journal
+  inspection shows 64 live sync receipts, 64 intake receipts, an archive root,
+  no pending observation and no intake batch. The native container has zero
+  restarts. Its original four outcome-unknown dispatches remain retained.
+  This is an in-progress hour, not a passing soak or entire-port qualification.
+  The earlier 375.775-second failed run remains failed. This client is Robrix2
+  headless, not a separately qualified upstream Robrix desktop build.
+
+  ADR-152 and the outgoing-history task spec now define a local successor to
+  the permanent 64-settled-send stop. Settled final/notice/file receipts retain
+  their exact ID, fence, kind and accepted complete-attempt digest in the private
+  authenticated trie. The hot cache remains at 64; immutable nodes precede the
+  atomic encrypted root/cache/Prepared-or-Settle publication. Failed root
+  publication restores original cache/root memory and poisons the original
+  owner, without beginning or retrying a send. Exact historical queries do not
+  load a lifetime list or grant current task/route/HTTP authority.
+
+  Historical final replay checks for a conflicting present domain row: a newly
+  claimed row with the same ID/fence cannot borrow old SDK delivery. An absent
+  retained canonical row does not erase protected past acceptance or create a
+  replacement row. The absence counterfactual temporarily renames the fixture
+  row and its references in deferred-constraint transactions, restores them and
+  verifies FK integrity; it is not a runtime pruning/cascade qualification.
+  Notice replay requires its already-Delivered domain row. Retained file jobs
+  resolve only from their exact archived receipt and original already-Delivered
+  domain acceptance, never from a compact receipt as first Delivered authority.
+
+  The full Matrix package recheck passes 176 tests (153 unit and 23 integration),
+  following correction of that fixture's foreign-key violation. Both focused
+  outgoing-history tests pass: 150 actual local-TLS accepted final sends plus
+  restart/oldest replay/new-send continuation, and root-publication/missing-node/
+  fresh-claim refusal. Additional exact/different-fence assertions pass their
+  focused recheck. Store reply integration tests pass all 17 cases, all-target
+  service/Matrix Clippy passes, and `git diff --check` passes. Historical file
+  recovery uses an actual accepted file and retained media job; its fixture
+  moves that settled receipt out of cache, not 64 real file sends. These tests
+  remain offline; operator runs alone contact Palpo/Robrix. `agent-spec` remains
+  unavailable, so no parse/lint result is claimed.
+
+  Outgoing-history code is not deployed to the current soak service; its binary
+  remains unchanged to preserve the measured run. A single resource snapshot
+  (236.5 MiB container memory, 9.24% CPU) is not an embedded-budget or memory-soak
+  verdict. Live outgoing rollover, approval/upload history, physical retention,
+  automatic fleet provisioning, lifecycle/API parity (start/preset still 501),
+  real owner approvals/media/restart/recovery, effective sandbox enforcement and
+  production/cutover qualification remain owed. No SDK reset, commit, PR or
+  production cutover was performed.
+
+- 2026-09-16 continuation, terminal observation at 09:48:43 UTC: the same
+  generation-10 mini3 Palpo / actual Robrix2 headless owner-DM soak exits 0 with
+  `soak_passed`, elapsed 3602.040 seconds and 30 passed task/reply pulses. Each
+  pulse required an already-Delivered domain reply and the exact reply rendered
+  by the real client before capturing its frame. Pulse 30 completed in 17.242
+  seconds; its captured frame was visually inspected. Independent homeserver
+  inspection binds its exact reply event ID and shows all twenty latest events
+  are `m.room.encrypted` with no plaintext body. The native container has zero
+  restarts and read-only protected-journal inspection shows 64 hot sync receipts,
+  64 intake receipts, an archive root and no pending observation or batch. The
+  final domain snapshot has 38 completed dispatches and 38 Delivered replies in
+  total; the original four outcome-unknown dispatches remain unchanged and
+  generation 10 remains available. No service restart, SDK reset or source
+  rebuild interrupted this measured run. The original 375.775-second failed
+  soak remains failed. This passing hour qualifies only encrypted owner-DM
+  task/reply and sustained sync, not upstream Robrix desktop, outgoing rollover,
+  two-agent operation or entire-port parity.
+
+  Runtime command evidence now retains a bounded, private exact command/cwd
+  binding. Changed active/completed bindings or contradictory supplied terminal
+  fields invalidate it. The operator probe requires one matching intended
+  command under the original cwd, no unrelated/repeated tool, exact inside file
+  bytes and whole-tree cleanup. Outside qualification requires an actual
+  matching failed command or matching ungranted command approval, not merely
+  no outside file. Three focused offline runtime/probe witness selectors and
+  all-target runtime/execution/progress Clippy pass; `git diff --check` passes.
+  The LF-normalized compiled fingerprint covers sixteen selected critical
+  sources, not the entire build tree. ADR-140 and the new command-witness task
+  contract record these requirements.
+
+  Real operator runs against Codex 0.153.4 and 0.154.0 each pass the exact inside
+  write with one observed command, but both direct outside and supplementary
+  outside-symlink probes observe zero command/tool items and no approval. Their
+  outside verdicts remain failed: no outside file is not enforcement proof.
+  The symlink stays bound to the physical outside target before/after the run
+  and does not replace or repair the original gate. These separate isolated
+  probe containers enabled namespace prerequisites; they do not qualify the
+  native soak container's default kernel setup. No approval was granted.
+
+  The offline all-target workspace run with `--no-fail-fast` finishes exit 101,
+  with two failed targets: console roster provisioning remains pending rather
+  than physically complete, and real two-agent qualification is still an
+  explicitly failing placeholder. Only the two real Codex app-server evidence
+  selectors were excluded by the command-line filter; no placeholder or
+  no-attempt verdict was relabeled passing. ADR-147 requires synchronous inline
+  physical provisioning, not a separate effect worker or identities/routes
+  synthesized from approved intent. That implementation remains owed. Start
+  and preset still return 501; real owner approvals, media, recovery, usage/
+  quota, retention and effective sandbox enforcement remain unqualified. The
+  outgoing-history changes are still local, not deployed to the completed soak
+  binary. No commit, PR or production cutover was performed.
+
+- 2026-09-16 continuation, observation at 10:12 UTC: generation 10 was cleanly
+  stopped after its terminal passing hour and fenced unavailable. The outgoing
+  history and command-witness source was built on mini3, and actual existing
+  account adoption observed a fresh generation-11 receipt and session before
+  starting the new native service. The original SDK identity/store was retained;
+  no account/device replacement, SDK reset or widening of default container
+  kernel permissions was performed. A second real Palpo / Robrix2 headless
+  hour soak started at 09:52:43 UTC with 30-second pulses and is still running,
+  not yet a passing hour. Its read-only domain snapshot has 72 completed
+  dispatches, 72 Delivered replies, one started dispatch and the same four
+  original outcome-unknown dispatches. The native container is running with
+  zero restarts and generation 11 available.
+
+  Read-only authenticated inspection now proves real outgoing cache rollover:
+  the same oldest delivered final receipt was present in the 62-entry hot
+  cache and absent from the archive; after further real sends it is absent
+  from the bounded 64-entry hot cache and present in the authenticated archive
+  (ten visited nodes). There is no pending outgoing or intake observation at
+  that snapshot. This is actual native SDK custody on mini3, not a synthetic
+  success receipt. Pulse 33's real Robrix frame was visually inspected, and
+  independent server inspection reports twenty encrypted latest events with
+  no plaintext body. Ongoing evidence is in
+  `soak-20260916T0954-gen11-outgoing/observations.jsonl` under the private
+  operator cache; this does not qualify media/approval history or retention.
+
+  A production adoption bug is fixed locally: Host-only `claim_effect_for`
+  selects the exact named eligible effect inside the original immediate
+  transaction instead of globally claiming a different pending effect and
+  filtering afterwards. Two real DomainStore tests cover concurrent targeted
+  claiming, reopen-to-Uncertain, transaction rollback, exhausted fences,
+  invalid identifiers, revocation and registration-generation changes.
+  All six domain tests and store/native all-target warnings-denied Clippy pass.
+  This fix is not deployed to the already-running measured generation-11
+  binary. It is a provisioning prerequisite, not the missing physical factory.
+
+  The private `matrix_custody` operator example adds bounded read-only exact
+  settled-receipt lookup without exporting receipt IDs, digests or contents.
+  Five offline tests pass, including corruption/identity/conflict refusals,
+  the full 256-branch authenticated path and repeated-bit refusal; example
+  Clippy passes with warnings denied. Those encrypted diagnostic fixtures are
+  not real SDK sends. Spec binding inventory lists 901 selectors and remains
+  failed on the same two missing physical-provisioning/route selectors.
+  ADR-147's implementation checkpoint and the ingress spec retain the
+  synchronous physical provisioning requirement; no separate effect worker,
+  fabricated Active state or premature session route was introduced.
+  Entire-port, fleet provisioning, two-agent, lifecycle/API, approval/media,
+  usage/quota, retention, recovery and sandbox qualification remain owed.
+  No commit, PR or cutover was performed.
+
+- 2026-09-16 continuation, terminal observation at 10:12:54 UTC: the same
+  generation-11 dense real-client soak exits 1 with `soak_failed` after
+  1210.918 seconds and 36 passed pulses. Pulse 37's original dispatch is
+  completed, but its canonical task remains InProgress and it has no final
+  reply or owned completion receipt. Its sole retained output is upstream
+  assistant text exactly equal to the requested ACK; there are zero
+  task-operation receipts. The platform correctly did not turn that ordinary
+  final answer into Done or a Matrix reply. The 64-entry outgoing rollover
+  proof remains valid, but this is not a passing hour.
+
+  A separately sent real Robrix follow-up attempted recovery of that same
+  missing canonical completion. It did not succeed: the operation reached its
+  configured 30000-ms deadline, with protocol Unknown, whole-tree cleanup
+  observed stopped, negative settlement and no task-operation/owned-completion
+  receipts. The fifth outcome-unknown dispatch is retained; the original four
+  have not been cleared. Capabilities now explicitly report outcome_unknown,
+  owned_attempt/deadline. No reply was fabricated, no original failed run was
+  relabeled, no automatic restart/SDK reset/privilege change was performed.
+  Real sustained/recovery qualification is therefore still incomplete.
+
+- 2026-09-16 continuation, account-step checkpoint: implemented the Host-only
+  ordinary registration-token primitive `TokenAccountProvision` under
+  `task-rust-token-account-provision.spec.md` (satisfies
+  REQ-RUST-MIGRATION-EXECUTION). Its original context binds registration,
+  effect/fence/payload, desired engagement-scoped account/device, origin and
+  credential profile. Actual owner-private create-only encrypted custody and
+  an exclusive file lock precede the registration POST. The token-only UIA
+  requests retain the same independently random password/device/session;
+  the password is discarded and never persisted. Registration requests have
+  no representative bearer header, and only the actually returned token may
+  authenticate fresh whoami. Substituted account/device, unsupported profile,
+  corrupt/missing custody and conflicting context fail closed. Lost responses
+  never permit another registration; accepted-response reopen is GET-only.
+
+  The accepted owner survives a dropped receiver and retains its lock through
+  network and accepted blocking writes. A typed opaque account handle may
+  consume its private credential into a fixed ordinary HostConfig; it exports
+  no token and creates no canonical Active state, room/crypto authority, route
+  or runtime-launch receipt. Existing Host origin validation and bounded HTTP
+  construction were shared without changing collector transport policy.
+  The already-used getrandom 0.3.4 dependency supplies independent entropy.
+
+  Five local TLS / real protected-filesystem account-step tests pass (0.78 s),
+  covering accepted registration, actual returned-token whoami, no-password
+  persistence, inspect-only reopen, context/corruption refusal, dropped
+  receiver/concurrent ownership, actual admitted-POST lost-response refusal,
+  unsafe profile/identity/guest/framing/bounds and cumulative original deadline.
+  The all-target offline Matrix package finishes exit 0: 153 library tests and
+  28 integration tests pass, none filtered. All-target Matrix Clippy finishes
+  exit 0 with warnings denied; `git diff --check` passes. `agent-spec` remains
+  unavailable, so no parse/lint result is claimed.
+
+  The all-feature offline spec-binding inventory exits 1 with 906 selectors
+  and the same two missing `native_provisioning_effect_completed` and
+  `native_provisioning_session_route` selectors. Listing/metadata coverage is
+  not passing behavior or physical provisioning evidence.
+
+  ADR-147's checkpoint explicitly retains the unfinished inline factory. The
+  new primitive is local source, not deployed to the generation-11 service and
+  not yet wired into approval fulfillment. These account-step fixtures do not
+  qualify actual Palpo account creation, appservice provisioning, managed
+  agent-home/template creation, SDK enrollment, owner DM/project membership,
+  runtime launch or real two-agent operation. Both mandatory ADR-016 deployment
+  profiles and the two ingress completion/route selectors remain required.
+  The latest live snapshot still has 75 completed dispatches, 74 Delivered
+  replies and five retained unknown dispatches; generation 11 is available
+  and its native container running with zero restarts. The second soak and its
+  separate recovery remain failed. No commit, PR, SDK reset or cutover occurred.
+
+- 2026-09-16 continuation, inline account wiring: the previous user-facing turn
+  was a status restatement, classified no progress rather than a verified wait.
+  Revalidated the current isolated source and actual mini3 service; read-only
+  live SQL still shows 75 completed dispatches, 74 Delivered replies and five
+  unknown dispatches. The container is running with zero restarts. The original
+  failed dense soak and its failed separate recovery were not restarted/cleared.
+
+  Implemented `task-rust-inline-provision-account.spec.md` (satisfies
+  REQ-RUST-MIGRATION-EXECUTION). An explicit private
+  `registration_token_account_step_v1` bootstrap marker attaches the Host-only
+  `TokenProvisioningHost` to the ordinary Collector. The registration credential
+  and wrapping key are separate protected files; no secret enters driver JSON,
+  console DTOs or runtime input. After verified representative approval and
+  canonical approve, that same accepted owned intake job claims exactly its
+  provision effect and performs real registration/returned-token whoami inline.
+  No separate effect worker or callback accepting fabricated physical proof was
+  introduced.
+
+  The verify-only project snapshot is refreshed before this physical step's
+  approval rather than authorizing it from the request's old cache. The original
+  DomainStore checks the actual Started effect/fence/payload, Reserved engagement
+  and current registration inside its own SQLite Immediate transaction before
+  each registration POST and before admitting the resulting account observation.
+  Sixteen non-evicting Host job slots retain opaque observed accounts and unknown
+  jobs; outer intake-receiver loss does not discard the accepted owner. Replay
+  acknowledges only the historical account step, and a fresh Host cannot reclaim
+  Started/Uncertain work. Account errors retain Unknown; account success leaves
+  Started rather than fabricating Complete/Active or a session route.
+
+  Eight new offline local-TLS / actual Collector/DomainStore/private-filesystem
+  inline tests pass, covering observed registration, verdict replay, admitted
+  lost response and fresh-Host refusal, private profile/forged-sender refusal,
+  actual revocation during UIA, dropped outer receiver/concurrent Busy, changed
+  fresh project authority and sixteen-slot capacity. The current all-target
+  Matrix package exits 0: 161 library plus 28 integration tests (189 total),
+  none ignored or filtered. Full domain target exits 0 with seven tests,
+  including the new current-scope predicate with actual changed fence/payload
+  refusal. Native bootstrap's complete target exits 0 with ten tests; the new
+  private-profile selector covers eight actual executable configuration cases.
+  All-target Matrix/store/native Clippy exits 0 with warnings denied, and
+  whitespace validation passes. The initial native bootstrap compile failure
+  (an unclosed delimiter during reception-branch cleanup) and initial capacity
+  fixture unused-mut warning remain in their original external logs, not relabeled.
+
+  The all-feature offline binding inventory exits 1 with 916 selectors and the
+  same two missing physical-completion/session-route selectors. This is metadata,
+  not passing execution or full provisioning proof. `agent-spec` is still absent;
+  no parse/lint/lifecycle result is claimed. ADR-147 and agent knowledge record the
+  wired account-stage boundary without changing the accepted full inline product.
+
+  This new source is not deployed and these fixtures are not actual Palpo account
+  creation. Both ADR-016 profiles, managed home/template, actual new owner DM and
+  project membership, pre-activation SDK enrollment, runtime/fleet and two-agent
+  operation remain unfinished. Canonical-completion reliability, real sustained
+  recovery, approvals/media, lifecycle/API parity, sandbox, effective usage/quota,
+  retention, full M0–M9/release gates and upstream Robrix desktop qualification
+  remain owed. The safe next factory work is physical rooms/home and SDK enrollment
+  under the original pre-activation effect, followed by runtime and genuine domain
+  completion/routes; a successful account alone does not close that work. No
+  commit, PR, live restart, SDK reset or production cutover was performed.
+
+- 2026-09-16 continuation, original pre-activation SDK: the previous turn was a
+  status restatement, classified no progress. Revalidated the isolated source
+  and actual mini3 container/SQL before implementation. The service remains
+  running with zero restarts, 75 completed dispatches, 74 Delivered replies and
+  five unknown dispatches; the original failed soak/recovery were not rerun.
+
+  Implemented `task-rust-provision-account-enrollment.spec.md`, satisfying the
+  migration/session/privacy requirements without shrinking ADR-147's factory.
+  The original opaque inline account retains its actual writer/claim/registration
+  and can enroll the same Agent-purpose SDK while the effect is Started and the
+  engagement Reserved. Its original validated request fixes the project Group
+  and distinct owner+agent encrypted DM. Actual token/room/project/privacy and
+  anchor checks precede SDK creation and every key write; original DomainStore
+  validation follows the last actual room-read await. Normal Agent enrollment
+  still refuses Reserved authority. No Applied/Active/transport/session route
+  is fabricated.
+
+  One immutable account job retains the Collector, SDK and result after caller
+  loss. Success replay revalidates without uploads/claims, changed profiles
+  refuse, unknown/failed jobs cannot rearm, and a Weak teardown assertion proves
+  no settled account/owner Arc cycle. SDK-custody closure is separately owned,
+  retains its original acknowledgement, never reopens the job, and is explicitly
+  not a canonical transport/route/lifecycle cleanup receipt.
+
+  Five new selectors pass using actual inline approval/registration through
+  local TLS plus an independent actual recipient SDK. They cover original
+  signing uploads and session claim, independent room-key/event decryption and
+  protected Complete reopen, ten configuration/current-room refusal variants,
+  same-owner read-only replay and changed-profile/current-scope refusal, dropped
+  outer caller and admitted lost-upload response, and actual revocation while
+  the final Direct state GET is held after SDK Preparing/Possible. The latter
+  refuses before the actual first key POST. The existing standalone account
+  integration test also confirms that no inline claim means no SDK enrollment.
+
+  Full current all-target Matrix package exits 0 with 166 library plus 28
+  integration tests (194 total), none ignored or filtered. Library runtime is
+  150.89 seconds; the longer media/custody tests were polled to terminal result,
+  not restarted. All-target Matrix/store/native Clippy exits 0 with warnings
+  denied; whitespace validation passes. The initial test-only Debug diagnostic
+  and borrow-lifetime compile failures, the first three failing execution
+  assertions (Reserved transport read/closure and caller-loss polling), and
+  initial duplicate-fixture-module Clippy refusal remain in their separate
+  external logs. Corrections did not add Debug to private clients, weaken
+  authority, retry key writes, raise deadlines or suppress the lint.
+
+  The offline all-feature binding inventory resolves 921 selectors but remains
+  failed with the same two
+  missing physical-completion/session-route selectors. It only lists compiled
+  tests, not executable qualification. `agent-spec` remains absent; no parse,
+  lint or lifecycle result is claimed. Native bootstrap's account-only marker
+  still does not call the full physical factory, and this source is not deployed.
+  Both ADR-016 profiles, actual new room creation/join, managed home/template,
+  runtime/fleet/two-agent operation, genuine effect completion/routes, completion
+  reliability and sustained recovery/soaking, approval/media/lifecycle/API parity,
+  effective sandbox/budgets/quota/retention, platform/upstream desktop and full
+  M0–M9/release gates remain owed. Next connect actual room/home observations to
+  this original pre-activation SDK owner, then runtime and canonical completion.
+  No commit, PR, SDK reset, live restart or production cutover occurred.
+
+- 2026-09-16 continuation, original physical room setup: the previous turn was
+  a user-requested status restatement, classified no progress. Revalidated the
+  isolated worktree, preserved original checkout dirt and actual mini3 service.
+  The interrupted test-module patch had not applied and no such test process or
+  log existed; no running observation was discarded or restarted. Completed the
+  source checkpoint under `task-rust-inline-agent-rooms.spec.md` instead of
+  treating the earlier unexecuted patch as evidence.
+
+  The original ordinary account creates a new encrypted owner DM itself; a
+  separately authenticated representative invites it to the exact bound project,
+  and the actual returned agent credential joins. Fresh membership observations
+  remain separate from each HTTP acknowledgement. The actual owner joins via
+  an independent TLS client in the positive fixture; production never joins as
+  the owner. The retained job polls actual owner membership, not an invitation,
+  before connecting known room IDs to the original pre-activation SDK operation.
+  Fixed encrypted create-only room custody pins original claim/request/origin/
+  credentials/key before every POST. Caller drop retains the original owner;
+  unknown/torn/partial responses stay spent. Complete replay is read-only, and
+  known DM metadata survives later failures without claiming readiness.
+
+  The inline Host retains the opaque actual account before entering these later
+  stages. Native bootstrap adds only the explicit closed rooms/enrollment marker
+  plus a separate protected representative-token file and public peer anchors.
+  Account-only/default profiles keep their existing boundary. Corrected both
+  normal and pre-activation enrollment recipient selection to require anchors
+  for encrypted-room participants, not plaintext project representatives. Actual
+  plaintext project membership/binding and invitation authority remain checked.
+
+  Six new Matrix selectors execute actual original approval/account/room/SDK
+  protocol through local TLS and protected files. They cover independent actual
+  owner join and recipient decryption in the created DM; nine credential/privacy/
+  membership/invitation/join refusals; finite owner-join timeout; original retained
+  caller-loss and lost create/invite/join responses; changed-plan and GET-only
+  replay; original engagement revocation while the last project GET is held; and
+  seven torn/wrong-stage/missing/extra-record reopen refusals before HTTP. Effects
+  remain Started/Reserved on success and unknown on failures, with no Active
+  transport, fabricated runtime/physical receipt or derived session route.
+
+  Final full Matrix all-target package exits 0: 172 library plus 28 integration
+  tests, 200 total, none ignored/filtered; library runtime 159.07 seconds. Its
+  longer custody/media tests were polled through original session 67125 to actual
+  exit, not restarted. Native bootstrap's complete target exits 0 with 11 tests,
+  including 18 actual rooms-profile configuration cases. All-target Matrix/store/
+  native Clippy exits 0 with warnings denied, and whitespace validation passes.
+  Initial missing-type/disabled HTTP helper compile refusals and two failed
+  bootstrap runs remain in separate external logs. The latter used an invalid
+  arbitrary Ed25519 point; a real independent recipient supplies valid public
+  configuration now, with explicit invalid-point and padded-anchor negatives.
+  No production validation or default deadline was weakened to make them pass.
+
+  The offline all-feature binding inventory exits 1 with 928 selectors and the
+  same missing physical-completion/session-route selectors. Listing is not
+  execution or complete qualification. `agent-spec` is absent; no parse/lint/
+  lifecycle result is claimed. This source is not deployed and no fresh Palpo
+  room/account or new soak result is claimed. Final actual mini3 inspection shows
+  the service running with zero restarts, 75 completed dispatches, 74 Delivered
+  replies and five unknown dispatches. Failed generation-11 soak/recovery remains
+  untouched; the earlier passing hour proves only encrypted owner-DM replies in
+  actual Robrix2 headless, not upstream Robrix desktop or whole-port readiness.
+
+  The full goal remains active: both ADR-016 profiles, managed home/template,
+  runtime/fleet/two-agent physical provisioning, genuine completion/routes,
+  completion reliability, sustained recovery and new live soaking, approvals/
+  media/lifecycle/API parity, effective sandbox/budgets/quota/retention, platform/
+  upstream desktop qualification and full M0–M9/release gates are still owed.
+  Next bind genuine home/runtime observations to this original account/room/SDK
+  owner, then complete the domain and derive routes from actual fulfillment.
+  No formatter, new dependency, commit, PR, SDK reset, deployment, live restart
+  or production cutover occurred.
+
+- 2026-09-16 continuation, original native home setup: the previous goal turn
+  was a status answer, classified no progress. Revalidated isolated worktree
+  feat/rust-migration at 67e0e84, preserved original checkout dirt, and observed
+  the original Matrix/bootstrap processes to terminal exit 0 (204 and 12 tests).
+  The prior strict-lint log contained an actual eight-argument helper refusal;
+  it was not assumed green. Replaced those inputs with one private owned Creation
+  context, preserving the same blocking job, fixed deadline and cancellation
+  signal. Strict all-target Matrix/store/native Clippy now exits 0 without a lint
+  allow, formatter, dependency or authority change.
+
+  Implemented task-rust-inline-agent-home.spec.md: native physical v1 homes,
+  immutable manifest, retained four framework entry templates, supervisor sibling,
+  coordination/project mappings and native task wrapper before the first account
+  registration. Agent identity/owner/project derive from the original request;
+  framework/model/provider/reasoning come from actual qualified writer resource
+  configuration. Manifest task is null and no runner secret is written into the
+  home or wrapper. Fixed home/source/binary objects are retained; separate SDK/
+  credential state cannot be nested in copied projects or managed homes.
+
+  Both explicit bounded copy and symlink modes are preserved. Copy has finite
+  per-file/aggregate/entry/depth bounds and keeps safe relative links and owner
+  executable bits. Unsafe links/special files, exceeded limits, changed objects,
+  missing mappings and existing/partial custody refuse before network effects.
+  Protected create-only possible custody precedes physical creation; unknown work
+  never repairs or reuses an unrelated home. The actual result remains owned
+  through late failure, and fresh resource plus original Started/Reserved writer
+  checks follow the real filesystem await. No second launcher or Applied/Active
+  receipt/session route is introduced by this prerequisite.
+
+  Five exact home selectors pass, with actual original approval/account/room/SDK
+  flow and independent encrypted-DM recipient. Coverage includes both project
+  ownership modes and source replacement, seven partial/unsafe/limit refusals,
+  original retained caller loss during a 60 MiB copy, and actual writer revocation
+  during an unfinished 60 MiB copy. The last leaves completed physical custody
+  retained but no account/room/SDK write or route, including read-only replay.
+  Its initial failure was the positive-only account teardown incorrectly used
+  for a deliberately absent account; assertions had passed and teardown was
+  corrected without weakening them. The failed log is preserved.
+
+  Post-fix bootstrap's complete target exits 0 with 12 tests, including twelve
+  closed home-profile configuration cases. The fifth home selector was added
+  after the full post-fix 204-test package, so a fresh full current Matrix run was
+  observed through original session 2001 to exit 0: 177 library plus 28 integration
+  tests, 205 total, none ignored/filtered; library runtime 160.04 seconds.
+  Installed-target Windows GNU all-target
+  Matrix/store/native check was separately observed through original session 58345
+  to exit 0. Compilation is not native Windows home filesystem/platform conformance.
+  Final offline binding audit exits 1 with 934
+  selectors and the same two genuine completion/session-route selectors missing.
+  Its earlier overlapping snapshot also lacked the then-new home-scope selector;
+  the final source-consistent inventory resolves it. agent-spec is absent; no
+  parse/lint/lifecycle result is claimed.
+
+  Actual mini3 read-only inspection still shows running=true, zero restarts,
+  75 completed dispatches, 74 Delivered replies and five retained unknowns. This
+  source is not deployed and no new Palpo factory/soak result is claimed. Failed
+  generation-11 soak and recovery remain untouched. Next complete genuine runtime
+  setup through the existing owned launcher, then physical Applied/Active and
+  derived routes; both deployment profiles and actual fleet/two-agent, completion
+  reliability, sustained recovery/re-soaking, approval/media/lifecycle/API parity,
+  effective sandbox/budgets/quota/retention, native platforms/upstream desktop and
+  full M0–M9/release gates remain owed. The full goal remains active. No formatter,
+  new dependency, commit, PR, SDK reset, deployment, live restart or cutover occurred.
+
+- 2026-09-16 continuation, source checkpoint observed by 12:37:55 UTC: the
+  previous status check yielded terminal evidence that the four AS account
+  selectors pass, making the missing original inline integration the next action.
+  This continuation implements its actual fixture wiring and native profile gate,
+  not a claim that the full migration or failed live soak is repaired.
+
+  The fixed private AS credential now travels through the original approved
+  request/home/account/room/SDK owner. Sensitive-header passwordless registration
+  inhibits login; actual accepted creation precedes a separately fenced dedicated
+  device login. Its session remains private operational SDK custody, not an agent
+  credential or replacement side master. Fixed encrypted AS stages preserve
+  original claim/profile/origin/credential binding, while normal custody identity
+  and default markers remain unchanged. No lost/partial attempt retries or falls
+  back, and receiver loss retains the original operation and lock.
+
+  Added original inline AS fixture coverage, with strict actual HTTP assertions
+  for both privileged POSTs after physical home completion. The positive uses an
+  independently joined owner and decrypts in the agent-created encrypted DM through
+  its actual claimed session. Three held-read negatives revoke the master before
+  invitation or first SDK key upload, or broaden the namespace before that upload.
+  Independent TLS whoami still authenticates the original device token. No later
+  room/key POST or route is admitted, and a closed-original SDK ledger retains
+  first Possible/no response. Failed owners cannot rearm on replay.
+
+  Native bootstrap adds 22 closed-profile cases: two valid AS configurations and
+  unchanged default reach only the original observer refresh, deliberately refused
+  by wrong identity; 19 malformed/missing/wrong/ordinary/aliased/public inputs stop
+  before HTTP/model work. Separate protected AS/representative/key files keep
+  credentials outside driver JSON/console; no ordinary-token fallback qualifies.
+  The initial inline pair exits 0 through session 44256 (2/2, 3.73 seconds).
+  Bootstrap's exact new selector exits 0 through session 56201 (8.51 seconds).
+
+  Source-consistent full Matrix exits 0 through original session 80812: 179 library
+  plus 32 integration tests, 211 total, none ignored/filtered; library 178.03 seconds.
+  Full bootstrap exits 0 through session 54664 with 13 tests (14.02 seconds).
+  Affected Matrix/store/native all-target warnings-denied Clippy exits 0 through
+  session 68030; Windows GNU all-target check exits 0 through session 5648.
+  Compilation is not native Windows filesystem/runtime conformance. The binding
+  inventory exits 1 through session 34659 with 941 selectors and the same two
+  genuine physical completion/session-route selectors missing. Listing is not
+  execution; agent-spec is absent and no parse/lint/lifecycle is claimed.
+  All original records are retained in the external migration cache under
+  `appservice-*-20260916.log`; the earlier compile failure is not relabelled.
+
+  Actual read-only mini3 inspection remains running=true, zero restarts, 75
+  completed dispatches, 74 Delivered replies and five retained unknowns. New source
+  is not deployed; generation-11's failed soak/recovery remains untouched. This
+  checkpoint does not implement the mandatory HS-authenticated AS transaction/user
+  receiver or registration-file generation, nor either complete deployment profile.
+  Genuine original inline retained runtime/handoff through the same owned launcher,
+  Applied/Active/derived routes and configured real-ingress roster remain required.
+  The current launcher needs Active dispatch scope and retains reactor-bound Unix
+  pipes; initialize-and-stop or a second launcher cannot substitute for that work.
+  Real fleet/two-agent factory, completion reliability/recovery/re-soaking, approval/
+  media/lifecycle/API parity, effective sandbox/budgets/quota/retention, native
+  platforms/upstream desktop and full M0–M9/release gates remain owed. The full goal
+  stays active. No formatter, dependency, commit, PR, SDK reset, deploy/restart or
+  cutover occurred; original hagency and Robrix2 source changes are preserved.
+
+- 2026-09-16 continuation, retained task-context bridge checkpoint: the preceding
+  goal turn was status-only, not implementation progress. Revalidated the actual
+  unfinished changes and wired the same original owned execution path instead of
+  treating account/SDK observations as full runtime readiness.
+
+  Host's explicit opt-in now inherits only a closed fixed private reference and
+  context marker; default direct capability/task ABI stays unchanged. After real
+  acknowledged Started and actual initialize, the same owner awaits one retained
+  create-only context job through filesystem return, binds the fixed typed helper
+  once while Ready, then opens the thread. There is no second launcher, raw secret
+  in protocol/receipt, generic policy setter, premature task or fake Applied/Active.
+  Original IO reactor, app-server-only argv, scope, sandbox and cleanup/Done/reply
+  settlement are preserved. Actual create descriptor is retained before writing;
+  exact held root/file/bytes, original deadline and cancellation owner are pinned.
+  Current DomainStore authority checks precede/follow the bounded physical work.
+  Caller loss retains the actual original job; Busy/unknown/failed binding cannot
+  rearm, and completed replay inspects only the same original custody.
+
+  Review tightened the sealed writer Started marker to crate-internal validation.
+  A current InProgress task is not an acknowledged Started receipt. The initial
+  new refusal test incorrectly tried to reconstruct its scope through a getter
+  which already refuses Started; its terminal failure is preserved. The corrected
+  assertion proves that refusal without changing or bypassing the private marker.
+  Exact post-fix Store test exits 0 through session 27619 with all three selectors.
+  Runtime late helper exits 0 through session 59635; native closed startup grammar
+  exits 0 through session 41385. Actual owned native MCP selector exits 0 through
+  session 26771: initialize with absent record/reference-only parent, then original
+  helper API read/heartbeat/readback/successful exit, including cached context after
+  its startup file changes. This is an offline app-server peer plus real native
+  MCP/DomainStore, not a live model or effective-sandbox/factory readiness proof.
+
+  Source-consistent full Store/Runtime exits 0 through original session 45173:
+  402 printed tests, 45 summaries, zero failed/ignored/filtered. Selected complete
+  Native lib/bootstrap/owned_mcp/task_client targets exit 0 through session 49934
+  with 30+13+6+8 = 57 tests, no failures or ignored/filtered tests. Earlier Native
+  session 39539 remains failed: three actual initialize transport timeouts during
+  an overlapping build/test run; cause is unproven. No deadline was enlarged or
+  test serialized to force passing. Final four-package all-target warnings-denied
+  Clippy exits 0 through session 21966; Windows GNU all-target compilation exits 0
+  through session 8978. Compilation is not native Windows runtime conformance.
+
+  The broader three-package attempt exits 101 through session 16428: Execution's
+  75 ordinary tests pass, then the two real-sandbox evidence selectors reject the
+  checked-in placeholder. They remain failed, not skipped; no live Cargo test or
+  operator evidence rewrite was attempted. Separate current Store/Runtime run
+  observes packages Cargo did not reach. Final offline binding inventory exits 1
+  through session 66586 with 947 selectors and the same two genuine physical-
+  completion/session-route selectors missing. Inventory is not execution;
+  agent-spec is absent and no parse/lint/lifecycle qualification is claimed.
+  Original terminal records remain in external `retained-context-*-20260916.log`.
+  ADR-057 explicitly records the new private operational file extension; it is
+  plaintext checked-private dispatch custody, not canonical agent credentials,
+  an AS side master, encrypted SDK state, persistent grant or hostile-runtime secrecy.
+
+  Next integrate actual pre-activation warm worker/reactor ownership through this
+  same launcher and handoff, not initialize-and-stop or an unused warm handle.
+  Transport lifetime currently starts at construction; Host uses original
+  operation_ms as its lifetime, so warm idle cannot simply outlive it and later
+  claim readiness. Its typed lifecycle must preserve original dispatch deadlines.
+  Original enrollment SDK also needs current-Active scope handoff without reset
+  or replacement before final Applied/Active/derived routes and configured ingress
+  roster can be qualified. Mandatory native AS receiver/registration generation,
+  both complete profiles, real fleet/two-agent, reliable completion/recovery and
+  sustained real client re-soaking plus full M0–M9/parity/release gates remain owed.
+  Read-only mini3 remains running=true, restarts=0, 75 completed dispatches,
+  74 Delivered replies and five retained unknowns. Failed generation-11 soak and
+  recovery remain untouched; this source is not deployed and full goal stays active.
+  No formatter, dependency, commit, PR, SDK reset, deploy/restart or cutover occurred;
+  original hagency dirty changes and Robrix2's existing headless build are preserved.
+
+- 2026-09-16 continuation, actual retained pre-activation runtime: the prior
+  status-only turn was no implementation progress; live read-only state and the
+  original Gen10 passing/Gen11 failing terminal records were revalidated. The
+  active eight-selector task now implements genuine warm owner consumption:
+  one fixed native session/process/current-thread reactor waits pre-activation,
+  then transfers its original worker/report into actual acknowledged owned dispatch.
+  Original start/workspace ack/usage/private context/native helper/thread/turn and
+  cleanup/settlement/negative finalization remain on that same execution path.
+  No probe-only readiness, second launch/reactor, adoption or cold fallback.
+
+  Original producer/fence/resource/account/registration scope and actual home/root
+  are checked fresh. Its finite sticky producer registry prevents duplicate,
+  foreign/reopened or failed warming. Typed pre-initialize opt-in allows only
+  Ready/no-helper idle and one original absolute-deadline dispatch; idle helper/
+  thread requests and normal/active extension/rearm refuse. Live capacity is held
+  before possible spawn and transferred once. Genuine scope validation writes no
+  Active/task/route authority; fixture activation is explicitly not factory proof.
+
+  Initial check 56551 exits 0. Store 43538 exits 101: fixture wrongly expected raw
+  unenriched roles and permitted reserved-profile editing. Correct actual normalized
+  frozen-role and refused-public-write/corruption fixtures pass all three Store
+  selectors through 89772. That combined handle ends 101 because the separate idle
+  fixture wrongly expected request ID 2 rather than original sequence ID 1; corrected
+  exact Runtime 66881 exits 0 without resetting connection or deadline. Initial
+  Native 91998 exits 101 on incorrect existing API arguments/types. Native 67026
+  and diagnostic 27815 remain failed: unstarted expiry actually Superseded, and
+  approval-enabled startup lacked its required observed private approval room.
+  The real existing guard refused binding at TurnStart; fixed fixture submits the
+  actual Host observation, no verdict/grant or bypass. Native 44026 exits 0 (3 tests).
+
+  Late-spawn capacity negative control 56038 exits 101: old shared deadline/cancel
+  cleanup could free an uncertain live slot. Fix keeps possible late startup held
+  until observed full stop, with unchanged bounds and known pre-child releases.
+  Native 75415 exits 0 (4 tests). Initial Clippy 43466 exits 101 on shared startup's
+  eight arguments; grouped private NativeStartup/Controls fixes it without lint
+  suppression. Source-consistent final Native 58854 exits 0: 30+13+6+8+4 = 61 tests,
+  five summaries, zero failed/ignored/filtered. Same PID/one initialize spans actual
+  idle past initial IO lifetime and Started/workspace-ack/native MCP heartbeat,
+  including two held live slots and the actual associated managed account.
+
+  Full Store/Runtime 62853 exits 0: 406 printed tests, 44 all-target summaries, zero
+  failed/ignored/filtered. Final warnings-denied four-package all-target Clippy
+  73013 exits 0. Full Execution 43945 and grouped source 23221 both exit 101:
+  76 pass and the two original real-sandbox placeholder evidence gates fail;
+  none ignored/filtered. Lint/build briefly overlapped Store/Runtime; its terminal
+  result was passing, not abandoned/restarted. All original logs are retained in
+  external warm-owner-*-20260916.log. No live Cargo test/model, increased deadline,
+  forced serialization or passing lifecycle claim; agent-spec remains unavailable.
+
+  ADR053 records the explicit pre-activation scope exception and capacity correction;
+  ADR147 records source progress, not completed factory. Next implement the full
+  original inline home/account/rooms/enrollment/warm runtime owner and same SDK's
+  current-Active handoff for both complete profiles, then genuine Applied/Active/
+  derived routes and configured roster/fleet/two-agent qualification. Mandatory AS
+  receiver/registration generation, actual sandbox, completion/recovery reliability,
+  sustained real Palpo/Robrix re-soaking and full M0–M9/parity/release remain owed.
+  Warm ready is initial IO evidence, not perpetual liveness or model qualification;
+  completion still needs fresh physical/current-owner proof. Neither original
+  missing provisioning selector is withdrawn or given synthetic authority.
+
+  Read-only mini3 again has running=true/restarts=0, 75 completed dispatches,
+  74 Delivered replies and five unknowns. Failed Gen11 soak/recovery remains failed;
+  these changes were not deployed or re-soaked. Original hagency dirty entries and
+  Robrix2/headless build are preserved; no dependency, formatter, commit/PR, reset,
+  service restart or cutover occurred. Full goal remains active.
+
+  Final grouped-source Windows GNU all-target check 36527 exits 0: compile only,
+  not native Windows execution. Final offline all-feature/all-target binding
+  inventory 79315 exits 1 with 955 selectors and the same two missing full-factory
+  selectors (native_provisioning_effect_completed/native_provisioning_session_route).
+  All eight warm-task selectors are registered, not listing-qualified as execution.
+  Agent-spec is absent, no parse/lint/lifecycle claim. All known task handles are
+  terminal/closed; tracked source diff-check and new source whitespace checks are
+  clean. The full goal is not complete or blocked by this source checkpoint.
+
+- 2026-09-16 continuation, original enrollment SDK Active consumption: the prior
+  user-status turn was no implementation progress; it revalidated original
+  terminal Gen10/Gen11 records. The new five-selector active handoff contract
+  now consumes the original opaque account's successful enrolled Collector/SDK,
+  without configuration/credential export, second owner/store, fresh identity,
+  signing upload/session claim or reset. Its separate read-only writer validator
+  requires the original acknowledged Started effect's exact fence/payload to now
+  be actually Complete, engagement Active and registration current. Existing
+  Started/Reserved enrollment stays strict; no Applied or route is synthesized.
+
+  Same original SDK queue/owner, protected Agent Complete, busy permit and absolute
+  admission deadline span collection/Complete verification/current writer checks.
+  Actual whoami/project binding/owner/powers/Direct privacy/recipient inventory and
+  AS namespace authority are freshly read. Lost waiter retains original job/result;
+  failed/running/closed jobs cannot rearm or move backwards. Post-collect failure
+  fences only its actual original positive transport. Actual Weak SDK channel
+  identity and settled Weak teardown prove same owner and no job/owner Arc cycle.
+  Original AS home/account/rooms/SDK also hands off this same owner; revoked or
+  broadened side master refuses despite the private dedicated device still live.
+  AS registration/login, room, signing and claim effects stay exactly original.
+
+  Initial51809 exits101 (production used cfg-only convenience method); fixed
+  existing Agent-purpose Handle stays on the original SDK queue. Initial80946
+  exits101 (assertions needed absent private Debug); fixed equality/cancel checks
+  add no Debug projection. Corrected5814 and final Weak teardown5336 exit0,
+  three actual Matrix selectors. Both-kind81365 exits0, four Matrix selectors,
+ 179 filtered/zero failed or ignored. Store85957 exits0, one selector/no filters.
+  The first full invocation misspells --no-fail-fast and exits1 before execution;
+  original log retained. Correct full46889 exits0:552 printed tests/45 summaries,
+  zero failed/ignored/filtered (Matrix214/6;Store338/39). That combined run precedes
+  test-only Weak/AS extensions; final current-source Matrix all-target follows
+  separately. Store source remains identical. Actual original still-live process
+  sampling showed recipient crypto work; its same full handle later exited0,
+  not abandoned/restarted after a long observation. No forced serialization or
+  deadline enlargement. Distinct sdk-active-*-20260916 logs remain external.
+
+  Three-package warnings-denied all-target Clippy14292/65168/25000 exits0;
+ 25000 includes final both-kind fixture source. Windows GNU all-target checks
+ 39351/63968 exit0:compile only, not native execution/release (Windows paused).
+  First all-feature binding inventory41333 exits1:959 selectors, same two missing
+  native_provisioning_effect_completed/native_provisioning_session_route. Final
+  both-kind inventory43078 exits1:960 selectors, same two missing factory selectors.
+  Final current-source Matrix58074 retained log is terminal:214 passed/one failed,
+  zero ignored/filtered, one failed target. The original-deadline account test
+  returns OutcomeUnknown after two registration requests before its strict peer
+  script receives the third expected request; panic is token_provision.rs:68.
+  Its 750ms budget includes two scripted 300ms response delays before that request;
+  the precise intervening cause remains unproved. No deadline increase, forced
+  serialization, test change or rerun erases the failure. Final Matrix stays red
+  despite the earlier passing full run. The handle is unavailable to poll; the
+  authoritative retained terminal log supplies the result, not an observation
+  timeout. No listing-qualified execution or unavailable agent-spec lifecycle.
+
+  Readonly mini3 still running=true/restarts=0,75 completed dispatches,74 Delivered
+  replies,five unknowns. No deploy/re-soak. Existing developerInstructions already
+  explicitly require canonical completion; do not invent missing guidance as the
+  failed Gen11 root cause or fabricate Done from ordinary ACK. Genuine full inline
+  home/account/rooms/enrollment/warm owner consumption/fresh physical proof,
+  Applied/Active/derived routes for both profiles and mandatory native AS receiver/
+  registration generation, configured roster/fleet/two-agent, actual sandbox,
+  completion/recovery reliability, sustained real client re-soaking and full
+  M0–M9/API/parity/budgets/quota/retention/platform/release/cutover remain owed.
+  No original factory selector withdrawn or given synthetic authority, new marker,
+  dependency, formatter, commit/PR, reset/deploy/restart/cutover or original source
+  edits. Original hagency dirty entries/Robrix2 headless artifact preserved; full
+  goal remains active, not complete or blocked by this source checkpoint.
+
+- 2026-09-16 continuation, fresh original warm owner: the previous goal turn
+  observed/recorded the final Matrix failure, progress but not full qualification.
+  Six-selector task-rust-warm-current-owner.spec.md now requires fresh physical
+  observation rather than cached initialize or absence of Stopped. Unix correlates
+  actual guardian/retained Scope observations by strictly increasing private nonce;
+  Windows checks its original process handle. Unknown cannot rearm; only an exact
+  late reply drains before original cleanup. Linux independent cgroup cleanup is
+  not replaced by peer reports. No PID authority/new launcher/configuration export.
+
+  Same worker/reactor/session owns a bounded Ready inspection through caller loss
+  and its original absolute response/idle deadline. Final writer/home/account
+  checks follow physical IO; expired buffered positives cannot become readiness.
+  Idle/handoff also qualify; consumed dispatch closures leave the cancellable wait
+  before inspection awaits, retaining original negative finalization on failure.
+  First failure stays sticky through later cancellation/teardown. No Applied/task/
+  approval/route write, default sandbox change, second initialize or cold fallback.
+
+  Initial12532 exits101 (cleanup arm type), fixed without teardown changes.
+  Guardian55014 exits0:8 printed selected tests. Native36905 exits0:5 before
+  new custody coverage. Native94357 exits101:peer acknowledgment metadata absent
+  when read; actual host flush is not peer-read proof. Fixed fixture waits for
+  completed JSON under its existing4-second bound. Corrected44532 exits0:6 tests.
+  Later guardian42891 exits101 (unit2 pass;guardian1 pass/5 fail startup/channel/
+  child-exit bounds); native28913 exits101 (1 pass/5 fail startup/initialize bounds).
+  Exact cause remains unproved. Diagnostic59495/12414 exit0:6 each at unchanged
+  original budgets, not a clearance of failures or proof of load qualification.
+  Settled unknown19282 exits0:1 private-protocol selector/five negative variants,
+  explicitly scripted not factory proof. Sticky19570 exits0:1 original-result test.
+  Actual native owner-exit/held-writer waiter-loss/expiry selectors pass separately.
+
+  Full four-package all-target48832 exits101:380 printed passes/11 failures,
+  52 summaries,zero ignored/filtered. Six red targets:console roster pending
+  provision, two-agent placeholder, received-file4 initialize timeouts, release
+  cutover missing4 template inputs/poisoned mutex, execution2 sandbox placeholders,
+  platform fatal-truncation exit101 vs125 (cause unproved). Its warm target passes6;
+  final sticky/late-wrong extensions have separate current checks. Strict all-target
+  Clippy19412/18545/26368 exits0;26368 covers settled source. Windows GNU34971/90930
+  exit0:compile only,not native execution/release; Windows paused. Inventory62617
+  exits1:966 bindings,two original missing factory selectors plus sticky introduced
+  after library compilation. Settled inventory6905 exits1:966 bindings and only
+  the two original factory selectors missing. All6 current-owner selectors are
+  registered and separately executed above, not listing-qualified. All known
+  task handles terminal/closed; selected diff-check/new-source whitespace clean.
+  Agent-spec absent,no parse/lint/lifecycle claim.
+
+  Readonly mini3 still running=true/restarts=0,75 completed dispatches,74 Delivered
+  replies,5 unknowns. No deploy/reset/restart/re-soak or original source edits.
+  Original dirty hagency entries/Robrix2 artifact unchanged. Genuine full inline
+  original home/account/rooms/SDK/warm consumer, Applied/Active/derived routes for
+  both profiles, native AS receiver/registration generation, configured roster/
+  fleet/two-agent,effective sandbox,completion/recovery and real sustained client
+  soaking remain owed. Upgrade source-copy/fingerprint must include the4 actual
+  shared templates, not substituted bytes. Full M0–M9/parity/budgets/quota/retention/
+  platform/release/cutover remain open. No factory selector withdrawal,new marker,
+  dependency,formatter,commit/PR or cutover; full goal remains active. Next connect
+  genuine original factory consumption/activation/routes, not a substitute profile.
+
+- 2026-09-16 continuation, genuine original factory: the previous status-only
+  turn was no progress. task-rust-inline-factory-runtime.spec.md/ADR053/147 now
+  connect the original physical home/account/rooms/enrolled SDK to one fixed
+  Host-only WarmHostPlan/FactoryRuntime and the same initialized original owner.
+  The explicit internal Matrix -> execution dependency is approved; no external
+  crate/version, launcher, exported secret/config, synthetic target activation,
+  changed deployment/checkpoint marker, cold fallback or changed budgets.
+  Original worker activation performs fresh physical/current checks and exact
+  original writer transaction/ACK before Active SDK handoff and actual created
+  encrypted owner-DM/null-root session/workdir routing. Lost ACK cannot authorize
+  replay/dispatch. First dispatch consumes the same initialized owner exactly once.
+  Store provision_runtime4 passes separately, admission-only not physical proof.
+
+  Initial offline Native4 failures were traced to the independent owner join
+  client's wrong placeholder origin, fixed to the actual endpoint at unchanged
+  bounds. Then3 passed/first dispatch LostAuthority at TurnStart; ordinary owned
+  scope sampler stayed current. Separate approval binding was missing and copied
+  fixture room had another project. The product now requires its original fixed
+  approval Collector, validates same writer scope before launch, and authenticates
+  target binding after exact ACK before routing. Fixture seeds only the unrelated
+  external bootstrap on its preexisting typed managed project; no target rows.
+  Foreign writer refuses before initialize; failed post-ACK membership retains
+  Active history/no route. Final Native10 passes in9.23s,zero ignored/filtered,
+  including both account kinds' activation/routing/first real native helper use,
+  privacy refusals, foreign writer, intake/shutdown waiter loss and both Busy
+  paths. Coordinator closure retains original permit/jobs through caller loss,
+  closes each dispatch admission before awaits and drains all original owners;
+  partial aggregate failure stays Unknown with individual custody retained.
+  PoisonError<MutexGuard> Send compile failure is fixed by mapping before await.
+  No forged Done/whole-tree proof/unknown lease release; macOS remains conservative.
+
+  Upgrade build copy and fingerprint now include original role JSON plus all4
+  shared entry templates, no substituted bytes. New unit covers each template's
+  copy/invalidation. Initial release9 passes including actual local N/N+1 state
+  continuity/rollback; later exact-current-N restore also covers child/staging
+  failure, not an old same-version backup. Current settled five-package all-target
+  no-fail-fast75472 remains running and will have separate final evidence.
+  Agent-spec absent,no parse/lint/lifecycle claim; selected whitespace checks clean.
+  No formatter/commit/PR/original source edit/reset/deploy/restart/re-soak/cutover.
+  Native configured fleet/roster/two-agent/approval pump, both complete ADR016
+  deployment profiles/AS receiver/registration generation, real effective sandbox,
+  canonical completion/recovery/re-soaking and full M0–M9/API/parity/budgets/quota/
+  retention/platform/release/cutover remain owed. Full goal remains active.
+
+- 2026-09-16 continuation: previous status-only turn was no progress. Resolved
+  prior unobserved dispatch-owner test:11 pass; five-package strict Clippy passes.
+  Prior full75472 actually ended884 printed passes/four failures/zero ignored.
+  It is no longer running; its red roster/two-agent/two-sandbox evidence remains
+  recorded separately from later checks.
+
+  The real authenticated console roster regression now runs the original inline
+  physical factory for both account kinds, reads the target minted by ingress,
+  verifies Applied/Active and its actual DM route, and preserves exact seven-key
+  privacy. Removed the old injected approval-room/unconfigured-factory fixture.
+  Native startup/fleet integration is still required.
+
+  Fixed actual factory-agent approval rejection: the original bot now retains
+  scope-validated new membership under its existing busy permit and64-member cap.
+  All observation/intake/enrollment/send/close consumers use that same bounded
+  membership. An opaque original writer scope and successful post-ACK private
+  observations are required; no public setter, SDK replacement, grant or fallback.
+  New red regression reproduced Config after actual enrollment; positive tests
+  now enroll the bot before agent creation, preserve its keys/claims, deliver an
+  exact encrypted card to the independent owner for both account kinds, preserve
+  pending permission, and cover original caller loss. A held private read plus
+  canonical revocation refuses membership/routing. The test checks canonical
+  Cancelled/fence+1 plus unchanged Applied digest, not an incorrect expectation
+  that end() leaves the effect state Complete.
+
+  Final source:Matrix216 pass; console56 plus factory13 pass; five-package
+  all-target Clippy passes with warnings denied. Existing stable Windows GNU
+  all-target check passes (compile only). Binding inventory lists984 Rust
+  selectors with none missing (listing only). Separate earlier Native83 includes
+  actual local release9 and warm6 passes. One intermediate console run hit
+  OutcomeUnknown during provisioning; cause unproven, original failed log retained.
+  Later settled runs pass at unchanged budgets without test-thread overrides.
+  All task handles terminal; diff/new-source whitespace checks clean.
+  agent-spec is absent; no lifecycle/parse/lint claim.
+
+  Readonly mini3:running,zero restarts,75 completed/74 Delivered/five unknown.
+  No deploy/restart/reset/re-soak, formatter, dependency addition, commit/PR or
+  cutover. Original hagency and Robrix2 changes are preserved. Actual configured
+  fleet/repeated dispatch/approval-verdict pumping, full profiles/AS receiver and
+  registration generation, effective sandbox, canonical completion/recovery,
+  real two-agent and sustained Palpo/Robrix soaking plus all M0–M9/parity/release
+  requirements remain unfinished. Full goal stays active.
+
+- 2026-09-16 native approval round trip: the preceding status-only goal turn was
+  no progress. Current source confirmed that PC-C0 sent cards but neither enrolled
+  the approval SDK nor polled owner verdicts. Added the bounded roundtrip task
+  contract and ADR064/112 amendments, then reproduced the fresh executable gap:
+  no enrollment writes, card or verdict poll. No live state was changed.
+
+  Startup now drives the original separate bot's observe/enroll path before any
+  driver launch while continuing to poll its real HTTP server. Existing Complete
+  enrollment is reused without key/session regeneration. This is Matrix crypto
+  enrollment, not ADR114 provider login. The original single-consumer run notices
+  feed at most64 pending IDs into the same ApprovalCollector. The serial250ms
+  polling cadence preserves all existing authority/custody/capacity/deadline
+  checks; a refusal or unsettled batch stops the pump without automatic retry.
+  Bootstrap retains the original approval owner across failed close observations.
+
+  Actual native child tests start without approval SDK/binding, drive real TLS
+  key publication and independent-owner crypto, decrypt the card, return exact
+  encrypted approve-once/deny verdicts and observe the matching actual callback
+  in the pinned offline probe. Plaintext first leaves the request pending; only
+  the subsequent encrypted verdict admits a receipt. Wrong actual owner anchor
+  prevents dispatch. A held enrollment response proves HTTP remains responsive.
+  The older pre-enrolled test preserves five writes/one claim. A real missing
+  domain-authority close failure proves the same Arc and database locks remain
+  across two failed closes; it does not claim positive SDK shutdown evidence.
+
+  Final approval selection passes1 unit plus5 executable tests. The prior broader
+  native run passed16 bootstrap and56 console but failed in a factory diagnostic
+  that read nullable terminal deadlines as bools. Preserving Option<bool> in that
+  read-only diagnostic lets the actual report be observed; all13 factory tests
+  then pass, without product changes or increased budgets. Separate release9 and
+  warm6 pass. Matrix216 plus runtime69 pass (285 total,zero failed/ignored).
+  Five-package all-target warnings-denied Clippy passes. Windows GNU all-target
+  native compilation passes; it is not native Windows execution. Production
+  caller checker unit tests24 pass. Final all-feature Rust binding inventory
+  lists988 selectors with none missing (listing only, not test execution).
+  All task handles are terminal; tracked/new-spec whitespace checks are clean.
+
+  Logs are native-approval-roundtrip-* under the existing private live evidence
+  root. Initial fixture failures (raw crypto API spelling, JSON-encoded choice,
+  invalid literal public anchor) remain in their own logs; final fixtures use
+  the pinned raw API, decode the stored JSON enum and generate a real public
+  anchor. Atomic fixture receipt publication avoids partial-file observations.
+  agent-spec is absent; no parse/lint/lifecycle claim. No formatter, dependency
+  addition, commit/PR, deploy/restart/reset/re-soak or cutover. Original hagency's
+  six dirty entries and Robrix2's headless artifact are preserved.
+
+  This closes the configured single-run service approval wiring gap, not fleet
+  composition, real Robrix approval clicks or full port readiness. Complete
+  profiles/AS receiver/registration generation, repeated/multi-agent dispatch and
+  workspace ownership, effective sandbox, reliable canonical completion/recovery,
+  real two-agent and sustained Palpo/Robrix qualification, all M0–M9/API/parity/
+  budgets/quota/retention/platform/release/cutover requirements remain owed.
+  Gen10's narrow hour and Gen11's failed cycle37 are unchanged. Full goal active.
+
+- 2026-09-16 factory sequential ownership and Linux physical qualification:
+  removed the permanent first-dispatch limit under the new sequential task
+  contract. Admission is spent in the original runtime before blocking enqueue.
+  Only the original operation's private successful settlement/full-stop/usage
+  observation, received result and joined worker admit distinct later work.
+  Public Report mutation, pending work, failed handoff and caller loss cannot
+  manufacture continuation. Subsequent Started launches retain the same Host,
+  writer, physical roots/account, approval budget and enrolled Matrix SDK, with
+  direct fresh task/helper binding instead of reusing the first warm context.
+
+  Actual Linux testing exposed a separate preexisting factory blocker: home
+  copying fsynced cap-std's O_PATH descriptor, failing after the real file copy
+  and before account registration. Task-context publication had the same bug.
+  Added a bounded directory-sync contract and reused the account store's existing
+  readable same-object directory adapter internally. No sync error is ignored,
+  pathname reopened, partial home repaired, authority fabricated or budget raised.
+  The Linux unit observes the original EBADF, positive real sync, namespace
+  replacement isolation and refusal when the retained directory becomes public.
+
+  Post-fix isolated Linux: all15 factory tests pass, including two distinct
+  physical dispatches for BOTH account kinds; helper readback names task1 then
+  task2, only one warm context exists, original SDK writes/claims do not repeat,
+  and actual whole-tree cleanup releases leases. These are heartbeat/readback
+  tasks, NOT canonical Done/final-reply or real model/sandbox qualification.
+  Separate Linux sync1, task-context3 and account11 tests pass. All containers
+  have network disabled and synthetic state only; live state/credentials are
+  never mounted. Source hashes match the local worktree. The existing offline
+  rust:1.94-bookworm image used installed Rust1.94.1 (workspace minimum1.94),
+  not the local pinned1.95 compiler; this is explicit Linux execution evidence.
+
+  Post-fix macOS: bootstrap16 and console56 pass; a simultaneous-build factory
+  run had10 passes/five provisioning failures (Domain/OutcomeUnknown), retained
+  in its original log with cause unproven. With unrelated build checks finished,
+  an unchanged default-concurrency run passes factory15, owned-MCP6 and warm6.
+  macOS factory continuation remains conservative refusal without full cleanup
+  proof. Sync1/context3/account11 pass. Four-package all-target strict Clippy
+  and Windows GNU all-target check pass (Windows compile only). Final995 Rust
+  spec bindings resolve with none missing; listing is not execution. Earlier
+  pre-directory-fix library225, execution39 and release9 passes remain separate.
+
+  Logs use factory-sequential-* under the existing private evidence root. Initial
+  Linux source-copy missing static include, parallel-link OOM, and15/15 factory
+  failures are retained, not called passes. Build jobs were reduced to1, not
+  test concurrency or deadlines. A task-created partial build-cache volume filled
+  the20GB Docker disk; removed only that verified unused disposable copy, then
+  used a host-disk target directory. The original cache remains; disk restored
+  to2.7GB free. Live container remained running,zero restarts/no OOM; readonly
+  state remains75 completed/74 delivered/five unknown. Original hagency's six
+  dirty entries and Robrix2's headless artifact are unchanged. All handles are
+  terminal. No formatter, dependency, commit/PR, deploy/restart/reset/re-soak.
+  agent-spec is absent; no parse/lint/lifecycle claim.
+
+  This is concrete progress, not full port readiness. Configured native fleet
+  startup/scheduling and multi-workspace integration, complete profiles/AS
+  receiver/registration generation, real sandbox/two-agent evidence, canonical
+  completion/recovery reliability and sustained real Palpo/Robrix qualification,
+  remaining M0–M9/parity/budgets/quota/retention/platform/release/cutover gates
+  remain. Gen10's narrow one-hour pass and Gen11's failed cycle37 are unchanged.
+
+- 2026-09-16 fleet dispatch isolation and stop-custody correction:
+  replaced the bootstrap's single workspace slot with at most16 original Started
+  bindings. Exact full-capability selection retains one entry before the writer
+  wait; exact release retires held guards without affecting other entries. No
+  source-root setter, replacement writer or lock held across await is introduced.
+  Three real Started-operation regressions cover distinct roots with identical
+  filenames, foreign capabilities, individual/global retirement and capacity.
+
+  Native final delivery now authenticates its original completed dispatch/fence
+  against the historical attempt and claims only that dispatch's current pending
+  intent. It cannot consume another agent's older reply or restore execution.
+  Two-agent store regressions cover all capability fields, unpublished completion,
+  expired execution, retired routes, original claim renewal and uncertain-send
+  refusal; actual native MCP/Matrix fixtures use the same scoped API.
+
+  Further review found the old global stop sweep unsafe, not merely incomplete:
+  a real original-operation regression returned one pre-child failure while
+  another original Started operation was held, and the production finish path
+  settled BOTH stops (expected two pending, observed zero). Removed that sweep;
+  negative scopes retain pending rows, dirty roots and leases. Original successful
+  completion publication/delivery and explicit operator recovery are unchanged.
+  The former direct-store-string fixture proved no physical inspection. G8 is
+  explicitly reopened in ADR130/146 and its positive exact stopped-owner/workspace
+  inspection selector remains owed; the real negative test replaces the invalid
+  positive claim. This is not completion of automatic stop/recovery behavior.
+
+  Current verified local results: store owned-completion8/replies17; native
+  library34, bootstrap16, owned-Matrix3 and owned-MCP6; strict all-target store/
+  hagency Clippy; Windows GNU all-target compilation (not execution). Production
+  caller checker44/43 wired/one owed G8, no missing; checker units24. All-feature
+  Rust spec inventory1000 with no missing selectors is listing only. agent-spec
+  remains absent, so no parse/lint/lifecycle result is claimed. Initial fixture
+  compile errors (private completion receipt fields/revoke signature) are retained.
+  The earlier workspace fixture's max-live1 failure was corrected to17 to test
+  the16-entry registry; production limits and operation deadlines were unchanged.
+
+  Isolated Linux store25 pass. Its large library test link was OOM-killed even
+  with build-jobs1; the failed container/log remain. Rebuilding only that test
+  binary with GNU ld --no-keep-memory succeeds with the same test profile/debug
+  assertions and all34 actual tests pass. No test filter, serialization or deadline
+  change. Seven changed-source digests match the isolated mini3 snapshot. Linux
+  executable integration now passes bootstrap17, owned-Matrix3 and owned-MCP6,
+  including actual whole-tree cleanup, scoped final intent claim and SDK send.
+  Local console56 and the full hagency-store package regression also pass with
+  no failed/ignored tests. All original handles are terminal. Logs are fleet-isolation-* and
+  fleet-stop-custody-* under the existing private live evidence root.
+
+  No deployment, restart, reset, new soak, dependency, formatter, commit/PR or
+  cutover. Read-only inspection confirms the live service still runs with zero
+  restarts/no OOM. Original hagency's six dirty entries and Robrix2's headless
+  artifact remain unchanged. Gen10's one-hour narrow pass and Gen11's failed
+  cycle37 are unchanged; latest source is not yet live-qualified. Full configured
+  fleet startup/scheduling, per-agent file routing, approval multiplexing, exact
+  stop recovery, complete profiles/AS receiver, real sandbox/two-agent/client
+  approval and sustained soaking, plus all remaining M0–M9/parity/budget/quota/
+  retention/platform/release/cutover obligations remain. Full goal stays active.
+
+  Next actual service wiring still needs to construct the configured warm factory
+  with the original approval collector (Shared is currently constructed first),
+  consume original successful ProvisionedAgent handles into recurring per-agent
+  drivers, route file/receive work to each original enrolled SDK, multiplex approval
+  receivers through the single approval SDK, and close retained factory owners.
+  No full-profile config path currently calls with_warm_runtime. The old driver's
+  global max-live1 cannot be mistaken for tested multi-agent scheduling. G8 needs
+  exact inspected original stop custody, never restoration of the removed sweep.
+
+- 2026-09-16 fleet approval service composition:
+  the pump now fairly multiplexes up to16 original operation notice receivers
+  through its existing one-slot handoff, instead of draining one until closure.
+  Closing one source preserves the rest. Original pending-ID/card/journal bounds
+  remain unchanged. Due verdict polling has priority, with cadence reset after
+  actual IO so a slow poll cannot starve new cards. The original approval collector
+  supplies a bounded host scheduling turn shared by pump initialization/send/
+  intake/close and genuine factory membership observation. It never replaces
+  original SDK/domain busy permits, sticky jobs, current checks or unknown custody.
+
+  Further inspection found the driver's old try_send could discard a simultaneous
+  agent's receiver even after multiplexing. It now reserves handoff capacity
+  BEFORE claiming any task, waits cancellably without task/workspace authority,
+  and transfers the original receiver synchronously after Operation creation.
+  No waiting after Started can consume its workspace-ACK budget. An actual
+  driver/Matrix regression holds capacity and proves zero claims on full/cancelled/
+  closed paths; releasing capacity admits only its original next claim. Six new
+  scheduling/custody selectors cover idle/fair/closed receivers, finite capacity,
+  dropped waits, exact scheduling timeout, held original TLS through caller loss,
+  and pre-claim handoff. Pure channel/virtual-time results are not crypto proofs;
+  existing executable encrypted-owner callbacks and physical factory tests remain.
+
+  Final local results: full Matrix219, native lib37/bootstrap16/inline-factory15/
+  owned-MCP6/warm-runtime6 (80), strict all-target execution/Matrix/hagency Clippy,
+  and Windows GNU all-target compilation. Windows remains compile-only. A prior
+  full Matrix run failed the750ms account deadline fixture before its expected
+  third request; isolated unchanged execution passed. Its three300ms delays now
+  use controlled Tokio time with actual TLS/encrypted files and a real3s watchdog,
+  preserving all750ms production/deadline/custody semantics. The first clocked
+  fixture also exposed zero-delay peer timers stalling frozen time; explicit
+  zero-delay writes now need no timer, with positive delays/gates unchanged.
+  Both initial failures/logs remain; this is not a physical-latency qualification.
+
+  Linux before the final pre-claim change passed native36/bootstrap17/factory15/
+  owned-MCP6/warm6 (80) on actual1.94.1; final-source Linux validation is ongoing.
+  The isolated source/cache uses no network or live credentials/state. No deploy,
+  restart, reset, re-soak, formatter, dependency, commit/PR or cutover. Native
+  configured factory/fleet startup, recurring per-agent original runtimes/SDKs,
+  file/receive routing, exact G8 recovery, full profiles/AS receiver, effective
+  sandbox, real two-agent/client approvals, canonical completion/recovery reliability
+  and renewed sustained Palpo/Robrix soaking plus remaining full parity gates stay
+  required. Gen10's narrow hour and Gen11's failed cycle37 are not changed.
+
+  The broader Linux Matrix library run then terminated180 passed/7 failed: every
+  failure was in nested home/AS provisioning, before registration. Isolating
+  native_provisioning_inline_home reproduced it, and a new actual nested-copy
+  regression failed with Io(EBADF). The copier was calling chmod on cap-std's
+  O_PATH child-directory descriptor. It now creates each child with private0700
+  mode atomically, retains/checks its handle and syncs each real nested directory
+  rather than repeatedly syncing only the copy root. Windows default builder and
+  private-parent checks are unchanged; no sync/permission error is suppressed.
+  The new direct fixture passes locally, as do all14 original physical home/room/
+  AS selectors. Linux direct/physical verification and final store/lint/compile
+  regression are underway; the prior180/7 result remains failed. The failed chain
+  never reached its queued token tests or final native library build.
+
+  Final nested-copy source: Linux's direct regression passes after its actual
+  EBADF red result; all14 physical home/room/AS selectors and the3 new approval
+  service-turn selectors pass. Matrix integration32 (approval vectors/media
+  download/media upload/token accounts/transport) passes on Linux. The first
+  integration attempt failed two oracle tests because the isolated snapshot
+  omitted retained bridge/route/schema files; copying those exact source files
+  fixed the qualification environment without regenerating/reblessing vectors.
+  That failed chain/log also remains. The final native Linux library was freshly
+  rebuilt with the observed JSON artifact, and its37 plus executable integrations
+  are currently running; no earlier cached executable is substituted.
+
+  Final local post-copy results are full store343 across39 nonempty targets,
+  native80, and the14 physical Matrix selectors. Strict all-target store/execution/
+  Matrix/hagency Clippy and Windows GNU compilation pass. Spec binding listing1015
+  has no missing selectors; caller inventory retains44/43 wired/one owed G8.
+  agent-spec and the provisioned task-writer remain absent, so no lifecycle or
+  canonical runtime-task-state result is claimed. Eleven changed Rust source
+  hashes match the mini3 snapshot. Actual Linux compiler is1.94.1. The broad
+  Matrix180/7 run remains failed; targeted corrected passes are not a new full
+  Matrix run. Live service is still running with zero restarts/no OOM; original
+  hagency's six dirty entries and Robrix2's headless artifact are preserved.
+
+  Final native Linux job is now terminal exit0: lib37/bootstrap17/inline-factory15/
+  owned-MCP6/warm-runtime6 (81) all pass on the current source, including original
+  encrypted approval callbacks, handoff backpressure and both account-kind
+  sequential dispatches with real Linux whole-tree cleanup. All task handles are
+  terminal. Logs are fleet-approval-* under the existing private evidence root.
+  No real-soak result changed. Next implementation is configured native factory/
+  fleet startup and recurring original-agent service composition, including
+  per-agent file/receive routing and exact shutdown/stop custody; the approval
+  service prerequisite does not itself enable that fleet. Full goal stays active.
+
+- 2026-09-16 configured original-agent service composition:
+  the prior status-only turn was no implementation progress. This continuation
+  adds explicit continuous `factory_service` composition under
+  `inline_factory_service_checkpoint_v1`, requiring a home/rooms provisioner,
+  configured approval bot, finite warm idle bound and actual intake session plan.
+  Existing checkpoint markers retain their behavior without this additional field;
+  neither complete ADR016 deployment profile is advertised. Bootstrap constructs
+  the approval collector once and attaches the SAME original collector and shared
+  eight-live/two-parked ApprovalHost to its original configured warm provisioner.
+
+  The finite service discovers only successful original retained jobs and takes
+  each non-cloneable ProvisionedAgent once, independently of the coordinator's
+  later intake. Recurring drivers call that original agent's dispatch path; the
+  first warm process is consumed and follow-up admission retains the private
+  completion witness. No ordinary replacement Host, SDK reset or Active-row
+  reconstruction. Each agent gets its own workspace and file/receive owners;
+  root and factory claims share max-live8 only in explicit fleet mode. Factory
+  unmanaged HOME/CODEX_HOME now use its actual managed home instead of inheriting
+  a coordinator's shared directory; managed-account preparation still overrides
+  these with its own original private account custody.
+
+  File routes use a bounded full-original-attempt writer read to select the
+  correct backend, including historical reads after workspace release. This
+  does not restore execution or file authority; original current/historical
+  backend checks still execute. File limits/tools are fixed before warm launch,
+  with private per-agent media namespaces and original enrolled SDK sharing.
+  Shutdown quiesces all agents before draining, continues through other owners
+  after an individual failure, retains partial/unknown owners and closes factory
+  custody before the coordinator/writer. Readiness exposes a stopped/failed or
+  unstarted fleet even when the coordinator is healthy. Discovery cannot restart
+  after its original run has been consumed.
+
+  New offline selectors cover closed configured startup, original factory
+  discovery, service-driven sequential claims/native MCP, historical two-engagement
+  authentication and actual workspace/file-worker shutdown isolation. The real
+  helper exercises current received-file listing and send/get of a deliberately
+  missing source through the original fleet backends. That proves routing and
+  source refusal, NOT a successful upload/download. Both actual account kinds
+  run; Mac retains unknown whole-tree cleanup and does not run the second task.
+  This is not a simultaneous two-agent or fully configured executable/client
+  provisioning-to-reply proof. Those remain required, together with AS receiver/
+  registration generation, completion/recovery, G8, effective sandbox, approvals,
+  media delivery and sustained real Palpo/Robrix soaking and full remaining parity.
+
+  Pre-final local native84 and strict four-package Clippy pass. The earlier
+  fixture failures remain: invalid synthetic Agent name, test-future borrow
+  lifetime, incorrectly expected positive Mac close, mismatched snapshot limit,
+  OsString/path-alias comparison, and a lint refusal. Linux actual1.94.1 passes
+  store routing3 and bootstrap18. Its broad factory run passes16/fails1: the
+  recurring service completed both tasks, but the fixture compared the first PID
+  against a latest-stage record overwritten by the second runtime. It now captures
+  the first actual PID during execution before subsequent authenticated refresh.
+  The initial Docker invocation also failed before Cargo because a login shell
+  removed its PATH; both failed containers/logs remain. Current-source Linux
+  integration and exact-artifact library qualification are running with network
+  disabled, isolated source/target and no live credentials/state mounts.
+
+  Caller inspection initially lost the common startup path in its simple
+  same-file associated-function resolution. The actual common OS-owner startup
+  is now a module-private helper, retaining identical runtime/control ownership;
+  caller audit again resolves44/43 wired with only original G8 owed. No checker
+  weakening, new test authority or false automatic stop settlement. agent-spec
+  and task-writer remain absent; no lifecycle/canonical-task-state claim.
+  No live deployment, reset, restart, new soak, formatter, dependency, commit/PR
+  or cutover. Gen10's narrow passing hour and Gen11's failed cycle37 remain
+  unchanged. Latest source is not live-qualified; full goal remains active.
+
+- 2026-09-16 configured-service final offline observation: the original final
+  Linux library owner is terminal exit0, no OOM, with38/38 passing. Together with
+  bootstrap18, inline-factory17, owned-MCP6 and warm-runtime6 this is85 native
+  tests on actual1.94.1. Local final native84, full store344, strict four-package
+  all-target Clippy and Windows GNU compilation pass. All16 changed Rust hashes
+  matched the isolated Linux snapshot. The spec binding inventory lists1020 with
+  no missing selectors (listing is not execution); production caller audit
+  resolves44/43 wired with original G8 still owed, no missing/ambiguous/unresolved.
+  Original failed runs remain failed. These results precede the new configured
+  executable two-agent fixture and establish no live deployment or new soak.
+
+## 2026-09-16 configured executable and shared project-room generations
+
+- Added `task-rust-fleet-executable.spec.md` and an actual `serve --agent-driver`
+  integration fixture. Only an unrelated coordinator is preexisting fixture
+  state. Each of the two targets is genuinely admitted from authenticated
+  reception request/verdict, physically materialized, registered, joined,
+  crypto-enrolled and initialized by the configured service. Independent owner
+  encryption enters actual SDK/intake; no target tasks or Started rows are seeded.
+  The two native helpers must both hold actual Started work before either is
+  released to complete through MCP/API. Exact canonical IDs bind Done, final
+  replies and independent recipient decryption. A second round per agent checks
+  recurring original factory custody without re-registration or key upload.
+
+- The first full fixture exposed a real same-project bug: the second physical
+  join changes membership while both original Collectors remain pinned to room
+  generation1. Intake correctly returns Conflict/Generation and fences custody.
+  This failed run remains in `fleet-executable-linux5.log`; it was not a pass or
+  a reason to put the agents into separate projects. Earlier fixture failures
+  (module path/type inference, missing separate approval CA, and observing Active
+  before its final approval binding) remain in logs1–4. The peer now respects a
+  zero timeline limit and waits for original routes before timestamping input.
+
+- ADR153 and `task-rust-factory-room-generations.spec.md` define the fix: one
+  original warm-factory scheduling guard spans prior-read, authenticated full
+  project-state GET, writer CAS and recheck across its original Collectors.
+  Only changed joined membership advances the available Group generation;
+  encryption/invite/privacy/owner/registration policy changes refuse. The exact
+  existing validator and retirement transaction remain shared with ordinary
+  observations. Old group routes stay retired; independent DMs stay unchanged.
+  Missing/stale/unavailable scope cannot be rearmed, and original SDK/credential
+  custody is neither reset nor reconstructed. The coordinator now shares that
+  same guard when it watches the project. General group-session rebinding and
+  negative-scope recovery remain separate required work.
+
+- Initial actual Linux1.94.1 run6 passes the original same-project two-agent
+  executable test for BOTH account kinds: four task/reply exchanges per profile,
+  eight total, two real in-flight native helpers, original first PIDs, later
+  factory-owned launches, zero unknown dispatches/leases and clean service exit.
+  Its original SDK enrollments occur once per agent. This is offline local TLS
+  and an actual native MCP fixture peer, NOT real Palpo/Robrix/model/sandbox proof.
+  The test explicitly skips positive qualification off Linux; compilation or
+  that skip is not native macOS/Windows cleanup evidence. Existing local native
+  helper/factory regression29 passed before the room fix. New store authority
+  tests2 and all reply tests19 pass; the complete final store suite passes346.
+  Initial affected-package strict Clippy passes. Final expanded coordinator/
+  readiness, Matrix/native regression and cross-platform checks remain running.
+
+- No live deployment, service restart, SDK reset, unknown cleanup, new soak,
+  formatter, dependency, commit, PR or production cutover. The real-client gen10
+  narrow passing hour and gen11 failed cycle37/recovery remain unchanged. Full
+  AS/profile, real sandbox/approvals/media, G8/restart recovery, completion
+  reliability, sustained Palpo/Robrix soaking and all migration parity/release
+  requirements remain part of the active goal.
+
+### Final observation for the configured executable / ADR153 revision
+
+- Original Linux run8 ended exit0, no OOM: bootstrap18, configured executable1,
+  inline factory17, owned MCP6 and warm runtime6 all pass (48 selectors). The
+  configured selector takes19.24sec and covers BOTH account kinds, two agents in
+  one project plus its observing coordinator, eight actual encrypted task/reply
+  exchanges, real simultaneous Started helpers, original runtime custody,
+  readiness200 and clean shutdown with no unknowns/leases. All ten implementation
+  and configured-fixture source hashes match the isolated Linux snapshot.
+- Run7 remains failed: its second-round helper diagnostic still named round1.
+  Canonical completion legitimately retires the original process before its
+  local ACK/exit file is guaranteed. The final test instead checks the exact
+  task/dispatch/fence/owned-completion/reply chain and independent recipient body.
+  It does not retry the task or accept a stale file. Project generations count
+  changed authenticated snapshots, not individual physical joins: the test
+  checks current availability and the complete exact member set, allowing both
+  joins to appear in a single snapshot.
+- The broad local Matrix lib run ends186passed/1failed in737.55sec, not green.
+  Its unsafe-encryption refusal finished while the independent owner's original
+  join was still pending. The fixture awaited that actor without serving its
+  HTTP request, causing the existing4sec timeout. The fixture now serves ONLY
+  that original human actor while awaiting its actual termination; the intake
+  refusal and deadline are unchanged. All six physical-room tests subsequently
+  pass. All five Matrix integration targets pass32; the full187-test lib has
+  not been rerun after this fixture-only fix. Preserve the failed broad log.
+- Final native local lib38 passes; full store346 passes. Four affected packages'
+  strict all-target Clippy and Windows GNU all-target compilation pass for the
+  production revision. The later Matrix fixture-only Clippy and Windows checks
+  also pass, separately logged. Windows compilation is not execution. The offline all-feature Rust
+  selector inventory lists1024 with no missing selectors; it is not test
+  execution. Production callers remain44/43wired, G8 still owed. agent-spec and
+  the provisioned task-writer are unavailable; no lifecycle/task-state success
+  is claimed. Whitespace checking passes; no formatter was run.
+- Latest source remains undeployed. None of this is a new live soak: real Palpo
+  plus headless Robrix2 gen10 passed30cycles/3602.04sec, then gen11 passed36cycles
+  before cycle37 failed, followed by failed recovery. Entire-port, real model/
+  sandbox/owner approvals/media, G8 and Active restart/rebinding, native platform
+  runtime qualification and sustained real-client fleet soaking remain owed.
+  No SDK reset, unknown repair, service restart, commit, PR or cutover occurred.
+
+## 2026-09-16 configured two-agent bidirectional media qualification
+
+- Previous goal turn is progress: ADR153 and actual executable two-agent tests
+  changed implementation and qualification evidence. Rechecked source, accepted
+  migration constraints and the old gen11 record. Its missing completion was
+  genuinely zero task-operation calls despite final assistant text; preserving
+  InProgress was correct. No inferred Done or automatic unknown retry was added.
+- New `task-rust-fleet-media-executable.spec.md` binds successful per-agent media
+  through the same original configured service. This replaces no existing gate:
+  the earlier missing-source/empty-list test was negative coverage, not success.
+  Both registration-token and AS-login runs still physically provision two
+  agents in one project, retain the coordinator and original warm processes,
+  observe both Started scopes before either proceeds, and run twice per agent.
+- An independent owner SDK encrypts actual binary attachment inputs. Each native
+  helper lists its original visible attachments, refuses the other agent's
+  exact event, then downloads its own through the actual scoped MCP/API and
+  authenticated Matrix media GET. It reads the generated original-workspace
+  destination and writes task-bound output containing those received bytes to
+  the SAME relative filename in both agents' separate roots.
+- Actual send_file, upload and encrypted m.file publication follow. The recipient
+  SDK decrypts the event and the upstream Matrix AttachmentDecryptor checks the
+  exact uploaded ciphertext using only its received descriptor. Tests assert
+  filename/caption/size/full sender/private relation, exact per-task bytes and
+  canonical delivered-file/dispatch binding. One GET and one POST per task;
+  foreign receive attempts never reach HTTP. The task is explicitly still
+  InProgress after media delivery, then real completion publishes its final
+  reply. No target attachment/Ready/file/task/claim/completion rows are seeded.
+- Linux offline run1 exits0 for original executable and outgoing-media selectors
+  (41.61sec). Run2 exits0 for the final bidirectional selector (21.59sec): eight
+  receives, eight encrypted sends, eight final replies across both account kinds,
+  readiness200 and clean shutdown with zero unknowns/leases. Both original Docker
+  jobs are terminal/noOOM. Four source hashes match the isolated mini3 snapshot.
+  Native helper/factory local regression29 passes on the outgoing revision.
+  Final native all-target strict Clippy and Windows GNU compile pass;1025 Rust
+  selectors list with none missing. Listing/cross-compile are not execution.
+- The original full Matrix187 rerun now ends exit0:187passed, zero failed/ignored,
+  731.01sec. The final Linux31-selector regression also ends exit0: configured2,
+  inline factory17, owned MCP6 and warm runtime6 all pass. These final observations
+  supersede pending status, not the original broad186/1 failed run's verdict.
+  Logs: `fleet-media-*` and `fleet-room-matrix-final-full.log` in the existing
+  private evidence cache. agent-spec/task-writer remain unavailable; no lifecycle
+  or canonical task-state result is invented. No formatter or dependency change.
+- Only offline fixture/spec/document changes this turn. No deployment, new live
+  account/room, live-state write, Robrix restart, SDK reset, commit, PR or cutover.
+  The new evidence is NOT real Palpo/Robrix media, actual model/owner approval,
+  effective sandbox or sustained soak. Full profiles, G8, restart/rebinding,
+  canonical completion reliability and all migration parity/release gates remain
+  owed. The next real fleet qualification must use the latest source and preserve
+  old gen10/gen11 evidence; the existing running live instance remains untouched.
+
+## 2026-09-16 fresh live-fleet authentication prerequisite
+
+- Previous goal turn was no progress: it clarified the real gen10 pass and gen11
+  failure but changed no implementation or qualification state. Revalidated the
+  actual running mini3 service (running, zero restarts), actual Robrix automation
+  process (startup true, no exit), and the current inline factory source.
+- The factory preserves per-agent physical homes. A real selected managed
+  resource instead supplies its exact retained provider namespace through the
+  existing account association; copying the coordinator's credentials or sharing
+  its arbitrary runtime HOME is not the intended authentication path. ADR114
+  requires a fresh operator-observed provider login, not credential-file inference.
+- Prepared one new private qualification state and one managed account on mini3
+  through the actual native init/account-prepare commands, with network disabled.
+  Existing live state, SDK stores and failed-soak evidence were not modified.
+  No new Matrix account/room or target Agent was created. Read-only readiness
+  observation currently finds zero login receipts, so authentication is unknown.
+- Added the fixed opt-in `account login --device-auth` route under
+  `task-rust-managed-device-login.spec.md`. Plain login is unchanged. Original
+  retained namespace, environment clearing, attempt-before-spawn and exit-derived
+  observed/refused/uncertain settlement remain intact. There is no arbitrary
+  option passthrough, service-driven login, credential import or API-key route.
+- Actual isolated CLI/provider tests pass4 locally and pass4 in mini3 Linux with
+  Docker network disabled. The new selector exercises all three exit classes;
+  exact provider argv and hostile ambient environment refusal are asserted.
+  The original Linux container exits0 without OOM. Three edited Rust source
+  hashes match the Linux snapshot. Strict native all-target Clippy and Windows
+  GNU all-target compilation pass.1027 spec bindings resolve with none missing;
+  listing and cross-compilation are not runtime qualification. No formatter ran.
+- Copied only the qualified native/Codex executable artifacts into the fresh
+  private fleet root, pinned their SHA256 digests, and verified the copied
+  native binary's login help. The provider's pinned offline help and local
+  upstream source confirm the fixed headless flag. No provider login was started.
+  The operator-only local `fleet-device-login.sh` refuses noninteractive use,
+  preserves the exact state mount, uses no Docker log collection, and asks for
+  provider consent in the operator's own terminal/browser. User sign-in was
+  requested; no credential or device code is requested in chat.
+- Evidence lives under `fleet-device-login-*` in the existing private cache;
+  remote root and account ID are in its operator login script, not in tracked
+  qualification claims. The runbook now includes the managed authentication
+  prerequisite. agent-spec and task-writer remain unavailable: no lifecycle
+  success or canonical Done is asserted. No commit, PR, live-service restart,
+  production cutover, new soak, or whole-port completion is claimed. Next live
+  action is to verify the operator's actual login receipt and enroll its bound
+  resource before creating the separate real two-agent fleet. All broader
+  migration, sandbox, recovery, client approval and sustained-soak gates remain.
+
+## 2026-09-16 operator selects local Codex Claude Code and OctosCode
+
+- The preceding connection-help turn was no progress. Rechecked the exact fresh
+  remote account: zero login observations and no operator-login container. The
+  user then explicitly changed execution to local Codex, Claude Code and
+  OctosCode. mini3 remains the Palpo server; Robrix remains the real client.
+- Verified installed local tools: Codex0.154.0, Claude Code2.1.270,
+  OctosCode0.3.0-rc.9 (02e6816) and Octos2.0.3-rc.11 (02e773ea). Provider-owned
+  status commands return exit0 and signed-in booleans for Codex/Claude. Raw
+  provider identity/output was not printed; no credential file was imported or
+  copied. These checks do not prove actual model execution or managed readiness.
+- OctosCode is the UI Protocol client, while the installed Octos exposes ACP and
+  server execution. The local client has no default config file. Its installed
+  help still calls it mock-backed while the newer source checkout defaults to
+  protocol: do not infer the installed transport from that checkout or treat a
+  mock as the requested runner. Backend authentication remains unverified.
+- Found concrete native port gaps: the Host rejects Claude, the runtime crate
+  exports only Codex/owned IO, model qualification lacks the Octos family, and
+  macOS whole-tree stop remains conservatively false. Native completion release
+  depends on that stronger proof. Existing Node ACP support is reference behavior,
+  not permission to call a Node-backed workaround the completed Rust port.
+- Recorded REQ-LOCAL-THREE-RUNNER-QUALIFICATION and updated the working plan and
+  runbook. Disabled the previously supplied remote-login helper; it now returns
+  a fixed refusal without SSH or provider launch. Its unused state and original
+  running remote fleet remain preserved. No remote login, model call, new soak,
+  commit, PR or full parity claim. Next work is native local authentication and
+  actual runner adapters/ownership under the requested topology, not another
+  request for mini3 sign-in. Full original migration scope remains active.
+
+## 2026-09-16 native local Claude stream protocol prerequisite
+
+- Previous turn is progress: it verified the local tools, recorded the requested
+  topology and disabled the obsolete remote-login helper. Continued the actual
+  native Claude port under ADR154 and task-rust-claude-stream-protocol, not the
+  retained Node adapter or a mock standing in for the requested local runner.
+- Added a native Claude JSONL codec with typed permission/control/cancel and
+  session-scoped event envelopes, fixed auto-mode/stdin callback arguments and
+  bounded initialize/user/interrupt input. It has no permission-allow, process
+  launch, credential or canonical-completion API. Payloads deliberately have no
+  Debug implementation; upstream error text is not exposed as a diagnostic.
+- Moved the existing unique-key JSON reader to a private shared module without
+  changing its depth bound. Both protocols reject duplicate keys, including
+  escaped duplicates, and excess nesting. Claude pull decoding returns one frame
+  per call, handles fragmented UTF8/CRLF, caps lines at1MiB and partial age at10s,
+  and irreversibly closes on malformed input, overflow, backwards time or expiry.
+  Prompt input is capped at64KiB; model options cannot inject a new CLI flag.
+- Three new bound protocol tests and the existing10 Codex tests pass. The full
+  runtime suite passes72 tests with zero failures/ignored. A final expanded
+  three-test rerun adds every accepted event kind and exact CRLF capacity edges.
+  Runtime and native consumer all-target strict Clippy pass; Windows GNU native
+  all-target compilation passes. These are offline checks, not local model or
+  whole-tree cleanup qualification. No formatter or dependency change occurred.
+- Separately ran one no-prompt initialization against the actual local Claude
+  Code2.1.270 with auto mode, empty explicit MCP configuration, ambient settings
+  disabled and no session persistence. It returned one matching successful
+  control response and its leader exited0 without a signal. No prompt/model task
+  was sent. The independent diagnostic did not use native owned Host custody;
+  its sanitized private record explicitly says whole-tree cleanup unproven and
+  no native-host/model/Matrix qualification. Raw provider output was not retained.
+- Original live service, Robrix and the original checkout remain untouched.
+  agent-spec/task-writer are still absent. Final runtime all-target strict Clippy
+  and the original full selector inventory both exit0;1030 bindings resolve with
+  none missing. Listing is not execution and no lifecycle result is invented.
+  Production Host intentionally still refuses Claude. Next is the
+  actual retained transport/session and owner-approval/task-tool integration;
+  Octos, local authentication binding, macOS cleanup, full parity and live
+  three-runner soaking all remain open. No commit, PR or completion claim.
+
+## 2026-09-16 native Claude retained IO and owned-session prerequisite
+
+- The prior turn's codec and independent installed-CLI initialize observation
+  were progress, not enabled native Claude execution. Added ADR155 and the
+  bound task-rust-claude-owned-session contract for the next native layer.
+- Implemented one disposable Claude session: exact initialize correlation, one
+  flushed prompt, first system/init session binding, matching subsequent events,
+  bounded permission/cancellation observations and an explicit ResultObserved
+  phase. Duplicate init, changed identities, unsolicited controls, reused request
+  IDs and known buffered pre-prompt events refuse. No permission response or
+  canonical completion authority is introduced; production Host still refuses
+  Claude before workspace/process work.
+- A single async owner pumps stdin/stdout/stderr under write, event, lifetime
+  and partial-frame deadlines. Queues are capped at16 frames/2MiB wire bytes;
+  stderr keeps a private16KiB tail. Partial writes and full-but-unflushed writes
+  retain diagnostic byte counts on failure. Any polled operation's cancellation
+  permanently closes its streams; no detached reader or automatic retry exists.
+  The Rust concurrency/lifecycle guidance informed those explicit custody rules.
+- OwnedClaudeSession uses the existing native guardian and actual async platform
+  pipes. Failure/cancellation/drop requests bounded stop from the original owner.
+  A result alone deliberately keeps process custody: the offline peer remains
+  alive after its result and after stdin closure, so explicit-stop and Drop tests
+  have a real pulse witness. Platform cleanup is returned unchanged; macOS
+  whole-tree proof remains false, never upgraded from leader exit.
+- Full offline runtime tests pass77 with zero failures/ignored. The final five
+  new session/owned tests also pass after adding stalled/failed flush, prompt
+  cancellation, buffered pre-prompt refusal and a live Drop witness. Runtime and
+  native consumer all-target warnings-denied Clippy pass. Windows GNU native
+  consumer all-target compilation passes; this is compilation, not Windows
+  runtime or containment qualification. Private logs use `local-claude-owned-*`
+  in the existing live-evidence cache. No formatter or dependency change occurred.
+- agent-spec/task-writer remain unavailable; no lifecycle or canonical Done is
+  invented. No live model, new Palpo/Robrix soak, remote model login, credential
+  import, service restart, commit or PR occurred in this slice. Next is actual
+  Claude approval/task-MCP/usage and execution-Host integration, plus the still
+  open local authentication, Octos, macOS containment and full migration gates.
+- Final full selector inventory exits0 with1035 bindings and none missing;
+  listing is not test execution. All original check handles reached terminal
+  exit0, and `git diff --check` is clean. No background test job remains.
+
+## 2026-09-16 native Claude one-shot permission control and live deny observation
+
+- Previous turn is progress: ADR155 connected the codec to bounded native IO
+  and retained process custody. ADR156 now adds the missing permission-response
+  mechanics; the ADR005 amendment distinguishes this official Agent SDK stdio
+  boundary from the unchanged retained tmux channel. Neither is owner authority.
+- Added explicit control enablement, privately retained original tool input,
+  single-use/source-bound prepared frames and fixed allow-original-input or
+  deny-and-interrupt responses. No caller input substitution, permission updates,
+  JSON verdict constructor, bypass or production Claude admission was added.
+  Original durable grant consumption/rechecks remain the execution Host's duty.
+- Receive timestamps survive delayed host consumption. Owner/response deadlines
+  derive from those timestamps inside the original lifetime; prepared write
+  deadlines and idle read deadlines do not renew on control/message returns.
+  Callback IDs are capped at16 and input at64KiB each. Cancelled/sent identities
+  remain tombstones. Original byte buffers/offsets survive message returns;
+  ordinary read/control calls cannot advance a suspended response writer.
+- A separately pinned host future remains alive while original IO is pumped.
+  Partial stdout frames fence the first response byte, and observed cancellation
+  or result barriers prevent later response continuation. Partial writes remain
+  explicit uncertainty. Rust concurrency/lifecycle guidance informed these
+  no-detached-reader, retained-frame and started-future-drop rules. The original
+  guardian stops on errors/cancellation; macOS cleanup semantics are unchanged.
+- The offline suite initially passed82 runtime tests. Added an operator-only
+  diagnostic with a pure environment unit test; final all-target runtime passes83
+  with zero failed/ignored. Coverage includes exact original input despite caller
+  mutation, cross-session/repeated responses, fixed clocks, delayed receipt,
+  pre-byte/partial-write barriers, capacity, future drops and actual owned-pipe
+  allow/deny/cancellation. Strict runtime+native consumer all-target Clippy and
+  Windows GNU all-target compilation pass. Cross-compilation is not runtime proof.
+- The explicit live diagnostic is separate from Cargo tests and production Host:
+  local installed Claude, fresh private empty cwd, safe/restricted mode, Bash-only
+  availability with a Bash ask rule, empty MCP, no persistence, a fixed harmless
+  prompt, deny-only replies and finite time/cost bounds. It uses provider-owned
+  operator authentication without reading/copying credentials, not a fabricated
+  Hagency account binding. Raw provider frames/text are never printed or stored.
+- Diagnostic1 failed initialize before a prompt. No-prompt structural inspection
+  found optional pending_permission_requests/pending_user_dialog_requests arrays
+  in the installed success envelope. The native codec now permits only empty
+  arrays, with regression coverage for nonempty/malformed queues. It still rejects
+  conflicting error/success fields, duplicate keys and foreign request identities.
+- Diagnostic2 initialized and observed auto mode but returned an error result with
+  zero permissions. Read-only provider status isolated the environment issue:
+  HOME/PATH alone reports logged out, while adding USER restores the existing
+  claude.ai login; LOGNAME/SHELL/TMPDIR/CF metadata separately do not. Forwarding
+  USER is OS identity preservation in this diagnostic, not token/API-key adoption.
+- Diagnostic3 through the actual native owner reached one real permission request
+  and flushed one deny, zero allows. It then observed an error result and exited1.
+  Preserve this negative outcome: it exercises the local callback transport but
+  is not a successful coding task, runtime-application ACK, canonical Done or soak.
+  Leader exit/signals were observed; whole_tree_stopped=false remains explicit.
+  All three original diagnostic records and private workspaces are retained.
+- Rechecked installed Claude2.1.270 at its original local version path; SHA256
+  a506b6d970a4cf44f6abdb53a81ddcd5d3b0ce042a95c502fe9d1f946bdb8807.
+  Safe evidence is under `local-claude-control-*` in the existing private cache.
+  No mini3 model execution/login, live-service restart, Robrix source change,
+  credential import, formatter, dependency change, commit or PR occurred.
+- The full goal remains active. Next is connecting Claude to original durable
+  approval grant/usage/task-MCP/execution Host custody, not simply deleting its
+  UnsupportedRunner refusal. Local managed authentication, Octos, native macOS
+  containment, actual Matrix/Robrix successful tasks and sustained three-runner
+  soaking plus the broader M0–M9 migration gates remain unproved.
+- Final selector inventory exits0 with1041 bindings and none missing; listing is
+  not execution. All original build/test/inventory and live-diagnostic handles
+  reached terminal states. The three live diagnostics remain exit1; offline final
+  checks exit0. `git diff --check` is clean. agent-spec/task-writer remain absent,
+  so no lifecycle success or canonical task-state write is claimed.
+
+## 2026-09-16 native Claude source-bound usage and durable capture
+
+- Previous turn is progress: ADR156 reached a real local deny callback while
+  preserving its error result and incomplete process cleanup. ADR157 now adds
+  the next missing native integration: immutable usage observations, typed
+  normalization and the existing private dispatch ledger attachment. No live
+  provider, Palpo, Robrix or mini3 execution was started in this slice.
+- Original driver identity plus validated session ID binds each observation.
+  Attachment is allowed immediately after system/init (sequence1); all later
+  ordinary/control/prepared-write message reads advance that same sequence.
+  Payload mutation cannot change evidence. Close, error, cancelled read and Drop
+  retire retained sources. Result usage can be recorded but is not process stop.
+- Official Claude cost-tracking documentation distinguishes nested message IDs,
+  placeholder per-step output, main-loop result usage and reported-model totals.
+  Main-loop input/cache evidence deduplicates nested IDs, not outer UUIDs, and
+  excludes subagent assistant frames. Final aggregates replace partial snapshots.
+  Empty/malformed model maps stay unknown, never fallback or measured zero.
+- Fixed bounds cover16384 observations,1024 step IDs (512 bytes each) and64 models.
+  Known subtotals remain checked even after a missing counter. Conflicts and
+  capacity/overflow invalidate capture; independent invalid fields remain unknown
+  with diagnostics. No model names, message IDs, text, paths or estimated billing
+  enter normalized usage evidence. Codex/transcript serialization is unchanged.
+- Private UsageRun now accepts only the native Codex/Claude source adapters and
+  checks the acknowledged Started resource family. The original single pending
+  source/call/content tuple survives cancelled writer waits, including after a
+  real commit. Result usage enters that slot before capture closes; replay after
+  process stop does not reopen it. Rust concurrency/lifecycle guidance informed
+  this retained-source and cancellation-safe receipt design.
+- Native offline guardian pipes plus the actual domain writer prove duplicate
+  suppression, family/source/sequence/retirement guards, pending-write refusal,
+  persistent high-water totals, restart inspection and exact lost-response replay.
+  The error result still leaves the canonical task InProgress. The first focused
+  execution test exposed an unqualified fixture model; it now uses the same
+  accepted offline model profile as existing store usage tests, not a readiness
+  override. Initial Clippy flagged a large temporary enum; borrowed evidence
+  removes that unnecessary copy without new per-event heap allocation.
+- Full runtime tests pass87, including the four new runtime selectors. The new
+  typed-normalization and owned-ledger selectors pass. Strict affected-package
+  plus native-consumer Clippy passes; Windows GNU all-target compilation passes,
+  which is not Windows runtime evidence. The first broader test command stopped
+  at the two existing checked-in-placeholder Codex sandbox qualification failures;
+  the final four-package no-fail-fast run finished530 passed,2 failed,0 ignored.
+  Only native_codex_real_app_server_sandbox_write_inside and
+  native_codex_real_app_server_sandbox_refuses_outside fail; their qualification
+  records remain placeholders. All six new contract selectors passed. Preserve
+  exit101 rather than calling the broader suite green. Final Clippy and the
+  Windows runtime recheck also pass after the cancellation-retirement assertion.
+  Evidence: local-claude-usage-{full-tests,final-clippy,windows,final-windows}.log
+  in the existing private cache. The sequential full selector listing reached
+  its actual300s command deadline and exited1/ETIMEDOUT, not a passing inventory;
+  the separate bounded four-worker compiled-harness listing finished exit0:
+  143 executables list1156 tests, resolving1047 spec bindings with none missing.
+  This is listing, not execution; its parallel-bindings JSON/log retain that
+  distinction. All original check handles are terminal. `git diff --check` is
+  clean. agent-spec/task-writer remain absent; no lifecycle or task-state success
+  is claimed from documentation writes.
+- Goal remains active. Production Host still refuses Claude until original
+  private grants, scoped task/file MCP, account and platform custody integration
+  are complete. Octos/OctosCode, sound macOS descendant stop, successful real local
+  tasks and sustained three-runner Palpo/Robrix soaking plus M0–M9 parity remain.
+  No credential copying, mini3 login, formatter, dependency change, commit or PR.
+
+## 2026-09-16 native Claude task bridge and execution-path parity pivot
+
+- Recovered the previous owned-helper test's successful terminal log after its
+  original handle was gone; reran current sources rather than assuming stale
+  output covered later fixes. Previous implementation work is progress; the
+  intervening Palpo-address answer added no implementation evidence.
+- ADR158 shares the validated native task descriptor without changing the prior
+  Codex configuration. Claude binds its helper once on the original initialized
+  process, after actual task-context acknowledgement and before the sole prompt.
+  Empty inventory, exact added-server ACK and connected exact tool inventory
+  share one deadline. Cancellation/error closes the original operation and stops
+  its retained owner; no reconfiguration/replacement or raw control API exists.
+- `hagency mcp --owned-task-profile` restricts both tools/list and tools/call to
+  maintenance plus explicitly enabled file pairs. Current capability/task/fence
+  checks stay in the API. Normal MCP's wider catalog remains unchanged. This
+  limited profile is not yet the whole TS coordination surface.
+- Actual offline native guardian pipes, helper executable and domain API cover
+  direct/retained context, exact optional catalogs, heartbeat/readback, foreign
+  task refusal, hidden-tool refusal and missing-helper failure. Plain model result
+  leaves canonical InProgress, no final reply, and the workspace lease retained.
+- Two explicitly activated diagnostics used installed local Claude2.1.270 and
+  the actual Rust helper. Both initialized and bound the exact catalog, exit0.
+  The second used the final read-only launch profile. Neither sent a model prompt,
+  tool call or API connection; their synthetic context points to an owned
+  non-serving loopback socket and supplies no task/account authority. Leader exit
+  and accepted stop signals were observed; whole_tree_stopped=false is retained.
+  Records: local-claude-mcp-live-catalog{,-parity}.json in the private cache.
+  Private workspaces claude-native-catalog.HxNm5x and
+  claude-native-catalog-parity.6y6MU6 remain retained. No provider token was read,
+  copied or written into argv/config/output. Same-user/environment isolation is
+  not established by inherited context or a successful MCP connection.
+- Operator clarified the working order: map each working TS path to Rust, port
+  missing behavior using its implementation/tests, then run the complete path
+  through the same Palpo/Robrix and fix observed differences. Make it work, make
+  it right, make it fast. Added docs/design/native-execution-parity.md and updated
+  docs/plan.md to organize work by complete execution paths, not adapter proofs.
+- Direct TS comparison found native launch-policy differences. Ported the same
+  write-lease auto/read-only plan selection, protected Bash(gh *) / Bash(git push *)
+  ask rules and bounded model grammar. The existing TS configuration/dispatch/
+  guardian suites pass47 tests after rebuilding router/dist. Native launch-parity
+  tests exercise those same choices; this is not production Host enablement.
+- Verification: runtime initially91, final92 tests pass, zero failed/ignored.
+  MCP/task-client integration21 passes; final focused helper/owned suite10 passes.
+  Initial strict Clippy reported adjacent independent if statements in test
+  code; line separation fixes them, and final runtime/native-consumer all-target
+  Clippy passes. No formatter was run. Windows GNU all-target check passed before
+  the final launch-parity edit; it is not Windows runtime or final-source proof.
+  Workspace compiled-harness listing before the added parity selector resolved
+  1052 bindings with none missing (145 executables/1161 names). Final current
+  ADR158-only listing resolves all6 selectors. Listing is not test execution.
+  Earlier full-workspace qualification failures are unchanged, not silently green.
+- TS's five actual process-guardian tests pass on this Mac, including detached
+  descendants, a foreign-process survivor and inspection-loss refusal. Source
+  tracing identifies the native local-path gap: Scope hardcodes false on
+  non-Linux POSIX and the supervisor rejects positive macOS stop reports. Next
+  port this missing behavior using native identities and the TS regression cases
+  to unblock the existing Codex message-to-reply path. Do not flip the boolean or
+  weaken unknown recovery. Then connect Claude to shared Host/driver/approvals,
+  port real Octos/OctosCode, and run identical live paths and sustained soaking.
+- All original check handles reached terminal states. agent-spec/task-writer
+  remain absent; no lifecycle or canonical task-state success is claimed. Full
+  local three-runner execution/soak and broader migration remain incomplete.
+  No credential copying, remote runner login, service reset, dependency change,
+  formatter, commit or PR occurred.
+
+## 2026-09-16 native macOS stop and observed local Codex compatibility
+
+- Ported the TS guardian's sampled descendant behavior with native suspended
+  spawn, an original-process baseline, retained ancestry across reparenting,
+  birth/version-checked signals, bounded stop and two clean post-root censuses.
+  Actual parented, detached/reparented and early-leader cases stop; a foreign
+  process keeps advancing. Lost observation remains sticky Unknown. This is not
+  adversarial crash containment; the separate fast-double-fork/crash profiles
+  remain unsupported rather than being relabelled positive.
+- The first concurrent census exposed a concrete false refusal for launchd's
+  unrelated new children. Native original-parent PID version distinguishes a
+  direct launchd child from an adopted/executed unknown orphan. Retained birth
+  identities still decide owned descendants. Temporary diagnostics were removed.
+- Real installed local Codex0.154.0 then exposed inherited thread network policy
+  before any prompt. Pin the requested network=false and extra roots=[] in the
+  thread config as well as the existing turn policy; do not weaken echo checks.
+  Next the real CLI emitted synchronous hook notices. Added bounded schema/scope
+  validation and diagnostic-only notices, including startup races. Foreign
+  thread/turn, async hooks and unknown event families remain refused.
+- The final real run performed one matching inside-workspace command, verified
+  the created contents and proved observed-tree cleanup. Outside and symlink
+  probes completed with zero tool attempts: no file creation is NOT sandbox
+  denial evidence. Their pass fields stay false and the qualification exits1.
+  Earlier policy and notification failures remain retained. The new0.154.0 record
+  does not replace the older pinned placeholder gates or qualify a whole task.
+- Platform/runtime122 offline tests pass. Downstream execution initially exposed
+  four obsolete macOS-Unknown expectations and one missing approval notice; after
+  updating only supported-scope expectations, the full76-test rerun passed. The
+  isolated missing-notice failure has no established cause; its original log is
+  retained, not dismissed as flakiness. Native guardian CLI entry also passes.
+  Strict platform/runtime/execution Clippy passes. Palpo's versions endpoint and
+  the existing Robrix started/not-exited status respond; no new Matrix task was
+  sent and health checks do not prove end-to-end delivery.
+
+## 2026-09-16 explicit local Codex provider binding (ADR159)
+
+- Traced TS runnerEnv against native bootstrap: TS carries provider context;
+  native previously selected only a fresh runtime home or a managed namespace.
+  Added the explicit private local_codex/provider_owned_codex_v1 profile and
+  retained LocalCodex owner. It binds one unmanaged preset/seat to existing
+  provider directories; no credential file read/copy, fabricated readiness,
+  global login change, remote runner or managed-account fallback is involved.
+- Original directory ownership/write permissions and identity are checked at
+  admission, before spawn and through the same operation. Retained objects stay
+  with unresolved process custody. Provider read/search permissions are allowed;
+  group/other write permission, replacement and workspace-containing-provider
+  layouts refuse without permission repair. OS search path is captured once.
+  Only fixed provider paths/search path are added; API keys and coordinator
+  secrets are refused. Managed readiness and default sandbox remain unchanged.
+- Host selection narrows to the same immutable preset/seat before leasing, and
+  consumption independently checks it. Foreign work stays queued without an
+  attempt. Unrestricted profiles avoid the additional resource-match SQL query.
+  Factory/warm combinations and Windows local provider binding remain refused.
+- Actual offline native CLI/guardian/helper tests verify the selected separate
+  provider directories and exclusion of ambient provider/coordinator secrets.
+  Replacement during execution fences the original task; model completion alone
+  still leaves canonical InProgress. No managed account/login rows are created.
+- Execution regression78 passes; store library/owned-claim/owned-dispatch81
+  passes; bootstrap19 passes. The first bootstrap run was18/1: its old macOS
+  shutdown assertion expected Unknown despite observed whole_tree_stopped. The
+  final run now exercises successful native shutdown and released DB owners.
+  Initial Clippy caught a decimal Unix permission literal in a fixture; fixed
+  to explicit octal, then strict execution/store/native all-target Clippy passes.
+  Final path-capture refinement is rechecked by the focused binding selectors.
+  Final focused selectors and strict Clippy v2 pass; both active contracts'
+  10 selectors resolve to executed passing tests (not agent-spec lifecycle).
+  All original check handles are terminal and git diff --check passes. Rust
+  lifecycle guidance informed retaining provider-directory custody with the
+  original runner and stopping it when the observed binding changes.
+  Already-locked rustix1.1.4 became a direct execution dependency; no version
+  upgrade occurred. No formatter, commit or PR. Original failures remain in
+  local-codex-binding-* logs under the existing private qualification cache.
+- agent-spec/task-writer remain absent; documentation is not lifecycle/canonical
+  task-state success. The active goal remains incomplete. Next create a separate
+  local Matrix qualification identity/device/state and run this native local
+  Codex path through the same Palpo and real Robrix; do not share the running
+  remote SDK store or duplicate its inbox consumer. Then join Claude/Octos and
+  run shared-room/DM/files/approval/recovery and sustained three-runner soaking.
+
+## 2026-09-16 real local Codex path and MCP approval parity (ADR160)
+
+- Created separate qualification Matrix accounts/rooms on the same mini3 Palpo,
+  using the existing exact owner master anchor. Kept local provider credentials
+  with Codex and left the original remote services/SDK stores untouched. The
+  private cache is local-native-palpo.JyL9O9 under the existing qualification root.
+- Actual Robrix UI → encrypted Palpo DM → native intake/claim → local Codex →
+  canonical Done → one encrypted reply → actual Robrix render passed twice.
+  The second task ran a shell command, wrote exact workspace bytes and read them
+  back. Original dispatches ended completed with no lease/unknown rows at that
+  checkpoint. Claim-to-delivered baselines:14114 ms and22553 ms. This is neither
+  three-runner qualification nor sustained soak.
+- The file task exposed native `mcpServer/elicitation/request` as malformed.
+  No file/owner request was admitted. Original process report proved observed
+  whole-tree stop but retained negative settlement and canonical InProgress.
+  Traced and ported the existing TS correlateMcp behavior against its tests and
+  installed Codex0.154.0 generated schema: exact active item/server/arguments,
+  empty form only, one consumption, no stale/ambiguous/repeated candidate and no
+  late response after completion. Keep wire parameters unchanged; a separate
+  host envelope binds the real item/tool/arguments into the existing owner grant.
+  No reusable MCP scope or file-tool autoapproval was added. Runtime diagnostics
+  now retain the fixed server-request label on the controlled read path too.
+- Explicit approval_owner_wait_ms replaces the hardcoded1000 ms only when
+  configured and must fit the original operation plus response reserve. Existing
+  profiles retain their default. The30-second execution ceiling is still a
+  long-running-task parity gap. The Rust resource skill guided boxing just the
+  larger singly-owned MCP payload after Clippy flagged enum growth; OpenAI Docs
+  guided the elicitation wire response, not domain authority.
+- TS approval reference12 passes. Rust runtime95 passes serially; focused MCP4,
+  owned coordinator1 (Once/Deny, reusable-choice refusal), startup-budget1 pass.
+  Execution80 non-qualification checks pass; existing pinned qualification is
+  1 pass/2 failures, unchanged placeholders. Initial full parallel runtime had
+  one uncertain process-start failure; isolated and serial reruns pass, cause
+  not established. Strict runtime/execution/native all-target Clippy passes.
+- Saved before-mcp-fix.json with original status/custody. Original native service
+  handle87788 exited0 after bounded shutdown. Patched restart handle68264 exited1
+  because shutdown had fenced generation1. Explicit generation2 re-observation
+  restored approval startup, but ordinary intake reports Domain and retains the
+  old generation1 session route. New diagnostic service handle11130 remains live
+  at127.0.0.1:19330 with driver unavailable, not an active successful agent.
+- The actual scoped operator recover-dispatch endpoint returned409: this is a
+  stop-fenced failure, not an orphan. dispatch_stops.reason=owned_runner_failure
+  has no settlement evidence. Current finish_attempt explicitly leaves this join
+  unwired; generic recovery must not become a second custody clearer. Original
+  task/lease/quarantine/effects remain untouched. No fabricated proof, direct DB
+  clear, new-task bypass, copied credential or replacement SDK store was used.
+  after-mcp-port-recovery-refusal.json records current status. File approval,
+  delivery and recovery therefore remain unqualified despite the adapter tests.
+- Next bounded work: join exact stopped-failure/workspace-inspection custody and
+  native restart route generations, then repeat the original file/approval path.
+  Continue Claude Host join, real Octos adapter, remaining tools and shared-room/
+  DM/recovery/soak scenarios. agent-spec/task-writer remain absent; no lifecycle,
+  canonical task success, formatter, commit or PR is claimed for this source work.
+
+## 2026-09-16 Codex-first execution budget parity (ADR161)
+
+- Operator clarified sequencing: finish real Codex E2E and soak first; Claude Code
+  second; OctosCode last. No Claude/Octos implementation was changed in this slice.
+- The final ADR160 runtime rerun completed95 tests and the owned MCP selector
+  completed1; the accidental intermediate test assertion edit was corrected.
+  Original rerun logs remain retained. Those two handles were no longer present
+  after context compaction; their complete logs were checked and no corresponding
+  cargo/test process remained. This slice's subsequent checks have observed
+  original terminal tool receipts, not inferred process success.
+- Ported the retained TS twenty-minute allowance into explicit ordinary native
+  operation configuration, the owned approval context and compatible host claim.
+  Capability lifetime is max(60000, operation_ms+30000); generic claims remain
+  capped at five minutes. Initial leases remain60 seconds, renewals5 seconds,
+  and capability expiry is never renewed. RPC/write/SQLite/receipt waits,
+  cancellation cadence, sandbox and all uncertain outcomes remain unchanged.
+- Explicit owner waits plus response reserve may fit the existing ten-minute
+  durable approval ceiling and original operation; startup's1000 ms default is
+  unchanged. Pre-activation warm initialization remains separately capped at30
+  seconds, with a regression against accidentally widening it via shared Limits.
+  Configured factory admission remains outside this ordinary local-Codex slice.
+- Actual offline owned subprocess ran quiet for31 seconds within a45-second
+  operation and completed/settled after original whole-tree cleanup. A separately
+  configured twenty-minute operation cancelled promptly. Real owned MCP pipes
+  accepted a private owner decision with a60-second configured owner window.
+  These tests do not claim a twenty-minute real-model run or live owner UI pass.
+- Verification: full runtime95 and execution lib/owned80 pass serially. Store
+  approval/claim suites44, startup owner-wait1, final limit1 and warm-runtime6
+  pass. Store tests include host-only long claims, fixed original expiry, lease
+  loss, revocation, overflow and unrenewable context bounds. Final strict Clippy
+  across runtime/core/store/execution/native all targets passes. Original handles
+ 9036,72870,31511,85295,89272,7467,23607,67100,78030,78317 all returned exit0.
+  Logs are budget-* under the original private local-native-palpo.JyL9O9 cache.
+  Existing pinned sandbox qualification failures were not rerun or reclassified.
+- Read-only live inspection at2026-09-17T02:50:19Z still shows two completed tasks
+  and delivered replies, the original file task InProgress/outcome_unknown, no
+  files or approvals, and one retained lease/unresolved attempt. Diagnostic
+  service11130 remains live but agent execution is unavailable (refresh/domain).
+  No live config, SDK store, task/fence, file or credential was replaced or reset.
+- Next: finish the exact stopped-failure recovery and current Matrix route
+  startup join; then exercise the fixed MCP/file path, owner buttons, received
+  files and Codex soak through actual Robrix. Preserve the original failure.
+  Rust lifecycle/concurrency guidance kept the long execution deadline separate
+  from short leases and cancellation. No UI/i18n change, formatter, commit or PR.
+  agent-spec/task-writer are still absent; no lifecycle/canonical task completion
+  is claimed. Full Codex E2E and the active migration goal remain incomplete.
+
+### Codex original-owner inspection receipt (ADR162, 2026-09-16)
+
+- Original failed native owner now captures a bounded, no-follow, two-pass
+  content inventory after observed full process cleanup and exact negative
+  fencing. Schema34 retains one immutable dispatch/fence receipt. Recording it
+  does not release leases, settle stops, replay inputs or change task outcomes.
+  Lost acknowledgement retains the original payload for explicit retry.
+- Regression tests exposed and fixed absolute symlink-content handling and a
+  mismatch between canonical stored dispatch JSON and struct field ordering.
+  Added real-process/hash/reopen/refusal tests, schema33 upgrade preservation,
+  historical capability and real writer pre/post-commit receipt-loss tests.
+- Original handles39582 (full store352),69384 (execution83),84931 (strict
+  all-target store/execution Clippy),77550 (native build) returned exit0.
+  Logs are stopped-inspection-* in the original private qualification cache.
+  No formatter, commit, PR, Claude or Octos change. No UI/i18n source change.
+- Diagnostic service11130 exited0 after targeted SIGINT. Backed up domain DB
+  and configuration to before-codex-next; authenticated native provision command
+ 56967 exited0 adopting local_codex_dm_next/workspace_next at generation3.
+  Same Palpo/account/device/Robrix DM and original SDK stores; separate physical
+  workspace. This enables a NEW MCP/file qualification, not recovery of the old
+  failed task. The original failed attempt, inputs and exclusive lease survive.
+- Live follow-up: service65257 (PID47778) started with the tested build and
+  original SDK stores. Authenticated generation3 session accepts Robrix's new
+  task004, dispatch matrix_dispatch_3ec277ea31ae0330251db762975da32b, fence0,
+  canonical Created. It remains QUEUED: ordinary bootstrap fixes max_live=1,
+  and the original unresolved attempt consumes that slot globally. No new model,
+  file, approval or reply was produced. Re-adopting a separate session alone is
+  not sufficient, and the queued task is not E2E evidence. Do not raise the cap
+  or clear the old stop as a qualification shortcut. Original stopped-proof loss
+  still prevents the old task's legitimate recovery. Further independent live
+  qualification requires an isolated fleet/state decision, not just new IDs in
+  this domain. The live service is retained for inspection, not being retried.
+
+### Codex stopped-runner occupancy (ADR163, 2026-09-16)
+
+- Mapped current TS operator inspection/resolution and corrected ADR148's stale
+  orphan-homes-only reference. Full native continue/accept/keep-blocked parity
+  remains open; this slice does not invent or claim an operator recovery route.
+- Reproduced the global-capacity bug before fixing the production claim query:
+  exact proven-stopped owners no longer occupy a process slot, while their
+  task/workspace custody remains held. Unknown physical owners still count.
+  Added reopen/wrong-fence/conflicting-work tests and actual failed-then-successful
+  independent owned processes at the unchanged one-runner limit.
+- Original handles97398 (execution84),36369 (store45),17224 (strict Clippy) and
+  55699 (correct root TS build, then router-core/backend88) returned exit0.
+  Initial store regression failed as expected before the fix. Initial process
+  test's global accepted-output assertion was corrected to scope the original
+  dispatch. Earlier nonexistent test targets and wrong TS build path were
+  corrected; no unexecuted test was counted as passing. Logs: stopped-capacity-*.
+  Native build72030 returned exit0 and `git diff --check` passed.
+- Read-only live inspection at2026-09-17T03:40:58Z: two Done/delivered tasks,
+  original file attempt InProgress/outcome_unknown, new task004 Created/queued,
+  one retained lease, no files or approvals. Original service65257 remains live.
+  No deployment/restart would fix that legacy missing proof, so none was made.
+  Pending isolated-fleet choice remains unanswered; no new accounts/rooms were
+  created. Codex E2E/soak is incomplete; Claude Code and OctosCode remain untouched.
+- Rust lifecycle/concurrency guidance kept physical occupancy distinct from
+  task custody. No UI/i18n source changes, formatting, commits or PRs. The task
+  contract is recorded; unavailable agent-spec/task-writer lifecycle tooling
+  still prevents any canonical lifecycle completion claim.
+
+### Codex recovery route target binding (2026-09-16)
+
+- Rechecked actual original service65257 (live) and the retained failed dispatch:
+  outcome_unknown/fence1, owned_runner_failure, no stop evidence or settled_at,
+  zero original inspection receipts, one lease. Existing orphan recovery and
+  the unexposed host-only stop-settlement kernel cannot legitimately unblock it.
+  No new fleet/accounts/rooms, live recovery mutation or deployment was made.
+- Found and fixed a separate concrete recovery bug: agents/{id}/recover-dispatch
+  ignored id after shape validation. Regression handle45955 exited101 with
+  actual200 instead of expected404 through another existing agent's URL.
+  The route now carries id through the bounded writer, and the shared recovery
+  transaction checks dispatch/session ownership before any custody mutation.
+  No new schema, endpoint, recovery action or per-agent scope was introduced.
+- Original handle63399 returned exit0: task-store7 and full console57 tests,
+  including wrong/missing agent refusal with unchanged custody, successful owner
+  recovery and the existing stopped-dispatch/read-only refusals. Strict all-target
+  store/native Clippy handle86709 returned exit0. `git diff --check` passes.
+- The default production-callers checker exited1 before analysis because its
+  git-index file enumeration still includes the already-deleted
+  native/hagency-runtime/src/codex/json.rs. Its source is unchanged in this slice;
+  do not count the unavailable gate as passed or recreate the deleted module.
+- Lifecycle/recovery skill guidance kept target validation in the same write
+  transaction and preserved stopped-task custody. No UI/i18n code, formatter,
+  commits or PRs. Codex E2E and soaking remain incomplete; Claude and Octos remain
+  untouched. The isolated qualification-fleet approval question remains pending.
+- Final original handle12345 returned exit0: full store354 across40 suite
+  summaries, followed by a successful native build. Together with console57,
+  this slice has411 passing tests; the earlier focused7 are included, not added
+  again. Source diff whitespace check passes. Logs are recovery-agent-* in the
+  original private qualification cache. No live service restart was performed.
+
+
+### Codex receipt-bound stopped continuation (ADR164, 2026-09-17)
+
+- Reviewed the latest feat/rust-migration worktree and preserved its existing
+  uncommitted migration work. Native Codex text/command successes are already
+  recorded; files, private approvals, recovery/restart and soak remain open.
+  Claude execution integration and Octos remain later work under the existing
+  Codex-first order. No Robrix code or live service/state was changed.
+- Added lifecycle-scoped original-receipt inspection and explicit continuation
+  through the native console. Agent, original fence and immutable host digest
+  bind the request. The shared stop-settlement kernel, replacement enqueue,
+  frozen-input transfer and replay receipt commit together. The old attempt
+  remains outcome_unknown; no task outcome or processed input is fabricated.
+- Ported a distinct nonempty instruction and content-bound replay, including
+  reopen and equivalent finite-number payload representations. Missing receipt,
+  mismatched identity/bindings, stale scope, completed work, another active or
+  unknown owner and unresolved receive/upload/delivery custody refuse atomically.
+  Ordinary orphan recovery still refuses all stop-fenced attempts.
+- The console regression first returned404 for the absent route. Later targeted
+  regressions exposed missing active-owner and pending-receive guards and use of
+  signed-DTO numeric hashing for dispatch payloads; each now passes after its fix.
+  The real-process test drives a failed original owner, retained receipt,
+  explicit continuation, same-workspace replacement and successful completion
+  at the unchanged one-runner limit. The original failure remains observable.
+- No receipt is retrofitted into the old live file failure, so it remains blocked.
+  No new fleet/account/room, deployment, live approval or E2E/soak claim. This
+  slice does not implement TS accept_completed, keep_blocked or expiring
+  inspection tokens. API-only changes add no UI text or translation keys.
+- Four new contract bindings resolve against compiled test inventories. The
+  default production-callers gate still fails on its indexed deleted
+  codex/json.rs; explicit current-worktree enumeration passes44 wired callers
+  and one declared owed G8. agent-spec parse/lint commands are unavailable
+  (executable absent); no lifecycle pass is claimed. No formatter, commit or PR.
+- Verification: full store356 and console58 passed on the final verification
+  pass; the final actual-process continuation selector also passed. Owned45
+  passed serially; its earlier parallel run had44 pass and a failure in the
+  existing long-lifetime test's elapsed-time assertion. The cause of that early
+  exit is unproven and is not erased by the serial pass. Rebuilt TS router
+  core/backend88 passed. Strict all-target Clippy for store/execution/native
+  passed. Focused refusal coverage includes18 differing invalid states in one
+  table-driven selector; those cases are not counted as18 additional tests.
+  Logs: /tmp/hagency-continuation-{store-final,console-final,owned,owned-serial,
+  process-final,router,clippy-final}.log. The full store/console and focused
+  final checks include the new tests; repeated runs are not additive counts.
+- Native `cargo build -p hagency` completed successfully; final diff whitespace
+  check passed. No binary was deployed or service restarted. Build log:
+  /tmp/hagency-continuation-build.log. The bounded ADR164 slice is ready for user
+  testing; overall Rust migration and live Codex qualification remain incomplete.
+
+
+### Native operator outcome resolution and current-worktree gate (ADR165, 2026-09-17)
+
+- Continued after the operator pointed out that stopping at ADR164 was premature.
+  Implemented schema35 inspection credentials and lifecycle-scoped console
+  inspection/resolve routes for continue, accept_completed and keep_blocked.
+  Preserved the explicit compatibility continuation route and all prior dirty work.
+- Inspection requires the original host receipt, matching owned scope, retained
+  leases and dirty workspace, unfinished task, valid current route, no competing
+  owner, and no pending/unknown media effects. Random credentials persist only as
+  hashes, expire in1..60min, bind the current snapshot, and are capacity-bounded.
+  The actual writer reads time after acquiring the SQLite transaction.
+- Resolution and its request receipt are atomic. Continue reuses the shared
+  recovery transaction kernel and moves authenticated inputs; accept-completed
+  records canonical Done exactly once; keep-blocked queues nothing. Neither
+  terminal action fabricates runner output, input processing, graph completion
+  or Matrix delivery. All preserve original outcome_unknown. Graph terminal
+  decisions explicitly remain outside this slice. Exact replay survives expiry,
+  reopen and equivalent numeric payload representations; changed content conflicts.
+- Added expiry/binding/state/media/custody refusal tests, schema34-to35 preservation,
+  bounded private issuance, HTTP scope/target tests and all-three-action actual
+  subprocess tests. A final-receipt SQL fault proves that settlement, canonical
+  task events, replacement/input transfer and token consumption all roll back.
+  Existing schema-head assertions were advanced to35 without rewriting historical
+  migrations or manufacturing proof for the earlier live failed attempt.
+- Fixed the production-caller checker's source discovery to include non-ignored
+  untracked files and exclude indexed deleted files. Its normal invocation now
+  passes45 wired callers and one tracked G8, with25 checker tests. This does not
+  change reachability or permit fixture callers to count as production.
+- Initial new actual-process test failed with SpawnFailed before the intended
+  protocol failure. Cause unresolved. Retained original fixed startup diagnostics
+  in Report and test failure output; no deadlines/automatic retries changed.
+  A diagnostic rerun and10 bounded repeats passed, followed by the final full
+  owned46 pass. Earlier ADR164 long-lifetime failure remains recorded despite
+  current parallel passes. No intermittent failure is relabeled as diagnosed.
+- Verification: full store360 (40 suite summaries) passed; the final five focused
+  outcome tests add one new rollback selector beyond that run (361 distinct store
+  tests covered). Full console59 and final owned46 passed. Strict all-target
+  Clippy for store/execution/native and `cargo build --locked -p hagency` passed.
+  Seven new Rust spec bindings resolve against compiled test inventories.
+  agent-spec parse/lint cannot run because the executable is absent; no lifecycle
+  pass claimed. Final source whitespace gate passes. Logs are /tmp/hagency-outcome-*
+  and /tmp/hagency-callers-{tests,check}.log; repeated tests are not additive counts.
+- Updated the execution map and API testing procedure. I18n checked: no browser
+  labels/layout changed; the canonical blocked reason preserves the TS operator
+  wording. Operator UI, graph terminal resolution, real Codex files/private approval,
+  recovery/restart and soak remain open. Separate-fleet approval is still pending.
+  No Robrix edit, live restart, additional account/room, external message, provider
+  invocation, formatter, commit or PR was performed in this follow-on.
+
+
+## 2026-09-17 — authorized isolated fleet, ADR166/167, real Codex file/restart
+
+The pending fleet choice is resolved: the operator authorized isolated testing.
+Actual qualification exposed and fixed ADR166 approval cursor/body identity,
+Robrix native 40-hex approval parsing, and ADR167 Palpo blurhash upload metadata.
+A new independent file task now passes owner-button approval, native upload and
+encrypted delivery, canonical Done, whole-tree cleanup, and actual Robrix final
+reply. Independent authenticated download/decryption proves exact 34-byte content.
+Robrix's native Save dialog blocks the headless harness; this is still unqualified.
+Clean shutdown followed by explicit generation 2/fresh-session provisioning and
+SDK reopen passes a new workspace task/reply, with no duplicate file effect.
+
+The first new fleet's file002 upload remains WritePossible without acceptance;
+PID 20841 intentionally retains its original owner after incomplete close. Preserve
+it and every historical failure; a separate response never settles an old upload.
+The successful instance is local-native-palpo-upload-fixed-20260917T184629Z, serves
+on 19431, and the real Robrix test UI/retained owner profile uses automation 19401.
+No original remote service or legacy dispatch rows changed. Full details/evidence
+and remaining gates are in docs/design/native-execution-parity.md. No cutover.
+
+Final validation: Matrix lib 190, media upload 7, Robrix parser 38; strict Clippy for
+Matrix/native, native build and headless Robrix build pass. agent-spec remains
+absent despite parse/lint attempts. No formatter, commit or PR. Receive files,
+media-unknown recovery, seamless restart and sustained soak still precede Claude,
+then Octos. Individual live successes do not complete migration qualification.
+
+
+## 2026-09-17 — receive-file, continuous recovery, console and bounded live run
+
+Receive001 passes the native encrypted attachment path with the original owner's
+exclusive SDK profile, actual Robrix approval, exact37 bytes, canonical Done and
+rendered reply. The native file picker remains unqualified. A subsequent repeated
+run failed unsupported_event before its first marker. Original whole-tree-stop
+proof permitted ADR165 continuation, but the old worker had already exited its
+claim loop. The queued replacement never ran and was later superseded during
+explicit fresh-session provisioning; preserve the failure and its distinct result.
+
+ADR168 retains fixed refused-notification diagnostics. ADR169 keeps a stopped
+continuous worker until exact durable operator resolution, then resumes ordinary
+claims. Offline real-process recovery, store16/bootstrap20/bootstrap-lib18, strict
+Clippy, locked build and production-caller checks pass. The original diagnostic
+cannot be recovered retroactively. Separate unknown-upload owner PID20841 stays.
+
+The updated isolated fleet then completed12 tasks over1,018.689 seconds: canonical
+Done, completed dispatch, exact file bytes, encrypted delivered reply and no lease
+left behind for each. The per-pulse UI substring check was insufficient because it
+also matched owner prompts; a later independent visible whole-message audit proves
+all12 replies, with seven actual Robrix snapshots/captures. This bounded owner-DM
+run does not replace group isolation or full sustained qualification.
+
+ADR170 adds native stopped-work discovery/inspection and three operator decisions.
+The UI keeps private credentials in memory, requires notes and a distinct continue
+instruction, and retains identical requests for manual retry after response loss.
+English/Chinese coverage is included. New API projection and focused UI5 pass;
+static Next build and actual Chromium commit/lost-ACK/explicit-replay pass. Full
+console60 passes serially. Preserve the earlier parallel59/1 real-agent startup
+failure and isolated pass; cause is unknown. Strict browser-feature Clippy and
+locked native build pass. The isolated service is on generation4/session004 for
+live recovery testing with the original SDK stores. No formatter, commit or PR;
+agent-spec/task-writer remain unavailable and no lifecycle pass is claimed.
+
+
+Live ADR169/170 continuation now passes: actual console inspect/note/continue,
+same service PID93924, local Codex replacement, exact workspace bytes, canonical
+Done, encrypted final reply visibly rendered in Robrix and zero leases. Original
+unknown dispatch remains. The intended timeout stopped early on unsupported_event;
+a separate pinned-binary probe then identified terminal_interaction in13.272s
+with observed whole-tree cleanup. ADR171 adds that scoped progress event after an
+offline red regression. Neither test diagnoses the first soak's lost category.
+
+
+ADR171 final: full runtime96 (session43 included), strict browser-feature
+runtime/native Clippy and locked binary build pass. The same original-owner
+pinned-binary probe now completes in25.938s with whole-tree cleanup. The updated
+isolated service then passes actual Robrix long-command/polling regression in
+58.2s: exact35/34-byte files, canonical Done, completed dispatch, zero leases and
+visibly rendered encrypted final reply. Active PID15469 serves generation5/
+session005 on19431 with final console assets; retained PID20841 is untouched.
+Final caller and whitespace checks pass. Notes distinguish all completed gates
+from open multi-agent, sustained, sandbox-denial, media/restart and native-picker
+qualification. Claude and Octos remain next in the operator's ordered migration.
+
+
+## 2026-09-17 — actual deadline and same-service UI continuation
+
+Timeout003 on the unchanged generation5/session005 service wrote its before-file
+then ran a360-second command against the300000ms host operation budget. The
+original dispatch `matrix_dispatch_539908d9247376eea355f0ba64d4aa75` stopped at
+300043ms from claim to original stopped-inventory receipt, with owned_failure
+`deadline`, cancellation recorded and whole-tree cleanup proved. The exact
+before-file remains; the after-file does not exist. Its three-entry original
+inventory also includes the earlier terminal regression files.
+
+Actual Chromium displayed the stopped dispatch and hashes in English and Chinese,
+with no horizontal document overflow. After an explicit note and new instruction,
+the same PID15469 claimed `continuation_c8dd3eea-d4e8-499d-86ba-6732b49f1bb8`.
+Local Codex wrote/read `timeout-003-proof.txt` with SHA256
+`4c64602c7191bbe6ff0f2fbc9015792e3ab2bdf8cb74343a58409c57abf05ce6`, completed the
+canonical task, released all leases and delivered the encrypted final reply
+`ISO_CODEX_20260917_TIMEOUT3_OK`, independently matched as an exact visible Robrix
+message. The original dispatch remains outcome_unknown; no restart was needed.
+
+Private evidence under the successful isolated root is
+`timeout-003-{stop-evidence,inspection-evidence,resolution.result,completion-evidence}.json`,
+its original intent, actual English/Chinese console captures and the Robrix
+`scene_timeout003_complete.png`. This closes the actual operation-deadline and
+explicit UI continuation case. It grants no unknown-media settlement or seamless
+restart; original PID20841 and all historical failures remain preserved.
+
+
+## 2026-09-17 — project adoption and local Codex factory integration
+
+ADR172 adds optional project_inbox to existing-account adoption. It authenticates
+project membership under the agent token as well as the observer, binds distinct
+verified project/DM routes and refuses session aliases. Chunked Matrix bodies
+stop at the existing byte ceiling before EOF. Focused3 and regression library42,
+bootstrap20 and CLI8 pass. Initial fixture queries used nonexistent view columns/
+tables; corrected to actual route/workspace schema before passing. Strict Clippy
+found duplicate fixture modules; reuse the existing library fixture module.
+
+ADR173 removes the local-provider factory exclusion and carries the original
+retained provider directories into per-agent warm Hosts. Provision scope must
+match the configured unmanaged Codex/OpenAI resource; original directory checks
+cover initialization, idle, activation and handoff. Warm startup remains capped
+at30seconds with its own absolute deadline; active dispatch/owner waits use the
+existing operation limits. The active handoff still checks approval fit.
+
+The actual native configured-service fixture passes two local-profile agents,
+two simultaneous task rounds, independent encrypted file receive/send/approval
+and final reply attribution. No managed account/login state or auth-file copy is
+created. All eight warm selectors pass across the suite and focused correction:
+seven initially passed, and the budget test then passed after its fixture used
+equal2s phase/RPC durations so the earlier original phase deadline is exercised.
+The prior3s phase/2s RPC fixture correctly hit Protocol at the earlier RPC timeout;
+no production deadline was enlarged. The first configured test had a misspelled
+configuration key, so its failure is not a behavioral red regression. Strict
+all-target browser-feature native/execution Clippy passes. Caller check passes.
+Ordinary tests used only local peers and synthetic provider files.
+
+The authorized new live fleet root is local-native-palpo-fleet-20260917T212730Z.
+Its initial registration encountered an explicit429; retain the result and retry
+only after the scripted cooldown. Existing live PID15469 and unknown-upload owner
+PID20841 remain unchanged. No live multi-agent pass, formatter, commit, PR or
+agent-spec lifecycle success is claimed. Factory group-session intake remains a
+separate missing join after its current per-agent DM route.
+
+
+## 2026-09-17 — Palpo rate-limit interruption and bounded read recovery
+
+The new isolated root3 created three accounts/four rooms after its explicit
+registration429 cooldown, adopted the authenticated project/DM routes and started
+PID95426 on19432 with ADR173. At21:33:15.721 UTC intake returned Remote(429);
+root2 refresh independently returned Remote(429) at21:33:15.857. Both continuous
+drivers stopped, transports became unavailable and their DM scopes advanced to
+unavailable generation2. The exact failing HTTP routes were not retained; a later
+sync200 does not identify them. The target1 request was sent after this failure,
+so no target engagement or model task was admitted. No live two-agent pass.
+
+Original read-only counts: root2 completed18/unknown3/superseded1, leases0; root3
+only its adopted coordinator, completed provision1, dispatches0/leases0. Both
+services closed cleanly (root2 PID15469/session98580 and root3 PID95426/session26702,
+exit0); original credentials/SDK stores/workspaces/evidence remain. Explicit new
+transport generations6/2, fresh session/workspace IDs and restored DM generation3
+are staged. Original unknown media PID20841 is never closed or retried.
+
+ADR174 bounds HTTP JSON GET429 retries to four complete attempts under one
+original absolute request deadline. Valid delay hints use the larger delay;
+missing hints start at1second with bounded exponential backoff. Invalid hints,
+exhaustion or insufficient remaining time return429. Cancellation interrupts
+waits. POST/PUT/binary upload/download and unknown transport never retry. Actual
+TLS3 pass, including unchanged URL/authentication, hint/deadline/count/cancel
+bounds and no mutation retry. Broader tests are running; no live recovery pass
+is yet claimed. Earlier configured-service regressions both passed on this Mac
+when explicitly selecting the historical Linux-gated tests, and final bootstrap
+library42/bootstrap20/CLI8 passed. No formatter, commit or PR.
+
+
+## 2026-09-17 — bounded read recovery and actual two-agent DM qualification
+
+Final Matrix validation passes224 tests: library193 (including rate-limit3),
+transport9, token-provision9, upload7 and download6. The serial library run took
+733.80s; all original test handles completed. Strict all-target native/Matrix/
+execution Clippy with browser features and locked native build pass. Initial
+commands used nonexistent feature/test-target names; those command failures are
+retained and not test failures or passes. No ordinary tests contacted live services.
+
+Both isolated services were re-adopted under fresh transport/session authority,
+with their original SDK stores and a restored DM generation3 after unavailable2.
+They run the same retained `bin/hagency-adr174`, SHA256
+`58e215add042a2b150221dd14df42413bbb604ba42471a0472c102af05a8282b`.
+Root2 is PID17433, port19431, transport6/session006; root3 is PID18059, port19432,
+transport2/session002. Both report ready. Previous failed instances and their
+clean-close receipts remain. The original unknown-upload PID20841 stays retained.
+
+Root3's real native factory created two agents in the same project, each with its
+own encrypted DM, SDK owner, original local Codex process, home and workspace.
+The retained target1 request was processed after restart without resending it.
+The actual owner joined both new DMs, and actual Robrix submitted two tasks per
+agent. Four dispatches completed with canonical Done, exact different bytes at
+the same relative isolation-marker.txt path, encrypted delivered replies bound to
+the correct sender/DM and zero leases. Round2 observed both original tasks Started
+concurrently. The authenticated unencrypted project history reaches m.room.create
+and contains none of the private markers; no group task was submitted.
+
+The initial UI audit clicked sidebar coordinates but captured the other selected
+room and failed. Preserve this harness failure; its two completed tasks were not
+resent. Stable named tabs, whole-message equality and actual selected-room captures
+then establish all four final replies. Snapshots also contain hidden-tab widgets,
+so their coordinates alone are insufficient. The round1 resumed observation took
+6.18s and round2 52.08s; the former is not original task latency and neither is a
+throughput claim. Evidence is `two-dm-completion-evidence.json`, per-round receipts,
+original/resumed scripts and logs, actual Robrix frames and
+`project-private-marker-audit-complete.json`. The first short-page audit alone did
+not prove history exhaustion; the final audit explicitly reaches room creation.
+
+These results qualify the bounded two-agent private-DM task path. Factory
+shared-room task intake, multi-agent file/approval interaction, sustained soak,
+positive sandbox-denial witnesses, unknown-media recovery, seamless restart and
+native picker UI remain. Codex remains first, then Claude, then Octos. No formatter,
+commit, PR, production cutover or unavailable agent-spec lifecycle pass.
+
+
+2026-09-17 ADR175 diagnostic follow-up: root3's first live two-agent file
+qualification failed after the four passing DM tasks. Agent2 dispatch
+`matrix_dispatch_f725a71c4da3f308c39ad469a2df2e44` stopped with protocol failure
+before creating its requested file. Agent1 dispatch
+`matrix_dispatch_bcbaade1ffed388adfb12cb21682e0bd` reached actual Robrix approval;
+Approve once was visually inspected and accepted. Its upload
+`upload_36f8ed2571d3485baa560d10f96d532c` is accepted, but delivery
+`file_4007b768d804c87280d643183d9732bd` is write_possible/publication_refused.
+Read-only protected-journal inspection shows accepted key sharing, followed by
+an encrypted room write without a retained response. This does not prove server
+acceptance or rejection. Both task outcomes and their two leases remain unknown;
+PID18059 and its SDK/file owners are retained, and neither operation is resent.
+Evidence: root3 `file-001-failure-original-evidence.json`, original UI intent/log,
+actual approval frames and `file-001-readonly-custody/summary.jsonl`.
+
+The factory capabilities projection omitted its original workers' existing
+bounded statuses. ADR175 exposes each registered engagement/status only through
+the authenticated operator endpoint and records fixed runner/publication failure
+categories at the original failure. Arbitrary Matrix snapshot text is excluded.
+This is diagnosis, not recovery or acceptance of either historical failure.
+Native library44 and actual local-Codex configured-fleet1 pass, with the two
+historical Linux-gated selectors still ignored in this run (their prior explicit
+Mac runs remain separate evidence). Strict all-target native Clippy passes.
+No formatter, commit, PR or unavailable agent-spec lifecycle claim.
+
+Root2's session006 restart now also passes actual Robrix task execution:
+`matrix_dispatch_f750eeaac3ed6c706715c937314bf546` completed with canonical Done,
+exact restart-006.txt bytes and visibly rendered encrypted final reply. Evidence:
+`restart-006-completion-evidence.json` and selected-room frame. This qualifies
+explicit fresh-generation recovery, not seamless old-session resumption.
+
+A separate authorized diagnostic fleet is being prepared under private cache
+`local-native-palpo-fleet-diagnostics-20260917T221627Z`, planned port19433, while
+all original services remain preserved. Its approval registration received an
+explicit429; the original result is retained and only the bounded documented
+post-refusal cooldown may permit another registration request. No live new-fleet
+success is claimed yet. Multi-agent files/approval isolation, shared-room task
+intake and remaining Codex gates are still open before Claude and Octos.
+
+
+2026-09-17 ADR176 shared Matrix request pacing: the separate ADR175 diagnostic
+fleet (`local-native-palpo-fleet-diagnostics-20260917T221627Z`, port19433,
+PID62001) admitted target1 but later received a coordinator intake Remote429;
+target2's provision effect remains uncertain. No model dispatch occurred. The
+original protected snapshots and effect remain in that state directory. SIGTERM
+closed this original service with observed exit0; no failed effect is replayed.
+This is an operational quota failure, not proof of either earlier Codex/file
+failure's exact cause.
+
+Add optional `matrix_request_interval_ms` (10..1000) to the trusted driver config.
+One endpoint-bound opaque scheduling owner travels through cloned Matrix Limits
+for coordinator, approval bot, account/room provisioning, created agents and
+both media transports. Waiting shares the original deadline and cancellation;
+all JSON/binary requests and allowed GET retries are paced. POST/PUT/unknown
+writes remain single-attempt. Absent config preserves existing cadence, and
+other processes on the same IP remain outside this process-local scheduler.
+No UI text changed. See ADR176 and its task contract.
+
+Focused TLS pacing3 pass; native library45/configured-local-fleet1 pass, with the
+two historical Linux-gated fleet selectors ignored in this run. Strict native/
+Matrix all-target Clippy and locked build pass. The first focused test harness
+incorrectly acquired the shared FIFO mutex to read its next slot, which observed
+a later request's reservation and produced two false timing failures. Preserve
+that output; the corrected tests measure actual received attempts against the
+original monotonic schedule, with no production timing relaxation. A broader
+Matrix run finished with117 passes and the same two original harness failures;
+the corrected focused run has three passes. These are separate runs, not a
+single green119-test suite. Production caller audit and diff check pass. No formatter,
+commit, PR or unavailable agent-spec lifecycle claim.
+
+Root2 session006's completed single-agent qualification closed cleanly (PID17433,
+exit0) to reduce test traffic; its SDK stores and all earlier evidence remain.
+Original unknown owners PID20841 and PID18059 are still retained. Fresh isolated
+paced fleet `local-native-palpo-paced-20260917T223343Z` now runs on port19434,
+PID83315, binary `bin/hagency-adr176`, SHA256 `429874dad4333c6d9c275adbb4223ac26f13c41d9d190493b5f534323b52a0d5`, at250ms per Matrix request
+shared across the whole fleet. Native provisioning and live two-agent tests are
+in progress. No paced live success, group-task parity or full migration completion
+is claimed yet. Continue Codex before Claude before Octos.
+
+
+2026-09-17 paced fleet follow-up: both target agents became Active on root5
+`local-native-palpo-paced-20260917T223343Z`, PID83315/port19434. Robrix's sidebar
+omitted the second already-joined room; its actual Join with a link / Go to room
+flow opened the exact room without replacing the original client SDK. The first
+UI-selection attempt sent no task. The subsequent two-task run completed agent1
+but agent2 failed before Operation handoff: its private status is worker, without
+protocol/cleanup observations. The unstarted lease expired back to Queued; no
+model result or stop proof is inferred. Keep this original owner and queued input.
+The running old binary cannot recover the underlying error; ADR175's handoff
+amendment records it on future attempts without changing admission or retry.
+
+Agent1 then passed a fresh actual Robrix file request in the same paced service.
+Dispatch matrix_dispatch_1c1493e2960577dec1005af24b77c6ec completed canonical Done;
+actual private Approve once was accepted, upload_ff4d95056f4189564709fd967eefbba5
+is accepted, file_c0291e5b451309235fbd13f4aaec0182 is delivered, and the selected
+Robrix DM visibly renders the39-byte attachment and exact final reply. A read-only
+extraction of its protected descriptor followed by authenticated owner download
+and independent AES-CTR decryption verifies exact requested bytes, SHA256
+bcda919d05397a782afb3a0cb409875849259b6e26b5d9182a4026d0b0019f96. No SDK reopening,
+file resend or native picker claim. Evidence: root5 file-001-agent-1-completion-
+evidence.json, file-001-media-byte-evidence.json and actual selected-room frames.
+The Python crypto import failed before any request; Node's standard crypto
+completed the independent verification. This is one-agent file evidence, not
+passing two-agent approval isolation. Root5 now has2 completed,1 queued, leases0.
+
+A separate disposable /bin/sleep guardian audit observed1127 live-owner responses
+over120 seconds and an original Requested stop with whole_tree_stopped. It does
+not reproduce or explain root5's earlier handoff failure. The audit's original
+process closed; no live fleet owner was signalled. Offline handoff regression,
+45 library tests, configured positive fleet test, strict Clippy, build and caller
+audit pass. No formatter, commit, PR or unavailable agent-spec lifecycle claim.
+
+A fresh authorized fleet with the handoff diagnostic build is being provisioned
+under `local-native-palpo-handoff-20260917T225847Z`, planned port19435. Its explicit
+approval-registration429 is retained; the documented cooldown precedes another
+request. Existing unknown owners PID20841/PID18059/PID83315 remain retained.
+Full two-agent Codex, group task intake, sandbox witnesses, unknown-media recovery,
+sustained multi-agent soak and picker UI remain; continue Codex, then Claude,
+then Octos. The Rust migration is not complete.
+
+
+23:04UTC operational update: root6 coordinator exhausted GET429 retries during
+target1 provisioning; target1's effect remains uncertain and target2's request
+received an explicit429. No runner dispatch existed. Original PID20970 closed
+with observed exit0; state/SDK/effect snapshots and close receipt remain. Its
+owner-join watcher ended after joining only target1, not a two-agent success.
+Rather than add another polling process, the authorized root5 fleet created a
+separate target3 under its existing250ms process-wide cadence. Target2 and its
+Queued task remain untouched; this is a new participant, not recovery of target2.
+
+Root5's selected pair (NativePacedCodex1 and NativePacedCodex3) now passes four
+actual Robrix DM tasks in two rounds, labeled1 and3 by the private harness. Both
+rounds observed concurrent Started tasks. Each has canonical Done, separate exact
+workspace bytes at the same relative path, correct encrypted sender/DM final
+replies and zero leases. The selected-room captures visibly show all four final
+messages. Evidence: pair13-two-dm-completion-evidence.json and pair13-dm-round-*
+receipts. The global fleet remains degraded by preserved target2; participant
+status checks do not claim a green global /ready. Concurrent approve/deny file
+qualification for this exact pair is now in progress.
+
+2026-09-17 ADR177 file-settlement guidance: the pair's actual file002 decisions
+were Approve once for agent3 and Deny for agent1. A new card shifted the UI after
+the harness captured it; its original intent and a correction record preserve
+the actual participant identities. Agent1 completed with the exact DENIED reply,
+with no upload or delivery admission. Agent3's original upload was accepted and
+file_5494bd6a099001fd47e5e3b315ea13d4 settled Delivered, but its final reply claimed
+FAILED from an earlier outcome_unknown inspection. This is not a fully passing
+file workflow. pair13-file-002-observed-results.json records the original final
+messages, receipts and decisions; no completion-evidence pass is invented.
+
+Possible writes deliberately project OutcomeUnknown while their original owner
+may still progress. Preserve that status and single-attempt semantics. ADR177
+adds fixed model-facing text to nonterminal MCP results and the catalog: inspect
+the same delivery_id about once per second within the original deadline and
+authority; never resend or recapture, stop at terminal/authority loss/expiry, and
+report unresolved if still unknown at expiry. Structured receipts stay identical.
+No scheduler, wait loop, completion authority or UI/i18n strings changed.
+
+Focused held-upload/held-event regression passes; combined native library45,
+file-service7 and MCP6 pass. Strict all-target native Clippy with browser feature,
+production caller audit and diff check pass. Live model compliance still needs a
+fresh task using the new binary. Preserve unknown owners20841/18059/83315 and
+target2's original Queued input. No formatter, commit, PR or agent-spec claim.
+
+ADR177 live follow-up: root2's completed session006 had cleanly closed. The first
+session007 adoption refused at room because the stored unavailable room was
+already generation4. Preserve that description and refusal. Fresh authenticated
+observation restored generation5 at transport7, new session/workspace007; no old
+route or task was revived. PID56393 used the ADR177 binary SHA256
+156f6da48fb35a76bd58db75c558b9d5abc7f30267395d55cc4d45827f5886ac and one shared
+1000ms Matrix request cadence.
+
+Actual Robrix file004 passed: dispatch matrix_dispatch_019adab87a4908539083b03cddf6081c,
+approval_d0510c13e7a70163e673e4b1f08c65bc11ec69f5 Approve once, one accepted upload,
+file_21bba09562001d7af79116f18c7c7c9e Delivered, canonical Done, zero leases and
+exact encrypted final ISO_CODEX_SETTLEMENT_004_OK. Actual selected-room capture
+visibly renders the31-byte attachment and final. Independent authenticated owner
+download/AES-CTR decryption verifies exact bytes, SHA256
+cf6636ef773426e85533dee74b6c8f8ec72a6980ba1ce7b5c8bdbbebb6055f1f. No provider
+intermediate tool transcript was retained, so do not claim a live witnessed
+unknown-to-delivered polling sequence. The deterministic held-response test
+covers that boundary. Evidence: root2 file-004-completion-evidence.json,
+file-004-media-byte-evidence.json and native-session007-close.receipt.json.
+Original session007 SIGTERM/wait exits0 after capture; SDK state is preserved.
+
+For root5 pair file002, independent media verification confirms agent3's exact
+34 bytes, SHA25636b0003e2ab84775b8c5f859d5580b17cb6af39be417c6646b81ab212de65e5b.
+Actual selected-room captures preserve agent1 DENIED and agent3's incorrect
+FAILED final beside its delivered attachment. A read-only project history audit
+reaches m.room.create in19 events, with no private qualification markers or
+approval identities. This verifies privacy of those messages, not group task
+execution. The earlier incorrect final remains a failed workflow; later success
+does not erase it. The full Rust migration remains incomplete.
+
+2026-09-18 ADR178 factory project inbox: the original factory collector now binds
+main-room project sessions from its own authenticated current generation. A
+separate session per transport/room generation preserves the original runtime,
+SDK, private DM and per-agent workspace. Refreshing room metadata retains the
+original profile's account/provider/resource restrictions. Default claims still
+require encryption; an explicit Group project option also checks the writer's
+exact registered project. Exact mentions execute only on the addressed agent.
+Outgoing preflight rechecks the captured generation before sending. Automatic
+thread discovery is still outside this slice; no UI/i18n text changed.
+
+Offline evidence: Matrix197, owned-claim12, native library45 pass. The configured
+project test observes unaddressed inputs creating no work, two correctly addressed
+project replies, then two encrypted private replies with no project leakage.
+All5 configured fleet tests now pass together, including repeated media and both
+account provisioning paths. Two older tests had obsolete non-Linux cleanup
+expectations; they now require actual successful cleanup on macOS as accepted by
+ADR029, and both pass. Prior newly enabled fleet runs failed with peer EOF; one
+isolated run refused initial intake with Domain. Subsequent isolated/full runs
+passed. Keep that intermittency unresolved; new synthetic-only failure output
+records protocol method names and receipt stages. No deadline or production guard
+was relaxed. Strict Clippy/browser-feature build and caller audit pass.
+
+Fresh authorized root7 is local-native-palpo-project-20260917T235232Z, planned
+port19436. Pinned dirty-source ADR178 binary SHA256
+e0a1326191b0905a5160942c4cbf2413a87247e08391a390f1b70e41a3dad47b; base commit
+67e0e84abcf2676b0097de6f3f456cec908be5fb. Setup uses1s operator request spacing and
+will use1s shared native Matrix pacing. Initial approval-account registration
+received an explicit429, retained before cooldown. Live project qualification
+has not passed. Unknown owners20841/18059/83315 remain untouched. No formatter,
+commit, PR, unavailable agent-spec lifecycle or full-migration completion claim.
+
+
+2026-09-18 root7 startup refusal: registration cooldown completed and all three
+accounts/four rooms were created. Two adoption attempts returned Matrix before
+any local domain rows; independent native read probes then authenticated and
+verified every observation, and a fresh adoption succeeded. Do not assign a
+specific historical HTTP cause to the earlier generic errors. PID30514 started
+ADR178 with1s pacing, but fresh approval enrollment cancelled at its original20s
+SDK deadline; the process observed exit1. No dispatch/task/lease exists. Target1
+was posted before successful startup and was never admitted locally. Preserve
+all requests, failed receipts and original SDK; do not replay it as a task.
+
+ADR179 exposes optional matrix_sdk_timeout_ms within the existing10..60000ms
+limits, selected only before startup. Default20s, HTTP deadlines and runtime/task
+budgets stay unchanged. A separate real configured local-TLS test reproduces the
+20s paced enrollment cancellation; its longer-budget half first fails because the
+old binary rejects the new field. The new host configuration is now under test.
+Fresh local-only root8 is local-native-palpo-budget-20260918T002128Z, planned
+port19437,60s original SDK budget plus1s pacing. No live success is claimed.
+
+
+ADR179 validation: paced startup retains the real20s cancellation and proves
+separate60s original enrollment with exactly five writes, no tasks and clean
+shutdown (53.11s). Configuration tests2, library46, CLI8, configured fleet5 pass.
+Bootstrap19/20 passed concurrently; plaintext-refusal roundtrip reached its
+original command-approval timeout, then passed alone without any guard/budget
+change. Retain this intermittency alongside the earlier configured-fleet timing
+failures. Strict Clippy, locked browser-feature build, caller audit and diff pass.
+No formatter, commit, PR or unavailable agent-spec lifecycle claim.
+
+Authorized root8 setup and adoption succeeded after an explicit registration429
+cooldown. Original PID49126/port19437 now runs the60s SDK budget with1s shared
+pacing; pinned binary95dfbb4ad58c8f59357ac90195b2fd464c9f4d233396489bb8acbf2f444ab6e6
+from dirty source at base67e0e84abcf2676b0097de6f3f456cec908be5fb. Wait for actual
+startup and coordinator polling before posting target provisioning requests.
+Root7's SDK and failed pre-start target1 request remain preserved; root7 exited1.
+Unknown owners20841/18059/83315 remain untouched. Live project qualification and
+full migration are not yet complete.
+
+
+ADR179 live startup passed on root8: approval enrollment completed, coordinator
+enrolled and polled, then both target requests were admitted (target2 only after
+its explicit429 cooldown). Both original target engagements became Active and
+the owner joined their distinct DMs. This proves the new startup budget on Palpo,
+not a passing two-agent runtime. Agent1 en_0fdf6515c686af36df17b56c549f007c stopped
+before any task with generic OutcomeUnknown; the existing fixed diagnostic does
+not identify that pre-operation stage. Agent2 en_36af0975ac6f207e9a6f51ab7b592b6b
+created its project session at generation3 and polled it.
+
+Authenticated owner HTTP with explicit m.mentions posted unaddressed project001.
+Agent2 admitted it with wake0 and zero tasks; the actual Robrix selected project
+capture shows the message. An exact mention then selected task
+matrix_task_97c70b9793e0e8a070dbf81d227242d3 on that original project session, but
+its warm runtime lost authority before Started. Dispatch became Superseded,
+canonical task stays Created, replies0, leases0; report protocol=not_started,
+cleanup=unknown, initialization transport=host_closed. This is a failed execution,
+not a successful project reply. Private project-001-unaddressed-evidence.json and
+project-001-refusal-evidence.json preserve both outcomes. No model/file task was
+replayed and the first agent was not revived. Original PID49126 remains retained;
+its original first Codex child still existed at the read-only process census.
+
+Current investigation is the retained runtime/guardian boundary. A private
+read-only probe runs the original macOS process census/tracking logic against
+its own lifetime; it neither signals processes nor opens live SDK/domain owners.
+No historical root cause is inferred from a later probe. Full Rust migration,
+two-agent live project replies, sustained qualification and Claude/Octos remain.
+
+
+Read-only macOS census follow-up: the original unmodified native census/tracking
+logic completed1768 samples over60.026s without a failure. It does not explain
+root8's historical lost authority. A later churn harness used an unavailable
+/bin/true path and exited126 before producing a qualified probe result; no
+remaining read-only probe process was found. No production guardian semantics
+were changed. The final selected Robrix project capture visibly contains the
+unaddressed message and exact addressed request, with no fabricated reply.
+Root8 remains retained on PID49126; live two-agent execution is still failing.

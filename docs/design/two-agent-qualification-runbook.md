@@ -21,6 +21,46 @@ will never have a real homeserver.
 
 ## Procedure
 
+Current operator target (2026-09-16): local Codex, Claude Code and OctosCode on
+the Mac; mini3 supplies Palpo only. See
+`knowledge/requirements/req-local-three-runner-qualification.md`. The remote
+Codex account prepared earlier is unused and its login helper is disabled. The
+generic managed-login procedure below is not an instruction to authenticate on
+mini3. Native local adapters/authentication and macOS process ownership must be
+qualified before claiming the current three-runner end-to-end target.
+
+### Fresh managed model authentication
+
+Before starting the qualification fleet, initialize its separate private native
+state and run `hagency account prepare --state-dir <state>`. Preparation creates a
+namespace, not a provider session. Do not copy the existing service's credentials
+or substitute its runtime HOME for the new agents' homes.
+
+The operator authenticates the retained account from their own terminal:
+
+```sh
+hagency account login --state-dir <state> --id <prepared-account-id> \
+  --login-binary <absolute-pinned-codex-binary> --device-auth
+```
+
+The fixed option invokes the provider's device authorization flow. The operator
+completes provider consent; terminal output is not a qualification log. The
+native process clears ambient provider values, retains the exact account
+namespace and records only the exit-derived readiness receipt. A successful CLI
+command alone is insufficient: refused/unknown provider exits also leave an
+inspection result, so verify the observed, unexpired account readiness before
+enrolling the selected resource. Do not infer readiness by inspecting auth files.
+Default login without `--device-auth` retains the browser callback flow.
+
+Keep the same physical state path and mount for preparation, login and serve.
+Run account commands while the isolated service is stopped; they refuse another
+writer. Enroll the real resource through the existing account-management surface
+and preserve its association for both agents. This shares only the explicitly
+selected managed account; project workspaces and task contexts remain per-agent.
+Actual model calls and two-agent isolation still require live verification.
+
+### Matrix and client qualification
+
 1. Build the pinned native binary: `cargo build --locked -p hagency`.
 2. Provision (or point at) a real Palpo homeserver and register two agent
    accounts plus the owner account, each with a second real device where the

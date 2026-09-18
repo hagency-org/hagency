@@ -4,6 +4,101 @@ This is coordination, not canonical runtime task state. There is no provisioned
 `task-writer` in this source checkout. User instruction: execute the Rust migration
 in a clean worktree. Branch `feat/rust-migration`; baseline `5dbef22`.
 
+Current operator topology (2026-09-16): use LOCAL Codex, Claude Code and OctosCode
+on this Mac, mini3 only for Palpo, and the actual Robrix client. This supersedes
+the fresh mini3 Codex-login prerequisite, not any migration gate. The local tools
+are installed; Codex/Claude provider status reports signed in. Native Claude and
+Octos production joins and full three-runner qualification remain open. Focused
+native macOS descendant-stop and two local Codex/Palpo/Robrix paths now pass;
+Codex file send/receive, owner approvals, explicit live recovery and the five-minute
+execution deadline now pass; broader isolation and sustained qualification remain open.
+Follow `REQ-LOCAL-THREE-RUNNER-QUALIFICATION`; do not substitute the old Node bridge,
+an Octos mock, remote Linux execution or imported credentials for this target.
+The obsolete remote-login helper is disabled. Its unused private state and the
+existing running remote service remain preserved. Continue with the native
+local authentication/runner capability design and its bound implementation tests
+before attempting a three-runner live qualification or asserting full parity.
+
+Operator working order (2026-09-16): make it work, make it right, make it fast.
+Latest explicit sequencing: finish and qualify Codex end to end FIRST, including
+its files, private owner approvals, recovery/restart and sustained soak. Only
+after that passes join/qualify Claude Code; leave OctosCode until last. Do not
+switch to another adapter to avoid an unresolved Codex vertical-path failure.
+The active execution map is `docs/design/native-execution-parity.md`: trace each
+TS path into Rust, port missing behavior against existing tests, run the same
+Palpo/Robrix path, and fix observed differences. Safety/recovery checks preserve
+that path's contract and identify its gaps; adapter-only successes do not replace
+end-to-end acceptance. ADR160 ports Codex MCP approvals; ADR161 carries explicit
+long-task budgets through execution, host capability and approval custody.
+ADR164 now supplies offline-qualified explicit continuation for stopped Codex
+failures that retained ADR162 proof. It preserves unknown outcomes and transfers
+inputs to a new instruction atomically; it cannot recover the historical failure
+without its missing original receipt. ADR165 now supplies expiring inspection
+credentials and atomic continue/accept_completed/keep_blocked decisions through
+lifecycle console routes. ADR170 exposes these actions in the browser; graph terminal
+resolution remains open. The authorized isolated fleet now runs the new slices.
+Continue Codex file/approval recovery and restart routing in the same setup.
+Finish its end-to-end and soak gates before Claude, then OctosCode. Optimize
+measured bottlenecks after the corresponding functional path is qualified.
+
+Isolated qualification checkpoint (2026-09-17): the operator approved new test
+accounts/rooms on existing Palpo. First instance passed text but exposed the
+approval-cursor/Robrix-ID bugs; file002 then retained an unknown upload. Preserve
+that original owner (PID20841) and its SDK/state; it intentionally refuses close.
+A fresh independent instance with ADR166/167 passes real owner approval, encrypted
+file delivery, canonical Done, whole-tree cleanup, and final reply in Robrix.
+Authenticated downloaded media decrypts to the exact34 original bytes; the native
+Save dialog remains unqualified under the headless harness. No earlier failure
+is reclassified. The successful instance closed cleanly; explicit fresh-generation/session restart
+then passed a new workspace task and encrypted Robrix reply without resending the
+original file. Receive001 subsequently passes encrypted SDK attachment intake,
+actual Robrix approval, exact received bytes, canonical Done and rendered reply.
+The first repeated-run pulse then failed with an unsupported notification. Its
+original stop/inventory proof is retained. ADR165 accepted a reviewed continuation,
+but the old continuous worker had already exited its loop, leaving it queued.
+ADR168 adds the missing fixed refusal diagnostic; ADR169 joins explicit resolution
+back to the retained continuous worker. Its actual-process offline test passes.
+After a clean restart, the isolated service completed12 new tasks over17 minutes:
+exact files, canonical Done, encrypted replies, independent exact visible Robrix
+reply audit and zero leases. The old queued continuation became superseded during
+explicit session003 provisioning; it never ran. ADR170 adds the lifecycle recovery
+UI with English/Chinese labels, private inspection and explicit identical retry
+on response loss. Browser, focused UI, serial console60 and strict Clippy pass.
+On generation4/session004, actual browser inspection and explicit continuation
+now pass through the same live worker, local Codex completion and exact Robrix
+reply. The original failed dispatch remains unknown. A separate pinned-binary
+probe identifies terminal-interaction progress as a missing protocol arm; ADR171
+ports its scoped handling. The installed-binary probe now completes, and a live
+20-second polled command passes exact files/Done/encrypted Robrix reply on
+generation5/session005 (PID15469, port19431). Full runtime96, strict Clippy and
+locked build pass. A new long task then reaches the unchanged300-second deadline,
+retains whole-tree-stop/inventory proof and leaves its after-file absent. Actual
+English/Chinese console inspection and explicit continuation pass on the same
+PID15469, with exact bytes, canonical Done and rendered encrypted Robrix reply.
+The original dispatch stays unknown. Preserve the unsupported-event failure and
+separate PID20841 media owner. Finish groups/DMs, uncertain-media recovery and sustained
+qualification before Claude, then Octos. Full migration is open.
+
+The next source slices are ADR172 authenticated optional project-inbox adoption
+and ADR173 provider-owned local Codex in the actual configured fleet. Adoption
+passes42 library/20 bootstrap/8 CLI tests. Local factory qualification passes a
+real native service with two offline agents, two rounds, independent encrypted
+files/replies and no manufactured managed login. Original-directory replacement,
+resource mismatch and distinct warm/active budgets pass. Strict all-target
+native/execution Clippy passes. The new authorized isolated fleet has three accounts/four rooms and passed
+startup. At21:33:15 UTC both it and the earlier successful service hit Remote(429),
+fenced their transports/DM scopes and stopped intake. Both later closed cleanly;
+original SDK stores and receipts remain. ADR174 adds bounded GET-only429 waits
+within one request deadline; focused TLS3 and full Matrix224 now pass, along with strict all-target Clippy and
+locked build. Explicit fresh-generation recovery restored root2 PID17433/19431
+(transport6/session006/DM3) and root3 PID18059/19432 (transport2/DM3). Root3 then
+physically provisioned two local Codex agents and passed two private-DM rounds:
+four exact files/canonical Done/encrypted delivered replies, actual Robrix captures
+and zero leases. Both tasks were observed Started together in round2. Complete
+project history through m.room.create contains none of their private markers.
+This closes that bounded two-agent DM case, not shared-room intake, fleet media
+approval or sustained qualification. Original unknown-upload PID20841 stays retained.
+
 Current integration priorities (2026-09-10): ADR096/097/098/099/100 are integrated.
 One actual development attempt now authenticates the original Collector, claims
 compatible work and registers the original Started workspace before launch.
@@ -168,3 +263,86 @@ this current section supersedes their interim status.
    never asserts canonical Done; incomplete cleanup retains dirty leases.
    Continue physical workspace and sandbox qualification, native helper setup,
    approval application, Matrix delivery and integrated platform acceptance.
+
+
+ADR175 follow-up (2026-09-17): the four passing root3 DM tasks do not qualify
+multi-agent files. The next file test retains a protocol failure on agent2 and
+an uncertain room publication on agent1 after accepted Robrix approval/upload.
+Both original tasks remain unknown, leases2, PID18059 retained; do not resend the
+file or reconstruct an SDK owner. Per-agent bounded diagnostics now reach the
+protected operator surface; fixed failure logs preserve future causes. Offline
+library44/configured-local-fleet1 and strict Clippy pass. Root2 session006 passes
+an actual new Robrix task. A separate authorized diagnostic fleet is in progress
+on port19433; see the latest progress entry and ADR175 for evidence and limits.
+
+
+ADR176 current checkpoint (2026-09-17): shared optional Matrix request pacing is
+offline-qualified (TLS3, native45, configured-local-fleet1, strict Clippy/build).
+The intermediate diagnostic fleet's coordinator hit429 during target2 provision;
+its uncertain effect is preserved and original PID62001 closed0 with no tasks.
+Completed root2 PID17433 also closed0 to reduce test traffic. Preserve unknown
+owners PID20841/PID18059. The fresh paced fleet is PID83315/port19434 under
+`local-native-palpo-paced-20260917T223343Z`, with one250ms shared request cadence.
+Live qualification is in progress; see progress for exact evidence and limits.
+
+
+Current live checkpoint after ADR177: root5 PID83315/port19434 has four passing
+concurrent DM tasks on the selected pair1&3, plus working actual approve/deny
+isolation. Agent3's approved file002 has independently verified34-byte plaintext,
+but its final reply incorrectly claimed failure from a nonterminal unknown view.
+Agent1's denied task created no upload. The project history reaches room creation
+with no private qualification markers. Preserve these separate verdicts; this is
+not a fully passing file workflow or shared-room task qualification. Agent2's
+original pre-operation Worker failure and Queued input remain untouched, so
+fleet readiness remains degraded. Root6 hit429 before any dispatch and closed0;
+its uncertain provisioning effect remains preserved.
+
+ADR177 adds bounded read-only polling guidance without changing receipt status,
+authority, retry or completion semantics. Native library45/file-service7/MCP6,
+strict Clippy, build and caller audit pass. Root2's prior session006 closed0;
+explicit session007/transport7/DM-generation5 passed a fresh actual Robrix file
+task with exact31-byte delivered content and correct final reply. Original
+PID56393 then closed with observed exit0. Intermediate provider tool outputs
+were not retained; the deterministic MCP test covers the unknown polling boundary.
+Unknown owners PID20841/PID18059/PID83315 remain retained. Continue
+Codex qualification before Claude, then Octos; see progress for exact evidence.
+
+
+ADR178 factory project inbox (2026-09-18): resolve main-room sessions per original
+transport/room generation from the factory collector's own authenticated Group
+observation plus the matching available writer row. Refresh only room metadata;
+retain provider/account/workspace bindings. Plaintext project execution requires
+an explicit host-only Group selection and exact registered-project writer check.
+Private DMs remain encrypted and each agent retains its original workspace.
+Exact mentions pass the real two-agent configured fixture, followed by private
+DM tasks with no project leakage. Matrix197, owned-claim12, native library45,
+configured fleet5, and both corrected macOS cleanup fixtures pass; strict Clippy,
+locked build and caller audit pass. Earlier newly enabled fleet runs intermittently
+failed (peer EOF; one initial Domain refusal), still unresolved and retained in
+progress. Synthetic method/receipt diagnostics now aid further reproduction.
+Live root7 with pinned ADR178 binary and1s Matrix pacing is in progress; no live
+project success or automatic thread discovery claim yet. Preserve original unknown
+owners20841/18059/83315. Continue Codex, then Claude, then Octos.
+
+
+ADR179 adds optional matrix_sdk_timeout_ms (existing10..60000ms bounds, default20s)
+selected before startup. The same frozen Limits.sdk reaches approval/coordinator/
+factory; running deadlines, HTTP limits and task budgets do not change. Root7
+at1s pacing reproduced fresh approval enrollment cancellation at20s and exited1
+with zero tasks; preserve its partial SDK. The synthetic configured regression
+retains that negative case and proves a separate original60s enrollment/close.
+Native46/configured fleet5/CLI8 and strict Clippy/build/caller audit pass; bootstrap
+plaintext roundtrip was intermittent under concurrent load, then passed alone.
+Fresh authorized root8 PID49126/port19437 is starting with60s SDK budget and1s
+pacing. This is not a live qualification pass; see progress for original evidence.
+
+
+Latest root8 live evidence: ADR179 approval/coordinator startup passed and both
+factory targets became Active. Agent1 stopped pre-task with generic unknown;
+agent2 admitted unaddressed project text with wake0, then selected its exact
+project mention but lost warm-runtime authority before Started. No project reply,
+no file/model replay, zero leases; PID49126 and original SDK/runtime state remain
+retained. This is not a full project or two-agent qualification pass. Progress
+records exact task/dispatch and private evidence. Investigate retained runtime
+and guardian observations before another live attempt; no historical cause is
+asserted. Preserve older unknown owners20841/18059/83315 too.
