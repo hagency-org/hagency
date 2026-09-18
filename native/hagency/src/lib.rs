@@ -32,6 +32,7 @@ pub struct App {
     palpo: Option<bootstrap::palpo::StatusHandle>,
     files: Option<file_service::FileHandle>,
     receives: Option<receive_service::ReceiveHandle>,
+    fleet: Option<bootstrap::fleet::Routes>,
     console: Option<console::Console>,
     /// The ceiling-sweep loop's task handle (shared so readiness can observe
     /// liveness without owning the loop) and its tick channel. Both None
@@ -68,6 +69,7 @@ impl App {
             palpo: None,
             files: None,
             receives: None,
+            fleet: None,
             console: None,
             ceiling_sweep: None,
             sweep_tick: None,
@@ -78,6 +80,12 @@ impl App {
 
     pub fn with_domain(mut self, domain: DomainStore) -> Self {
         self.domain = Some(domain);
+        self
+    }
+    /// Attach the owning native fleet's shared routing table before serving.
+    /// Entries can only be installed by that original Host service.
+    pub fn with_fleet(mut self, fleet: &bootstrap::fleet::Service) -> Self {
+        self.fleet = Some(fleet.routes());
         self
     }
 
@@ -398,6 +406,17 @@ fn readiness(depot: &mut Depot, res: &mut Response, refuse: bool) {
     if let Some(status) = app.as_ref().and_then(|a| a.palpo.as_ref()) {
         components.push(("palpo_transport", owner_state(true, status.state())));
     }
+    if let Some(fleet) = app.as_ref().and_then(|a| a.fleet.as_ref()) {
+        components.push((
+            "factory_service",
+            match fleet.state() {
+                "running" => ComponentState::Running,
+                "stopped" => ComponentState::Stopped,
+                "outcome_unknown" => ComponentState::OutcomeUnknown,
+                _ => ComponentState::NotStarted,
+            },
+        ));
+    }
     let all_ready = components.iter().all(|(_, state)| state.is_ready());
     let value = serde_json::json!({
         "status": if all_ready { "ok" } else { "unavailable" },
@@ -423,6 +442,11 @@ async fn capabilities(depot: &mut Depot, res: &mut Response) {
         .is_ok_and(|app| app.domain.is_some());
     let mut value = serde_json::json!({"custody":true, "agent_execution":false, "palpo_transport":false,
         "matrix_crypto":false, "resource_management":management, "runner_task_api":management, "usage_observations_read":management, "project_request_transport":false, "production_api_parity":false});
+    if let Ok(app) = depot.get_typed::<App>()
+        && let Some(fleet) = &app.fleet
+    {
+        value["factory_service"] = fleet.snapshot();
+    }
     if let Ok(app) = depot.get_typed::<App>()
         && let Some(status) = &app.development
     {

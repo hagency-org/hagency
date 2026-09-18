@@ -6,6 +6,70 @@ use fixture::{DATA, Fixture};
 use serde_json::json;
 
 #[tokio::test]
+async fn native_file_service_nonterminal_polling() {
+    for event in [false, true] {
+        let mut f = Fixture::new(true).await;
+        let child = f.launch(
+            true,
+            if event {
+                "pending.event"
+            } else {
+                "pending.upload"
+            },
+        );
+        let held = f.pause_write(event).await;
+        let id: String = f
+            .sql()
+            .query_row("SELECT id FROM file_deliveries", [], |r| r.get(0))
+            .unwrap();
+        let pending = f.historical_file(&id).await;
+        assert_eq!(pending["isError"], false);
+        assert_eq!(pending["structuredContent"]["status"], "outcome_unknown");
+        assert_eq!(pending["structuredContent"]["delivery_id"], id);
+        let content = pending["content"].as_array().unwrap();
+        assert_eq!(content.len(), 2);
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(content[0]["text"].as_str().unwrap())
+                .unwrap(),
+            pending["structuredContent"]
+        );
+        let guidance = content[1]["text"].as_str().unwrap();
+        for rule in [
+            "nonterminal",
+            "read-only get_file_delivery",
+            "same delivery_id",
+            "original task deadline",
+            "Do not call send_file again",
+            "unresolved delivery",
+        ] {
+            assert!(
+                guidance.contains(rule),
+                "missing model-facing settlement rule: {rule}"
+            );
+        }
+        assert_eq!(f.delivered_count(), 0);
+        held.json(
+            200,
+            if event {
+                json!({"event_id":"$native_file_accepted"})
+            } else {
+                json!({"content_uri":"mxc://example.test/native-file"})
+            },
+        );
+        let delivered = f.deliver().await;
+        assert_eq!(delivered["delivery"]["status"], "delivered");
+        let terminal = f.historical_file(&id).await;
+        assert_eq!(terminal["structuredContent"]["status"], "delivered");
+        assert_eq!(terminal["content"].as_array().unwrap().len(), 1);
+        assert_eq!(f.uploads, 1);
+        assert_eq!(f.event_puts, 1);
+        assert_eq!(f.delivered_count(), 1);
+        child.stop_and_reap();
+        f.fake.close().await;
+    }
+}
+
+#[tokio::test]
 async fn native_file_service_executable() {
     for direct in [false, true] {
         let mut f = Fixture::new(direct).await;

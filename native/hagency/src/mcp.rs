@@ -77,6 +77,7 @@ pub struct Session {
     phase: Phase,
     ids: BTreeSet<String>,
     closed: bool,
+    owned_task_profile: bool,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -93,7 +94,21 @@ impl Session {
             phase: Phase::Initialize,
             ids: BTreeSet::new(),
             closed: false,
+            owned_task_profile: false,
         }
+    }
+    /// Restricted catalog only; context and API still enforce current authority.
+    pub fn new_owned_task(context: Context) -> Self {
+        Self {
+            owned_task_profile: true,
+            ..Self::new(context)
+        }
+    }
+    fn owned_tools(&self) -> Vec<&'static str> {
+        hagency_runtime::task_mcp::owned_task_tools(
+            self.context.file_tools(),
+            self.context.receive_tools(),
+        )
     }
     /// One complete frame, without its newline. A fatal frame closes this session.
     pub async fn handle(&mut self, bytes: &[u8]) -> Result<Option<Value>, Error> {
@@ -189,14 +204,35 @@ impl Session {
             }
             "ping" if empty(&request.params) => json!({}),
             "tools/list" if self.phase == Phase::Ready && empty(&request.params) => {
-                catalog::list(self.context.file_tools(), self.context.receive_tools())
+                let mut list =
+                    catalog::list(self.context.file_tools(), self.context.receive_tools());
+                if self.owned_task_profile {
+                    let allowed = self.owned_tools();
+                    list["tools"]
+                        .as_array_mut()
+                        .ok_or(Error::Protocol("invalid native tool catalog"))?
+                        .retain(|v| {
+                            v["name"]
+                                .as_str()
+                                .is_some_and(|name| allowed.contains(&name))
+                        });
+                }
+                list
             }
             "tools/call" if self.phase == Phase::Ready => {
-                if !valid_call(
-                    request.params.as_ref(),
-                    self.context.file_tools(),
-                    self.context.receive_tools(),
-                ) {
+                let outside_profile = self.owned_task_profile
+                    && request
+                        .params
+                        .as_ref()
+                        .and_then(|p| p["name"].as_str())
+                        .is_none_or(|name| !self.owned_tools().contains(&name));
+                if outside_profile
+                    || !valid_call(
+                        request.params.as_ref(),
+                        self.context.file_tools(),
+                        self.context.receive_tools(),
+                    )
+                {
                     return Ok(Some(
                         json!({"jsonrpc":"2.0","id":id,"error":{"code":-32602,"message":"Unknown tool or invalid tool request schema"}}),
                     ));
@@ -277,9 +313,20 @@ impl Session {
             return Ok(
                 match files::run(&self.context, &command, task_client::DEFAULT_DEADLINE).await {
                     Ok(view) => {
+                        let pending = matches!(
+                            view.status,
+                            crate::file_service::FileStatus::Queued
+                                | crate::file_service::FileStatus::OutcomeUnknown
+                        );
                         let structured = serde_json::to_value(view)
                             .map_err(|_| Error::Protocol("file tool projection failed"))?;
-                        json!({"content":[{"type":"text","text":structured.to_string()}],"structuredContent":structured,"isError":false})
+                        let mut content =
+                            vec![json!({"type":"text","text":structured.to_string()})];
+                        if pending {
+                            content
+                                .push(json!({"type":"text","text":file_catalog::PENDING_GUIDANCE}));
+                        }
+                        json!({"content":content,"structuredContent":structured,"isError":false})
                     }
                     Err(error) => tool_error(&error.to_string()),
                 },

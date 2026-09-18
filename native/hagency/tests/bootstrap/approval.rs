@@ -27,8 +27,7 @@ async fn with_approval(f: &Fixture, anchors: bool) {
                    "privacy": {"kind": "direct", "human_mxid": "@owner:example.test"}}],
         "peer_masters": if anchors {
             json!([{"user_id": "@owner:example.test",
-                    // base64(0x41 * 32): a valid, roundtripping Ed25519 public key.
-                    "master_key": "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE="}])
+                    "master_key": matrix_sdk_crypto::vodozemac::Ed25519SecretKey::new().public_key().to_base64()}])
         } else {
             json!([])
         }
@@ -50,6 +49,221 @@ async fn with_approval(f: &Fixture, anchors: bool) {
     hagency_store::private::write_new(&f.state_dir.join("approval.sdk_key"), &[42; 32]).unwrap();
 }
 
+fn fresh_approval(f: &Fixture, anchor: String) {
+    use sha2::{Digest, Sha256};
+    let probe = std::path::PathBuf::from(env!("CARGO_BIN_EXE_hagency-approval-mcp-probe"))
+        .canonicalize()
+        .unwrap();
+    let digest: String = Sha256::digest(std::fs::read(&probe).unwrap())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
+    let path = f.state_dir.join("development-driver.json");
+    let mut config: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    config["executable"] = json!(probe);
+    config["executable_sha256"] = json!(digest);
+    config["approval"] = json!({
+        "origin":f.fake.endpoint,"server_name":"example.test","registration_fingerprint":"a".repeat(64),
+        "engagement_id":config["matrix"]["engagement_id"],"registration_generation":1,"transport_generation":1,
+        "sender_mxid":support::BOT,"device_id":support::DEVICE,
+        "rooms":[{"id":support::ROOM,"generation":1,"privacy":{"kind":"direct","human_mxid":support::crypto::HUMAN}}],
+        "peer_masters":[{"user_id":support::crypto::HUMAN,"master_key":anchor}]
+    });
+    let mut file = hagency_store::private::open(&path, false).unwrap();
+    file.set_len(0).unwrap();
+    file.rewind().unwrap();
+    file.write_all(&serde_json::to_vec(&config).unwrap())
+        .unwrap();
+    hagency_store::private::write_new(
+        &f.state_dir.join("approval.access_token"),
+        support::APPROVAL_TOKEN.as_bytes(),
+    )
+    .unwrap();
+    hagency_store::private::write_new(&f.state_dir.join("approval.sdk_key"), &[42; 32]).unwrap();
+    hagency_store::private::write_new(
+        &f.state_dir.join("approval.ca.pem"),
+        include_bytes!("../../../hagency-matrix/tests/fixtures/ca.pem"),
+    )
+    .unwrap();
+    hagency_store::private::write_new(&f.work.join("approval-mcp.roundtrip"), b"fixture only")
+        .unwrap();
+    assert!(!f.state_dir.join("approval-sdk").exists());
+    let sql = rusqlite::Connection::open(f.state_dir.join("domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM current_approval_bindings", [], |r| {
+            r.get::<_, u64>(0)
+        })
+        .unwrap(),
+        0
+    );
+}
+
+async fn ordinary(request: common::Request) {
+    if request.target.ends_with("/whoami") {
+        request.json(200, common::who());
+    } else if request.target.contains("/sync?") {
+        request.json(200, common::sync("bootstrap"));
+    } else if request.target.ends_with("/state") {
+        request.json(200, common::state());
+    } else {
+        panic!("unexpected ordinary request: {}", request.target);
+    }
+}
+
+async fn roundtrip(plaintext_first: bool, action: &str) {
+    let mut f = Fixture::new(false).await;
+    let mut peer = support::crypto::Peer::for_sender(support::BOT, support::DEVICE).await;
+    fresh_approval(&f, peer.anchor());
+    let child = f.launch(true);
+    let until = tokio::time::Instant::now() + STARTUP_WATCHDOG;
+    let mut plaintext_sent = false;
+    let mut encrypted_sent = false;
+    let mut observed_startup = false;
+    let mut polls = 0;
+    let response_path = f.work.join("approval-mcp.response");
+    while !response_path.exists() && tokio::time::Instant::now() < until {
+        let request = tokio::select! {
+            request = f.fake.next() => request,
+            _ = tokio::time::sleep(std::time::Duration::from_millis(10)) => continue,
+        };
+        if !support::is_approval(&request) {
+            ordinary(request).await;
+        } else if request.target.contains("/sync?") && !peer.events.is_empty() {
+            polls += 1;
+            let detail = &peer.events[0]["content"]["com.agentchat.approval"];
+            let verdict = json!({"msgtype":"com.agentchat.approval.verdict.v1","body":"Owner button action",
+                "com.agentchat.approval":{"version":1,"kind":"verdict","agent":detail["agent"],"project":detail["project"],
+                    "project_room_id":detail["project_room_id"],"request_id":detail["request_id"],"input_digest":detail["input_digest"],"action":action}});
+            let mut sync = json!({"next_batch":format!("owner-poll-{polls}"),"to_device":{"events":[]},
+                "rooms":{"join":{support::ROOM:{"timeline":{"events":[],"limited":false},"state":{"events":[]}}}}});
+            if plaintext_first && !plaintext_sent {
+                sync["rooms"]["join"][support::ROOM]["timeline"]["events"] = json!([{
+                    "type":"m.room.message","sender":support::crypto::HUMAN,"event_id":"$plaintext_verdict","origin_server_ts":1,"content":verdict
+                }]);
+                plaintext_sent = true;
+            } else if !encrypted_sent {
+                if plaintext_first {
+                    // The next sync cannot start until the previous original
+                    // SDK batch is durably settled. Read-only DB observation.
+                    let sql =
+                        rusqlite::Connection::open(f.state_dir.join("domain.sqlite3")).unwrap();
+                    let (state, choice): (String, Option<String>) = sql
+                        .query_row("SELECT state,choice FROM owner_approvals", [], |r| {
+                            Ok((r.get(0)?, r.get(1)?))
+                        })
+                        .unwrap();
+                    assert_eq!(state, "pending");
+                    assert_eq!(choice, None);
+                    assert!(!response_path.exists());
+                }
+                let room = support::ROOM.try_into().unwrap();
+                sync["to_device"] = peer.inbound_room_key(room).await["to_device"].clone();
+                sync["rooms"]["join"][support::ROOM]["timeline"]["events"] =
+                    json!([peer.owner_event(room, verdict).await]);
+                encrypted_sent = true;
+            }
+            request.json(200, sync);
+        } else {
+            if request.target.ends_with("/keys/query")
+                && peer.writes.is_empty()
+                && !observed_startup
+            {
+                // Hold the actual enrollment response while calling the real
+                // service endpoint: startup must not starve its HTTP server.
+                assert_eq!(
+                    f.capabilities().await["development_execution"]["state"],
+                    "enrolling"
+                );
+                assert_eq!(f.attempts(), 0);
+                observed_startup = true;
+            }
+            support::respond(request, &mut peer).await;
+        }
+    }
+    assert!(
+        response_path.exists(),
+        "native roundtrip missing: polls={polls}, encrypted={encrypted_sent}, cards={}, enrollment_writes={}\n{}",
+        peer.events.len(),
+        peer.writes.len(),
+        String::from_utf8_lossy(
+            &std::fs::read(f.root.path().join("native.stderr")).unwrap_or_default()
+        )
+    );
+    let response: Value = serde_json::from_slice(&std::fs::read(response_path).unwrap()).unwrap();
+    assert_eq!(
+        response,
+        json!({"id":7,"result":{"decision":if action == "deny" {"decline"} else {"accept"}}})
+    );
+    assert!(encrypted_sent);
+    assert!(observed_startup);
+    assert_eq!(plaintext_sent, plaintext_first);
+    assert_eq!(peer.events.len(), 1);
+    assert_eq!(peer.shares, 1);
+    assert_eq!(peer.writes.len(), 5);
+    assert_eq!(peer.claims, 1);
+    assert_eq!(f.attempts(), 1);
+    let sql = rusqlite::Connection::open(f.state_dir.join("domain.sqlite3")).unwrap();
+    let (choice, receipts): (String, u64) = sql
+        .query_row(
+            "SELECT choice,(SELECT COUNT(*) FROM approval_verdict_receipts) FROM owner_approvals",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        serde_json::from_str::<String>(&choice).unwrap(),
+        if action == "deny" { "deny" } else { "once" }
+    );
+    assert_eq!(receipts, 1);
+    drop(sql);
+    // Fixture process cleanup is not native shutdown or sandbox qualification.
+    drop(child);
+    f.fake.close().await;
+}
+
+#[tokio::test]
+async fn native_private_approval_roundtrip_encrypted_owner() {
+    roundtrip(false, "approve_once").await;
+    roundtrip(false, "deny").await;
+}
+
+#[tokio::test]
+async fn native_private_approval_roundtrip_plaintext_refused() {
+    roundtrip(true, "approve_once").await;
+}
+
+#[tokio::test]
+async fn native_private_approval_startup_wrong_anchor() {
+    let mut f = Fixture::new(false).await;
+    let mut peer = support::crypto::Peer::for_sender(support::BOT, support::DEVICE).await;
+    let different_owner = support::crypto::Peer::for_sender(support::BOT, support::DEVICE).await;
+    assert_ne!(peer.anchor(), different_owner.anchor());
+    fresh_approval(&f, different_owner.anchor());
+    let mut command = tokio::process::Command::from(f.command(true));
+    command
+        .kill_on_drop(true)
+        .stderr(std::process::Stdio::piped());
+    let result = tokio::time::timeout(STARTUP_WATCHDOG, async {
+        let output = command.output();
+        tokio::pin!(output);
+        loop {
+            tokio::select! {
+                result = &mut output => break result.unwrap(),
+                request = f.fake.next() => {
+                    assert!(support::is_approval(&request), "driver must not start before enrollment");
+                    support::respond(request, &mut peer).await;
+                }
+            }
+        }
+    }).await.unwrap();
+    assert!(!result.status.success());
+    assert!(String::from_utf8_lossy(&result.stderr).contains("approval startup refused"));
+    assert_eq!(f.attempts(), 0);
+    assert!(peer.events.is_empty());
+    assert!(!f.work.join("approval-mcp.requests").exists());
+    f.fake.close().await;
+}
+
 /// Scenario: A service-composed run delivers a request end to end.
 ///
 /// PC-C0b: the delivery leg is observable through the test-only fixture.
@@ -59,10 +273,9 @@ async fn with_approval(f: &Fixture, anchors: bool) {
 /// composition's pump (PC-C0's wiring, untouched) takes the
 /// single-consumer receiver, re-reads the card from the admitted domain
 /// request and drives `send_private_approval_card` against the shared fake
-/// peer. The scripted second-identity enrollment (test-side, pre-launch:
-/// the operator's own host act under D-ADR114 observe) leaves the bot's
-/// SDK root enrolled so the composition's lazy collector opens it at send
-/// time. No production path is altered.
+/// peer. The scripted second-identity enrollment (test-side, pre-launch)
+/// leaves the bot's SDK root enrolled so startup validates its original
+/// Complete record. The fresh roundtrip tests above do not use this helper.
 #[tokio::test]
 async fn native_private_approval_delivery_is_wired() {
     use sha2::{Digest, Sha256};
@@ -243,6 +456,11 @@ async fn native_private_approval_delivery_is_wired() {
     assert_eq!(peer.events.len(), 1, "the card was delivered");
     assert!(peer.events[0]["content"].is_object());
     assert_eq!(peer.shares, 1, "the room key was shared exactly once");
+    assert_eq!(peer.writes.len(), 5, "startup kept the original enrollment");
+    assert_eq!(
+        peer.claims, 1,
+        "startup did not regenerate the original session"
+    );
     // The callback-capable probe is what ran (its own request log), and it
     // was driven by the ordinary dispatch — one attempt, no retries.
     assert!(f.work.join("approval-mcp.requests").exists());

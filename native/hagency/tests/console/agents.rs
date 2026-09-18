@@ -294,10 +294,10 @@ async fn native_console_stop_dispatch_for_agent_is_at_most_once() {
 }
 
 /// CL-S2 (ADR-130) scope selector: the lifecycle gate refuses a read-only
-/// session on all three acts with `agent_lifecycle_scope_required` and no
-/// engagement row changes, and a lifecycle session performs only start/stop/
-/// preset — it is refused by publication and configuration with THEIR scope
-/// words, never its own.
+/// session on all lifecycle routes with `agent_lifecycle_scope_required` and
+/// no engagement row changes. A lifecycle session may stop, while start and
+/// preset fail closed until their durable transitions exist; neighbouring
+/// scopes remain isolated.
 #[tokio::test]
 async fn native_console_agent_lifecycle_is_scoped() {
     let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
@@ -311,7 +311,7 @@ async fn native_console_agent_lifecycle_is_scoped() {
     tokio::time::sleep(std::time::Duration::from_millis(1010)).await;
     let lifecycle = lifecycle_session(&service).await;
     let id = &f.engagement;
-    // Read-only: all three acts refused before any store work.
+    // Read-only: all three compatibility routes refuse before store work.
     for path in [
         format!("/console/api/agents/{id}/start"),
         format!("/console/api/agents/{id}/stop"),
@@ -349,15 +349,15 @@ async fn native_console_agent_lifecycle_is_scoped() {
         "the engagement row survives the refusals"
     );
     drop(raw);
-    // The scoped session's own acts hold: start is refused as already-live,
-    // stop fences — both with the LIFECYCLE session, not a widened scope.
+    // Start has no durable native transition. It must refuse every authorized
+    // call instead of reporting a successful no-op.
     let mut response = post(&format!("/console/api/agents/{id}/start"), &lifecycle)
         .send(&service)
         .await;
-    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
+    assert_eq!(response.status_code, Some(StatusCode::NOT_IMPLEMENTED));
     assert_eq!(
         response.take_json::<Value>().await.unwrap()["code"],
-        "agent_already_live"
+        "agent_start_unavailable"
     );
     // Neighbouring mutations refuse the lifecycle session with THEIR words.
     let source = native_resource("private_lifecycle_scope_source");
@@ -410,11 +410,10 @@ async fn native_console_agent_lifecycle_is_scoped() {
     f.close().await;
 }
 
-/// CL-S2 (ADR-130) at-most-once selector, driven at the HTTP surface: a
-/// start against the already-active fixture engagement refuses with the
-/// named already-live word and spawns nothing; two stops resolve the SAME
-/// dispatch id and fence through the unsettled stop row, writing no second
-/// row, and both still report `stop_pending` — `stopped` stays false.
+/// CL-S2 (ADR-130) at-most-once selector, driven at the HTTP surface: start
+/// fails closed because no durable native start transition exists; two stops
+/// resolve the SAME dispatch id and fence through the unsettled stop row,
+/// writing no second row, and both still report `stop_pending`.
 #[tokio::test]
 async fn native_console_agent_start_stop_is_at_most_once() {
     let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
@@ -424,10 +423,10 @@ async fn native_console_agent_start_stop_is_at_most_once() {
     let mut response = post(&format!("/console/api/agents/{id}/start"), &lifecycle)
         .send(&service)
         .await;
-    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
+    assert_eq!(response.status_code, Some(StatusCode::NOT_IMPLEMENTED));
     assert_eq!(
         response.take_json::<Value>().await.unwrap()["code"],
-        "agent_already_live"
+        "agent_start_unavailable"
     );
     let stop = || async {
         let mut response = post(&format!("/console/api/agents/{id}/stop"), &lifecycle)
@@ -467,58 +466,44 @@ async fn native_console_agent_start_stop_is_at_most_once() {
     f.close().await;
 }
 
-/// CL-S2 (ADR-130) preset-apply boundedness selector: an unpublished id
-/// refuses with the named not-published word and writes no row, a published
-/// id applies (a pointer — the response is exactly `{ok, presetId}`), and a
-/// second apply refuses with the named one-pending word.
+/// CL-S2 (ADR-130) preset selector: native has no agent registry independent
+/// of engagements, and an engagement's resource owns budget, account and
+/// provision effects. The route therefore refuses rather than pretending an
+/// in-memory pointer changed that durable association.
 #[tokio::test]
-async fn native_console_agent_preset_apply_is_bounded() {
+async fn native_console_agent_preset_apply_refuses_without_durable_transition() {
     let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
     let service = f.service();
     let lifecycle = lifecycle_session(&service).await;
     let id = &f.engagement;
-    let published = native_resource("private_preset_apply_published");
-    let unpublished = native_resource("private_preset_apply_unpublished");
-    f.domain.put_resource(published.clone()).await.unwrap();
-    f.domain.put_resource(unpublished.clone()).await.unwrap();
-    f.domain
-        .edit_resource(unpublished.clone(), Some(false))
+    let before = f
+        .domain
+        .agent_roster()
         .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.engagement_id == *id)
         .unwrap();
-    // Unpublished id refuses; no row is written.
     let mut response = post(&format!("/console/api/agents/{id}/preset"), &lifecycle)
-        .json(&json!({"presetId": unpublished.id()}))
+        .json(&json!({"presetId": "private_preset_apply_published"}))
         .send(&service)
         .await;
-    assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND));
+    assert_eq!(response.status_code, Some(StatusCode::NOT_IMPLEMENTED));
     assert_eq!(
         response.take_json::<Value>().await.unwrap()["code"],
-        "preset_not_published"
+        "agent_preset_unavailable"
     );
-    // Published id applies — a pointer, exactly two keys.
-    let mut response = post(&format!("/console/api/agents/{id}/preset"), &lifecycle)
-        .json(&json!({"presetId": published.id()}))
-        .send(&service)
-        .await;
-    assert_eq!(response.status_code, Some(StatusCode::OK));
-    let applied = response.take_json::<Value>().await.unwrap();
-    assert_eq!(applied["ok"], true);
-    assert_eq!(applied["presetId"], published.id());
-    assert_eq!(
-        applied.as_object().unwrap().len(),
-        2,
-        "a completed apply points only at the preset id, never widening a field"
-    );
-    // A second apply while one is pending refuses with the named word.
-    let mut response = post(&format!("/console/api/agents/{id}/preset"), &lifecycle)
-        .json(&json!({"presetId": published.id()}))
-        .send(&service)
-        .await;
-    assert_eq!(response.status_code, Some(StatusCode::CONFLICT));
-    assert_eq!(
-        response.take_json::<Value>().await.unwrap()["code"],
-        "agent_lifecycle_apply_pending"
-    );
+    let after = f
+        .domain
+        .agent_roster()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.engagement_id == *id)
+        .unwrap();
+    assert_eq!(after.framework, before.framework);
+    assert_eq!(after.state, before.state);
+    assert_eq!(after.requested_tokens, before.requested_tokens);
     f.close().await;
 }
 
@@ -607,8 +592,69 @@ fn recovery_body() -> Value {
     })
 }
 
+#[tokio::test]
+async fn native_console_agent_recover_dispatch_agent_binding() {
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    seed_orphan_dispatch(&f, &f.engagement, false).await;
+    let cookie = lifecycle_session(&service).await;
+    let foreign = f
+        .domain
+        .agent_roster()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.engagement_id != f.engagement)
+        .unwrap()
+        .engagement_id;
+    let db = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    let snapshot = || {
+        db.query_row(
+        "SELECT d.state,d.input,s.quarantined,w.dirty,t.config,\
+         (SELECT COUNT(*) FROM resource_leases WHERE dispatch_id=d.id),\
+         (SELECT COUNT(*) FROM dispatch_recoveries WHERE original_id=d.id),\
+         (SELECT COUNT(*) FROM runner_dispatches WHERE id='orphan_replacement') \
+         FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id \
+         JOIN canonical_tasks t ON t.id=d.task_id JOIN workspace_resources w ON w.id='orphan_workspace' \
+         WHERE d.id='orphan_dispatch'", [], |r| Ok((r.get::<_,String>(0)?,r.get::<_,String>(1)?,
+            r.get::<_,bool>(2)?,r.get::<_,bool>(3)?,r.get::<_,String>(4)?,
+            r.get::<_,u64>(5)?,r.get::<_,u64>(6)?,r.get::<_,u64>(7)?))).unwrap()
+    };
+    let before = snapshot();
+    for id in [&foreign, "missing_agent"] {
+        let mut response = post(
+            &format!("/console/api/agents/{id}/recover-dispatch"),
+            &cookie,
+        )
+        .json(&recovery_body())
+        .send(&service)
+        .await;
+        assert_eq!(response.status_code, Some(StatusCode::NOT_FOUND), "{id}");
+        assert_eq!(
+            response.take_json::<Value>().await.unwrap()["code"],
+            "not_found"
+        );
+        assert_eq!(
+            snapshot(),
+            before,
+            "wrong route must not mutate the named orphan"
+        );
+    }
+    let response = post(
+        &format!("/console/api/agents/{}/recover-dispatch", f.engagement),
+        &cookie,
+    )
+    .json(&recovery_body())
+    .send(&service)
+    .await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    assert_eq!(snapshot().6, 1);
+    drop(db);
+    f.close().await;
+}
+
 /// A lifecycle operator recovers the orphan: the route reaches recover_dispatch
-/// and the store clears the lease/quarantine/dirty, supersedes the orphan and
+/// and the store clears the lease/quarantine/dirty, supersedes older queued work and
 /// writes the recovery record with the evidence. A read-only session is refused.
 #[tokio::test]
 async fn native_console_agent_recover_dispatch_recovers_orphan() {
@@ -725,4 +771,458 @@ async fn native_console_agent_recover_dispatch_refuses_stopped_dispatch() {
     assert!(quarantined, "the stop-fenced dispatch keeps its quarantine");
     assert_eq!(leases, 1, "the stop-fenced dispatch keeps its lease");
     f.close().await;
+}
+
+#[tokio::test]
+async fn native_console_stopped_dispatch_continuation() {
+    {
+        let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+        let service = f.service();
+        let readonly = session(&service).await;
+        let read = format!(
+            "/console/api/agents/{}/stopped-dispatches/orphan_dispatch/inspection",
+            f.engagement
+        );
+        let write = format!(
+            "/console/api/agents/{}/continue-stopped-dispatch",
+            f.engagement
+        );
+        assert_eq!(
+            get(&read, &readonly).send(&service).await.status_code,
+            Some(StatusCode::FORBIDDEN)
+        );
+        assert_eq!(
+            post(&write, &readonly)
+                .json(&recovery_body())
+                .send(&service)
+                .await
+                .status_code,
+            Some(StatusCode::FORBIDDEN)
+        );
+        f.close().await;
+    }
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    let service = f.service();
+    seed_orphan_dispatch(&f, &f.engagement, true).await;
+    let db = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    db.execute(
+        "UPDATE runner_dispatches SET fence=1 WHERE id='orphan_dispatch'",
+        [],
+    )
+    .unwrap();
+    db.execute("UPDATE dispatch_stops SET fence=1,reason='owned_runner_failure' WHERE dispatch_id='orphan_dispatch'",[]).unwrap();
+    let digest = "a".repeat(64);
+    db.execute("INSERT INTO owned_stop_inspections(dispatch_id,fence,digest,config,observed_at) VALUES('orphan_dispatch',1,?1,'{}',2001)",[&digest]).unwrap();
+    let read = format!(
+        "/console/api/agents/{}/stopped-dispatches/orphan_dispatch/inspection",
+        f.engagement
+    );
+    let write = format!(
+        "/console/api/agents/{}/continue-stopped-dispatch",
+        f.engagement
+    );
+    let mut input = recovery_body();
+    input["fence"] = json!(1);
+    input["inspectionDigest"] = json!(digest);
+    let cookie = lifecycle_session(&service).await;
+    let mut response = get(&read, &cookie).send(&service).await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    let receipt = response.take_json::<Value>().await.unwrap();
+    assert_eq!(receipt["digest"], input["inspectionDigest"]);
+    assert_eq!(receipt["fence"], 1);
+    let foreign = f
+        .domain
+        .agent_roster()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|row| row.engagement_id != f.engagement)
+        .unwrap()
+        .engagement_id;
+    for id in [&foreign, "missing_agent"] {
+        assert_eq!(
+            get(
+                &format!("/console/api/agents/{id}/stopped-dispatches/orphan_dispatch/inspection"),
+                &cookie
+            )
+            .send(&service)
+            .await
+            .status_code,
+            Some(StatusCode::NOT_FOUND)
+        );
+        assert_eq!(
+            post(
+                &format!("/console/api/agents/{id}/continue-stopped-dispatch"),
+                &cookie
+            )
+            .json(&input)
+            .send(&service)
+            .await
+            .status_code,
+            Some(StatusCode::NOT_FOUND)
+        );
+    }
+    for missing in [false, true] {
+        if missing {
+            db.execute("DELETE FROM owned_stop_inspections", [])
+                .unwrap();
+        }
+        let mut invalid = input.clone();
+        invalid["inspectionDigest"] = json!("b".repeat(64));
+        assert_eq!(
+            post(&write, &cookie)
+                .json(&invalid)
+                .send(&service)
+                .await
+                .status_code,
+            Some(StatusCode::CONFLICT)
+        );
+        let held: u64 = db
+            .query_row(
+                "SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='orphan_dispatch'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(held, 1);
+    }
+    db.execute("INSERT INTO owned_stop_inspections(dispatch_id,fence,digest,config,observed_at) VALUES('orphan_dispatch',1,?1,'{}',2001)",[&digest]).unwrap();
+    for _ in 0..2 {
+        let mut response = post(&write, &cookie).json(&input).send(&service).await;
+        let status = response.status_code;
+        let body = response.take_json::<Value>().await.unwrap();
+        assert_eq!(status, Some(StatusCode::OK), "{body}");
+    }
+    input["evidence"] = json!("changed note");
+    assert_eq!(
+        post(&write, &cookie)
+            .json(&input)
+            .send(&service)
+            .await
+            .status_code,
+        Some(StatusCode::CONFLICT)
+    );
+    let state:(String,String,u64,u64)=db.query_row("SELECT d.state,n.state,(SELECT COUNT(*) FROM dispatch_stops WHERE settled_at IS NOT NULL),(SELECT COUNT(*) FROM resource_leases WHERE dispatch_id=d.id) FROM runner_dispatches d JOIN runner_dispatches n ON n.id='orphan_replacement' WHERE d.id='orphan_dispatch'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+    assert_eq!(state, ("outcome_unknown".into(), "queued".into(), 1, 0));
+    f.close().await;
+}
+
+pub(super) async fn seed_inspected_failure(f: &Fixture) {
+    f.domain
+        .register_session(SessionBinding {
+            id: "resolution_session".into(),
+            engagement_id: f.engagement.clone(),
+            room_id: "!project:example.test".into(),
+            thread_root: Some("$resolution".into()),
+        })
+        .await
+        .unwrap();
+    f.domain
+        .create_canonical_task(
+            "resolution_task".into(),
+            "resolution_session".into(),
+            "Inspect result".into(),
+            now(),
+        )
+        .await
+        .unwrap();
+    f.domain
+        .register_workspace("resolution_workspace".into())
+        .await
+        .unwrap();
+    f.domain
+        .enqueue_dispatch(hagency_core::tasks::DispatchInput {
+            id: "resolution_dispatch".into(),
+            session_id: "resolution_session".into(),
+            task_id: Some("resolution_task".into()),
+            resources: vec![hagency_core::tasks::ResourceLease {
+                id: "resolution_workspace".into(),
+                exclusive: true,
+            }],
+            payload: json!({"instruction":"Original work"}),
+        })
+        .await
+        .unwrap();
+    let cap = f
+        .domain
+        .claim_dispatch("resolution_runner".into(), now(), 60_000, 120_000, 128)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(cap.dispatch_id, "resolution_dispatch");
+    let scope = f.domain.owned_dispatch_scope(cap.clone()).await.unwrap();
+    let started = f
+        .domain
+        .start_owned_dispatch(cap.clone(), scope.fingerprint().into())
+        .await
+        .unwrap();
+    f.domain
+        .observe_owned_failure(cap.clone(), hagency_store::OwnedFailure::Protocol)
+        .await
+        .unwrap();
+    // Synthetic store receipt tests the HTTP authority and transaction boundary;
+    // actual stopped-process provenance is covered by the execution harness.
+    f.domain.record_owned_stop_inspection(cap,started,json!({"profile":"stopped-content-inventory-v1",
+        "root":{"platform":"unix-v1","volume":"0000000000000001","object":vec![0;16]},
+        "entries":[{"path":"result.txt","kind":"file","bytes":5,"sha256":"a".repeat(64),"readonly":false}]})).await.unwrap();
+}
+
+#[tokio::test]
+async fn native_console_stopped_dispatch_list() {
+    {
+        let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+        let service = f.service();
+        let readonly = session(&service).await;
+        let path = format!("/console/api/agents/{}/stopped-dispatches", f.engagement);
+        assert_eq!(
+            get(&path, &readonly).send(&service).await.status_code,
+            Some(StatusCode::FORBIDDEN)
+        );
+        f.close().await;
+    }
+    let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+    seed_inspected_failure(&f).await;
+    let service = f.service();
+    let path = format!("/console/api/agents/{}/stopped-dispatches", f.engagement);
+    let cookie = lifecycle_session(&service).await;
+    for query in [
+        "?limit=1",
+        "?after=",
+        "?after=a&after=b",
+        "?after=%61",
+        "?other=x",
+    ] {
+        assert_eq!(
+            get(&format!("{path}{query}"), &cookie)
+                .send(&service)
+                .await
+                .status_code,
+            Some(StatusCode::BAD_REQUEST)
+        );
+    }
+    let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    // Discovery-only fixture rows carry no original host inspection or token.
+    for i in 0..17 {
+        let id = format!("z_stopped_{i:02}");
+        sql.execute("INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence) SELECT ?1,session_id,task_id,input,digest,state,fence FROM runner_dispatches WHERE id='resolution_dispatch'",[&id]).unwrap();
+        sql.execute("INSERT INTO dispatch_stops(dispatch_id,fence,reason,created_at) VALUES(?1,1,'owned_runner_failure',1)",[&id]).unwrap();
+    }
+    let mut response = get(&path, &cookie).send(&service).await;
+    assert_eq!(response.status_code, Some(StatusCode::OK));
+    assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+    let first = response.take_json::<Value>().await.unwrap();
+    assert_eq!(first.as_object().unwrap().len(), 3);
+    assert_eq!(first["engagementId"], f.engagement);
+    assert_eq!(first["dispatches"].as_array().unwrap().len(), 16);
+    assert_eq!(first["dispatches"][0]["dispatchId"], "resolution_dispatch");
+    assert_eq!(first["dispatches"][0]["inspectionAvailable"], true);
+    for (index, row) in first["dispatches"].as_array().unwrap().iter().enumerate() {
+        assert_eq!(row.as_object().unwrap().len(), 6);
+        assert!(
+            row.as_object()
+                .unwrap()
+                .values()
+                .all(|v| !v.is_array() && !v.is_object())
+        );
+        if index > 0 {
+            assert_eq!(row["inspectionAvailable"], false);
+        }
+    }
+    assert_eq!(first["nextAfter"], "z_stopped_14");
+    let second = get(&format!("{path}?after=z_stopped_14"), &cookie)
+        .send(&service)
+        .await
+        .take_json::<Value>()
+        .await
+        .unwrap();
+    assert_eq!(second["dispatches"].as_array().unwrap().len(), 2);
+    assert!(second["nextAfter"].is_null());
+    let foreign = f
+        .domain
+        .agent_roster()
+        .await
+        .unwrap()
+        .into_iter()
+        .find(|r| r.engagement_id != f.engagement)
+        .unwrap()
+        .engagement_id;
+    let empty = get(
+        &format!("/console/api/agents/{foreign}/stopped-dispatches"),
+        &cookie,
+    )
+    .send(&service)
+    .await
+    .take_json::<Value>()
+    .await
+    .unwrap();
+    assert!(empty["dispatches"].as_array().unwrap().is_empty());
+    assert_eq!(
+        get("/console/api/agents/missing/stopped-dispatches", &cookie)
+            .send(&service)
+            .await
+            .status_code,
+        Some(StatusCode::NOT_FOUND)
+    );
+    drop(sql);
+    f.close().await;
+}
+
+#[tokio::test]
+async fn native_console_outcome_resolution() {
+    {
+        let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+        let service = f.service();
+        let readonly = session(&service).await;
+        for path in [
+            format!(
+                "/console/api/agents/{}/stopped-dispatches/resolution_dispatch/inspect",
+                f.engagement
+            ),
+            format!(
+                "/console/api/agents/{}/resolve-stopped-dispatch",
+                f.engagement
+            ),
+        ] {
+            assert_eq!(
+                post(&path, &readonly)
+                    .json(&json!({}))
+                    .send(&service)
+                    .await
+                    .status_code,
+                Some(StatusCode::FORBIDDEN)
+            );
+        }
+        f.close().await;
+    }
+    for action in ["continue", "accept_completed", "keep_blocked"] {
+        let f = Fixture::new("127.0.0.1:13300".parse().unwrap(), None);
+        seed_inspected_failure(&f).await;
+        let service = f.service();
+        let cookie = lifecycle_session(&service).await;
+        let inspect = format!(
+            "/console/api/agents/{}/stopped-dispatches/resolution_dispatch/inspect",
+            f.engagement
+        );
+        let resolve = format!(
+            "/console/api/agents/{}/resolve-stopped-dispatch",
+            f.engagement
+        );
+        for body in [
+            json!({"ttlMs":1}),
+            json!({"ttlMs":3_600_001}),
+            json!({"unknown":true}),
+        ] {
+            assert_eq!(
+                post(&inspect, &cookie)
+                    .json(&body)
+                    .send(&service)
+                    .await
+                    .status_code,
+                Some(StatusCode::BAD_REQUEST)
+            );
+        }
+        let mut response = post(&inspect, &cookie)
+            .json(&json!({}))
+            .send(&service)
+            .await;
+        let status = response.status_code;
+        let inspection = response.take_json::<Value>().await.unwrap();
+        assert_eq!(status, Some(StatusCode::OK), "{inspection}");
+        assert_eq!(response.headers().get("cache-control").unwrap(), "no-store");
+        let mut input = json!({"original":"resolution_dispatch","requestId":"operator_resolution","inspectionId":inspection["inspectionId"],"inspectionToken":inspection["inspectionToken"],"action":action,"operatorNote":"Reviewed original workspace and effects"});
+        if action == "continue" {
+            input["replacement"] = json!({"id":"resolution_replacement","session_id":"resolution_session","task_id":"resolution_task","resources":[{"id":"resolution_workspace","exclusive":true}],"payload":{"instruction":"Finish remaining inspected work"}});
+        }
+        let foreign = f
+            .domain
+            .agent_roster()
+            .await
+            .unwrap()
+            .into_iter()
+            .find(|r| r.engagement_id != f.engagement)
+            .unwrap()
+            .engagement_id;
+        assert_eq!(
+            post(
+                &format!(
+                    "/console/api/agents/{foreign}/stopped-dispatches/resolution_dispatch/inspect"
+                ),
+                &cookie
+            )
+            .json(&json!({}))
+            .send(&service)
+            .await
+            .status_code,
+            Some(StatusCode::NOT_FOUND)
+        );
+        assert_eq!(
+            post(
+                &format!("/console/api/agents/{foreign}/resolve-stopped-dispatch"),
+                &cookie
+            )
+            .json(&input)
+            .send(&service)
+            .await
+            .status_code,
+            Some(StatusCode::NOT_FOUND)
+        );
+        let mut wrong = input.clone();
+        wrong["inspectionToken"] = json!("0".repeat(64));
+        assert_eq!(
+            post(&resolve, &cookie)
+                .json(&wrong)
+                .send(&service)
+                .await
+                .status_code,
+            Some(StatusCode::CONFLICT)
+        );
+        let mut first = None;
+        for _ in 0..2 {
+            let mut response = post(&resolve, &cookie).json(&input).send(&service).await;
+            let status = response.status_code;
+            let value = response.take_json::<Value>().await.unwrap();
+            assert_eq!(status, Some(StatusCode::OK), "{value}");
+            if let Some(first) = &first {
+                assert_eq!(&value, first);
+            } else {
+                first = Some(value);
+            }
+        }
+        let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+        let task: String = sql
+            .query_row(
+                "SELECT config FROM canonical_tasks WHERE id='resolution_task'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let task: hagency_core::tasks::Task = serde_json::from_str(&task).unwrap();
+        assert_eq!(
+            task.status,
+            match action {
+                "continue" => hagency_core::tasks::TaskState::InProgress,
+                "accept_completed" => hagency_core::tasks::TaskState::Done,
+                _ => hagency_core::tasks::TaskState::Blocked,
+            }
+        );
+        input["operatorNote"] = json!("Changed review");
+        assert_eq!(
+            post(&resolve, &cookie)
+                .json(&input)
+                .send(&service)
+                .await
+                .status_code,
+            Some(StatusCode::CONFLICT)
+        );
+        assert_eq!(
+            post(&inspect, &cookie)
+                .json(&json!({}))
+                .send(&service)
+                .await
+                .status_code,
+            Some(StatusCode::CONFLICT)
+        );
+        f.close().await;
+    }
 }

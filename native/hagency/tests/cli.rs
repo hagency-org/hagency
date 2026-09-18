@@ -472,7 +472,7 @@ async fn native_guardian_cli_entry() {
     assert!(report.scope.leader_exited);
     assert_eq!(
         report.scope.whole_tree_stopped,
-        cfg!(any(windows, target_os = "linux"))
+        cfg!(any(windows, target_os = "linux", target_os = "macos"))
     );
     // StopReport has no exit code: exact version bytes plus stderr EOF prove
     // that the actual CLI ran, rather than accepting any leader termination.

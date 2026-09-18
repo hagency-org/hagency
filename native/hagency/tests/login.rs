@@ -28,6 +28,7 @@ fn run(args: &[&str]) -> std::process::Output {
         .env("HOME", "/untrusted-fixture-home")
         .env("CODEX_HOME", "/untrusted-fixture-codex")
         .env("OPENAI_API_KEY", "offline-fixture-ambient-key")
+        .env("OPENAI_BASE_URL", "https://untrusted.invalid")
         .output()
         .unwrap()
 }
@@ -69,8 +70,50 @@ fn native_account_login_route_records_ready() {
     // The fake binary proved it ran in the retained namespace (HOME set from
     // the binding) and left its observation marker there.
     assert!(state.join(&id).join("login-observed.json").is_file());
+    let args: Vec<String> =
+        serde_json::from_slice(&fs::read(state.join(&id).join("login-arguments.json")).unwrap())
+            .unwrap();
+    assert_eq!(args, ["login"]);
     // The settled receipt is the observed mode, so the account reads ready.
     assert_eq!(readiness(&state, &id), AccountReadinessMode::Subscription);
+}
+
+#[test]
+fn native_account_device_login_route_preserves_settlement() {
+    for (provider, expected, mode) in [
+        ("", "observed", AccountReadinessMode::Subscription),
+        ("refuse", "refused", AccountReadinessMode::Unknown),
+        ("uncertain", "uncertain", AccountReadinessMode::Unknown),
+    ] {
+        let root = tempfile::tempdir().unwrap();
+        let state = root.path().join("state");
+        let id = prepare(&state);
+        fs::write(state.join(&id).join("login-outcome"), provider).unwrap();
+        let output = run(&[
+            "account",
+            "login",
+            "--state-dir",
+            state.to_str().unwrap(),
+            "--id",
+            &id,
+            "--login-binary",
+            env!("CARGO_BIN_EXE_hagency-login-probe"),
+            "--device-auth",
+        ]);
+        assert!(output.status.success(), "login route failed: {:?}", output);
+        let args: Vec<String> = serde_json::from_slice(
+            &fs::read(state.join(&id).join("login-arguments.json")).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(args, ["login", "--device-auth"]);
+        let sql = Connection::open(state.join("domain.sqlite3")).unwrap();
+        let (attempt, outcome): (String, String) = sql.query_row(
+            "SELECT a.state,o.outcome FROM account_login_attempts a JOIN account_login_observations o ON o.id=a.receipt_id WHERE a.account_id=?1",
+            [&id], |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(attempt, "settled");
+        assert_eq!(outcome, expected);
+        assert_eq!(readiness(&state, &id), mode);
+    }
 }
 
 #[test]

@@ -21,11 +21,23 @@ fn failure(res: &mut Response, error: ReceiveError) {
     };
     refusal(res, status, error.code());
 }
-fn service(depot: &Depot, res: &mut Response) -> Option<ReceiveHandle> {
-    let handle = depot
-        .get_typed::<App>()
-        .ok()
-        .and_then(|app| app.receives.clone());
+async fn service(
+    depot: &Depot,
+    res: &mut Response,
+    cap: &hagency_core::tasks::RunnerCapability,
+) -> Option<ReceiveHandle> {
+    let app = depot.get_typed::<App>().ok()?;
+    let handle = if let Some(fleet) = &app.fleet {
+        match fleet.select(cap.clone()).await {
+            Ok(backends) => backends.receives,
+            Err(error) => {
+                failure(res, ReceiveError::from(error));
+                return None;
+            }
+        }
+    } else {
+        app.receives.clone()
+    };
     if handle.is_none() {
         failure(res, ReceiveError::Unavailable);
     }
@@ -114,7 +126,7 @@ async fn list(req: &mut Request, depot: &mut Depot, res: &mut Response) {
             return;
         }
     };
-    let Some(files) = service(depot, res) else {
+    let Some(files) = service(depot, res, &context.cap).await else {
         return;
     };
     let result = tokio::time::timeout(
@@ -137,7 +149,7 @@ async fn receive(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let Some(input) = body(req, depot, res).await else {
         return;
     };
-    let Some(files) = service(depot, res) else {
+    let Some(files) = service(depot, res, &context.cap).await else {
         return;
     };
     let event = input.event_id.clone();

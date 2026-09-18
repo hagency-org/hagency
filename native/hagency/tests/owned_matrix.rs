@@ -174,7 +174,12 @@ async fn native_matrix_owned_complete_workflow() {
         assert_eq!(report.settlement_cause, None);
         assert_eq!(report.settlement, Settlement::CanonicalReplyReady);
         assert_eq!(w.count("SELECT COUNT(*) FROM resource_leases"), 0);
-        let claim = w.f.store.claim_final_reply(60_000).await.unwrap().unwrap();
+        let claim =
+            w.f.store
+                .claim_final_reply_for_dispatch(cap.clone(), 60_000)
+                .await
+                .unwrap()
+                .unwrap();
         let send = w.f.store.preview_final_reply(claim.clone()).await.unwrap();
         assert_eq!(send.body, FINAL);
         assert_eq!(send.route.room_id, ROOM);

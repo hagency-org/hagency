@@ -44,7 +44,6 @@ struct Grant {
     expires: Instant,
     scope: Scope,
     mutation: Option<MutationAccess>,
-    pending_apply: Option<String>,
 }
 struct State {
     retired: bool,
@@ -133,7 +132,6 @@ impl Authority {
             expires: now + TICKET_LIFETIME,
             scope,
             mutation: None,
-            pending_apply: None,
         });
         state.issued = Some(now);
         Ok(value)
@@ -189,7 +187,6 @@ impl Authority {
             expires: now + SESSION_LIFETIME,
             scope,
             mutation,
-            pending_apply: None,
         });
         Ok(value)
     }
@@ -328,8 +325,9 @@ impl Authority {
     }
 
     /// CL-S2 (ADR-130): the third finite scope. `AgentLifecycle` carries no
-    /// `MutationAccess` wrapper — start/preset ride the existing reads and
-    /// stop the one licensed writer, so there is no command to pre-arm.
+    /// `MutationAccess` wrapper — its implemented commands use the domain
+    /// writer's own authority and idempotency rules, so there is no command
+    /// to pre-arm in browser memory.
     pub(super) fn can_lifecycle(&self, session: &Session) -> Result<bool, Error> {
         let state = self.0.lock().map_err(|_| Error::Unavailable)?;
         if state.retired {
@@ -343,36 +341,6 @@ impl Authority {
             .map(|s| matches!(s.scope, Scope::AgentLifecycle))
             .ok_or(Error::Unauthorized)
     }
-    /// Preset-apply's "one pending at a time" bound: the grant remembers the
-    /// preset id it is applying, and a second apply is refused until the
-    /// first completes. In this slice nothing completes it — the apply is a
-    /// pointer, the preset's own fields stay the configure scope's act — so
-    /// the bound is a hard one-pending per session, never a widening field.
-    pub(super) fn begin_lifecycle_apply(
-        &self,
-        session: &Session,
-        preset_id: &str,
-    ) -> Result<(), Error> {
-        let mut state = self.0.lock().map_err(|_| Error::Unavailable)?;
-        if state.retired {
-            return Err(Error::Unavailable);
-        }
-        let now = Instant::now();
-        let grant = state
-            .sessions
-            .iter_mut()
-            .find(|s| matches(s, &session.0, now))
-            .ok_or(Error::Unauthorized)?;
-        if !matches!(grant.scope, Scope::AgentLifecycle) {
-            return Err(Error::LifecycleForbidden);
-        }
-        if grant.pending_apply.is_some() {
-            return Err(Error::LifecycleApplyPending);
-        }
-        grant.pending_apply = Some(preset_id.to_owned());
-        Ok(())
-    }
-
     pub(super) fn configuration(
         &self,
         session: &Session,

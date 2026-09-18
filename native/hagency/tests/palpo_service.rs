@@ -182,6 +182,7 @@ async fn native_palpo_service_cancel_custody() {
         16,
         Options {
             development_driver: false,
+            agent_driver: false,
             palpo_transport: true,
         },
     )

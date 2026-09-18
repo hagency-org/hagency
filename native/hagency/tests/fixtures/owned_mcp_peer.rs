@@ -1,9 +1,10 @@
 //! Disposable offline app-server peer. Never a live model or daemon launcher.
+mod claude_mcp_peer;
 use serde_json::{Value, json};
 use std::{
     fs,
     io::{self, BufRead, BufReader, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::mpsc,
     time::{Duration, Instant},
@@ -15,6 +16,36 @@ const ENV: [&str; 3] = [
 ];
 fn invalid() -> io::Error {
     io::Error::other("offline MCP fixture refused or incomplete")
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ContextReference {
+    profile: String,
+    path: PathBuf,
+    context_id: String,
+}
+fn context_reference() -> io::Result<Option<ContextReference>> {
+    let inherited = std::env::var("HAGENCY_RUNNER_CAPABILITY").map_err(|_| invalid())?;
+    let value: Value = serde_json::from_str(&inherited).map_err(|_| invalid())?;
+    if value.get("profile").is_none() {
+        return Ok(None);
+    }
+    let reference: ContextReference = serde_json::from_str(&inherited).map_err(|_| invalid())?;
+    if reference.profile != "retained_task_context_v1"
+        || reference.context_id.len() != 64
+        || !reference
+            .context_id
+            .bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+        || !reference.path.is_absolute()
+        || reference.path.file_name().and_then(|v| v.to_str())
+            != Some(format!("context-{}.json", reference.context_id).as_str())
+        || std::env::var("HAGENCY_TASK_ID").map_err(|_| invalid())?
+            != format!("context_{}", reference.context_id)
+    {
+        return Err(invalid());
+    }
+    Ok(Some(reference))
 }
 fn read(reader: &mut impl BufRead) -> io::Result<Value> {
     let mut bytes = Vec::new();
@@ -110,20 +141,39 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
     let config = &params["config"];
     let table = &config["mcp_servers.hagency_task_writer"];
     let executable = table["command"].as_str().ok_or_else(invalid)?;
+    let fleet_files = Path::new("owned-mcp.fleet-files").exists();
+    let fleet_media = Path::new("projects/factory_project/configured-fleet-media").is_file();
+    let mut environment = ENV.to_vec();
+    let mut tools = vec![
+        "get_task",
+        "update_task_execution",
+        "transition_task",
+        "complete_task_with_reply",
+    ];
+    if fleet_files || fleet_media {
+        environment.extend(["HAGENCY_FILE_TOOLS", "HAGENCY_RECEIVE_FILE_TOOLS"]);
+        tools.extend([
+            "send_file",
+            "get_file_delivery",
+            "list_received_files",
+            "receive_file",
+        ]);
+    }
     if !Path::new(executable).is_absolute()
         || table["args"] != json!(["mcp"])
         || table["cwd"] != params["cwd"]
-        || table["env_vars"] != json!(ENV)
-        || table["enabled_tools"]
-            != json!([
-                "get_task",
-                "update_task_execution",
-                "transition_task",
-                "complete_task_with_reply"
-            ])
+        || table["env_vars"] != json!(environment)
+        || table["enabled_tools"] != json!(tools)
         || table.get("env").is_some()
         || table.get("url").is_some()
         || table.get("default_tools_approval_mode").is_some()
+        || table["tools"]
+            != json!({
+                "get_task":{"approval_mode":"approve"},
+                "update_task_execution":{"approval_mode":"approve"},
+                "transition_task":{"approval_mode":"approve"},
+                "complete_task_with_reply":{"approval_mode":"approve"}
+            })
         || config["shell_environment_policy.inherit"] != "none"
         || config["shell_environment_policy.experimental_use_profile"] != false
     {
@@ -137,7 +187,7 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
-    for key in ENV {
+    for key in environment {
         command.env(key, std::env::var_os(key).ok_or_else(invalid)?);
     }
     #[cfg(windows)]
@@ -170,19 +220,238 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         &mut output,
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
     )?;
-    let task = std::env::var("HAGENCY_TASK_ID").map_err(|_| invalid())?;
+    let task = if let Some(reference) = context_reference()? {
+        // The actual helper has already cached its private original context.
+        // Invalidating the startup record cannot retarget that context later.
+        if !["retained", "warm"].contains(&mode) {
+            return Err(invalid());
+        }
+        let mut file =
+            hagency_store::private::open(&reference.path, false).map_err(|_| invalid())?;
+        file.set_len(0)?;
+        file.write_all(b"invalid after native helper initialize")?;
+        file.sync_all()?;
+        receipt(
+            "context-cached",
+            json!({"cached_before_record_change":true}),
+        )?;
+        params["developerInstructions"]
+            .as_str()
+            .and_then(|v| v.strip_prefix("The assigned canonical task ID is "))
+            .and_then(|v| v.split_once('.'))
+            .map(|(id, _)| id.to_owned())
+            .ok_or_else(invalid)?
+    } else {
+        std::env::var("HAGENCY_TASK_ID").map_err(|_| invalid())?
+    };
     let before = tool(&mut input, &mut output, 1, "get_task", json!({"id":task}))?;
     if before["id"] != task || before["status"] != "in_progress" {
         return Err(invalid());
     }
+    let fleet_finish = Path::new("projects/factory_project/configured-fleet-probe").is_file();
+    if fleet_finish {
+        // A disposable peer gate, not production readiness or task authority.
+        // The independent test observer waits for BOTH real helpers and the
+        // service's actual Started rows before allowing either completion.
+        receipt(
+            "fleet-ready",
+            json!({"task_id":task,"pid":std::process::id()}),
+        )?;
+        let until = Instant::now() + Duration::from_secs(5);
+        while !Path::new("owned-mcp.fleet-release").is_file() {
+            if Instant::now() >= until {
+                return Err(invalid());
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    if fleet_files {
+        let listed = rpc(
+            &mut input,
+            &mut output,
+            10,
+            "tools/call",
+            json!({"name":"list_received_files","arguments":{}}),
+        )?;
+        if listed["isError"] != false || listed["structuredContent"]["items"] != json!([]) {
+            return Err(invalid());
+        }
+        let admitted = rpc(
+            &mut input,
+            &mut output,
+            11,
+            "tools/call",
+            json!({"name":"send_file","arguments":{
+            "call_id":"fleet_missing_source","path":"missing.txt","filename":"missing.txt"}}),
+        )?;
+        if admitted["isError"] != false {
+            return Err(invalid());
+        }
+        let id = admitted["structuredContent"]["delivery_id"]
+            .as_str()
+            .ok_or_else(invalid)?;
+        let until = Instant::now() + Duration::from_secs(2);
+        let mut next = 12;
+        loop {
+            let inspected = rpc(
+                &mut input,
+                &mut output,
+                next,
+                "tools/call",
+                json!({"name":"get_file_delivery","arguments":{"delivery_id":id}}),
+            )?;
+            if inspected["isError"] != false {
+                return Err(invalid());
+            }
+            if inspected["structuredContent"]["status"] == "failed" {
+                if inspected["structuredContent"]["error_code"] != "source_refused" {
+                    return Err(invalid());
+                }
+                receipt(
+                    "fleet-files",
+                    json!({"task_id":task,"list":listed["structuredContent"],"delivery":inspected["structuredContent"]}),
+                )?;
+                break;
+            }
+            if Instant::now() >= until || next >= 128 {
+                return Err(invalid());
+            }
+            next += 1;
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+    if fleet_media {
+        let listing = rpc(
+            &mut input,
+            &mut output,
+            14,
+            "tools/call",
+            json!({"name":"list_received_files","arguments":{}}),
+        )?;
+        if listing["isError"] != false {
+            return Err(invalid());
+        }
+        let items = listing["structuredContent"]["items"]
+            .as_array()
+            .ok_or_else(invalid)?;
+        let latest = items
+            .iter()
+            .max_by_key(|item| item["sequence"].as_u64().unwrap_or(0))
+            .ok_or_else(invalid)?;
+        let event = latest["event_id"].as_str().ok_or_else(invalid)?;
+        let foreign = if event.starts_with("$fleet_input_0_") {
+            event.replacen("_0_", "_1_", 1)
+        } else if event.starts_with("$fleet_input_1_") {
+            event.replacen("_1_", "_0_", 1)
+        } else {
+            return Err(invalid());
+        };
+        if items.iter().any(|item| item["event_id"] == foreign) {
+            return Err(invalid());
+        }
+        let refused = rpc(
+            &mut input,
+            &mut output,
+            15,
+            "tools/call",
+            json!({"name":"receive_file","arguments":{"event_id":foreign}}),
+        )?;
+        if refused["isError"] != true {
+            return Err(invalid());
+        }
+        let received = rpc(
+            &mut input,
+            &mut output,
+            16,
+            "tools/call",
+            json!({"name":"receive_file","arguments":{"event_id":event}}),
+        )?;
+        if received["isError"] != false || received["structuredContent"]["event_id"] != event {
+            return Err(invalid());
+        }
+        let path = received["structuredContent"]["path"]
+            .as_str()
+            .ok_or_else(invalid)?;
+        if !path.starts_with(".hagency-received-") || !path.ends_with(".bin") || path.contains('/')
+        {
+            return Err(invalid());
+        }
+        let bytes = fs::read(path)?;
+        if bytes != format!("independent owner bytes for {event}\0\u{fffd}\n").as_bytes() {
+            return Err(invalid());
+        }
+        receipt(
+            "fleet-receive",
+            json!({"task_id":task,"event_id":event,"path":path}),
+        )?;
+        // The original child writes the SAME relative name in each private
+        // workspace. Only the real task-bound MCP selects and sends its bytes.
+        let mut result = format!("factory binary for {task}\0\u{fffd}\n").into_bytes();
+        result.extend(bytes);
+        fs::write("same.bin", result)?;
+        let admission = rpc(
+            &mut input,
+            &mut output,
+            20,
+            "tools/call",
+            json!({"name":"send_file","arguments":{
+            "call_id":"fleet_media","path":"same.bin","filename":"任务文件.bin","caption":format!("Factory file for {task}")}}),
+        )?;
+        if admission["isError"] != false {
+            return Err(invalid());
+        }
+        let id = admission["structuredContent"]["delivery_id"]
+            .as_str()
+            .ok_or_else(invalid)?;
+        let until = Instant::now() + Duration::from_secs(5);
+        let mut next = 21;
+        loop {
+            let status = rpc(
+                &mut input,
+                &mut output,
+                next,
+                "tools/call",
+                json!({"name":"get_file_delivery","arguments":{"delivery_id":id}}),
+            )?;
+            if status["isError"] != false || status["structuredContent"]["delivery_id"] != id {
+                return Err(invalid());
+            }
+            if status["structuredContent"]["status"] == "delivered" {
+                let current = tool(
+                    &mut input,
+                    &mut output,
+                    next + 1,
+                    "get_task",
+                    json!({"id":task}),
+                )?;
+                if current["id"] != task || current["status"] != "in_progress" {
+                    return Err(invalid());
+                }
+                receipt(
+                    "fleet-media",
+                    json!({"task_id":task,"task_status":current["status"],"delivery":status["structuredContent"]}),
+                )?;
+                break;
+            }
+            if status["structuredContent"]["status"] == "failed"
+                || Instant::now() >= until
+                || next >= 128
+            {
+                return Err(invalid());
+            }
+            next += 1;
+            std::thread::sleep(Duration::from_millis(50));
+        }
+    }
     let done = mode == "done";
-    let after = if mode == "finish" {
+    let after = if mode == "finish" || fleet_finish {
         let response = rpc(
             &mut input,
             &mut output,
             2,
             "tools/call",
-            json!({"name":"complete_task_with_reply","arguments":{"id":task,"call_id":"owned_finish","body":"Verified **native MCP final result**"}}),
+            json!({"name":"complete_task_with_reply","arguments":{"id":task,"call_id":"owned_finish",
+                "body":if fleet_finish {format!("Verified factory task {task}")} else {"Verified **native MCP final result**".into()}}}),
         )?;
         if response["isError"] != false {
             return Err(invalid());
@@ -250,7 +519,7 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
     if !diagnostic.is_empty() {
         return Err(invalid());
     }
-    if mode == "finish" {
+    if mode == "finish" || fleet_finish {
         receipt(
             "finish-exit",
             json!({"completion":after,"helper_exit":true}),
@@ -261,20 +530,82 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
     Ok(())
 }
 fn fake() -> io::Result<()> {
-    let mode = std::env::var("HAGENCY_OFFLINE_MODE").unwrap_or_else(|_| "heartbeat".into());
-    if !["heartbeat", "done", "finish"].contains(&mode.as_str()) {
+    let mode = std::env::var("HAGENCY_OFFLINE_MODE").unwrap_or_else(|_| {
+        if Path::new("projects/factory_project/configured-fleet-probe").is_file() {
+            "warm".into()
+        } else {
+            "heartbeat".into()
+        }
+    });
+    if !["heartbeat", "done", "finish", "retained", "warm"].contains(&mode.as_str()) {
         return Err(invalid());
     }
-    let mut log = fs::File::create("owned-mcp.requests")?;
+    let mut log = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("owned-mcp.requests")?;
     let mut input = io::stdin().lock();
     let mut output = io::stdout().lock();
+    if ["retained", "warm"].contains(&mode.as_str()) {
+        if let Some(reference) = context_reference()? {
+            match fs::symlink_metadata(&reference.path) {
+                Err(error) if error.kind() == io::ErrorKind::NotFound => {}
+                _ => return Err(invalid()),
+            }
+            receipt(
+                "context-parent",
+                json!({"reference_only":true,"record_absent_at_initialize":true}),
+            )?;
+        } else if mode == "warm"
+            && (Path::new("owned-mcp.sequential").exists()
+                || Path::new("projects/factory_project/configured-fleet-probe").is_file())
+        {
+            receipt(
+                "direct-parent",
+                json!({"task_id":std::env::var("HAGENCY_TASK_ID").map_err(|_|invalid())?,"pid":std::process::id()}),
+            )?;
+        } else {
+            return Err(invalid());
+        }
+    }
     let init = request(&mut input, "initialize", &mut log)?;
+    if mode == "warm" {
+        receipt("warm-entered", json!({"pid":std::process::id()}))?;
+        if Path::new("owned-mcp.warm-hold").exists() {
+            let until = Instant::now() + Duration::from_secs(5);
+            while !Path::new("owned-mcp.warm-release").exists() {
+                if Instant::now() >= until {
+                    return Err(invalid());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
     send(
         &mut output,
         json!({"id":init["id"],"result":{"userAgent":"offline/0.153.4","platformFamily":"fixture","platformOs":"fixture","codexHome":"/fixture"}}),
     )?;
     request(&mut input, "initialized", &mut log)?;
+    if mode == "warm" {
+        receipt(
+            "warm-initialized",
+            json!({"pid":std::process::id(),"home":std::env::var("HOME").ok(),"codex_home":std::env::var("CODEX_HOME").ok(),"ambient_key":std::env::var_os("OPENAI_API_KEY").is_some()}),
+        )?;
+        if Path::new("owned-mcp.warm-idle-gate").exists() {
+            let until = Instant::now() + Duration::from_secs(5);
+            while !Path::new("owned-mcp.warm-idle-exit").exists() {
+                if Instant::now() >= until {
+                    return Err(invalid());
+                }
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            return Ok(());
+        }
+    }
     let thread = request(&mut input, "thread/start", &mut log)?;
+    if mode == "warm" {
+        receipt("warm-thread", json!({"pid":std::process::id()}))?;
+    }
     let params = &thread["params"];
     if params["approvalPolicy"] != "on-request"
         || params["sandbox"] != "workspace-write"
@@ -296,8 +627,18 @@ fn fake() -> io::Result<()> {
         &mut output,
         json!({"id":turn["id"],"result":{"turn":{"id":"owned-turn","status":"inProgress","items":[]}}}),
     )?;
+    if Path::new("owned-mcp.fail-notification").is_file() {
+        send(
+            &mut output,
+            json!({"method":"offlinePrivateNotification","params":{"threadId":"owned-thread","turnId":"owned-turn"}}),
+        )?;
+        std::thread::sleep(Duration::from_secs(8));
+        return Ok(());
+    }
     helper(params, &mode)?;
-    if mode == "heartbeat" {
+    if ["heartbeat", "retained", "warm"].contains(&mode.as_str())
+        && !Path::new("projects/factory_project/configured-fleet-probe").is_file()
+    {
         send(
             &mut output,
             json!({"method":"item/started","params":{"startedAtMs":1,"threadId":"owned-thread","turnId":"owned-turn","item":{"id":"answer","type":"agentMessage","phase":"final_answer","text":""}}}),
@@ -322,6 +663,9 @@ fn main() -> io::Result<()> {
     if args.first().is_some_and(|v| v == "guardian") {
         return hagency_platform::run_guardian();
     }
+    if args.as_slice() == [std::ffi::OsString::from("claude-task-peer")] {
+        return claude_mcp_peer::run();
+    }
     if args.as_slice() != [std::ffi::OsString::from("app-server")] {
         return Err(invalid());
     }
@@ -341,6 +685,23 @@ fn main() -> io::Result<()> {
         fs::write(
             "account-observed.json",
             serde_json::to_vec(&json!({"marker":marker,"same_home":true,"ambient_key":false}))?,
+        )?;
+    }
+    if Path::new("local-account-probe.required").exists() {
+        let home = std::env::var_os("HOME").ok_or_else(invalid)?;
+        let codex = std::env::var_os("CODEX_HOME").ok_or_else(invalid)?;
+        if home == codex
+            || ["OPENAI_API_KEY", "CODEX_API_KEY", "HAGENCY_DASHBOARD_TOKEN"]
+                .iter()
+                .any(|key| std::env::var_os(key).is_some())
+            || fs::read_to_string(Path::new(&codex).join("fixture-account-marker"))?
+                != "bootstrap-local"
+        {
+            return Err(invalid());
+        }
+        fs::write(
+            "local-account-observed.json",
+            serde_json::to_vec(&json!({"selected":true,"same_home":false,"ambient_key":false}))?,
         )?;
     }
     // Disposable peer-wide bound: even a broken synchronous pipe cannot hang a

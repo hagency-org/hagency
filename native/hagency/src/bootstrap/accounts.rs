@@ -35,6 +35,10 @@ pub enum Command {
         /// never captured and it inherits the operator's terminal.
         #[arg(long)]
         login_binary: PathBuf,
+        /// Use the provider's device authorization flow on a headless host.
+        /// The operator still completes the login in their own terminal/browser.
+        #[arg(long)]
+        device_auth: bool,
     },
 }
 pub fn run(state: &Path, command: Command) -> Result<Vec<AccountChoice>, hagency_store::Error> {
@@ -54,7 +58,11 @@ pub fn run(state: &Path, command: Command) -> Result<Vec<AccountChoice>, hagency
         Command::Retire { id } => Ok(vec![
             domain.retire_account(&id, LogoutObservation::unobserved())?,
         ]),
-        Command::Login { id, login_binary } => {
+        Command::Login {
+            id,
+            login_binary,
+            device_auth,
+        } => {
             let now = SystemTime::now()
                 .duration_since(UNIX_EPOCH)
                 .map_err(|_| hagency_store::Error::OutcomeUnknown)?
@@ -70,11 +78,12 @@ pub fn run(state: &Path, command: Command) -> Result<Vec<AccountChoice>, hagency
             launch.apply_codex_environment(&mut environment)?;
             // The login child inherits the operator's terminal; stdout is never
             // captured, only the exit status is read.
-            let status = StdCommand::new(&login_binary)
-                .arg("login")
-                .env_clear()
-                .envs(&environment)
-                .status();
+            let mut command = StdCommand::new(&login_binary);
+            command.arg("login");
+            if device_auth {
+                command.arg("--device-auth");
+            }
+            let status = command.env_clear().envs(&environment).status();
             let verdict = match status {
                 Ok(status) if status.success() => LoginVerdict {
                     mode: AccountReadinessMode::Subscription,

@@ -271,6 +271,41 @@ impl Fixture {
             .stderr(Stdio::null());
         command
     }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub fn configure_continuous(&self) {
+        let source = self.state_dir.join("development-driver.json");
+        let mut config: Value = serde_json::from_slice(&fs::read(&source).unwrap()).unwrap();
+        config["profile"] = json!("codex_app_server_agent_v1");
+        private::write_new(
+            &self.state_dir.join("agent-driver.json"),
+            &serde_json::to_vec(&config).unwrap(),
+        )
+        .unwrap();
+    }
+    #[cfg(target_os = "linux")]
+    pub fn enqueue_second(&self) {
+        let mut db = DomainRepository::open(&self.state_dir).unwrap();
+        db.create_canonical_task("task-2", "session", "Second native task", now())
+            .unwrap();
+        db.enqueue_dispatch(&DispatchInput {
+            id: "dispatch-2".into(),
+            session_id: "session".into(),
+            task_id: Some("task-2".into()),
+            resources: vec![ResourceLease {
+                id: "work".into(),
+                exclusive: true,
+            }],
+            payload: json!({"instruction":"Run the second task through the retained native host."}),
+        })
+        .unwrap();
+    }
+    #[cfg(target_os = "linux")]
+    pub fn launch_continuous(&self) -> Running {
+        let file = private::open(&self.root.path().join("native.stderr"), true).unwrap();
+        let mut command = self.command(false);
+        command.arg("--agent-driver");
+        Running(command.stderr(Stdio::from(file)).spawn().unwrap())
+    }
     pub fn launch(&self, enabled: bool) -> Running {
         let file = private::open(&self.root.path().join("native.stderr"), true).unwrap();
         Running(
@@ -296,6 +331,17 @@ impl Fixture {
         self.sql()
             .query_row("SELECT COUNT(*) FROM runner_attempts", [], |r| r.get(0))
             .unwrap()
+    }
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    pub async fn wait_attempts(&self, expected: u64) {
+        let until = tokio::time::Instant::now() + Duration::from_secs(20);
+        while self.attempts() < expected {
+            assert!(
+                tokio::time::Instant::now() < until,
+                "native driver did not reach {expected} attempts"
+            );
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
     }
     pub async fn capabilities(&self) -> Value {
         let until = tokio::time::Instant::now() + STARTUP_WATCHDOG;

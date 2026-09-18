@@ -17,7 +17,11 @@ struct Cli {
 #[derive(Subcommand)]
 enum Command {
     /// Serve scoped task tools over MCP stdio using inherited runner context.
-    Mcp,
+    Mcp {
+        /// Expose only the fixed owned-runner maintenance and enabled file tools.
+        #[arg(long)]
+        owned_task_profile: bool,
+    },
     /// Maintain the canonical task from the host-provisioned runner environment.
     Task {
         /// Stable identifier for a mutation; reuse only with identical content.
@@ -52,6 +56,20 @@ enum Command {
         #[command(subcommand)]
         command: hagency::bootstrap::registration::Command,
     },
+    /// Admit an externally created agent only after fresh authenticated Matrix observations.
+    Provision {
+        #[arg(long, global = true)]
+        state_dir: Option<PathBuf>,
+        #[command(subcommand)]
+        command: hagency::bootstrap::provision::Command,
+    },
+    /// Explicitly reject exact known pre-session SDK custody; never retry work.
+    IntakeRefuseStaleSession {
+        #[arg(long)]
+        state_dir: PathBuf,
+        #[arg(long)]
+        batch_digest: String,
+    },
     /// Print a short-lived read-only console link using local operator authority.
     ConsoleAccess {
         #[arg(long)]
@@ -74,7 +92,7 @@ enum Command {
             ]
         )]
         manage_account_enrollment: bool,
-        /// Grant finite agent lifecycle management (start, stop, preset-apply).
+        /// Grant finite agent lifecycle management for implemented operator transitions.
         #[arg(
             long,
             conflicts_with_all = [
@@ -133,8 +151,11 @@ enum Command {
         #[arg(long, default_value_t = 16)]
         queue_capacity: usize,
         /// Execute one configured development attempt after authenticated Matrix refresh.
-        #[arg(long)]
+        #[arg(long, conflicts_with = "agent_driver")]
         development_driver: bool,
+        /// Continuously collect Matrix work and execute compatible owned dispatches.
+        #[arg(long, conflicts_with = "development_driver")]
+        agent_driver: bool,
         /// Run configured Palpo v2 custody lanes and native resource publication.
         #[arg(long)]
         palpo_transport: bool,
@@ -151,13 +172,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         hagency_platform::run_guardian()?;
         return Ok(());
     }
-    if matches!(command, Command::Mcp) {
+    if let Command::Mcp { owned_task_profile } = command {
         // The helper's exit code names its own refusal class, so a spawning
         // test can attribute a hosted load failure from the status alone,
         // without reading stderr (which is only drained after the exit).
         // Previously `?` propagated the `Err` to Rust's default handler,
         // which printed the same message but always exited 1.
-        if let Err(error) = mcp_stdio::run_stdio() {
+        if let Err(error) = mcp_stdio::run_stdio(owned_task_profile) {
             eprintln!("Error: {error}");
             std::process::exit(error.exit_code());
         }
@@ -178,7 +199,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
     match command {
-        Command::Mcp => unreachable!("MCP runs on the dedicated main thread"),
+        Command::Mcp { .. } => unreachable!("MCP runs on the dedicated main thread"),
         Command::Task { call_id, command } => {
             let context = hagency::task_client::Context::from_env()?;
             let output = hagency::task_client::run(
@@ -217,11 +238,28 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             hagency::bootstrap::registration::run(&state_dir, command)?;
             println!("{}", serde_json::json!({"ok": true}));
         }
+        Command::Provision { state_dir, command } => {
+            let state_dir = state_dir.ok_or("provision commands require --state-dir")?;
+            let result = hagency::bootstrap::provision::run(&state_dir, command).await?;
+            println!("{}", serde_json::to_string(&result)?);
+        }
+        Command::IntakeRefuseStaleSession {
+            state_dir,
+            batch_digest,
+        } => {
+            let rejected =
+                hagency::bootstrap::intake_refusal::run(&state_dir, batch_digest).await?;
+            println!(
+                "{}",
+                serde_json::json!({"rejected":rejected,"effects_retried":false})
+            );
+        }
         Command::Serve {
             state_dir,
             listen,
             queue_capacity,
             development_driver,
+            agent_driver,
             palpo_transport,
             console_assets,
         } => {
@@ -235,6 +273,7 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
                 queue_capacity,
                 hagency::bootstrap::Options {
                     development_driver,
+                    agent_driver,
                     palpo_transport,
                 },
             )?;

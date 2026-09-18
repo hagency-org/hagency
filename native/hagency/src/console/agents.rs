@@ -31,6 +31,17 @@ pub(super) fn router() -> Router {
         .push(Router::with_path("{id}/stop").post(stop))
         .push(Router::with_path("{id}/preset").post(preset))
         .push(Router::with_path("{id}/recover-dispatch").post(recover_dispatch))
+        .push(Router::with_path("{id}/stopped-dispatches").get(stopped_dispatches))
+        .push(
+            Router::with_path("{id}/stopped-dispatches/{dispatch}/inspection")
+                .get(stopped_dispatch_inspection),
+        )
+        .push(
+            Router::with_path("{id}/stopped-dispatches/{dispatch}/inspect")
+                .post(begin_outcome_inspection),
+        )
+        .push(Router::with_path("{id}/resolve-stopped-dispatch").post(resolve_stopped_dispatch))
+        .push(Router::with_path("{id}/continue-stopped-dispatch").post(continue_stopped_dispatch))
         .push(Router::with_path("{id}/refuse").post(refuse))
 }
 
@@ -135,7 +146,7 @@ fn engagement_id(req: &Request) -> Result<String, Error> {
     Ok(id)
 }
 
-/// The three lifecycle routes share one scope gate: a valid session whose
+/// The lifecycle routes share one scope gate: a valid session whose
 /// grant is `Scope::AgentLifecycle`. A read-only or other-scoped session is
 /// refused with `agent_lifecycle_scope_required` before any store work.
 fn check_lifecycle(depot: &Depot, res: &mut Response) -> bool {
@@ -159,53 +170,28 @@ fn check_lifecycle(depot: &Depot, res: &mut Response) -> bool {
     }
 }
 
-/// Start — an at-most-once ensure over the engagement's own state word,
-/// never a process birth (ADR-053's fixed launcher). An engagement that is
-/// already `active` is live and refuses with a named word; anything else
-/// reports the ensure held and spawns nothing.
+/// Native has no durable agent lifecycle record or safe way to re-arm a
+/// stop-fenced dispatch. A successful no-op here would lie to the operator,
+/// so the retained route fails closed until a host-owned start transition is
+/// implemented. It never reads the roster and never spawns a process.
 #[handler]
 async fn start(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if query(req, &[], 0).is_err() {
         failed(res, Error::Invalid);
         return;
     }
-    let id = match engagement_id(req) {
-        Ok(id) => id,
-        Err(error) => {
-            failed(res, error);
-            return;
-        }
-    };
+    if let Err(error) = engagement_id(req) {
+        failed(res, error);
+        return;
+    }
     if !check_lifecycle(depot, res) {
         return;
     }
-    let Some(store) = domain(depot, res) else {
-        return;
-    };
-    let result = async {
-        let rows = store.agent_roster().await?;
-        let row = rows
-            .into_iter()
-            .find(|r| r.engagement_id == id)
-            .ok_or(hagency_store::Error::NotFound)?;
-        if row.state == EngagementState::Active {
-            return Err(hagency_store::Error::State);
-        }
-        Ok(())
-    }
-    .await;
     if let Err(error) = recheck(depot) {
         failed(res, error);
         return;
     }
-    match result {
-        Ok(()) => res.render(Json(serde_json::json!({"ok": true}))),
-        Err(hagency_store::Error::State) => {
-            refusal(res, StatusCode::CONFLICT, "agent_already_live")
-        }
-        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
-        Err(error) => store_error(res, error),
-    }
+    refusal(res, StatusCode::NOT_IMPLEMENTED, "agent_start_unavailable");
 }
 
 /// Stop — fence, never settle: the store resolves the named engagement's
@@ -331,13 +317,13 @@ async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Respon
         failed(res, Error::Invalid);
         return;
     }
-    // Shape-validation only: the path names the agent whose dispatch is
-    // recovered, keeping the agents surface's path hygiene; the store call
-    // itself is keyed by the body's `original` dispatch id.
-    if let Err(error) = engagement_id(req) {
-        failed(res, error);
-        return;
-    }
+    let id = match engagement_id(req) {
+        Ok(id) => id,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
     if !check_lifecycle(depot, res) {
         return;
     }
@@ -373,6 +359,7 @@ async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Respon
         .unwrap_or_default();
     let result = store
         .recover_dispatch(
+            id,
             input.original.clone(),
             input.replacement,
             input.evidence,
@@ -394,88 +381,253 @@ async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Respon
     }
 }
 
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-struct PresetApply {
-    preset_id: String,
+/// Bounded private discovery; inspection availability grants no resolution.
+#[handler]
+async fn stopped_dispatches(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let prepared = (|| {
+        query(req, &["after"], 160)?;
+        let agent = engagement_id(req)?;
+        let after = req.query::<String>("after").unwrap_or_default();
+        if !after.is_empty() {
+            identifier(&after, 128).map_err(|_| Error::Invalid)?;
+        }
+        Ok::<_, Error>((agent, after))
+    })();
+    let (agent, after) = match prepared {
+        Ok(value) => value,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.stopped_dispatches_for_agent(agent, after).await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    outcome_response(res, result);
 }
 
-/// Preset-apply — a pointer, not a second editor: the named preset must be
-/// already-published, and exactly one apply may be pending per session. The
-/// preset's own fields stay the configure scope's act; nothing is widened
-/// and no row is written by this route.
+/// The historical content inventory is private operator data, even on GET.
+#[handler]
+async fn stopped_dispatch_inspection(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let prepared = (|| {
+        query(req, &[], 0)?;
+        let agent = engagement_id(req)?;
+        let id = req.param::<String>("dispatch").ok_or(Error::Invalid)?;
+        identifier(&id, 128).map_err(|_| Error::Invalid)?;
+        Ok::<_, Error>((agent, id))
+    })();
+    let (agent, id) = match prepared {
+        Ok(value) => value,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.stopped_dispatch_inspection(agent, id).await;
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    match result {
+        Ok(value) => res.render(Json(value)),
+        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+        Err(error) => failure(res, error),
+    }
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ContinueStoppedDispatch {
+    original: String,
+    fence: u64,
+    inspection_digest: String,
+    replacement: hagency_core::tasks::DispatchInput,
+    evidence: String,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct OutcomeInspection {
+    #[serde(default = "inspection_lifetime")]
+    ttl_ms: u64,
+}
+fn inspection_lifetime() -> u64 {
+    900_000
+}
+
+fn outcome_response(res: &mut Response, result: Result<serde_json::Value, hagency_store::Error>) {
+    match result {
+        Ok(value) => res.render(Json(value)),
+        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+        Err(hagency_store::Error::Invalid(_)) => failed(res, Error::Invalid),
+        Err(hagency_store::Error::Conflict) => {
+            refusal(res, StatusCode::CONFLICT, "resolution_conflict")
+        }
+        Err(
+            hagency_store::Error::State
+            | hagency_store::Error::Quarantined
+            | hagency_store::Error::RunnerAuthority
+            | hagency_store::Error::Generation,
+        ) => refusal(res, StatusCode::CONFLICT, "dispatch_not_resolvable"),
+        Err(error) => failure(res, error),
+    }
+}
+
+#[handler]
+async fn begin_outcome_inspection(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let prepared = async {
+        query(req, &[], 0)?;
+        let agent = engagement_id(req)?;
+        let id = req.param::<String>("dispatch").ok_or(Error::Invalid)?;
+        identifier(&id, 128).map_err(|_| Error::Invalid)?;
+        let input: OutcomeInspection =
+            serde_json::from_slice(&body(req, 512).await?).map_err(|_| Error::Invalid)?;
+        Ok::<_, Error>((agent, id, input))
+    }
+    .await;
+    let (agent, id, input) = match prepared {
+        Ok(value) => value,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store
+        .begin_outcome_inspection(agent, id, input.ttl_ms)
+        .await;
+    if result.is_ok() && recheck(depot).is_err() {
+        failure(res, hagency_store::Error::OutcomeUnknown);
+        return;
+    }
+    outcome_response(res, result);
+}
+
+#[handler]
+async fn resolve_stopped_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let prepared = async {
+        query(req, &[], 0)?;
+        let agent = engagement_id(req)?;
+        let input: hagency_store::OutcomeResolution =
+            serde_json::from_slice(&body(req, 16 * 1024).await?).map_err(|_| Error::Invalid)?;
+        Ok::<_, Error>((agent, input))
+    }
+    .await;
+    let (agent, input) = match prepared {
+        Ok(value) => value,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store.resolve_stopped_dispatch(agent, input).await;
+    if result.is_ok() && recheck(depot).is_err() {
+        failure(res, hagency_store::Error::OutcomeUnknown);
+        return;
+    }
+    outcome_response(res, result);
+}
+
+#[handler]
+async fn continue_stopped_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    let prepared = async {
+        query(req, &[], 0)?;
+        let agent = engagement_id(req)?;
+        let input: ContinueStoppedDispatch =
+            serde_json::from_slice(&body(req, 16 * 1024).await?).map_err(|_| Error::Invalid)?;
+        Ok::<_, Error>((agent, input))
+    }
+    .await;
+    let (agent, input) = match prepared {
+        Ok(value) => value,
+        Err(error) => {
+            failed(res, error);
+            return;
+        }
+    };
+    let Some(store) = domain(depot, res) else {
+        return;
+    };
+    let result = store
+        .continue_stopped_dispatch(
+            agent,
+            input.original,
+            (input.fence, input.inspection_digest),
+            input.replacement,
+            input.evidence,
+        )
+        .await;
+    if result.is_ok() && recheck(depot).is_err() {
+        failure(res, hagency_store::Error::OutcomeUnknown);
+        return;
+    }
+    match result {
+        Ok(()) => res.render(Json(serde_json::json!({"ok":true}))),
+        Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+        Err(hagency_store::Error::Invalid(_)) => failed(res, Error::Invalid),
+        Err(hagency_store::Error::Conflict) => {
+            refusal(res, StatusCode::CONFLICT, "continuation_conflict")
+        }
+        Err(
+            hagency_store::Error::State
+            | hagency_store::Error::Quarantined
+            | hagency_store::Error::RunnerAuthority
+            | hagency_store::Error::Generation,
+        ) => refusal(res, StatusCode::CONFLICT, "dispatch_not_continuable"),
+        Err(error) => failure(res, error),
+    }
+}
+
+/// Native engagements are provisioned against one immutable resource and
+/// their budget, account binding, effect payload and running profile all
+/// derive from it. Rebinding only a preset id would corrupt that invariant.
+/// Refuse until a complete retire/reprovision transition owns every effect.
 #[handler]
 async fn preset(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     if query(req, &[], 0).is_err() {
         failed(res, Error::Invalid);
         return;
     }
-    let engagement = match engagement_id(req) {
-        Ok(id) => id,
-        Err(error) => {
-            failed(res, error);
-            return;
-        }
-    };
-    if !check_lifecycle(depot, res) {
-        return;
-    }
-    let raw = match body(req, 256).await {
-        Ok(raw) => raw,
-        Err(_) => {
-            failed(res, Error::Invalid);
-            return;
-        }
-    };
-    let input: PresetApply = match serde_json::from_slice(&raw) {
-        Ok(input) => input,
-        Err(_) => {
-            failed(res, Error::Invalid);
-            return;
-        }
-    };
-    if identifier(&input.preset_id, 128).is_err() {
-        failed(res, Error::Invalid);
-        return;
-    }
-    let Some(store) = domain(depot, res) else {
-        return;
-    };
-    let resource = match store.resource_configuration(input.preset_id.clone()).await {
-        Ok(resource) => resource,
-        Err(hagency_store::Error::NotFound) => {
-            refusal(res, StatusCode::NOT_FOUND, "preset_not_published");
-            return;
-        }
-        Err(error) => {
-            failure(res, error);
-            return;
-        }
-    };
-    if !resource.published {
-        refusal(res, StatusCode::NOT_FOUND, "preset_not_published");
-        return;
-    }
-    // One pending apply per session, tracked in-memory on the grant (the
-    // spec licenses no new store column; the apply writes no row).
-    let session = match depot.get_typed::<Session>() {
-        Ok(session) => session,
-        Err(_) => {
-            failed(res, Error::Unauthorized);
-            return;
-        }
-    };
-    if let Err(error) = console(depot).and_then(|c| {
-        c.0.authority
-            .begin_lifecycle_apply(session, &input.preset_id)
-    }) {
+    if let Err(error) = engagement_id(req) {
         failed(res, error);
         return;
     }
-    let _ = engagement;
-    res.render(Json(
-        serde_json::json!({"ok": true, "presetId": input.preset_id}),
-    ));
+    if !check_lifecycle(depot, res) {
+        return;
+    }
+    if let Err(error) = recheck(depot) {
+        failed(res, error);
+        return;
+    }
+    refusal(res, StatusCode::NOT_IMPLEMENTED, "agent_preset_unavailable");
 }
 
 fn store_error(res: &mut Response, error: hagency_store::Error) {

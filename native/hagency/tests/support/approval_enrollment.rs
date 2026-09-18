@@ -1,11 +1,11 @@
 //! PC-C0b test support: the scripted second-identity enrollment of the
 //! approval collector against the shared fake peer (no live homeserver).
 //!
-//! The composition's approval collector is lazy — its owner handle opens the
-//! SDK root only when the first card is sent (`Owner::open_existing`), and
-//! `open_existing` requires an ALREADY-ENROLLED root. Production never
-//! enrolls the bot (D-ADR114 observe: the operator's own host act); this
-//! module is the test-side script that performs that host act BEFORE the
+//! The original PC-C0b delivery-only fixture pre-enrolls the SDK. Native startup
+//! now also drives explicit Matrix crypto enrollment itself; this older fixture
+//! verifies the original Complete path without generating replacement keys.
+//! ADR114 governs provider login, not this Matrix SDK enrollment. This
+//! module is the test-side script that performs the initial enrollment BEFORE the
 //! composition launches, against the same fake peer and the same on-disk
 //! state the composition then runs on:
 //!

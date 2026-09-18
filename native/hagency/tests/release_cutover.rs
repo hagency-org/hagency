@@ -25,6 +25,15 @@ mod domain;
 /// 20-second figure as the unit's TimeoutStopSec, but this one bounds the
 /// /ready poll after start, not the drain after SIGTERM.
 const START_GATE_BUDGET: Duration = Duration::from_secs(20);
+// Non-test includes outside native/**. These exact original inputs participate
+// in BOTH the version-patched source copy and its content-addressed cache.
+const ROOT_BUILD_INPUTS: &[&str] = &[
+    "lib/role-capacity.json",
+    "docs/workspace-claude-md-template.md",
+    "docs/workspace-agents-md-template.md",
+    "docs/workspace-supervisor-claude-template.md",
+    "docs/workspace-supervisor-agents-template.md",
+];
 
 fn binary() -> PathBuf {
     env!("CARGO_BIN_EXE_hagency").into()
@@ -371,19 +380,20 @@ fn collect_native_files(dir: &Path, root: &Path, out: &mut Vec<String>) {
     }
 }
 /// Content address over the copied inputs (root manifests + the whole
-/// `native/**` source set), so a changed workspace or source rebuilds while
+/// `native/**` source set and root compile-time inputs), so a changed input rebuilds while
 /// the 3x gate repeats and the second test reuse the same artifact.
 fn source_fingerprint() -> String {
     let root = workspace_root();
+    source_fingerprint_at(&root)
+}
+fn source_fingerprint_at(root: &Path) -> String {
     let mut files = vec![
         "Cargo.toml".to_string(),
         "Cargo.lock".to_string(),
         "rust-toolchain.toml".to_string(),
-        // hagency-core's non-test source includes this workspace-root file;
-        // a changed copy rebuilds, an absent one fails the build honestly.
-        "lib/role-capacity.json".to_string(),
     ];
-    collect_native_files(&root.join("native"), &root, &mut files);
+    files.extend(ROOT_BUILD_INPUTS.iter().map(|file| (*file).to_string()));
+    collect_native_files(&root.join("native"), root, &mut files);
     files.sort();
     let mut hasher = Sha256::new();
     for rel in &files {
@@ -391,6 +401,49 @@ fn source_fingerprint() -> String {
         hasher.update(fs::read(root.join(rel)).unwrap());
     }
     format!("{:x}", hasher.finalize())
+}
+fn copy_root_build_inputs(root: &Path, destination: &Path) {
+    for file in ROOT_BUILD_INPUTS {
+        let target = destination.join(file);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::copy(root.join(file), target).unwrap();
+    }
+}
+#[test]
+fn native_upgrade_shared_templates_are_build_inputs() {
+    let fixture = tempfile::tempdir().unwrap();
+    let source = fixture.path().join("source");
+    let copy = fixture.path().join("copy");
+    fs::create_dir_all(source.join("native")).unwrap();
+    for file in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
+        fs::write(source.join(file), file).unwrap();
+    }
+    let root = workspace_root();
+    for file in ROOT_BUILD_INPUTS {
+        let target = source.join(file);
+        fs::create_dir_all(target.parent().unwrap()).unwrap();
+        fs::copy(root.join(file), target).unwrap();
+    }
+    copy_root_build_inputs(&source, &copy);
+    for file in ROOT_BUILD_INPUTS {
+        assert_eq!(
+            fs::read(source.join(file)).unwrap(),
+            fs::read(copy.join(file)).unwrap()
+        );
+    }
+    for file in &ROOT_BUILD_INPUTS[1..] {
+        let before = source_fingerprint_at(&source);
+        let mut bytes = fs::read(source.join(file)).unwrap();
+        bytes.extend_from_slice(b"\nfixture-only changed compile input\n");
+        fs::write(source.join(file), &bytes).unwrap();
+        assert_ne!(
+            source_fingerprint_at(&source),
+            before,
+            "changed original shared template must invalidate artifact cache: {file}"
+        );
+        copy_root_build_inputs(&source, &copy);
+        assert_eq!(fs::read(copy.join(file)).unwrap(), bytes);
+    }
 }
 /// Build the N+1 artifact once, offline, under a process mutex so both tests
 /// and the gate repeats share a single build. The stamp is the source
@@ -419,9 +472,7 @@ fn next_artifact() -> PathBuf {
     // CARGO_BIN_EXE_hagency (the N binary the N leg and the existing version
     // and restart tests read); preserve N before the build, and restore it
     // after, so the parent target keeps reporting the workspace version.
-    if !saved_n.is_file() {
-        fs::copy(binary(), &saved_n).unwrap();
-    }
+    fs::copy(binary(), &saved_n).unwrap();
     if src.exists() {
         fs::remove_dir_all(&src).unwrap();
     }
@@ -429,14 +480,7 @@ fn next_artifact() -> PathBuf {
     for file in ["Cargo.toml", "Cargo.lock", "rust-toolchain.toml"] {
         fs::copy(root.join(file), src.join(file)).unwrap();
     }
-    // The one non-test include that escapes `native/**`: the source path
-    // `../../../lib/role-capacity.json` resolves to the copy root's lib/.
-    fs::create_dir_all(src.join("lib")).unwrap();
-    fs::copy(
-        root.join("lib/role-capacity.json"),
-        src.join("lib/role-capacity.json"),
-    )
-    .unwrap();
+    copy_root_build_inputs(&root, &src);
     copy_tree(&root.join("native"), &src.join("native"));
     patch_workspace_version(&src.join("Cargo.toml"), &next_version());
     let status = Command::new(env!("CARGO"))
@@ -450,14 +494,21 @@ fn next_artifact() -> PathBuf {
         .current_dir(&src)
         .status()
         .expect("N+1 build spawns");
+    // The child build just produced the N+1 binary at the shared path; stage
+    // it only on success, but restore the exact current N even on failure.
+    // A stale same-version backup cannot substitute a different source tree.
+    let staged = if status.success() {
+        fs::copy(parent_target.join("debug/hagency"), &staged_next).map(|_| ())
+    } else {
+        Ok(())
+    };
+    let restored = fs::copy(&saved_n, parent_target.join("debug/hagency"));
+    restored.unwrap();
     assert!(
         status.success(),
         "the N+1 build must succeed (offline, parent cache)"
     );
-    // The child build just produced the N+1 binary at the shared path; stage
-    // it, then restore N so the parent target keeps serving the N binary.
-    fs::copy(parent_target.join("debug/hagency"), &staged_next).unwrap();
-    fs::copy(&saved_n, parent_target.join("debug/hagency")).unwrap();
+    staged.unwrap();
     fs::write(stamp, fingerprint).unwrap();
     assert!(
         staged_next.is_file(),

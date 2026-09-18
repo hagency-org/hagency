@@ -72,14 +72,18 @@ impl Drop for Watch {
 }
 /// Standalone executable boundary: synchronous stdio belongs to this process.
 /// Do not invoke from a service: IO expiry terminates the current helper.
-pub(super) fn run_stdio() -> Result<(), Error> {
+pub(super) fn run_stdio(owned_task_profile: bool) -> Result<(), Error> {
     let context = Context::from_env().map_err(|_| Error::Context)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .map_err(|_| Error::Io)?;
     let watch = Watch::new()?;
-    let mut session = Session::new(context);
+    let mut session = if owned_task_profile {
+        Session::new_owned_task(context)
+    } else {
+        Session::new(context)
+    };
     let input = std::io::stdin();
     let output = std::io::stdout();
     let mut input = std::io::BufReader::with_capacity(4096, input.lock());

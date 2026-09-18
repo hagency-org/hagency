@@ -96,6 +96,31 @@ fn fake() -> io::Result<()> {
         &mut output,
         json!({"id":7,"method":"item/commandExecution/requestApproval","params":{"threadId":"approval-thread","turnId":"approval-turn","itemId":"item-approval","startedAtMs":1,"kind":"command","command":"echo approval-delivery","cwd":params["cwd"]}}),
     )?;
+    // Only this pinned fixture reads this marker. Record the actual callback
+    // wire response, not a test-side injected permission or an assumed ACK.
+    if std::path::Path::new("approval-mcp.roundtrip").exists() {
+        let response = read(&mut input)?;
+        if response["id"] != 7
+            || !matches!(
+                response["result"]["decision"].as_str(),
+                Some("accept" | "decline")
+            )
+        {
+            return Err(invalid());
+        }
+        send(&mut log, response.clone())?;
+        let mut receipt = fs::File::create("approval-mcp.response.pending")?;
+        send(&mut receipt, response)?;
+        drop(receipt);
+        fs::rename("approval-mcp.response.pending", "approval-mcp.response")?;
+        send(
+            &mut output,
+            json!({"method":"turn/completed","params":{"threadId":"approval-thread","turn":{"id":"approval-turn","status":"completed","items":[]}}}),
+        )?;
+        // Protocol completion is not canonical task completion or an upstream
+        // permission-applied acknowledgment. The test asserts neither.
+        return Ok(());
+    }
     // The runtime's response to id 7 arrives only when the OWNER resolves
     // the approval (the console verdict) — which this fixture never does,
     // because the scenario observes the DELIVERY, not the verdict. So do

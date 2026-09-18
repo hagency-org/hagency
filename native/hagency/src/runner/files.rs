@@ -15,8 +15,23 @@ pub(super) fn current() -> Router {
 pub(super) fn historical() -> Router {
     Router::with_path("file-deliveries/{id}").get(inspect)
 }
-fn service(depot: &Depot, res: &mut Response) -> Option<FileHandle> {
-    let files = depot.get_typed::<App>().ok().and_then(|a| a.files.clone());
+async fn service(
+    depot: &Depot,
+    res: &mut Response,
+    cap: &hagency_core::tasks::RunnerCapability,
+) -> Option<FileHandle> {
+    let app = depot.get_typed::<App>().ok()?;
+    let files = if let Some(fleet) = &app.fleet {
+        match fleet.select(cap.clone()).await {
+            Ok(backends) => backends.files,
+            Err(error) => {
+                failure(res, FileError::from(error));
+                return None;
+            }
+        }
+    } else {
+        app.files.clone()
+    };
     if files.is_none() {
         failure(res, FileError::Unavailable);
     }
@@ -86,7 +101,7 @@ async fn submit(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     let Some(context) = super::context(depot, res) else {
         return;
     };
-    let Some(files) = service(depot, res) else {
+    let Some(files) = service(depot, res, &context.cap).await else {
         return;
     };
     let Some(input) = body(req, depot, res).await else {
@@ -111,7 +126,7 @@ async fn inspect(req: &mut Request, depot: &mut Depot, res: &mut Response) {
         refusal(res, StatusCode::UNAUTHORIZED, "runner_auth_required");
         return;
     };
-    let Some(files) = service(depot, res) else {
+    let Some(files) = service(depot, res, &capability).await else {
         return;
     };
     let Some(id) = req

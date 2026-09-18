@@ -349,14 +349,14 @@ async fn transfer(
             return Err(FileError::Unknown);
         }
     }
-    if original
+    if let Err(error) = original
         .upload
         .as_mut()
         .ok_or(FileError::Unknown)?
         .run(&registry.cancel)
         .await
-        .is_err()
     {
+        tracing::warn!(error = ?error, "original staged file upload refused; no retry");
         // One exact historical acceptance inspection; never another POST or Send.
         let id = original
             .upload
@@ -404,14 +404,23 @@ async fn transfer(
             return Err(FileError::Unknown);
         }
     }
-    if original
+    if let Err(error) = original
         .publication
         .as_mut()
         .ok_or(FileError::Unknown)?
         .run(&registry.cancel)
         .await
-        .is_err()
     {
+        let remote_status = if let hagency_matrix::Error::Remote(code) = &error {
+            Some(*code)
+        } else {
+            None
+        };
+        tracing::warn!(
+            error = crate::bootstrap::matrix_error_label(&error),
+            remote_status,
+            "original file publication refused; no retry"
+        );
         // Reconcile only the original private receipt. Possible stays nonrearmable.
         let resumed = shared
             .collector

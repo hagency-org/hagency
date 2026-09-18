@@ -3,7 +3,7 @@
 //! `authenticate` hoop with no scope, so a read-only ticket (`mutation: None`,
 //! `authority.rs:151-159`) can observe but reaches no mutation. The DELETE
 //! grant-revocation route is a mutation and is gated on `Scope::AgentLifecycle`
-//! — the console's scope for direct store mutations (start/stop/preset) — via
+//! — the console's scope for reviewed lifecycle store mutations — via
 //! the same `can_lifecycle` check the agents routes use; a read-only ticket is
 //! refused with `agent_lifecycle_scope_required` before any store work.
 //!

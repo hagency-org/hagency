@@ -7,6 +7,10 @@ use std::fs;
 use std::path::Path;
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args != ["login"] && args != ["login", "--device-auth"] {
+        std::process::exit(2);
+    }
     let home = std::env::var_os("HOME").unwrap_or_default();
     let codex = std::env::var_os("CODEX_HOME").unwrap_or_default();
     // A login child must carry the retained namespace home and nothing else
@@ -17,9 +21,15 @@ fn main() {
     if std::env::var_os("OPENAI_API_KEY").is_some()
         || std::env::var_os("CODEX_API_KEY").is_some()
         || std::env::var_os("AZURE_OPENAI_API_KEY").is_some()
+        || std::env::var_os("OPENAI_BASE_URL").is_some()
     {
         std::process::exit(2);
     }
+    fs::write(
+        Path::new(&home).join("login-arguments.json"),
+        serde_json::to_vec(&args).unwrap(),
+    )
+    .unwrap();
     // The parent classifies by exit status only. The test plants this marker
     // in the retained namespace to make the child refuse, exactly as a
     // provider that declines the login would.

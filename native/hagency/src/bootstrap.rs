@@ -3,7 +3,10 @@ pub mod accounts;
 mod approval;
 mod config;
 mod driver;
+pub mod fleet;
+pub mod intake_refusal;
 pub(crate) mod palpo;
+pub mod provision;
 pub mod registration;
 pub(crate) mod workspace;
 use hagency_matrix::{CancellationToken, Collector};
@@ -45,11 +48,34 @@ mod custody_tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     #[test]
+    fn native_bootstrap_matrix_failure_projection() {
+        assert_eq!(
+            matrix_error_label(&hagency_matrix::Error::UnsafeSnapshot(
+                "private fixture content".into()
+            )),
+            "unsafe_snapshot"
+        );
+        assert_eq!(
+            matrix_error_label(&hagency_matrix::Error::Remote(429)),
+            "remote"
+        );
+        let handle = StatusHandle::new(true);
+        handle.matrix_refusal(&hagency_matrix::Error::UnsafeSnapshot(
+            "private fixture content".into(),
+        ));
+        let value = serde_json::to_value(handle.get()).unwrap();
+        assert_eq!(value["matrix_error"], "unsafe_snapshot");
+        assert!(!value.to_string().contains("private fixture content"));
+    }
+
+    #[test]
     fn native_bootstrap_runtime_observation_projection() {
         use hagency_execution::{RuntimeObservation, RuntimeStage, RuntimeWriteObservation};
         use hagency_runtime::codex::{self, session, transport};
         let observation = RuntimeObservation {
             stage: RuntimeStage::ThreadStart,
+            server_request: Some("permissions_approval"),
+            refused_notification: Some("thread_status"),
             session_error: Some(session::Error::UnsupportedRequest),
             transport_cause: Some(transport::Error::Protocol(codex::Error::UnexpectedEof)),
             pending_requests: Some(usize::MAX),
@@ -81,7 +107,8 @@ mod custody_tests {
             "protocol_unexpected_eof"
         );
         assert_eq!(value["runtime"]["write_accepted_bytes"], usize::MAX);
-        assert_eq!(value["runtime"].as_object().unwrap().len(), 7);
+        assert_eq!(value["runtime"]["refused_notification"], "thread_status");
+        assert_eq!(value["runtime"].as_object().unwrap().len(), 9);
         assert!(serde_json::to_vec(&value).unwrap().len() <= 768);
         assert_eq!(
             session_error_label(session::Error::Rejected(i64::MIN)),
@@ -93,6 +120,8 @@ mod custody_tests {
         );
         let absent = RuntimeObservation {
             stage: RuntimeStage::Update,
+            server_request: None,
+            refused_notification: None,
             session_error: None,
             transport_cause: None,
             pending_requests: None,
@@ -173,11 +202,85 @@ mod custody_tests {
             }
         }
     }
+
+    #[tokio::test]
+    async fn native_private_approval_close_retains_original() {
+        let fixture = crate::file_service::test_common::Fixture::new();
+        fixture.store.shutdown().await.unwrap();
+        let state = fixture.root.path().join("domain");
+        private::write_new(
+            &state.join("operator.token"),
+            b"fixture_operator_token_32_bytes_minimum",
+        )
+        .unwrap();
+        let mut owner =
+            Bootstrap::open(&state, "127.0.0.1:13300".parse().unwrap(), 16, false).unwrap();
+        let config = hagency_matrix::HostConfig::new(
+            hagency_matrix::HostIdentity {
+                server_name: "example.test".into(),
+                registration_fingerprint: "a".repeat(64),
+                transport: hagency_core::replies::MatrixTransportObservation {
+                    engagement_id: "absent_approval_engagement".into(),
+                    registration_generation: 1,
+                    generation: 1,
+                    sender_mxid: "@approval:example.test".into(),
+                    device_id: "APPROVAL_DEVICE".into(),
+                },
+            },
+            "https://127.0.0.1:1/",
+            "synthetic-approval-close-token",
+            state.join("approval-sdk"),
+            [42; 32],
+            vec![hagency_matrix::HostRoom {
+                room_id: "!private:example.test".into(),
+                generation: 1,
+                privacy: hagency_core::replies::RoomPrivacy::Direct {
+                    human_mxid: "@owner:example.test".into(),
+                },
+            }],
+            hagency_matrix::Limits::default(),
+        )
+        .unwrap();
+        let anchor = matrix_sdk_crypto::vodozemac::Ed25519SecretKey::new()
+            .public_key()
+            .to_base64();
+        let collector = approval::collector(
+            config,
+            "absent_approval_engagement".into(),
+            vec![("@owner:example.test".into(), anchor)],
+            owner.domain.clone(),
+        )
+        .unwrap();
+        let original = Arc::new(approval::Pump::new(collector, owner.domain.clone()));
+        owner.approval = Some(original.clone());
+        // This is a real, network-free close failure: the original domain
+        // cannot resolve its missing engagement for negative fencing. It is
+        // not an injected SDK shutdown result or positive shutdown proof.
+        for _ in 0..2 {
+            assert_eq!(owner.close().await, Err(Failure::OutcomeUnknown));
+            assert!(Arc::ptr_eq(owner.approval.as_ref().unwrap(), &original));
+            assert!(!owner.domain_closed && !owner.store_closed);
+            assert!(matches!(
+                DomainRepository::open(&state),
+                Err(hagency_store::Error::Locked)
+            ));
+            assert!(matches!(
+                Repository::open(&state),
+                Err(hagency_store::Error::Locked)
+            ));
+        }
+        assert!(!state.join("approval-sdk").exists());
+        // Explicit fixture teardown does not turn the retained close into Ok.
+        owner.domain.shutdown().await.unwrap();
+        owner.store.shutdown().await.unwrap();
+    }
 }
 // Existing authenticated operator diagnostics only. No raw report serialization.
 #[derive(Clone, Serialize)]
 struct RuntimeStatus {
     stage: &'static str,
+    server_request: Option<&'static str>,
+    refused_notification: Option<&'static str>,
     session_error: Option<&'static str>,
     transport_cause: Option<&'static str>,
     pending_requests: Option<usize>,
@@ -237,6 +340,7 @@ fn session_error_label(error: hagency_runtime::codex::session::Error) -> &'stati
         Rejected(_) => "rejected",
         UnsupportedRequest => "unsupported_request",
         UnsupportedEvent => "unsupported_event",
+        TaskWriterStartup => "task_writer_startup",
         Cancelled => "cancelled",
         Transport(_) => "transport",
     }
@@ -279,6 +383,8 @@ impl From<&hagency_execution::RuntimeObservation> for RuntimeStatus {
                 RuntimeStage::Update => "update",
             },
             session_error: observation.session_error.map(session_error_label),
+            server_request: observation.server_request,
+            refused_notification: observation.refused_notification,
             transport_cause: observation.transport_cause.map(transport_error_label),
             pending_requests: observation.pending_requests,
             pending_server_requests: observation.pending_server_requests,
@@ -297,6 +403,8 @@ pub struct Status {
     cleanup: Option<&'static str>,
     settlement: Option<&'static str>,
     error: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    matrix_error: Option<&'static str>,
     owned_failure: Option<&'static str>,
     settlement_cause: Option<&'static str>,
     runtime: Option<RuntimeStatus>,
@@ -304,15 +412,28 @@ pub struct Status {
 #[derive(Clone)]
 pub(crate) struct StatusHandle(Arc<Mutex<Status>>);
 impl StatusHandle {
+    #[cfg(test)]
     fn new(enabled: bool) -> Self {
+        Self::for_mode(if enabled {
+            DriverMode::OneAttempt
+        } else {
+            DriverMode::Disabled
+        })
+    }
+    fn for_mode(mode: DriverMode) -> Self {
         Self(Arc::new(Mutex::new(Status {
-            mode: if enabled { "one_attempt" } else { "disabled" },
-            state: if enabled { "prepared" } else { "disabled" },
+            mode: mode.label(),
+            state: if mode.enabled() {
+                "prepared"
+            } else {
+                "disabled"
+            },
             workspace_registered: false,
             protocol: None,
             cleanup: None,
             settlement: None,
             error: None,
+            matrix_error: None,
             owned_failure: None,
             settlement_cause: None,
             runtime: None,
@@ -330,11 +451,36 @@ impl StatusHandle {
     fn phase(&self, phase: &'static str) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).state = phase;
     }
+    fn begin_attempt(&self) {
+        let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        status.state = "refreshing";
+        status.workspace_registered = false;
+        status.protocol = None;
+        status.cleanup = None;
+        status.settlement = None;
+        status.error = None;
+        status.matrix_error = None;
+        status.owned_failure = None;
+        status.settlement_cause = None;
+        status.runtime = None;
+    }
     fn registered(&self) {
         self.0
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .workspace_registered = true;
+    }
+    fn matrix_refusal(&self, error: &hagency_matrix::Error) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .matrix_error = Some(matrix_error_label(error));
+    }
+    fn handoff_refusal(&self, error: &hagency_execution::Failure) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .owned_failure = Some(owned_failure_label(error));
     }
     fn fail(&self, failure: Failure) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -391,6 +537,33 @@ impl StatusHandle {
         }
     }
 }
+pub(crate) fn matrix_error_label(error: &hagency_matrix::Error) -> &'static str {
+    use hagency_matrix::Error::*;
+    match error {
+        Config => "config",
+        Busy => "busy",
+        Cancelled => "cancelled",
+        Timeout => "timeout",
+        Transport => "transport",
+        Redirect => "redirect",
+        Headers => "headers",
+        BodyTooLarge => "body_too_large",
+        InvalidJson => "invalid_json",
+        Wire => "wire",
+        Identity => "identity",
+        Recipients => "recipients",
+        Generation => "generation",
+        Unauthorized => "unauthorized",
+        Remote(_) => "remote",
+        Storage => "storage",
+        OutcomeUnknown => "outcome_unknown",
+        Capacity => "capacity",
+        Conflict => "conflict",
+        Unsupported => "unsupported",
+        UnsafeSnapshot(_) => "unsafe_snapshot",
+        Domain => "domain",
+    }
+}
 /// One original account/writer/root owner shared only inside the application.
 #[derive(Clone)]
 pub(crate) struct Shared {
@@ -409,9 +582,30 @@ impl Shared {
         })
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DriverMode {
+    Disabled,
+    OneAttempt,
+    Continuous,
+}
+impl DriverMode {
+    fn enabled(self) -> bool {
+        self != Self::Disabled
+    }
+    fn label(self) -> &'static str {
+        match self {
+            Self::Disabled => "disabled",
+            Self::OneAttempt => "one_attempt",
+            Self::Continuous => "continuous",
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Options {
     pub development_driver: bool,
+    pub agent_driver: bool,
     pub palpo_transport: bool,
 }
 
@@ -778,6 +972,7 @@ pub struct Bootstrap {
     palpo: Option<palpo::Owner>,
     palpo_status: palpo::StatusHandle,
     driver: Option<driver::Driver>,
+    fleet: Option<fleet::Service>,
     shared: Option<Shared>,
     /// PC-C0: the approval bot's own collector (never the pooled ordinary
     /// one) and the pump's handoff channel. The pump is built at open; the
@@ -790,6 +985,7 @@ pub struct Bootstrap {
     collector_close: Option<tokio::task::JoinHandle<Result<(), hagency_matrix::Error>>>,
     collector_closed: Option<Result<(), Failure>>,
     status: StatusHandle,
+    driver_mode: DriverMode,
     domain_closed: bool,
     store_closed: bool,
     ceiling_sweep_period: Duration,
@@ -819,6 +1015,7 @@ impl Bootstrap {
             queue_capacity,
             Options {
                 development_driver: development,
+                agent_driver: false,
                 palpo_transport: false,
             },
         )
@@ -832,7 +1029,16 @@ impl Bootstrap {
         queue_capacity: usize,
         options: Options,
     ) -> Result<Self, Failure> {
-        let development = options.development_driver;
+        if options.development_driver && options.agent_driver {
+            return Err(Failure::Config);
+        }
+        let driver_mode = if options.agent_driver {
+            DriverMode::Continuous
+        } else if options.development_driver {
+            DriverMode::OneAttempt
+        } else {
+            DriverMode::Disabled
+        };
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: bootstrap_entered");
         if !listen.ip().is_loopback() || listen.port() == 0 {
             return Err(Failure::Config);
@@ -842,8 +1048,8 @@ impl Bootstrap {
         let token =
             private::read_secret(&state.join("operator.token")).map_err(|_| Failure::Startup)?;
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: configuration_entered");
-        let mut prepared = if development {
-            Some(config::Prepared::load(&state, listen)?)
+        let mut prepared = if driver_mode.enabled() {
+            Some(config::Prepared::load(&state, listen, driver_mode)?)
         } else {
             None
         };
@@ -874,6 +1080,13 @@ impl Bootstrap {
                 .register_workspace(&plan.workspace_id)
                 .map_err(|_| Failure::Registration)?;
         }
+        if let Some(prepared) = &prepared {
+            for plan in &prepared.agent_inboxes {
+                repository
+                    .register_workspace(&plan.workspace_id)
+                    .map_err(|_| Failure::Registration)?;
+            }
+        }
         prepared = prepared
             .map(|mut prepared| {
                 if let Some(id) = prepared.managed_account.take() {
@@ -894,30 +1107,33 @@ impl Bootstrap {
         let domain =
             DomainStore::start(repository, queue_capacity).map_err(|_| Failure::Startup)?;
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: shared_entered");
-        let shared = prepared
-            .as_mut()
-            .map(|p| Shared::new(p.matrix.take().ok_or(Failure::Config)?, domain.clone()))
-            .transpose()?;
         // PC-C0 (plan v4 Q3): build the approval bot's OWN collector from the
         // second credential set — never the pooled ordinary `HostConfig` in
         // `Shared` (`Collector::new` refuses `approval == true`). Refuses at
         // startup with the named failure when the fresh-account enrollment
         // anchors are absent; no card can then be sent through any owner.
-        let approval = match (
-            shared.is_some(),
-            prepared.as_mut().and_then(|p| p.approval.take()),
-        ) {
-            (true, Some(approval)) => Some(std::sync::Arc::new(approval::Pump::new(
-                approval::collector(
-                    approval.config,
-                    approval.engagement_id,
-                    approval.anchors,
-                    domain.clone(),
-                )?,
+        let approval_collector = match prepared.as_mut().and_then(|p| p.approval.take()) {
+            Some(approval) => Some(approval::collector(
+                approval.config,
+                approval.engagement_id,
+                approval.anchors,
                 domain.clone(),
-            ))),
-            _ => None,
+            )?),
+            None => None,
         };
+        let root_engagement = prepared
+            .as_ref()
+            .and_then(|p| p.matrix.as_ref())
+            .map(|matrix| matrix.engagement_id().to_owned());
+        if let Some(prepared) = &mut prepared {
+            prepared.attach_factory(approval_collector.clone())?;
+        }
+        let shared = prepared
+            .as_mut()
+            .map(|p| Shared::new(p.matrix.take().ok_or(Failure::Config)?, domain.clone()))
+            .transpose()?;
+        let approval = approval_collector
+            .map(|collector| Arc::new(approval::Pump::new(collector, domain.clone())));
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: files_entered");
         let files = match (&shared, prepared.as_mut().and_then(|p| p.files.take())) {
             (Some(shared), Some(setup)) => Some(
@@ -926,12 +1142,25 @@ impl Bootstrap {
             ),
             _ => None,
         };
-        let status = StatusHandle::new(development);
+        let status = StatusHandle::for_mode(driver_mode);
         let receives = match (&shared, prepared.as_mut().and_then(|p| p.receives.take())) {
             (Some(shared), Some(setup)) => Some(
                 crate::receive_service::ReceiveOwner::start(shared.clone(), setup)
                     .map_err(|_| Failure::Startup)?,
             ),
+            _ => None,
+        };
+        let fleet = match (&shared, prepared.as_mut().and_then(|p| p.fleet.take())) {
+            (Some(shared), Some(setup)) => {
+                let fleet = fleet::Service::new(domain.clone(), shared.collector.clone(), setup)?;
+                fleet.register_root(
+                    root_engagement.ok_or(Failure::Config)?,
+                    files.as_ref().map(|owner| owner.handle()),
+                    receives.as_ref().map(|owner| owner.handle()),
+                    status.clone(),
+                )?;
+                Some(fleet)
+            }
             _ => None,
         };
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: app_entered");
@@ -946,6 +1175,9 @@ impl Bootstrap {
         if let Some(receives) = &receives {
             app = app.with_receive_service(receives.handle());
         }
+        if let Some(fleet) = &fleet {
+            app = app.with_fleet(fleet);
+        }
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: bootstrap_ready");
         Ok(Self {
             store,
@@ -957,6 +1189,7 @@ impl Bootstrap {
             palpo: None,
             palpo_status,
             driver: None,
+            fleet,
             shared,
             approval,
             approval_sender: None,
@@ -966,6 +1199,7 @@ impl Bootstrap {
             collector_close: None,
             collector_closed: None,
             status,
+            driver_mode,
             domain_closed: false,
             store_closed: false,
             ceiling_sweep_period: CEILING_SWEEP_PERIOD,
@@ -1005,6 +1239,9 @@ impl Bootstrap {
     /// return an unknown final outcome. Neither wrapper presence nor timeout
     /// proves its repository remains open or has closed. Retain this Bootstrap.
     pub async fn close(&mut self) -> Result<(), Failure> {
+        if let Some(fleet) = &self.fleet {
+            fleet.quiesce();
+        }
         if let Some(console) = &self.app.console {
             console.retire();
         }
@@ -1032,20 +1269,27 @@ impl Bootstrap {
         if let Some(shared) = &self.shared {
             shared.workspace.retire();
         }
+        let mut children_failed = false;
         if let Some(files) = &mut self.files {
-            files.close().await.map_err(|_| Failure::OutcomeUnknown)?;
+            children_failed |= files.close().await.is_err();
         }
         if let Some(receives) = &mut self.receives {
-            receives
-                .close()
-                .await
-                .map_err(|_| Failure::OutcomeUnknown)?;
+            children_failed |= receives.close().await.is_err();
         }
         if let Some(driver) = &mut self.driver {
-            driver.close().await?;
+            children_failed |= driver.close().await.is_err();
         }
         if let Some(palpo) = &mut self.palpo {
-            palpo.close().await?;
+            children_failed |= palpo.close().await.is_err();
+        }
+        if let Some(fleet) = &mut self.fleet {
+            children_failed |= fleet.drain_agents().await.is_err();
+        }
+        if children_failed {
+            return Err(Failure::OutcomeUnknown);
+        }
+        if let Some(fleet) = &mut self.fleet {
+            fleet.close().await?;
         }
         if let Some(shared) = &self.shared {
             if let Some(result) = self.collector_closed {
@@ -1080,9 +1324,10 @@ impl Bootstrap {
             pump.abort();
         }
         self.approval_sender = None;
-        if let Some(pump) = self.approval.take() {
+        if let Some(pump) = self.approval.as_ref() {
             pump.close().await?;
         }
+        self.approval = None;
         if !self.domain_closed {
             self.domain
                 .shutdown()
@@ -1155,19 +1400,33 @@ impl Bootstrap {
                 self.palpo_status.clone(),
             ));
         }
-        if let Some(prepared) = self.prepared.take() {
+        if let Some(pump) = self.approval.as_ref() {
+            self.status.phase("enrolling");
+            // Keep the actual listener/router polled while the original bot
+            // establishes its private Matrix binding and encryption custody.
+            // A failed startup cannot admit a runner or be retried here.
+            tokio::select! {
+                result = &mut serving => {result.map_err(|_| Failure::Server)?; return Err(Failure::Server);},
+                result = pump.initialize(shutdown) => result?,
+            }
+        }
+        if !shutdown.is_cancelled()
+            && let Some(prepared) = self.prepared.take()
+        {
             // PC-C0 (plan v4 Q1): the handoff channel exists ONLY when the
             // approval pump is configured. The forwarder is spawned HERE, on
             // the service's multi-threaded runtime — host/service scope —
             // and the driver receives only the sender half. The pump ends by
-            // itself when the worker drops the notices sender (`recv() == None`).
+            // itself after all original senders and handoffs close. An idle
+            // source cannot hold later agents behind its receiver lifetime.
             if self.approval.is_some() && self.approval_pump.is_none() {
-                let (sender, mut receiver) = tokio::sync::mpsc::channel(1);
+                let (sender, receiver) = tokio::sync::mpsc::channel(1);
                 let pump = self.approval.clone().expect("approval pump");
                 let cancel = shutdown.clone();
+                let status = self.status.clone();
                 self.approval_pump = Some(std::sync::Arc::new(tokio::spawn(async move {
-                    while let Some(requests) = receiver.recv().await {
-                        pump.drain(requests, &cancel).await;
+                    if let Err(error) = pump.drain(receiver, &cancel).await {
+                        status.fail(error);
                     }
                 })));
                 self.approval_sender = Some(sender);
@@ -1178,14 +1437,21 @@ impl Bootstrap {
                 self.files.as_ref().map(|files| files.handle()),
                 self.status.clone(),
                 self.approval_sender.clone(),
+                self.driver_mode,
             )?);
         }
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: serving");
         tracing::info!("native service ready; production Agent execution remains unavailable");
-        tokio::select! {
+        let service_error = tokio::select! {
             result=&mut serving=>{ result.map_err(|_|Failure::Server)?; return Err(Failure::Server); },
-            _=shutdown.cancelled()=>{}
-        }
+            _=shutdown.cancelled()=>None,
+            result=async {
+                match &mut self.fleet {
+                    Some(fleet)=>fleet.run(self.approval_sender.clone().ok_or(Failure::Config)?,shutdown).await,
+                    None=>std::future::pending::<Result<(),Failure>>().await,
+                }
+            }=>result.err(),
+        };
         if let Some(driver) = &self.driver {
             driver.cancel();
         }
@@ -1204,6 +1470,7 @@ impl Bootstrap {
                 .and(Err(Failure::OutcomeUnknown));
         }
         handle.stop_graceful(Some(Duration::from_secs(5)));
-        serving.await.map_err(|_| Failure::Server)
+        serving.await.map_err(|_| Failure::Server)?;
+        service_error.map_or(Ok(()), Err)
     }
 }

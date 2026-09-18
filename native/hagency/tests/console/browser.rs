@@ -837,12 +837,13 @@ async fn native_console_project_side_browser() {
 /// CL-S2 (ADR-130) browser scenario: the roster renders NO enabled
 /// lifecycle control under a read-only ticket, then the SAME walk under a
 /// fresh agent-lifecycle ticket (the harness owns both tickets; the browser
-/// mints nothing) renders the controls enabled — and no external request
-/// leaves the page in either phase.
+/// mints nothing) renders stop and the implemented private outcome workflow.
+/// No external request leaves the page in either phase.
 #[tokio::test]
 async fn native_console_agent_lifecycle_browser() {
     let address = address();
     let f = Fixture::new(address, Some(&built()));
+    super::agents::seed_inspected_failure(&f).await;
     hagency_store::private::write_new(
         &f.root.path().join("state/operator.token"),
         TOKEN.as_bytes(),
@@ -869,7 +870,7 @@ async fn native_console_agent_lifecycle_browser() {
         .write_all(
             format!(
                 "{}\n",
-                json!({"base":format!("http://{address}"),"url":url,"lifecycle":true})
+                json!({"base":format!("http://{address}"),"url":url,"lifecycle":true,"engagement":f.engagement})
             )
             .as_bytes(),
         )
@@ -880,6 +881,9 @@ async fn native_console_agent_lifecycle_browser() {
         while let Some(line) = lines.next_line().await.unwrap() {
             match line.as_str() {
                 "LIFECYCLE_TICKET" => {
+                    // Ticket issuance is limited to one per second; cached
+                    // browser assets can finish the read-only walk sooner.
+                    tokio::time::sleep(Duration::from_millis(1010)).await;
                     let lifecycle_url = hagency::console::client::lifecycle_access(
                         &f.root.path().join("state"),
                         address,
@@ -902,6 +906,28 @@ async fn native_console_agent_lifecycle_browser() {
     .await
     .expect("real lifecycle browser deadline");
     assert!(pass, "the lifecycle lane reported no pass marker");
+    assert!(
+        child.wait().await.unwrap().success(),
+        "lifecycle browser failed"
+    );
+    let sql = rusqlite::Connection::open(f.root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(sql.query_row("SELECT json_extract(config,'$.status') FROM canonical_tasks WHERE id='resolution_task'",[],|r|r.get::<_,String>(0)).unwrap(),"blocked");
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM outcome_resolutions", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        1
+    );
+    assert_eq!(
+        sql.query_row(
+            "SELECT state FROM runner_dispatches WHERE id='resolution_dispatch'",
+            [],
+            |r| r.get::<_, String>(0)
+        )
+        .unwrap(),
+        "outcome_unknown"
+    );
+    drop(sql);
     handle.stop_graceful(Some(Duration::from_secs(2)));
     serving.await.unwrap().unwrap();
     f.close().await;

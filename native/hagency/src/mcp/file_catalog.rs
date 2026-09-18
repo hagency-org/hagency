@@ -1,10 +1,12 @@
 use serde_json::{Value, json};
 
+pub(super) const PENDING_GUIDANCE: &str = "Queued and outcome_unknown are nonterminal: neither confirms delivery or failure. Continue read-only get_file_delivery calls for this same delivery_id, spaced about one second apart, within the original task deadline and current authority. Do not call send_file again, recapture the file, or extend the deadline. Stop polling on delivered, failed, lost authority, or deadline expiry. If still unknown at expiry, report unresolved delivery rather than claiming success or definite failure. File delivery does not mark the task Done.";
+
 pub(super) fn tools() -> Vec<Value> {
     vec![
         json!({
             "name":"send_file",
-            "description":"Admit a relative workspace file for the original encrypted conversation. Reuse the same call_id only with identical selection and metadata. Queued is durable admission, not delivery; outcome_unknown never permits recapture or another send. File delivery does not mark the task Done.",
+            "description":"Admit a relative workspace file for the original encrypted conversation. Reuse the same call_id only with identical selection and metadata. Queued is durable admission, not delivery. Queued and outcome_unknown are nonterminal: inspect the same delivery_id with get_file_delivery within the original task deadline; never recapture or send again to clear unknown. File delivery does not mark the task Done.",
             "inputSchema":{
                 "type":"object",
                 "properties":{
@@ -19,7 +21,7 @@ pub(super) fn tools() -> Vec<Value> {
         }),
         json!({
             "name":"get_file_delivery",
-            "description":"Read the safe status of one original delivery using this helper's existing credential. Historical status grants no current source or send authority and never retries an effect. Delivered is distinct from canonical task Done.",
+            "description":"Read the safe status of one original delivery using this helper's existing credential. Queued and outcome_unknown can settle later; neither is a terminal failure. Inspect the same delivery_id about once per second within the original task deadline and authority, stopping on delivered, failed, lost authority or expiry. Historical status grants no current source or send authority and never retries an effect. Delivered is distinct from canonical task Done.",
             "inputSchema":{
                 "type":"object",
                 "properties":{"delivery_id":{"type":"string","minLength":1,"maxLength":128}},

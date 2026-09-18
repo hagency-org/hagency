@@ -115,6 +115,13 @@ fn helper(params: &Value) -> io::Result<()> {
         || table.get("env").is_some()
         || table.get("url").is_some()
         || table.get("default_tools_approval_mode").is_some()
+        || table["tools"]
+            != json!({
+                "get_task":{"approval_mode":"approve"},
+                "update_task_execution":{"approval_mode":"approve"},
+                "transition_task":{"approval_mode":"approve"},
+                "complete_task_with_reply":{"approval_mode":"approve"}
+            })
         || config["shell_environment_policy.inherit"] != "none"
         || config["shell_environment_policy.experimental_use_profile"] != false
         || std::env::var("HAGENCY_FILE_TOOLS").ok().as_deref() != Some("1")

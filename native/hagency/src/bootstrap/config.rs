@@ -1,4 +1,4 @@
-use super::Failure;
+use super::{DriverMode, Failure};
 use hagency_core::replies::{MatrixTransportObservation, RoomPrivacy};
 use hagency_execution::{Host, Limits};
 use hagency_matrix::{HostConfig, HostIdentity, HostRoom};
@@ -22,11 +22,21 @@ struct Config {
     #[serde(default)]
     managed_account: Option<String>,
     #[serde(default)]
+    local_codex: Option<LocalCodex>,
+    #[serde(default)]
     send_file: bool,
     #[serde(default)]
     receive_file: bool,
     #[serde(default)]
     receive_inbox: Option<hagency_core::received_files::ReceiveInboxPlan>,
+    /// Existing verified Matrix session IDs whose timelines the continuous
+    /// driver polls. An empty list permits host-queued dispatches only.
+    #[serde(default)]
+    intake_sessions: Vec<String>,
+    /// Continuous agent sessions whose verified wake messages become owned
+    /// tasks. Each route names the retained workspace used for its dispatch.
+    #[serde(default)]
+    agent_inboxes: Vec<hagency_core::agent_inbox::AgentInboxPlan>,
     executable: PathBuf,
     executable_sha256: String,
     #[serde(deserialize_with = "workspace_map")]
@@ -34,13 +44,153 @@ struct Config {
     file_limit: usize,
     operation_ms: u64,
     response_ms: u64,
+    #[serde(default = "default_approval_wait")]
+    approval_owner_wait_ms: u64,
+    #[serde(default)]
+    matrix_request_interval_ms: Option<u64>,
+    /// Original SDK/enrollment budget, selected before any Matrix owner exists.
+    #[serde(default)]
+    matrix_sdk_timeout_ms: Option<u64>,
     matrix: Matrix,
     #[serde(default)]
     approval: Option<ApprovalMatrix>,
+    #[serde(default)]
+    factory_service: Option<FactoryService>,
+}
+fn default_approval_wait() -> u64 {
+    1000
+}
+fn matrix_limits(
+    origin: &str,
+    interval: Option<u64>,
+    sdk_ms: Option<u64>,
+) -> Result<hagency_matrix::Limits, Failure> {
+    let mut limits = hagency_matrix::Limits {
+        request_pacing: interval
+            .map(|ms| {
+                hagency_matrix::RequestPacing::new(origin, std::time::Duration::from_millis(ms))
+                    .map(std::sync::Arc::new)
+                    .map_err(|_| Failure::Config)
+            })
+            .transpose()?,
+        ..hagency_matrix::Limits::default()
+    };
+    if let Some(ms) = sdk_ms {
+        if !(10..=60_000).contains(&ms) {
+            return Err(Failure::Config);
+        }
+        limits.sdk = std::time::Duration::from_millis(ms);
+    }
+    Ok(limits)
+}
+fn approval_host(wait: u64, limits: Limits) -> Result<hagency_execution::ApprovalHost, Failure> {
+    let reserve = limits.response_ms.max(2000);
+    if wait
+        .checked_add(reserve)
+        .is_none_or(|n| n > limits.operation_ms)
+    {
+        return Err(Failure::Config);
+    }
+    hagency_execution::ApprovalHost::new(8, 2, wait, reserve).map_err(|_| Failure::Config)
+}
+
+#[cfg(test)]
+mod approval_wait_tests {
+    use super::*;
+    #[test]
+    fn native_matrix_pacing_configuration() {
+        assert!(
+            matrix_limits("https://example.test/", None, None)
+                .unwrap()
+                .request_pacing
+                .is_none()
+        );
+        for ms in [0, 9, 1001, u64::MAX] {
+            assert!(matrix_limits("https://example.test/", Some(ms), None).is_err());
+        }
+        let limits = matrix_limits("https://example.test/", Some(250), None).unwrap();
+        let clone = limits.clone();
+        assert!(std::sync::Arc::ptr_eq(
+            limits.request_pacing.as_ref().unwrap(),
+            clone.request_pacing.as_ref().unwrap()
+        ));
+    }
+    #[test]
+    fn native_matrix_sdk_budget_configuration() {
+        let original = matrix_limits("https://example.test/", None, None).unwrap();
+        assert_eq!(original.sdk, std::time::Duration::from_secs(20));
+        for ms in [0, 9, 60_001, u64::MAX] {
+            assert!(matrix_limits("https://example.test/", None, Some(ms)).is_err());
+        }
+        for ms in [10, 20_000, 60_000] {
+            let limits = matrix_limits("https://example.test/", Some(1000), Some(ms)).unwrap();
+            assert_eq!(limits.clone().sdk, std::time::Duration::from_millis(ms));
+            assert_eq!(limits.connect, original.connect);
+            assert_eq!(limits.headers, original.headers);
+            assert_eq!(limits.request, original.request);
+            assert_eq!(limits.body_idle, original.body_idle);
+        }
+    }
+    #[test]
+    fn native_bootstrap_approval_wait_bound() {
+        let limits = Limits {
+            operation_ms: 30000,
+            response_ms: 2000,
+        };
+        assert_eq!(default_approval_wait(), 1000);
+        assert!(approval_host(default_approval_wait(), limits).is_ok());
+        assert!(approval_host(10000, limits).is_ok());
+        assert!(approval_host(28000, limits).is_ok());
+        for wait in [0, 28001, u64::MAX] {
+            assert!(approval_host(wait, limits).is_err());
+        }
+        assert!(
+            approval_host(
+                1000,
+                Limits {
+                    operation_ms: 2500,
+                    response_ms: 1500
+                }
+            )
+            .is_err()
+        );
+        let long = Limits {
+            operation_ms: hagency_core::tasks::MAX_OWNED_OPERATION_MS,
+            response_ms: 2000,
+        };
+        assert!(long.validate());
+        assert_eq!(
+            long.capability_ms().unwrap(),
+            hagency_core::tasks::MAX_OWNED_CAPABILITY_MS
+        );
+        for wait in [1000, 60_000, 598_000] {
+            assert!(approval_host(wait, long).is_ok());
+        }
+        for wait in [0, 598_001, u64::MAX] {
+            assert!(approval_host(wait, long).is_err());
+        }
+    }
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct FactoryService {
+    profile: String,
+    idle_ms: u64,
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LocalCodex {
+    profile: String,
+    preset: String,
+    seat: String,
+    home: PathBuf,
+    codex_home: PathBuf,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Matrix {
+    #[serde(default)]
+    token_provisioning: Option<TokenProvisioning>,
     #[serde(default)]
     crypto_enrollment: Option<CryptoEnrollment>,
     origin: String,
@@ -52,6 +202,32 @@ struct Matrix {
     sender_mxid: String,
     device_id: String,
     rooms: Vec<Room>,
+}
+#[derive(Deserialize)]
+#[serde(tag = "profile", deny_unknown_fields)]
+enum TokenProvisioning {
+    #[serde(rename = "registration_token_account_step_v1")]
+    Account {},
+    #[serde(rename = "registration_token_rooms_enrollment_step_v1")]
+    Rooms { peer_masters: Vec<PeerMaster> },
+    #[serde(rename = "registration_token_home_rooms_enrollment_step_v1")]
+    HomeRooms {
+        peer_masters: Vec<PeerMaster>,
+        home: HomeConfiguration,
+    },
+    #[serde(rename = "appservice_login_home_rooms_enrollment_step_v1")]
+    AppserviceHomeRooms {
+        peer_masters: Vec<PeerMaster>,
+        home: HomeConfiguration,
+        namespace_prefix: String,
+    },
+}
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HomeConfiguration {
+    root: PathBuf,
+    task_client: PathBuf,
+    projects: Vec<hagency_store::agent_home::HomeProject>,
 }
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -100,12 +276,18 @@ pub(super) struct Prepared {
     pub managed_account: Option<String>,
     pub matrix: Option<HostConfig>,
     pub approval: Option<Approval>,
+    pub provisioning: Option<hagency_matrix::TokenProvisioningHost>,
+    pub warm: Option<hagency_execution::WarmHostPlan>,
+    pub fleet: Option<super::fleet::Setup>,
     pub files: Option<crate::file_service::Setup>,
     pub receives: Option<crate::receive_service::Setup>,
     pub enrollment: bool,
     pub receive_inbox: Option<hagency_core::received_files::ReceiveInboxPlan>,
+    pub intake_sessions: Vec<String>,
+    pub agent_inboxes: Vec<hagency_core::agent_inbox::AgentInboxPlan>,
     pub claim: OwnedClaimProfile,
     pub limits: Limits,
+    pub max_live: u32,
     #[cfg(test)]
     pub discard_claim_reply: bool,
 }
@@ -181,17 +363,117 @@ fn verify_executable(path: &Path, expected: &str) -> Result<(), Failure> {
     Ok(())
 }
 impl Prepared {
-    pub(super) fn load(state: &Path, address: SocketAddr) -> Result<Self, Failure> {
-        let bytes = read(&state.join("development-driver.json"), CONFIG_BYTES)?;
-        let config: Config = serde_json::from_slice(&bytes).map_err(|_| Failure::Config)?;
+    pub(super) fn attach_factory(
+        &mut self,
+        approvals: Option<std::sync::Arc<hagency_matrix::ApprovalCollector>>,
+    ) -> Result<(), Failure> {
+        if let Some(mut provisioning) = self.provisioning.take() {
+            if let Some(warm) = self.warm.take() {
+                provisioning = provisioning
+                    .with_warm_runtime(warm, approvals.ok_or(Failure::Config)?)
+                    .map_err(|_| Failure::Config)?;
+            }
+            self.matrix = Some(
+                self.matrix
+                    .take()
+                    .ok_or(Failure::Config)?
+                    .with_token_account_provisioning(provisioning)
+                    .map_err(|_| Failure::Config)?,
+            );
+        } else if self.warm.is_some() || self.fleet.is_some() {
+            return Err(Failure::Config);
+        }
+        Ok(())
+    }
+    pub(super) fn load(
+        state: &Path,
+        address: SocketAddr,
+        mode: DriverMode,
+    ) -> Result<Self, Failure> {
+        let (file, profile) = match mode {
+            DriverMode::OneAttempt => {
+                ("development-driver.json", "codex_app_server_development_v1")
+            }
+            DriverMode::Continuous => ("agent-driver.json", "codex_app_server_agent_v1"),
+            DriverMode::Disabled => return Err(Failure::Config),
+        };
+        let bytes = read(&state.join(file), CONFIG_BYTES)?;
+        let mut config: Config = serde_json::from_slice(&bytes).map_err(|error| {
+            // This document contains paths and public Matrix identities only;
+            // credentials remain in separate private files. Retain serde's
+            // location so an operator can repair malformed deployment input
+            // without weakening the fail-closed error at this boundary.
+            tracing::error!(
+                line = error.line(),
+                column = error.column(),
+                "invalid agent driver configuration"
+            );
+            Failure::Config
+        })?;
         let enrollment = config.matrix.crypto_enrollment.is_some();
-        if config.profile != "codex_app_server_development_v1"
+        if let Some(local) = &config.local_codex
+            && (local.profile != "provider_owned_codex_v1" || config.managed_account.is_some())
+        {
+            return Err(Failure::Config);
+        }
+        if let Some(factory) = &config.factory_service
+            && (mode != DriverMode::Continuous
+                || factory.profile != "inline_factory_service_checkpoint_v1"
+                || !(100..=1_200_000).contains(&factory.idle_ms)
+                || config.approval.is_none()
+                || !matches!(
+                    &config.matrix.token_provisioning,
+                    Some(
+                        TokenProvisioning::HomeRooms { .. }
+                            | TokenProvisioning::AppserviceHomeRooms { .. }
+                    )
+                ))
+        {
+            return Err(Failure::Config);
+        }
+        if config.profile != profile
             || config.workspaces.is_empty()
             || config.workspaces.len() > 16
             || config.matrix.rooms.is_empty()
             || config.matrix.rooms.len() > 16
             || !config.matrix.origin.starts_with("https://")
         {
+            return Err(Failure::Config);
+        }
+        if mode == DriverMode::Continuous && config.receive_inbox.is_some() {
+            // The fixed receive-inbox plan is deliberately one-dispatch-only;
+            // it cannot be replayed as a scheduler input.
+            return Err(Failure::Config);
+        }
+        if mode == DriverMode::OneAttempt && !config.agent_inboxes.is_empty() {
+            return Err(Failure::Config);
+        }
+        if config.agent_inboxes.len() > 16 {
+            return Err(Failure::Config);
+        }
+        let mut inbox_sessions = std::collections::BTreeSet::new();
+        for plan in &config.agent_inboxes {
+            plan.validate().map_err(|_| Failure::Config)?;
+            if !config.workspaces.contains_key(&plan.workspace_id)
+                || !inbox_sessions.insert(&plan.session_id)
+            {
+                return Err(Failure::Config);
+            }
+        }
+        let mut combined_sessions = config.intake_sessions.clone();
+        for plan in &config.agent_inboxes {
+            if !combined_sessions.contains(&plan.session_id) {
+                combined_sessions.push(plan.session_id.clone());
+            }
+        }
+        if !combined_sessions.is_empty() {
+            hagency_matrix::HostIntakePlan::new(combined_sessions.clone())
+                .map_err(|_| Failure::Config)?;
+        }
+        config.intake_sessions = combined_sessions;
+        if config.factory_service.is_some() && config.intake_sessions.is_empty() {
+            // Reception provisioning is read by the coordinator's actual
+            // intake. A fleet with no verified intake session cannot run it.
             return Err(Failure::Config);
         }
         tracing::trace!(target: "hagency_startup_observation", "native startup boundary: executable_verify_entered");
@@ -201,12 +483,13 @@ impl Prepared {
             .map_err(|_| Failure::Config)?
             .canonicalize()
             .map_err(|_| Failure::Config)?;
-        let runtime_home = state.join("runtime-home");
-        private::directory(&runtime_home).map_err(|_| Failure::Config)?;
-        let mut environment = BTreeMap::from([
-            ("HOME".into(), runtime_home.clone().into_os_string()),
-            ("CODEX_HOME".into(), runtime_home.into_os_string()),
-        ]);
+        let mut environment = BTreeMap::new();
+        if config.local_codex.is_none() {
+            let runtime_home = state.join("runtime-home");
+            private::directory(&runtime_home).map_err(|_| Failure::Config)?;
+            environment.insert("HOME".into(), runtime_home.clone().into_os_string());
+            environment.insert("CODEX_HOME".into(), runtime_home.into_os_string());
+        }
         if let Some(system) = std::env::var_os("SystemRoot") {
             environment.insert("SystemRoot".into(), system);
         }
@@ -247,13 +530,27 @@ impl Prepared {
         }
         let mut host = Host::new(
             own.clone(),
-            config.executable,
-            environment,
+            config.executable.clone(),
+            environment.clone(),
             config.workspaces,
         )
         .and_then(|h| h.with_file_limit(config.file_limit))
-        .and_then(|h| h.with_task_helper(own, address))
+        .and_then(|h| h.with_task_helper(own.clone(), address))
         .map_err(|_| Failure::Config)?;
+        let uses_local_codex = config.local_codex.is_some();
+        if let Some(local) = config.local_codex {
+            claim = claim
+                .restrict_resource(local.preset.clone(), local.seat.clone())
+                .map_err(|_| Failure::Config)?;
+            let local = hagency_execution::LocalCodex::new(
+                local.preset,
+                local.seat,
+                local.home,
+                local.codex_home,
+            )
+            .map_err(|_| Failure::Config)?;
+            host = host.with_local_codex(local).map_err(|_| Failure::Config)?;
+        }
         if config.send_file {
             host = host.with_file_tools().map_err(|_| Failure::Config)?;
         }
@@ -283,6 +580,11 @@ impl Prepared {
         let key: [u8; 32] = read(&state.join("matrix.sdk_key"), 32)?
             .try_into()
             .map_err(|_| Failure::Config)?;
+        let matrix_limits = matrix_limits(
+            &config.matrix.origin,
+            config.matrix_request_interval_ms,
+            config.matrix_sdk_timeout_ms,
+        )?;
         let mut matrix = HostConfig::new(
             HostIdentity {
                 server_name: config.matrix.server_name,
@@ -294,7 +596,7 @@ impl Prepared {
             state.join("sdk"),
             key,
             rooms,
-            hagency_matrix::Limits::default(),
+            matrix_limits.clone(),
         )
         .map_err(|_| Failure::Config)?;
         // Fail-closed: the pre-project reception room comes from the store's
@@ -302,6 +604,7 @@ impl Prepared {
         // engagement names no registration (or a registration with no
         // reception room) refuses to start rather than observing nothing and
         // silently dropping the provisioning ingress.
+        let mut provisioning = None;
         {
             let engagement_id = matrix.engagement_id().to_owned();
             let registration = DomainRepository::open(state)
@@ -310,11 +613,84 @@ impl Prepared {
                 .map_err(|_| Failure::Config)?;
             matrix
                 .with_reception_room(HostRoom {
-                    room_id: registration.reception_room_id,
+                    room_id: registration.reception_room_id.clone(),
                     generation: registration.generation,
                     privacy: RoomPrivacy::Group {},
                 })
                 .map_err(|_| Failure::Config)?;
+            if let Some(profile) = config.matrix.token_provisioning {
+                let (peer_masters, home, as_namespace) = match profile {
+                    TokenProvisioning::Account {} => (None, None, None),
+                    TokenProvisioning::Rooms { peer_masters } => (Some(peer_masters), None, None),
+                    TokenProvisioning::HomeRooms { peer_masters, home } => {
+                        (Some(peer_masters), Some(home), None)
+                    }
+                    TokenProvisioning::AppserviceHomeRooms {
+                        peer_masters,
+                        home,
+                        namespace_prefix,
+                    } => (Some(peer_masters), Some(home), Some(namespace_prefix)),
+                };
+                let token = if as_namespace.is_some() {
+                    read(&state.join("matrix.appservice_token"), 4096)?
+                } else {
+                    read(&state.join("matrix.registration_token"), 64)?
+                };
+                let token = std::str::from_utf8(&token).map_err(|_| Failure::Config)?;
+                let key: [u8; 32] = read(&state.join("matrix.provisioning_key"), 32)?
+                    .try_into()
+                    .map_err(|_| Failure::Config)?;
+                let mut host = if let Some(namespace) = as_namespace {
+                    hagency_matrix::TokenProvisioningHost::application_service(
+                        registration.clone(),
+                        &config.matrix.origin,
+                        hagency_matrix::ApplicationServiceCredential::new(token, &namespace)
+                            .map_err(|_| Failure::Config)?,
+                        state.to_owned(),
+                        key,
+                        matrix_limits.clone(),
+                    )
+                } else {
+                    hagency_matrix::TokenProvisioningHost::new(
+                        registration.clone(),
+                        &config.matrix.origin,
+                        token,
+                        state.to_owned(),
+                        key,
+                        matrix_limits.clone(),
+                    )
+                }
+                .map_err(|_| Failure::Config)?;
+                if let Some(peer_masters) = peer_masters {
+                    let token = read(&state.join("matrix.representative_token"), 4096)?;
+                    let token = std::str::from_utf8(&token).map_err(|_| Failure::Config)?;
+                    host = host
+                        .with_agent_rooms_enrollment(
+                            token,
+                            peer_masters
+                                .into_iter()
+                                .map(|p| (p.user_id, p.master_key))
+                                .collect(),
+                        )
+                        .map_err(|_| Failure::Config)?;
+                }
+                if let Some(home) = home {
+                    let plan = hagency_store::agent_home::ManagedHomePlan::new(
+                        home.root,
+                        home.projects,
+                        home.task_client,
+                    )
+                    .map_err(|_| Failure::Config)?;
+                    host = host.with_managed_homes(plan).map_err(|_| Failure::Config)?;
+                }
+                let ca = state.join("matrix.ca.pem");
+                if ca.try_exists().map_err(|_| Failure::Config)? {
+                    host = host
+                        .with_root_pem(&read(&ca, 16 * 1024)?)
+                        .map_err(|_| Failure::Config)?;
+                }
+                provisioning = Some(host);
+            }
         }
         if let Some(profile) = config.matrix.crypto_enrollment {
             if profile.profile != "fresh_own_account_v1" {
@@ -340,10 +716,7 @@ impl Prepared {
             operation_ms: config.operation_ms,
             response_ms: config.response_ms,
         };
-        if !(100..=30_000).contains(&limits.operation_ms)
-            || !(10..=2000).contains(&limits.response_ms)
-            || limits.response_ms > limits.operation_ms
-        {
+        if !limits.validate() {
             return Err(Failure::Config);
         }
         // The approval bot's own credential and the host's approval capacity
@@ -352,6 +725,8 @@ impl Prepared {
         // attachment `Operation::start_mode` never creates the notices
         // channel at all. `ApprovalHost::new` values must `fits(limits)` or
         // every start refuses with `Failure::Admission`.
+        let mut runtime_approvals = None;
+        let owner_wait_ms = config.approval_owner_wait_ms;
         let approval = match config.approval {
             Some(approval) => {
                 if approval.rooms.is_empty()
@@ -396,7 +771,7 @@ impl Prepared {
                     state.join("approval-sdk"),
                     key,
                     rooms,
-                    hagency_matrix::Limits::default(),
+                    matrix_limits.clone(),
                 )
                 .map_err(|_| Failure::Config)?;
                 let ca = state.join("approval.ca.pem");
@@ -407,13 +782,11 @@ impl Prepared {
                 }
                 // The capacity must fit the operation limits exactly as
                 // `ApprovalHost::fits` checks them, or `start_mode` refuses.
-                let response_reserve_ms = limits.response_ms.max(2000);
-                let host_approvals =
-                    hagency_execution::ApprovalHost::new(8, 2, 1000, response_reserve_ms)
-                        .map_err(|_| Failure::Config)?;
+                let host_approvals = approval_host(owner_wait_ms, limits)?;
                 host = host
-                    .with_approvals(host_approvals)
+                    .with_approvals(host_approvals.clone())
                     .map_err(|_| Failure::Config)?;
+                runtime_approvals = Some(host_approvals);
                 Some(Approval {
                     config,
                     engagement_id: approval.engagement_id,
@@ -426,11 +799,57 @@ impl Prepared {
             }
             None => None,
         };
+        let (warm, fleet) = if let Some(factory) = config.factory_service {
+            let contexts = state.join("factory-task-contexts");
+            private::directory(&contexts).map_err(|_| Failure::Config)?;
+            let bridge = hagency_execution::WarmTaskBridge::new(own.clone(), address, contexts)
+                .map_err(|_| Failure::Config)?;
+            let initialize = Limits {
+                operation_ms: limits.operation_ms.min(30_000),
+                response_ms: limits.response_ms,
+            };
+            let mut warm = hagency_execution::WarmHostPlan::new(
+                own,
+                config.executable,
+                environment,
+                bridge,
+                runtime_approvals.ok_or(Failure::Config)?,
+                hagency_execution::WarmLimits {
+                    initialize,
+                    idle_ms: factory.idle_ms,
+                },
+            )
+            .and_then(|plan| {
+                plan.with_file_access(config.file_limit, config.send_file, config.receive_file)
+            })
+            .map_err(|_| Failure::Config)?;
+            if uses_local_codex {
+                warm = warm
+                    .with_local_codex_from_host(&host)
+                    .map_err(|_| Failure::Config)?;
+            }
+            (
+                Some(warm),
+                Some(super::fleet::Setup {
+                    state: state.to_owned(),
+                    limit: config.file_limit,
+                    send: config.send_file,
+                    receive: config.receive_file,
+                    limits,
+                }),
+            )
+        } else {
+            (None, None)
+        };
+        let max_live = if warm.is_some() { 8 } else { 1 };
         Ok(Self {
             host,
             managed_account: config.managed_account,
             matrix: Some(matrix),
             approval,
+            provisioning,
+            warm,
+            fleet,
             files,
             receives: config
                 .receive_file
@@ -439,8 +858,11 @@ impl Prepared {
                 }),
             enrollment,
             receive_inbox: config.receive_inbox,
+            intake_sessions: config.intake_sessions,
+            agent_inboxes: config.agent_inboxes,
             claim,
             limits,
+            max_live,
             #[cfg(test)]
             discard_claim_reply: false,
         })

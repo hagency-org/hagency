@@ -41,6 +41,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::family("codex").await
+    }
+    async fn family(family: &str) -> Self {
         let root = tempfile::tempdir().unwrap();
         let work = root.path().join("固定 工作目录");
         hagency_store::private::directory(&work).unwrap();
@@ -52,7 +55,12 @@ impl Fixture {
         .unwrap();
         let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
         db.register(&registration()).unwrap();
-        let pool = resource("pool", "seat", 1000);
+        let mut pool = resource("pool", "seat", 1000);
+        if family == "claude" {
+            pool.framework = family.into();
+            pool.model = "claude-sonnet-5".into();
+            pool.reasoning = None;
+        }
         db.put_resource(&pool).unwrap();
         let proof = proof(&request("allocation", "Worker", &pool, 100));
         let e = db.admit(&proof, 1000).unwrap();
@@ -223,12 +231,31 @@ async fn native_owned_mcp_configuration_admission() {
     assert!(!f.work.join("owned-mcp.requests").exists());
     f.close().await;
 }
-async fn roundtrip(done: bool) {
+async fn roundtrip(done: bool, retained: bool) {
     let f = Fixture::new().await;
-    let host = f
-        .host(if done { "done" } else { "heartbeat" }, false)
+    let mut host = f
+        .host(
+            if retained {
+                "retained"
+            } else if done {
+                "done"
+            } else {
+                "heartbeat"
+            },
+            false,
+        )
         .with_task_helper(env!("CARGO_BIN_EXE_hagency").into(), f.address)
         .unwrap();
+    if retained {
+        let root = f.root.path().join("task-contexts");
+        hagency_store::private::directory(&root).unwrap();
+        let context = hagency_store::task_context::RetainedTaskContext::new(
+            root.canonicalize().unwrap(),
+            &"a".repeat(64),
+        )
+        .unwrap();
+        host = host.with_retained_task_context(context).unwrap();
+    }
     let initial_epoch = f
         .domain
         .owned_dispatch_scope(f.cap.clone())
@@ -342,6 +369,28 @@ async fn roundtrip(done: bool) {
     let requests = fs::read_to_string(f.work.join("owned-mcp.requests")).unwrap();
     assert!(!requests.contains(&f.cap.secret));
     assert!(!report.text.as_deref().unwrap_or("").contains(&f.cap.secret));
+    if retained {
+        let parent: serde_json::Value =
+            serde_json::from_slice(&fs::read(f.work.join("owned-mcp.context-parent")).unwrap())
+                .unwrap();
+        assert_eq!(
+            parent,
+            json!({"reference_only":true,"record_absent_at_initialize":true})
+        );
+        let cached: serde_json::Value =
+            serde_json::from_slice(&fs::read(f.work.join("owned-mcp.context-cached")).unwrap())
+                .unwrap();
+        assert_eq!(cached, json!({"cached_before_record_change":true}));
+        let path = f
+            .root
+            .path()
+            .join("task-contexts")
+            .join(format!("context-{}.json", "a".repeat(64)));
+        assert_eq!(
+            fs::read(&path).unwrap(),
+            b"invalid after native helper initialize"
+        );
+    }
     let values: Vec<serde_json::Value> = requests
         .lines()
         .map(|v| serde_json::from_str(v).unwrap())
@@ -377,11 +426,166 @@ async fn roundtrip(done: bool) {
 }
 #[tokio::test]
 async fn native_owned_mcp_real_heartbeat() {
-    roundtrip(false).await;
+    roundtrip(false, false).await;
 }
 #[tokio::test]
 async fn native_owned_mcp_real_done_epoch() {
-    roundtrip(true).await;
+    roundtrip(true, false).await;
+}
+
+#[tokio::test]
+async fn native_owned_mcp_retained_task_context() {
+    roundtrip(false, true).await;
+}
+
+#[tokio::test]
+async fn native_claude_owned_task_mcp() {
+    use hagency_runtime::{
+        claude::{
+            TaskMcp,
+            session::{Limits as ClaudeLimits, Phase},
+        },
+        owned::OwnedClaudeSession,
+    };
+    for (send, receive, retained, missing) in [
+        (false, false, false, false),
+        (true, false, false, false),
+        (false, true, false, false),
+        (true, true, true, false),
+        (false, false, false, true),
+    ] {
+        let f = Fixture::family("claude").await;
+        let mut environment = BTreeMap::from([
+            ("PATH".into(), "".into()),
+            (
+                "HAGENCY_RUNNER_API_ADDR".into(),
+                f.address.to_string().into(),
+            ),
+        ]);
+        if let Some(root) = std::env::var_os("SystemRoot") {
+            environment.insert("SystemRoot".into(), root);
+        }
+        let context = if retained {
+            let root = f.root.path().join("contexts");
+            hagency_store::private::directory(&root).unwrap();
+            let context = hagency_store::task_context::RetainedTaskContext::new(
+                root.canonicalize().unwrap(),
+                &"b".repeat(64),
+            )
+            .unwrap();
+            context.apply_environment(&mut environment).unwrap();
+            Some(context)
+        } else {
+            environment.insert(
+                "HAGENCY_RUNNER_CAPABILITY".into(),
+                serde_json::to_string(&f.cap).unwrap().into(),
+            );
+            environment.insert("HAGENCY_TASK_ID".into(), "task".into());
+            None
+        };
+        let launch = hagency_platform::Launch {
+            executable: binary(),
+            arguments: vec!["claude-task-peer".into()],
+            directory: f.work.clone(),
+            environment,
+            require_crash_containment: false,
+        };
+        let mut runner = OwnedClaudeSession::spawn(
+            &binary(),
+            &launch,
+            ClaudeLimits {
+                write_timeout_ms: 2000,
+                event_wait_ms: 10_000,
+                lifetime_ms: 30_000,
+            },
+        )
+        .unwrap();
+        runner.initialize().await.unwrap();
+        assert_eq!(f.state(), "leased");
+        assert!(!f.work.join("owned-mcp.claude-task").exists());
+        let scope = f.domain.owned_dispatch_scope(f.cap.clone()).await.unwrap();
+        let started = f
+            .domain
+            .start_owned_dispatch(f.cap.clone(), scope.fingerprint().into())
+            .await
+            .unwrap();
+        if let Some(context) = context {
+            context
+                .bind(
+                    f.domain.clone(),
+                    f.cap.clone(),
+                    started,
+                    std::time::Instant::now() + Duration::from_secs(10),
+                    std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                )
+                .await
+                .unwrap();
+        }
+        let executable = if missing {
+            f.work.join("missing-helper")
+        } else {
+            env!("CARGO_BIN_EXE_hagency").into()
+        };
+        let mut helper = TaskMcp::new(executable, "task".into()).unwrap();
+        if send {
+            helper = helper.with_file_tools();
+        }
+        if receive {
+            helper = helper.with_receive_tools();
+        }
+        let binding = runner.bind_task_mcp(helper).await;
+        if missing {
+            assert!(binding.is_err());
+            assert_eq!(runner.phase(), Phase::Closed);
+            assert!(matches!(runner.cleanup(),Cleanup::Observed(r) if r.scope.leader_exited));
+            assert!(!f.work.join("owned-mcp.claude-task").exists());
+            f.close().await;
+            continue;
+        }
+        binding.unwrap();
+        assert_eq!(runner.phase(), Phase::Ready);
+        assert_eq!(f.count("SELECT COUNT(*) FROM task_operation_receipts"), 0);
+        runner
+            .prompt("Maintain the assigned task, not the model's claimed task")
+            .await
+            .unwrap();
+        runner.next_message().await.unwrap();
+        runner.next_message().await.unwrap();
+        assert_eq!(runner.phase(), Phase::ResultObserved);
+        assert_eq!(runner.cleanup(), Cleanup::Pending);
+        let receipt: serde_json::Value =
+            serde_json::from_slice(&fs::read(f.work.join("owned-mcp.claude-task")).unwrap())
+                .unwrap();
+        assert_eq!(
+            receipt,
+            json!({"heartbeat":true,"readback":true,"helper_exit":true,"tools":4+2*usize::from(send)+2*usize::from(receive),
+            "outside_profile_refused":5,"foreign_task_refused":true})
+        );
+        let task: Task = serde_json::from_str(
+            &f.sql()
+                .query_row(
+                    "SELECT config FROM canonical_tasks WHERE id='task'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(task.status, TaskState::InProgress);
+        assert!(task.heartbeat_at.is_some());
+        assert_eq!(f.count("SELECT COUNT(*) FROM task_comments"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM final_replies"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 1);
+        let Cleanup::Observed(cleanup) = runner.stop() else {
+            panic!("original owner stop must be observed")
+        };
+        assert!(cleanup.scope.leader_exited);
+        assert_eq!(
+            cleanup.scope.whole_tree_stopped,
+            cfg!(any(target_os = "linux", windows))
+        );
+        f.close().await;
+    }
 }
 
 #[tokio::test]
@@ -428,7 +632,12 @@ async fn native_owned_mcp_real_finish() {
         assert_eq!(report.failure, None);
         assert_eq!(report.settlement, Settlement::CanonicalReplyReady);
         assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
-        let claim = f.domain.claim_final_reply(1000).await.unwrap().unwrap();
+        let claim = f
+            .domain
+            .claim_final_reply_for_dispatch(f.cap.clone(), 1000)
+            .await
+            .unwrap()
+            .unwrap();
         let send = f.domain.preview_final_reply(claim).await.unwrap();
         assert_eq!(send.body, "Verified **native MCP final result**");
         assert_eq!(send.route.room_id, "!project:example.test");

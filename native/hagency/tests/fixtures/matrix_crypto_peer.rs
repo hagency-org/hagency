@@ -95,6 +95,42 @@ impl Peer {
         keys.values().next().unwrap().as_str().unwrap().into()
     }
 
+    /// Another service account talks to this same independently owned human
+    /// device. Split its unused original OTKs, never issue a key twice or copy
+    /// a private service identity into either SDK under test.
+    pub fn additional_sender(&mut self, sender: &str, device: &str) -> Self {
+        assert!(self.one_time.len() >= 2);
+        let split = self
+            .one_time
+            .keys()
+            .nth(self.one_time.len() / 2)
+            .unwrap()
+            .clone();
+        let one_time = self.one_time.split_off(&split);
+        let mut query = json!({"device_keys":{}, "master_keys":{}, "self_signing_keys":{}, "user_signing_keys":{}, "failures":{}});
+        for table in [
+            "device_keys",
+            "master_keys",
+            "self_signing_keys",
+            "user_signing_keys",
+        ] {
+            query[table][HUMAN] = self.query[table][HUMAN].clone();
+        }
+        Self {
+            sender: sender.try_into().unwrap(),
+            device: device.into(),
+            query,
+            writes: Vec::new(),
+            claims: 0,
+            shares: 0,
+            events: Vec::new(),
+            human: self.human.clone(),
+            one_time,
+            sender_master: None,
+            recipient_trusted: false,
+        }
+    }
+
     /// Actual request-derived server state. The TLS test harness must check its
     /// original ordinary bearer credential before calling this protocol fixture.
     /// Unknown routes are returned to that harness, never silently acknowledged.
@@ -280,6 +316,66 @@ impl Peer {
                 .is_verified()
         );
         self.recipient_trusted = true;
+    }
+
+    /// Independent owner initiates a new real Olm session using one actual
+    /// service-uploaded signed OTK, then sends an encrypted Megolm room key.
+    pub async fn inbound_room_key(&mut self, room: &RoomId) -> Value {
+        self.trust_original_sender().await;
+        // A previously received card key share can already have established
+        // this real Olm session. Never invent a second claim in that case.
+        if let Some((id, _)) = self
+            .human
+            .get_missing_sessions([self.sender.as_ref()].into_iter())
+            .await
+            .unwrap()
+        {
+            let upload = &self.writes[0].1;
+            let (key_id, key) = upload["one_time_keys"]
+                .as_object()
+                .unwrap()
+                .iter()
+                .next()
+                .unwrap();
+            let response = json!({"one_time_keys":{(self.sender.as_str()):{(self.device.as_str()):{key_id:key}}},"failures":{}});
+            let response = ruma::api::client::keys::claim_keys::v3::Response::new(
+                serde_json::from_value(response["one_time_keys"].clone()).unwrap(),
+            );
+            self.human
+                .mark_request_as_sent(&id, &response)
+                .await
+                .unwrap();
+        }
+        let shares = self
+            .human
+            .share_room_key(
+                room,
+                [self.sender.as_ref()].into_iter(),
+                matrix_sdk_crypto::EncryptionSettings {
+                    sharing_strategy: matrix_sdk_crypto::CollectStrategy::OnlyTrustedDevices,
+                    ..Default::default()
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(shares.len(), 1);
+        let messages = serde_json::to_value(&shares[0].messages).unwrap();
+        json!({"next_batch":"enrollment-inbound-olm","rooms":{},"to_device":{"events":[{
+            "type":"m.room.encrypted","sender":HUMAN,"content":messages[self.sender.as_str()][&self.device]
+        }]}})
+    }
+
+    /// Encrypt from the independent owner's actual outbound Megolm session.
+    /// The caller must first deliver inbound_room_key to the service SDK.
+    pub async fn owner_event(&self, room: &RoomId, content: Value) -> Value {
+        let raw = Raw::from_json_string(content.to_string()).unwrap();
+        let encrypted = self
+            .human
+            .encrypt_room_event_raw(room, "m.room.message", &raw)
+            .await
+            .unwrap();
+        json!({"type":"m.room.encrypted","sender":HUMAN,"event_id":"$owner_verdict",
+            "origin_server_ts":1,"content":encrypted.content})
     }
 
     pub async fn share(&mut self, value: Value) {

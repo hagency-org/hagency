@@ -35,8 +35,6 @@ pub enum Error {
     AccountForbidden,
     #[error("agent lifecycle management scope is required")]
     LifecycleForbidden,
-    #[error("a preset apply is already pending")]
-    LifecycleApplyPending,
     #[error("native console capacity is exhausted")]
     Busy,
     #[error("native console is unavailable")]
@@ -111,7 +109,6 @@ fn failed(res: &mut Response, error: Error) {
         ),
         Error::AccountForbidden => (StatusCode::FORBIDDEN, "account_scope_required"),
         Error::LifecycleForbidden => (StatusCode::FORBIDDEN, "agent_lifecycle_scope_required"),
-        Error::LifecycleApplyPending => (StatusCode::CONFLICT, "agent_lifecycle_apply_pending"),
         Error::Busy => (StatusCode::TOO_MANY_REQUESTS, "console_busy"),
     };
     refusal(res, status, code);
