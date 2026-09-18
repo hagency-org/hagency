@@ -191,10 +191,17 @@ impl Fixture {
             provision["profile"] = json!("appservice_login_home_rooms_enrollment_step_v1");
             provision["namespace_prefix"] = json!(format!("{}_", reg().fleet_id));
         }
+        // The fleet provisions its agents one after another, and no task is
+        // posted until all are ready, so the first agent idles warm for as long
+        // as the rest take. On a small hosted runner that exceeded a 10 s idle
+        // budget (each agent takes about 6 s there): the first warm runtime
+        // expired with Deadline and its dispatch handoff was refused. These
+        // fixtures do not test idle expiry, so the budget is set where it can
+        // never be the limit; warm_runtime covers expiry with its own budget.
         let mut config = json!({"profile":"codex_app_server_agent_v1","executable":executable,"executable_sha256":digest,
             "send_file":media,"receive_file":media,
             "workspaces":{"root_work":base.join("root-work")},"file_limit":4194304,"operation_ms":30_000,"response_ms":2000,
-            "intake_sessions":["root"],"factory_service":{"profile":"inline_factory_service_checkpoint_v1","idle_ms":10_000},
+            "intake_sessions":["root"],"factory_service":{"profile":"inline_factory_service_checkpoint_v1","idle_ms":120_000},
             "matrix":{"origin":fake.endpoint,"server_name":"example.test","registration_fingerprint":fingerprint,"engagement_id":coordinator.id,
                 "registration_generation":1,"transport_generation":1,"sender_mxid":crypto::SENDER,"device_id":crypto::DEVICE,
                 "rooms":[{"id":ROOT,"generation":1,"privacy":{"kind":"direct","human_mxid":OWNER}},
@@ -414,6 +421,16 @@ impl Fixture {
             0
         );
         assert!(!self.state.join("runtime-home").exists());
+    }
+    /// Current generation of the shared project's room scope; 0 before any.
+    pub fn project_generation(&self) -> u64 {
+        self.sql()
+            .query_row(
+                "SELECT generation FROM matrix_room_scopes WHERE room_id=?1 AND available=1",
+                [PROJECT],
+                |row| row.get(0),
+            )
+            .unwrap_or(0)
     }
     pub fn assert_project_scope(&self) {
         let (generation, joined): (u64, String) = self
@@ -760,6 +777,22 @@ pub struct Peer {
     root_sync: u64,
     approval_sync: u64,
     provision_targets: bool,
+    interleave: Interleave,
+}
+/// Forces the order ADR178's superseded-plan amendment is about. A poll resolves
+/// its inbox plan, runs intake, then selects. Live, request pacing makes that
+/// intake a second wide and the later agent's join always lands inside it; this
+/// fake answers in microseconds, so the fleet fixtures never reach it unaided.
+/// The first agent's timeline sync (its intake) is held from the moment the
+/// later agent is invited, the later agent's join is held until that sync is
+/// in hand, and the test releases the sync only after the project generation
+/// has advanced underneath it.
+#[derive(Default)]
+struct Interleave {
+    armed: bool,
+    done: bool,
+    sync: Option<matrix::Request>,
+    join: Option<matrix::Request>,
 }
 impl Peer {
     async fn new(application_service: bool, media: bool, endpoint: String) -> Self {
@@ -782,7 +815,66 @@ impl Peer {
             root_sync: 0,
             approval_sync: 0,
             provision_targets: true,
+            interleave: Interleave::default(),
         }
+    }
+    pub fn interleave_later_join_with_first_agent_poll(&mut self) {
+        assert!(
+            !self.agents[1].invited,
+            "armed after the later agent's invite"
+        );
+        self.interleave.armed = true;
+    }
+    pub fn holding_first_agent_poll(&self) -> bool {
+        self.interleave.sync.is_some() && self.agents[1].joined
+    }
+    pub async fn release_first_agent_poll(&mut self) {
+        let sync = self.interleave.sync.take().expect("first agent poll held");
+        assert!(self.interleave.join.is_none());
+        self.interleave.done = true;
+        self.respond_now(sync).await;
+    }
+    fn timeline_sync(request: &matrix::Request) -> bool {
+        let Ok(url) = reqwest::Url::parse(&format!("https://fixture.test{}", request.target))
+        else {
+            return false;
+        };
+        url.path().ends_with("/sync")
+            && url
+                .query_pairs()
+                .find(|(key, _)| key == "filter")
+                .and_then(|(_, value)| serde_json::from_str::<Value>(&value).ok())
+                .and_then(|filter| filter["room"]["timeline"]["limit"].as_u64())
+                .is_some_and(|limit| limit > 0)
+    }
+    pub async fn respond(&mut self, request: matrix::Request) {
+        if self.interleave.armed && !self.interleave.done {
+            let actor = request.headers.get("authorization").cloned();
+            let from = |index: usize| actor == Some(format!("Bearer {}", self.agents[index].token));
+            let later = &self.agents[1];
+            if from(1)
+                && request.method == "POST"
+                && request.target.contains("/join/")
+                && self.interleave.sync.is_none()
+            {
+                assert!(self.interleave.join.is_none());
+                self.interleave.join = Some(request);
+                return;
+            }
+            if from(0)
+                && Self::timeline_sync(&request)
+                && later.invited
+                && !later.joined
+                && self.interleave.sync.is_none()
+            {
+                self.interleave.sync = Some(request);
+                if let Some(join) = self.interleave.join.take() {
+                    self.respond_now(join).await;
+                }
+                return;
+            }
+        }
+        self.respond_now(request).await;
     }
     pub async fn queue_owner_round(&mut self, round: u64) {
         for (index, agent) in self.agents.iter_mut().enumerate() {
@@ -853,7 +945,7 @@ impl Peer {
         }
         json!(events)
     }
-    pub async fn respond(&mut self, request: matrix::Request) {
+    async fn respond_now(&mut self, request: matrix::Request) {
         let actor = request.headers.get("authorization").cloned();
         if request
             .target

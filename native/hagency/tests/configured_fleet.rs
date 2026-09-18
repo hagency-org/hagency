@@ -59,7 +59,29 @@ async fn native_configured_local_codex_fleet() {
 #[cfg(unix)]
 #[tokio::test]
 async fn native_configured_fleet_project_mentions() {
+    let f = Fixture::profile(false, false, true).await;
+    project_mentions(f).await;
+}
+/// ADR178 superseded-plan amendment. The later agent's join advances the shared
+/// project's generation while the earlier agent's poll sits between resolving
+/// its inbox plan and selecting it. That plan is superseded, not refused: the
+/// earlier agent must keep running, re-resolve at the new generation and then
+/// serve its own project mention like the later one.
+#[cfg(unix)]
+#[tokio::test]
+async fn native_configured_fleet_earlier_agent_survives_later_join() {
     let mut f = Fixture::profile(false, false, true).await;
+    f.peer.interleave_later_join_with_first_agent_poll();
+    f.until(
+        "the later join advanced the project generation under the first agent's held poll",
+        |f| f.peer.holding_first_agent_poll() && f.project_generation() >= 3,
+    )
+    .await;
+    f.peer.release_first_agent_poll().await;
+    project_mentions(f).await;
+}
+#[cfg(unix)]
+async fn project_mentions(mut f: Fixture) {
     f.until("both original private and project inboxes",|f|f.count("SELECT COUNT(*) FROM current_matrix_routes r JOIN runner_sessions s ON s.id=r.session_id JOIN engagements e ON e.id=s.engagement_id WHERE e.request_id LIKE 'fleet_target_%'")==4
         && (0..2).all(|i|f.work(i).join("owned-mcp.warm-initialized").is_file())).await;
     f.wait_for_registered_agents().await;

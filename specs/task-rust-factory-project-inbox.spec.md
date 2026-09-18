@@ -75,6 +75,13 @@ Scenario: Exact project mentions execute only on the addressed factory agent
   And each addressed task reaches canonical Done and its own project reply
   And later private DM tasks retain separate encrypted routes and workspaces
 
+Scenario: A later agent's join does not end the earlier agent
+  Test: native_configured_fleet_earlier_agent_survives_later_join
+  Given the earlier agent's poll held between resolving its project inbox plan and selecting it
+  When the later agent's join advances the shared project's generation under that poll
+  Then the superseded plan ends the poll without work and the earlier agent stays running
+  And it resolves the new generation and serves its own exact project mention
+
 Scenario: Existing private file and approval isolation stays intact
   Test: native_configured_local_codex_fleet
   Given two actual original factory agents and private owner DMs

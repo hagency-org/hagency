@@ -79,9 +79,21 @@ resolution still names remains a failure, as does any refusal for an ordinary
 host, whose static plan has no newer generation. Nothing is retried, replayed or
 revived.
 
-Validation is live only. On a fresh isolated two-agent instance the driver
-logged the superseded `_1_2` plan as the second agent joined, the first agent
-resolved `project_<engagement>_1_3` as a current route and stayed receiving. The
-hagency library, bootstrap, configured-fleet, inline-factory and warm-runtime
-targets pass unchanged (46, 20, 6, 17, 8). The configured two-agent fixtures do
-not reach this interleaving, so a deterministic offline regression test is owed.
+Validation. Live, on a fresh isolated two-agent instance, the driver logged the
+superseded `_1_2` plan as the second agent joined; the first agent resolved
+`project_<engagement>_1_3` as a current route and stayed receiving. Offline,
+`native_configured_fleet_earlier_agent_survives_later_join` forces the same
+order: the fleet fake holds the later agent's join until the earlier agent's
+timeline sync is in hand, holds that sync until the project generation has
+advanced, then releases it, and both agents go on to serve their own project
+mentions. With the driver change removed the test fails (the earlier agent never
+regains a current project route); with it the configured-fleet target passes 7
+of 7 on three consecutive runs. The unaided fixtures never reached this order
+because the fake answers in microseconds, while live request pacing makes the
+intake a second wide.
+
+The same hosted runs showed the fleet fixtures' own 10 s warm idle budget was too
+short for a small runner: agents are provisioned one after another and no task is
+posted until all are ready, so the first warm runtime expired with Deadline and
+its handoff was refused. The fixture budget is now 120 s; `warm_runtime` still
+covers idle expiry with its own budget. No production budget changes.
