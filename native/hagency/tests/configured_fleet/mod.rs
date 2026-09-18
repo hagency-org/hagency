@@ -455,8 +455,12 @@ impl Fixture {
             expected
         );
     }
+    /// The harness's patience per stage, not a product budget: it returns as
+    /// soon as the stage is ready. 20 s was enough on a workstation and not on a
+    /// small hosted runner, where the two-agent media and executable stages ran
+    /// past it after every product step had succeeded.
     pub async fn until(&mut self, stage: &str, ready: impl Fn(&Self) -> bool) {
-        let until = tokio::time::Instant::now() + Duration::from_secs(20);
+        let until = tokio::time::Instant::now() + Duration::from_secs(60);
         loop {
             assert!(
                 self.child.0.try_wait().unwrap().is_none(),
@@ -783,10 +787,12 @@ pub struct Peer {
 /// its inbox plan, runs intake, then selects. Live, request pacing makes that
 /// intake a second wide and the later agent's join always lands inside it; this
 /// fake answers in microseconds, so the fleet fixtures never reach it unaided.
-/// The first agent's timeline sync (its intake) is held from the moment the
-/// later agent is invited, the later agent's join is held until that sync is
-/// in hand, and the test releases the sync only after the project generation
-/// has advanced underneath it.
+/// The later agent's join is held until the first agent's next timeline sync
+/// (its intake) arrives; that sync is then held and the join released, and the
+/// test releases the sync only after the project generation has advanced
+/// underneath it. The coordinator re-reads the room right after a join, so the
+/// sync is held for a fraction of a second: a held request gets no response
+/// headers, and the collector gives up on those after 5 s.
 #[derive(Default)]
 struct Interleave {
     armed: bool,
@@ -851,7 +857,6 @@ impl Peer {
         if self.interleave.armed && !self.interleave.done {
             let actor = request.headers.get("authorization").cloned();
             let from = |index: usize| actor == Some(format!("Bearer {}", self.agents[index].token));
-            let later = &self.agents[1];
             if from(1)
                 && request.method == "POST"
                 && request.target.contains("/join/")
@@ -861,16 +866,10 @@ impl Peer {
                 self.interleave.join = Some(request);
                 return;
             }
-            if from(0)
-                && Self::timeline_sync(&request)
-                && later.invited
-                && !later.joined
-                && self.interleave.sync.is_none()
-            {
+            if from(0) && Self::timeline_sync(&request) && self.interleave.join.is_some() {
+                let join = self.interleave.join.take().expect("held join");
                 self.interleave.sync = Some(request);
-                if let Some(join) = self.interleave.join.take() {
-                    self.respond_now(join).await;
-                }
+                self.respond_now(join).await;
                 return;
             }
         }
