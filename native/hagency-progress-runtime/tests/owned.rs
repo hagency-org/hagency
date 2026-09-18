@@ -53,7 +53,7 @@ fn stopped(owner: &OwnedSession, root: &Path) {
             assert!(report.scope.leader_exited);
             assert_eq!(
                 report.scope.whole_tree_stopped,
-                cfg!(any(target_os = "linux", windows))
+                cfg!(any(target_os = "linux", target_os = "macos", windows))
             );
         }
         other => panic!("cleanup evidence missing: {other:?}"),

@@ -351,7 +351,7 @@ async fn roundtrip(done: bool, retained: bool) {
             panic!("actual cleanup observation required");
         };
         assert!(cleanup.scope.leader_exited);
-        if cfg!(target_os = "macos") {
+        if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
             assert!(!cleanup.scope.whole_tree_stopped);
             assert_eq!(report.failure, Some(Failure::CleanupUnknown));
             assert_eq!(
@@ -582,7 +582,7 @@ async fn native_claude_owned_task_mcp() {
         assert!(cleanup.scope.leader_exited);
         assert_eq!(
             cleanup.scope.whole_tree_stopped,
-            cfg!(any(target_os = "linux", windows))
+            cfg!(any(target_os = "linux", target_os = "macos", windows))
         );
         f.close().await;
     }
@@ -622,7 +622,7 @@ async fn native_owned_mcp_real_finish() {
         panic!("actual cleanup required")
     };
     assert!(cleanup.scope.leader_exited);
-    if cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         assert!(!cleanup.scope.whole_tree_stopped);
         assert_eq!(report.failure, Some(Failure::CleanupUnknown));
         assert_eq!(f.count("SELECT COUNT(*) FROM final_replies"), 0);

@@ -161,7 +161,7 @@ async fn native_matrix_owned_complete_workflow() {
         0
     );
 
-    if cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         assert!(!cleanup.scope.whole_tree_stopped);
         assert_eq!(report.failure, Some(Failure::CleanupUnknown));
         assert_eq!(w.count("SELECT COUNT(*) FROM resource_leases"), 1);
