@@ -1330,7 +1330,7 @@
     },
     {
       "path": "bin/hagency-sync-skills",
-      "sha256": "307ed22408356ed5666535aabc6acda68d9c3729eebba0f734b08581a1a21786",
+      "sha256": "84732e10b8346908a47294f30c6d0751671b9d649b75b771cb10cada904eda3e",
       "role": "operator",
       "migration": {
         "owner": "native-operations",
