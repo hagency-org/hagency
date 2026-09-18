@@ -40,6 +40,8 @@ pub struct UsageObservation {
     failure: Option<ParseFailure>,
     #[serde(skip_serializing_if = "Option::is_none")]
     runtime_evidence: Option<crate::runtime_usage::RuntimeEvidence>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    claude_runtime_evidence: Option<crate::claude_usage::RuntimeEvidence>,
 }
 impl UsageObservation {
     pub fn parse(framework: Framework, snapshot: &str) -> Result<Self, MeteringError> {
@@ -58,6 +60,7 @@ impl UsageObservation {
             diagnostics,
             failure,
             runtime_evidence: None,
+            claude_runtime_evidence: None,
         })
     }
     /// Numerical conversion only: the caller must independently bind an actual
@@ -74,7 +77,26 @@ impl UsageObservation {
             diagnostics: None,
             failure: None,
             runtime_evidence: Some(evidence),
+            claude_runtime_evidence: None,
         })
+    }
+    /// Pure numeric conversion. Actual owned source/dispatch binding is separate.
+    pub fn claude_runtime(usage: crate::claude_usage::ClaudeUsage) -> Result<Self, MeteringError> {
+        let (totals, evidence) = crate::claude_usage::normalize(usage)?;
+        let encoded = serde_json::to_vec(&("hagency.runtime_usage.claude", &evidence))
+            .map_err(|_| MeteringError::InvalidRecord)?;
+        Ok(Self {
+            framework: Framework::Claude,
+            snapshot_digest: format!("{:x}", Sha256::digest(encoded)),
+            totals: Some(totals),
+            diagnostics: None,
+            failure: None,
+            runtime_evidence: None,
+            claude_runtime_evidence: Some(evidence),
+        })
+    }
+    pub fn claude_runtime_evidence(&self) -> Option<&crate::claude_usage::RuntimeEvidence> {
+        self.claude_runtime_evidence.as_ref()
     }
     pub fn runtime_evidence(&self) -> Option<&crate::runtime_usage::RuntimeEvidence> {
         self.runtime_evidence.as_ref()
@@ -92,7 +114,7 @@ impl UsageObservation {
         self.failure
     }
     pub fn incomplete(&self) -> bool {
-        if self.runtime_evidence.is_some() {
+        if self.runtime_evidence.is_some() || self.claude_runtime_evidence.is_some() {
             return true;
         }
         let complete_counts = self.totals.is_some_and(|counts| {

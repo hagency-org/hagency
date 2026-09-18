@@ -151,3 +151,72 @@ fn native_descendant_early_exit() {
     );
     stopped(&marker);
 }
+
+#[cfg(target_os = "macos")]
+#[test]
+fn native_macos_descendant_stop() {
+    // TS parity: still-parented, already-reparented and leader-exit paths.
+    for mode in ["parented", "orphaned", "early"] {
+        let root = tempfile::tempdir().unwrap();
+        let marker = root.path().join(mode);
+        let other = root.path().join("unrelated");
+        let mut unrelated = OwnedProcess::spawn(&launch(root.path(), "leaf", &other)).unwrap();
+        ready(&other);
+        fs::write(marker.with_extension("watch-orphan"), b"observe").unwrap();
+        let mut process =
+            SupervisedProcess::spawn(&binary(), &launch(root.path(), "tracked-root", &marker))
+                .unwrap();
+        ready(&marker);
+        // Same observation interval as the TS reparenting regression fixture.
+        std::thread::sleep(Duration::from_millis(500));
+        assert!(
+            process.observe_leader(Duration::from_secs(1)).unwrap(),
+            "{mode}"
+        );
+        if mode != "parented" {
+            fs::write(marker.with_extension("orphan"), b"release").unwrap();
+            let until = Instant::now() + Duration::from_secs(2);
+            while !marker.with_extension("orphaned").exists() {
+                assert!(Instant::now() < until, "leaf did not reparent: {mode}");
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+        let report = if mode == "early" {
+            fs::write(marker.with_extension("exit-root"), b"release").unwrap();
+            process
+                .wait(Duration::from_secs(4))
+                .unwrap()
+                .expect("leader exit receipt")
+        } else {
+            process.stop(Duration::from_secs(4)).unwrap()
+        };
+        assert!(
+            report.scope.leader_exited && report.scope.whole_tree_stopped,
+            "{mode}: {report:?}"
+        );
+        assert_eq!(
+            report.cause,
+            if mode == "early" {
+                StopCause::LeaderExited
+            } else {
+                StopCause::Requested
+            }
+        );
+        assert_eq!(process.stop(Duration::from_secs(1)).unwrap(), report);
+        stopped(&marker);
+        let before = length(&other);
+        let until = Instant::now() + Duration::from_secs(1);
+        while length(&other) <= before {
+            assert!(
+                unrelated.is_leader_running().unwrap(),
+                "unrelated process stopped: {mode}"
+            );
+            assert!(
+                Instant::now() < until,
+                "unrelated process made no progress: {mode}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        unrelated.stop(Duration::from_secs(2)).unwrap();
+    }
+}

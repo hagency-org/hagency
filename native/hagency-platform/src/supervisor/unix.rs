@@ -12,6 +12,11 @@ use std::{
     time::{Duration, Instant},
 };
 mod pipe;
+#[cfg(not(target_os = "macos"))]
+mod scope;
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+#[path = "unix/macos.rs"]
 mod scope;
 #[allow(unsafe_code)]
 mod stdio;
@@ -80,6 +85,9 @@ enum Request {
         piped: bool,
     },
     Start,
+    Observe {
+        nonce: u64,
+    },
     Stop,
 }
 #[derive(Serialize, Deserialize)]
@@ -90,6 +98,9 @@ enum Reply {
     },
     Started {
         pid: u32,
+    },
+    Observed {
+        nonce: u64,
     },
     Failed,
     Stopped {
@@ -112,6 +123,9 @@ pub(super) struct Supervisor {
     pid: u32,
     stop_requested: bool,
     report: Option<SupervisedReport>,
+    observation_nonce: u64,
+    pending_observation: Option<u64>,
+    observation_failure: Option<io::ErrorKind>,
     #[cfg(target_os = "linux")]
     recovery: Option<crate::CgroupRecovery>,
 }
@@ -182,6 +196,9 @@ impl Supervisor {
             pid: 0,
             stop_requested: false,
             report: None,
+            observation_nonce: 0,
+            pending_observation: None,
+            observation_failure: None,
             #[cfg(target_os = "linux")]
             recovery: None,
         };
@@ -228,6 +245,95 @@ impl Supervisor {
     pub(super) fn id(&self) -> u32 {
         self.pid
     }
+    pub(super) fn observe_leader(&mut self, timeout: Duration) -> io::Result<bool> {
+        if self.report.is_some() || self.stop_requested {
+            return Ok(false);
+        }
+        if let Some(kind) = self.observation_failure {
+            return Err(io::Error::new(
+                kind,
+                "original guardian observation is unknown",
+            ));
+        }
+        let result = self.observe_inner(Instant::now() + timeout);
+        if let Err(error) = &result {
+            self.observation_failure = Some(error.kind());
+        }
+        result
+    }
+    fn observe_inner(&mut self, until: Instant) -> io::Result<bool> {
+        if self.child.try_wait()?.is_some() {
+            return Ok(false);
+        }
+        let nonce = self
+            .observation_nonce
+            .checked_add(1)
+            .ok_or_else(protocol_error)?;
+        self.observation_nonce = nonce;
+        // Retain possible-send custody even if a partial send or read expires.
+        self.pending_observation = Some(nonce);
+        self.pipe.send(&Request::Observe { nonce }, until)?;
+        match self.pipe.required::<Reply>(until, 1024)? {
+            Reply::Observed { nonce } => {
+                self.accept_observation(nonce)?;
+                // A buffered positive from an already-exited guardian is not
+                // current positive custody. This checks the retained Child.
+                Ok(self.child.try_wait()?.is_none())
+            }
+            Reply::Stopped {
+                cause,
+                leader_exited,
+                signals_accepted,
+                whole_tree_stopped,
+            } => {
+                self.record_stopped(cause, leader_exited, signals_accepted, whole_tree_stopped)?;
+                #[cfg(target_os = "linux")]
+                if self.recovery.is_some() {
+                    // Observation must not cache a peer report in place of the
+                    // original independent cgroup cleanup qualification.
+                    if !signals_accepted {
+                        self.recovery
+                            .as_mut()
+                            .ok_or_else(protocol_error)?
+                            .remember_signal_failure();
+                    }
+                    self.report = None;
+                    self.recover(cause, until)?;
+                }
+                Ok(false)
+            }
+            _ => Err(protocol_error()),
+        }
+    }
+    fn accept_observation(&mut self, nonce: u64) -> io::Result<()> {
+        if self.pending_observation != Some(nonce) {
+            return Err(protocol_error());
+        }
+        self.pending_observation = None;
+        Ok(())
+    }
+    fn record_stopped(
+        &mut self,
+        cause: StopCause,
+        leader_exited: bool,
+        signals_accepted: bool,
+        whole_tree_stopped: bool,
+    ) -> io::Result<()> {
+        // Preserve the original backend's refusal of impossible stronger proof.
+        if whole_tree_stopped && !cfg!(any(target_os = "linux", target_os = "macos")) {
+            return Err(protocol_error());
+        }
+        self.pending_observation = None;
+        self.report = Some(SupervisedReport {
+            cause,
+            scope: StopReport {
+                leader_exited,
+                signals_accepted,
+                whole_tree_stopped,
+            },
+        });
+        Ok(())
+    }
     pub(super) fn wait(&mut self, timeout: Duration) -> io::Result<Option<SupervisedReport>> {
         #[cfg(target_os = "linux")]
         if self.recovery.is_some() {
@@ -258,7 +364,8 @@ impl Supervisor {
         if self.report.is_some() {
             return Ok(self.report);
         }
-        if let Some(reply) = self.pipe.receive::<Reply>(Instant::now() + timeout, 1024)? {
+        let until = Instant::now() + timeout;
+        while let Some(reply) = self.pipe.receive::<Reply>(until, 1024)? {
             match reply {
                 Reply::Stopped {
                     cause,
@@ -266,20 +373,15 @@ impl Supervisor {
                     signals_accepted,
                     whole_tree_stopped,
                 } => {
-                    // This backend has no complete detached-child proof. Refuse
-                    // an impossible stronger report rather than forwarding it.
-                    if whole_tree_stopped && !cfg!(target_os = "linux") {
-                        return Err(protocol_error());
-                    }
-                    self.report = Some(SupervisedReport {
+                    self.record_stopped(
                         cause,
-                        scope: StopReport {
-                            leader_exited,
-                            signals_accepted,
-                            whole_tree_stopped,
-                        },
-                    });
+                        leader_exited,
+                        signals_accepted,
+                        whole_tree_stopped,
+                    )?;
+                    break;
                 }
+                Reply::Observed { nonce } => self.accept_observation(nonce)?,
                 _ => return Err(protocol_error()),
             }
         }
@@ -404,9 +506,34 @@ pub fn run_guardian() -> io::Result<()> {
         &Reply::Started { pid: process.id() },
         Instant::now() + Duration::from_secs(1),
     )?;
+    let mut observation_nonce = 0u64;
     let cause = loop {
+        #[cfg(target_os = "macos")]
+        if process.observe().is_err() {
+            break StopCause::ObservationFailure;
+        }
         match pipe.receive::<Request>(Instant::now() + Duration::from_millis(25), 1024) {
             Ok(Some(Request::Stop)) => break StopCause::Requested,
+            Ok(Some(Request::Observe { nonce }))
+                if observation_nonce.checked_add(1) == Some(nonce) =>
+            {
+                observation_nonce = nonce;
+                match process.is_leader_running() {
+                    Ok(true) => {
+                        if pipe
+                            .send(
+                                &Reply::Observed { nonce },
+                                Instant::now() + Duration::from_secs(1),
+                            )
+                            .is_err()
+                        {
+                            break StopCause::OwnerLost;
+                        }
+                    }
+                    Ok(false) => break StopCause::LeaderExited,
+                    Err(_) => break StopCause::ObservationFailure,
+                }
+            }
             Ok(Some(_)) => break StopCause::ProtocolFailure,
             Ok(None) => {}
             Err(error)
@@ -439,5 +566,94 @@ pub fn run_guardian() -> io::Result<()> {
         Ok(())
     } else {
         Err(io::Error::other("complete descendant cleanup is unproven"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn native_guardian_observation_unknown() {
+        // Private protocol negatives only. The retained disposable sleep child
+        // stands in for a live guardian Child; scripted replies are NOT actual
+        // physical observations, factory receipts or stronger cleanup evidence.
+        for variant in ["absent", "late", "wrong", "late_wrong", "eof"] {
+            let (host, peer) = UnixStream::pair().unwrap();
+            let child = Command::new("/bin/sleep")
+                .arg("2")
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .spawn()
+                .unwrap();
+            let pid = child.id();
+            let mut owner = Supervisor {
+                child,
+                pipe: Pipe::new(host).unwrap(),
+                pid,
+                stop_requested: false,
+                report: None,
+                observation_nonce: 0,
+                pending_observation: None,
+                observation_failure: None,
+                #[cfg(target_os = "linux")]
+                recovery: None,
+            };
+            let script = std::thread::spawn(move || {
+                let mut peer = Pipe::new(peer).unwrap();
+                let until = Instant::now() + Duration::from_secs(2);
+                assert!(matches!(
+                    peer.required::<Request>(until, 1024).unwrap(),
+                    Request::Observe { nonce: 1 }
+                ));
+                if variant == "eof" {
+                    return;
+                }
+                if variant == "wrong" {
+                    peer.send(&Reply::Observed { nonce: 2 }, until).unwrap();
+                }
+                // Missing/late positive remains held until the host's actual
+                // Stop. A second Observe here would fail the original script.
+                assert!(matches!(
+                    peer.required::<Request>(until, 1024).unwrap(),
+                    Request::Stop
+                ));
+                if variant == "late" {
+                    peer.send(&Reply::Observed { nonce: 1 }, until).unwrap();
+                }
+                if variant == "late_wrong" {
+                    peer.send(&Reply::Observed { nonce: 2 }, until).unwrap();
+                }
+                peer.send(
+                    &Reply::Stopped {
+                        cause: StopCause::Requested,
+                        leader_exited: true,
+                        signals_accepted: true,
+                        whole_tree_stopped: false,
+                    },
+                    until,
+                )
+                .unwrap();
+            });
+            assert!(
+                owner.observe_leader(Duration::from_millis(40)).is_err(),
+                "{variant}"
+            );
+            assert!(
+                owner.observe_leader(Duration::from_secs(1)).is_err(),
+                "unknown cannot rearm {variant}"
+            );
+            assert_eq!(owner.observation_nonce, 1);
+            let result = owner.stop(Duration::from_secs(1));
+            if ["eof", "late_wrong"].contains(&variant) {
+                assert!(result.is_err());
+            } else {
+                let report = result.unwrap();
+                assert_eq!(report.cause, StopCause::Requested);
+                assert!(!report.scope.whole_tree_stopped);
+            }
+            script.join().unwrap();
+            drop(owner);
+        }
     }
 }

@@ -108,7 +108,7 @@ fn native_guardian_start_stop() {
     assert!(report.scope.leader_exited);
     assert_eq!(
         report.scope.whole_tree_stopped,
-        cfg!(any(windows, target_os = "linux"))
+        cfg!(any(windows, target_os = "linux", target_os = "macos"))
     );
     assert_eq!(owned.stop(Duration::from_secs(1)).unwrap(), report);
     #[cfg(unix)]
@@ -176,9 +176,109 @@ fn native_guardian_early_exit() {
     assert!(report.scope.leader_exited);
     assert_eq!(
         report.scope.whole_tree_stopped,
-        cfg!(any(windows, target_os = "linux"))
+        cfg!(any(windows, target_os = "linux", target_os = "macos"))
     );
     assert!(marker.with_extension("child").is_file());
+    stopped(&marker);
+}
+#[test]
+fn native_guardian_current_owner() {
+    let root = tempfile::tempdir().unwrap();
+    let marker = root.path().join("observe");
+    let other = root.path().join("unrelated");
+    let mut unrelated = OwnedProcess::spawn(&launch(root.path(), "leaf", &other)).unwrap();
+    ready(&other);
+    let mut owned =
+        SupervisedProcess::spawn(&binary(), &launch(root.path(), "leader", &marker)).unwrap();
+    ready(&marker);
+    let original = owned.id();
+    for _ in 0..3 {
+        assert!(owned.observe_leader(Duration::from_secs(1)).unwrap());
+        assert_eq!(owned.id(), original);
+    }
+    assert!(owned.wait(Duration::from_millis(20)).unwrap().is_none());
+    let report = owned.stop(Duration::from_secs(3)).unwrap();
+    assert!(report.scope.leader_exited);
+    assert!(!owned.observe_leader(Duration::from_secs(1)).unwrap());
+    assert_eq!(owned.stop(Duration::from_secs(1)).unwrap(), report);
+    stopped(&marker);
+    assert!(unrelated.is_leader_running().unwrap());
+    unrelated.stop(Duration::from_secs(2)).unwrap();
+    assert!(owned.observe_leader(Duration::ZERO).is_err());
+    assert!(owned.observe_leader(Duration::from_secs(6)).is_err());
+}
+#[cfg(unix)]
+#[test]
+fn native_guardian_observation_protocol() {
+    use std::{
+        io::{Read, Write},
+        os::{fd::OwnedFd, unix::net::UnixStream},
+    };
+    fn send(socket: &mut UnixStream, value: serde_json::Value) {
+        let bytes = serde_json::to_vec(&value).unwrap();
+        socket
+            .write_all(&(bytes.len() as u32).to_be_bytes())
+            .unwrap();
+        socket.write_all(&bytes).unwrap();
+    }
+    fn reply(socket: &mut UnixStream) -> serde_json::Value {
+        let mut header = [0; 4];
+        socket.read_exact(&mut header).unwrap();
+        let length = u32::from_be_bytes(header) as usize;
+        assert!(length < 1024);
+        let mut body = vec![0; length];
+        socket.read_exact(&mut body).unwrap();
+        serde_json::from_slice(&body).unwrap()
+    }
+    let root = tempfile::tempdir().unwrap();
+    let marker = root.path().join("nonce");
+    let (mut socket, input) = UnixStream::pair().unwrap();
+    socket
+        .set_read_timeout(Some(Duration::from_secs(3)))
+        .unwrap();
+    let input: OwnedFd = input.into();
+    let mut child = ChildGuard(
+        Command::new(binary())
+            .arg("guardian")
+            .env_clear()
+            .env("PATH", "")
+            .stdin(Stdio::from(input))
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
+    let request = launch(root.path(), "leader", &marker);
+    send(
+        &mut socket,
+        serde_json::json!({"kind":"prepare","version":1,"launch":{
+        "executable":request.executable.as_os_str(),"arguments":request.arguments,"directory":request.directory.as_os_str(),
+        "environment":request.environment.into_iter().collect::<Vec<_>>(),"require_crash_containment":false}}),
+    );
+    assert_eq!(reply(&mut socket)["kind"], "prepared");
+    send(&mut socket, serde_json::json!({"kind":"start"}));
+    assert_eq!(reply(&mut socket)["kind"], "started");
+    ready(&marker);
+    for nonce in 1..=2 {
+        send(
+            &mut socket,
+            serde_json::json!({"kind":"observe","nonce":nonce}),
+        );
+        assert_eq!(
+            reply(&mut socket),
+            serde_json::json!({"kind":"observed","nonce":nonce})
+        );
+    }
+    send(&mut socket, serde_json::json!({"kind":"observe","nonce":1}));
+    let report = reply(&mut socket);
+    assert_eq!(report["kind"], "stopped");
+    assert_eq!(report["cause"], "protocol_failure");
+    assert_eq!(report["leader_exited"], true);
+    assert_eq!(
+        report["whole_tree_stopped"],
+        cfg!(any(target_os = "linux", target_os = "macos"))
+    );
+    wait(&mut child.0);
     stopped(&marker);
 }
 #[test]
@@ -312,7 +412,10 @@ fn unix_admission(root: &Path, marker: &Path) {
     let report = reply(&mut socket);
     assert_eq!(report["kind"], "stopped");
     assert_eq!(report["cause"], "protocol_failure");
-    assert_eq!(report["whole_tree_stopped"], cfg!(target_os = "linux"));
+    assert_eq!(
+        report["whole_tree_stopped"],
+        cfg!(any(target_os = "linux", target_os = "macos"))
+    );
     wait(&mut child.0);
     stopped(&marker);
     let mut request = launch(root, "leaf", &marker);

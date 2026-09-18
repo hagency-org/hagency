@@ -2,6 +2,7 @@
 //! attribution, provider authenticity, quota availability or task completion.
 
 pub mod attribution;
+pub mod claude_usage;
 mod json;
 pub mod observation;
 pub mod reader;

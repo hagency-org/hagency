@@ -113,7 +113,7 @@ impl OwnedProcess {
             inner: Process::spawn(launch)?,
         })
     }
-    #[cfg(unix)]
+    #[cfg(all(unix, not(target_os = "macos")))]
     pub(crate) fn spawn_piped(launch: &Launch, pipes: stdio::ChildPipes) -> io::Result<Self> {
         launch.validate()?;
         Ok(Self {

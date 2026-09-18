@@ -26,6 +26,12 @@ fn pulse_with_gate(marker: &Path, pausable: bool) -> io::Result<()> {
         .open(marker.with_extension("pulse"))?;
     let until = Instant::now() + Duration::from_secs(8);
     while Instant::now() < until {
+        #[cfg(target_os = "macos")]
+        if marker.with_extension("watch-orphan").exists()
+            && rustix::process::getppid().is_some_and(|pid| pid.as_raw_pid() == 1)
+        {
+            fs::write(marker.with_extension("orphaned"), b"reparented")?;
+        }
         if pausable && marker.with_extension("pause").exists() {
             fs::write(marker.with_extension("paused"), b"paused")?;
             while marker.with_extension("pause").exists() {
@@ -90,6 +96,45 @@ fn main() -> io::Result<()> {
             fs::write(marker.with_extension("detached"), child.id().to_string())?;
             // No wait and no destructor: its child must be adopted by the kernel.
             std::process::exit(0);
+        }
+        #[cfg(target_os = "macos")]
+        Some("tracked-middle") => {
+            let mut child = detached_command()?
+                .arg("detached-leaf")
+                .arg(marker)
+                .spawn()?;
+            let until = Instant::now() + Duration::from_secs(8);
+            while !marker.with_extension("orphan").exists() {
+                if Instant::now() >= until {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(io::Error::other("tracked middle gate timed out"));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            // Like the TS fixture, the parent stays observable before detaching.
+            std::process::exit(0);
+        }
+        #[cfg(target_os = "macos")]
+        Some("tracked-root") | Some("tracked-early") => {
+            let mut child = detached_command()?
+                .arg("tracked-middle")
+                .arg(marker)
+                .spawn()?;
+            let until = Instant::now() + Duration::from_secs(8);
+            while !marker.with_extension("exit-root").exists() {
+                if let Some(status) = child.try_wait()? {
+                    if !status.success() {
+                        return Err(io::Error::other("tracked middle failed"));
+                    }
+                    fs::write(marker.with_extension("middle-exited"), b"exited")?;
+                }
+                if Instant::now() >= until {
+                    return Err(io::Error::other("tracked root gate timed out"));
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Ok(())
         }
         Some("detached-root") | Some("detached-early") | Some("detached-kill-guardian") => {
             let mut child = detached_command()?

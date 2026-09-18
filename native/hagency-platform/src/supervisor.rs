@@ -86,6 +86,14 @@ impl SupervisedProcess {
     pub fn id(&self) -> u32 {
         self.inner.id()
     }
+    /// Freshly observe only this retained leader. On Unix a correlated reply
+    /// requires the original guardian's retained leader observation; Windows
+    /// checks its original process handle. Not model/sandbox or cleanup proof.
+    /// Synchronous and bounded: call on the original execution worker, not HTTP.
+    pub fn observe_leader(&mut self, timeout: Duration) -> io::Result<bool> {
+        check_timeout(timeout)?;
+        self.inner.observe_leader(timeout)
+    }
     pub fn wait(&mut self, timeout: Duration) -> io::Result<Option<SupervisedReport>> {
         check_timeout(timeout)?;
         self.inner.wait(timeout)

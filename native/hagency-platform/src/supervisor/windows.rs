@@ -9,6 +9,7 @@ use std::{
 pub(super) struct Supervisor {
     process: OwnedProcess,
     report: Option<SupervisedReport>,
+    observation_failure: Option<io::ErrorKind>,
 }
 impl Supervisor {
     pub(super) fn spawn_piped(
@@ -21,6 +22,7 @@ impl Supervisor {
             Self {
                 process,
                 report: None,
+                observation_failure: None,
             },
             host,
         ))
@@ -29,10 +31,27 @@ impl Supervisor {
         Ok(Self {
             process: OwnedProcess::spawn(launch)?,
             report: None,
+            observation_failure: None,
         })
     }
     pub(super) fn id(&self) -> u32 {
         self.process.id()
+    }
+    pub(super) fn observe_leader(&mut self, _timeout: Duration) -> io::Result<bool> {
+        if self.report.is_some() {
+            return Ok(false);
+        }
+        if let Some(kind) = self.observation_failure {
+            return Err(io::Error::new(
+                kind,
+                "original process observation is unknown",
+            ));
+        }
+        let result = self.process.is_leader_running();
+        if let Err(error) = &result {
+            self.observation_failure = Some(error.kind());
+        }
+        result
     }
     pub(super) fn wait(&mut self, timeout: Duration) -> io::Result<Option<SupervisedReport>> {
         let until = Instant::now() + timeout;

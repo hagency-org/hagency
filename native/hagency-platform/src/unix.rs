@@ -17,6 +17,7 @@ impl Process {
     pub(super) fn spawn(launch: &Launch) -> io::Result<Self> {
         Self::spawn_inner(launch, None)
     }
+    #[cfg(not(target_os = "macos"))]
     pub(super) fn spawn_piped(
         launch: &Launch,
         pipes: crate::stdio::ChildPipes,
