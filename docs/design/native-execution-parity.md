@@ -652,3 +652,15 @@ retained. This is not a full project or two-agent qualification pass. Progress
 records exact task/dispatch and private evidence. Investigate retained runtime
 and guardian observations before another live attempt; no historical cause is
 asserted. Preserve older unknown owners20841/18059/83315 too.
+
+### Root8 lost authority explained; macOS tracker amended (2026-09-18)
+
+The project-room failure is not specific to project rooms. Any process on the
+host whose parent exits between two guardian censuses stopped the owned tree, and
+the warm idle loop recorded it as LostAuthority; the longer root8 idle and the
+concurrent builds made it near certain. ADR029's session-scoped group evidence
+amendment classifies such newcomers soundly and keeps the refusal for the rest.
+Offline reproduction and regression tests pass; see docs/progress.md. Next for
+Codex end to end: repeat the two-agent project-room run on a fresh isolated
+instance built from this change, then groups/DMs, uncertain-media recovery,
+outside-workspace sandbox qualification and the sustained soak.

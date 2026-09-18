@@ -11341,3 +11341,41 @@ remaining read-only probe process was found. No production guardian semantics
 were changed. The final selected Robrix project capture visibly contains the
 unaddressed message and exact addressed request, with no fabricated reply.
 Root8 remains retained on PID49126; live two-agent execution is still failing.
+
+
+2026-09-18 (Claude, operator-directed: Codex end to end first). Root8's lost
+authority is explained and reproduced offline. It is not the runtime/guardian
+census logic failing against its own lifetime; it is any process on the host
+whose parent exits between two censuses. The macOS guardian takes a whole-system
+census about every 25 ms, the tracker refuses an unexplained ancestry, and the
+guardian then stops the owned tree with ObservationFailure. The warm idle loop's
+next `qualify_ready_owner` reads that as LostAuthority, which is sticky, and a
+later dispatch gets it as its negative finalization: exactly root8's tuple
+(lost_authority, not_started, initialize, cancelled, host_closed, cleanup
+unknown), 240 ms after the claim (attempt 00:34:50.417Z, warning 00:34:50.657Z).
+Root8's copied domain store rules the other candidates out: registration and all
+three engagement generations are 1, all engagements active, all provision effects
+complete at fence 1. Agent1's pre-task generic OutcomeUnknown is the same event
+with no dispatch queued. In a fleet each agent's own short-lived commands have
+this shape for every other agent's guardian, and so does a concurrent cargo run.
+The earlier 60-second read-only census passed because nothing churned, and the
+churn harness never ran (/bin/true does not exist on macOS; it is /usr/bin/true).
+
+Offline reproduction against the real supervisor: an idle `leaf` owner passes 48
+observations at 100 ms; with `sh -c '(sleep 0.4 &); exit 0'` running beside it,
+the second observation fails and the stop receipt loses whole_tree_stopped.
+
+Fix, ADR029 session-scoped group evidence amendment: the leader starts with
+POSIX_SPAWN_SETSID, and when ancestry stalls the tracker classifies a newcomer by
+a process it shares a group with in the same census. Sound because setpgid never
+crosses a session and XNU's fork allocation skips a PID that still names a live
+group or session (checked in kern_fork.c). A group with no classified member or
+with conflicting members classifies nothing and the refusal stays. New tests:
+`native_macos_group_evidence_classifies_unseen_parent` (unit),
+`native_macos_unrelated_churn_keeps_descendant_proof` and
+`native_macos_unseen_parent_in_owned_group_is_stopped` (real supervisor; new
+`unseen-middle` probe mode). Both integration tests fail on the previous tracker
+and pass 3/3 with the change; the whole hagency-platform package passes 34 and
+strict clippy is clean. No live service, account or retained owner was touched;
+root8 was read only through a copy of its domain store. The live two-agent
+project-room run on Palpo/Robrix has not been repeated with this change.
