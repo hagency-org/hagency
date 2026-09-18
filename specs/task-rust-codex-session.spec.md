@@ -24,6 +24,8 @@ approval, lease and process custody.
 - Distinguish completed failed interrupted unsupported-request and transport-unknown observations without completing canonical tasks.
 - Make cancellation close the owned transport and keep a visible unknown outcome.
 - Refuse server requests explicitly while the typed approval authority adapter is unavailable.
+- Validate the 0.154.0 remote-control status notification as a bounded global notice only; reject substituted thread/turn scope and never infer task completion or approval from connection status.
+- Treat 0.154.0 MCP startup as bounded app/thread-scoped diagnostics, including notification-before-response races; reject identity substitution and fail closed when the canonical task writer reports failed/cancelled. Account rate-limit snapshots are global notices, never per-turn canonical usage or completion evidence.
 - Permit at most one turn and no warm reuse replay or automatic resume.
 
 ### Must Not

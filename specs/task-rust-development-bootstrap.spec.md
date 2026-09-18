@@ -148,15 +148,21 @@ Scenario: Bootstrap registers the receive-inbox plan's workspace before the firs
   Then the dispatch enqueued by select_receive_inbox satisfies its workspace_resources FK
   And a plan whose workspace is missing from the map is refused at config load, never at claim time
 
-Scenario: The host settles pending conversation stops after the owned operation resolves
+Scenario: The host settles only an exactly inspected original stopped scope
   Level: integration
-  Test Double: actual DomainStore writer with a fenced started dispatch and an unsettled dispatch_stops row
-  Test: native_bootstrap_settles_pending_stop_after_operation
-  Production caller: hagency::bootstrap::driver::settle_pending_stops
+  Test Double: actual original process cleanup and workspace inspection with concurrent unrelated stops
+  Owed Selector: native_bootstrap_settles_inspected_original_stop
+  Production caller: owed (G8)
   Given an operator stop fenced a started dispatch into outcome_unknown and wrote an unsettled dispatch_stops row
-  When the owned operation resolves
-  Then run() sweeps pending_conversation_stops and settles each with the observed report as evidence
-  And a second pass over a settled row writes no duplicate
+  When the original host proves its exact process scope stopped and inspects its workspace effects
+  Then only that dispatch and fence may settle and unrelated stops retain their leases
+  And unknown cleanup or a returned operation report alone never permits settlement
+  And a second exact inspected settlement writes no duplicate
+
+The former global-sweep fixture proved a store call, not inspected process
+custody. Its positive claim was withdrawn on2026-09-16; the executable negative
+regression is bound by task-rust-fleet-stop-custody.spec.md. G8 remains an actual
+full-migration obligation, not a passed or skipped scenario.
 
 Scenario: The owned claim path reconciles a started dispatch after host death
   Level: integration

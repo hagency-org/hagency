@@ -142,6 +142,19 @@ qualified. Native service execution remains disabled and M4 remains incomplete.
 
 ## Consequences
 
+### Fresh physical owner observation (2026-09-16)
+
+Host-only `observe_leader` uses the original retained SupervisedProcess. Unix
+requires a new, strictly correlated positive reply over its anonymous guardian
+socket after that guardian checks its actual retained Scope/leader identity.
+Windows checks the original process handle. Numeric identity, cached Started,
+absence of Stopped and a wait timeout are not positive observations. Unknown
+observation is sticky and cannot rearm. Cleanup may drain only its exact late
+correlated reply before the original Stopped report; no new stop guarantee is
+manufactured. OwnedSession admits this read only in actual Ready/Pending and
+retains its existing stop-on-error path. This does not prove model, effective
+sandbox or whole-tree cleanup, or mint any domain authority.
+
 Pipe transfer, cancellation and process-stop observations remain tied to existing guardian custody. Unsupported platform guarantees and native service activation stay explicit.
 
 ## Alternatives Considered

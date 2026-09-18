@@ -39,6 +39,14 @@ The original approval SDK is created only after authenticated whoami/private obs
 
 ## One original encrypted card attempt
 
+Factory membership follows ADR064's original-scope admission. Both private card
+and redacted status delivery accept that retained membership alongside startup
+engagements, with their existing enrollment and exact current-domain checks.
+Enrollment snapshots the same combined set under its original busy permit;
+adding a same-owner agent does not replace the approval SDK or regenerate its
+Complete signing/session custody. Native fleet pumping and live client approval
+qualification remain required separately.
+
 1. Acquire the existing shared busy permit and retain a finite original job record plus the original Arc<Card> and immutable monotonic deadline before the first awaited custody/domain/SDK operation. Request ID is deduplicated across active and retained SDK history; a changed cutoff/content/target for the same ID is a conflict.
 2. Read the approval-specific delivery journal. Historical exact accepted receipt returns historical Accepted without HTTP. Any retained incomplete attempt remains inspect-only. Otherwise verify that the current packet matches configured engagement, exact full owner/bot, room, SDK device, registration and room/binding generations. Call the original DomainStore check; refresh authenticated whoami and complete private room state using the existing approval path, then check the exact card again.
 3. Persist a separate approval delivery Start containing the full frozen target, original cutoff, exact48KiB-bounded card content, content/attempt digests, original SDK identity and one deterministic purpose-separated Matrix transaction ID. It has no fake ReplyRoute/session/fence and no owner decision grant. Once this attempt is durable, replacement/reconstruction is refused even if later work fails before any PUT.
@@ -100,3 +108,23 @@ collector.
 *Cross-reference (PC-C1): a failed private send denies the pending request
 with a named reason (D-PC-FC, in force) — ADR-137's record; this record's
 `Accepted` semantics and custody stages are unchanged by it.*
+
+### Native service round trip
+
+The explicit bootstrap approval profile now drives this same collector's observe
+and fresh-account enrollment before dispatch, while keeping the service polled.
+The existing Complete path validates retained keys without regenerating them.
+This enrollment concerns Matrix encryption only; ADR114's provider credential
+login remains an independent operator act. The original collector is retained
+when close reports unknown. No profile, anchor, account or room can come from
+event content. The executable qualification and boundaries live in
+`specs/task-rust-native-approval-roundtrip.spec.md`.
+
+The fleet service now multiplexes original run receivers without copying them or
+manufacturing notice senders. ADR064's bounded service turn serializes this pump
+with the factory's original membership observer on this same approval collector.
+It is not SDK/job authority: caller loss preserves original owned IO and sticky
+refusal. Sends retain the original owner cutoff and all post-await current checks.
+Close's existing2s envelope includes scheduling wait; a timeout never authorizes
+a replacement collector or claims successful shutdown. Receipt/journal capacity
+is unchanged. This prerequisite does not qualify full fleet/client operation.

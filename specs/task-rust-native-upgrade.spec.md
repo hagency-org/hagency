@@ -23,6 +23,13 @@ workflow — is recorded in this spec and in ADR-134's note.
 - Install version N by the documented procedure, write live state through it (admit at least one engagement/agent and one store row whose head is recorded), then install version N+1 and restart the unit.
 - Assert the upgrade continues state: the store head advances (or is already at head with zero replay), the previously written rows are readable, and the readiness word returns.
 - Assert the rollback: applying the procedure's rollback step (point the unit back at version N's artifact, restart) runs version N again on the same state, with no data loss and no re-initialization.
+- Copy and content-address all workspace-root compile-time inputs consumed by
+  the native code: the original role-capacity JSON and four shared agent-home
+  templates. Read them from the source tree; do not substitute template bytes.
+- When an uncached N+1 build replaces the shared build path, capture and restore
+  the exact current N artifact, not a stale same-version backup from an earlier
+  source tree. Restore N even when that child build or staging fails; failure
+  still fails the test and cannot qualify an artifact.
 
 ### Must Not
 - Do not invoke the release workflow, a registry, a tag or any network artifact source — the two local builds are the whole fixture.
@@ -62,6 +69,13 @@ Scenario: The procedure's rollback step restores the previous version on the sam
   When the procedure's rollback step is applied and the unit restarted
   Then version N runs again on the same state — no re-initialization and no data loss
   And the recorded rows from before the upgrade are still readable
+
+Scenario: Shared template changes participate in the real artifact's build inputs
+  Test: native_upgrade_shared_templates_are_build_inputs
+  Level: unit
+  Given the exact root inputs used by the N+1 copy and fingerprint helpers
+  When any of the four original shared templates changes in an isolated fixture
+  Then that copied input preserves the exact bytes and the source fingerprint changes
 
 ## Decisions
 

@@ -279,11 +279,10 @@ the operator judges that new cross-process machinery in the retiring
 retained product is worse than an unbounded cache for the transition's
 duration — in which case the limitation is recorded, not silently shipped.
 
-**Spec selector posture.** The five retained `Test:` sentences were left as
-`Test:` lines, not converted to `Owed Selector:` lines: the spec carries the
-`node` tag, which the Rust binding checker defers, and its own
-"Out of Scope (owed by Node…)" note already records that these names are
-executable only by the retained Vitest suite and never listed by the Rust
-gate — so neither the Rust checker nor the retained runner reports them as
-owed today. The deferral is recorded here in the ADR, not by parking the
-spec's sentences.
+**Spec selector posture correction (2026-09-15).** The five retained scenarios
+now use `Owed Selector:`. The earlier claim that the `node` tag kept them out of
+the binding gate considered only the Rust catalog; `check-spec-bindings.js`
+correctly sends node-tagged contracts to the Vitest catalog, where the absent
+tests fail. Keeping `Test:` therefore claimed registration that did not exist.
+The entries become `Test:` only with the implementation and real Vitest cases
+after the cross-process cache-linkage decision above is resolved.

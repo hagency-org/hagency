@@ -121,6 +121,29 @@ MCP/Matrix CLI tests pass. Strict cross-crate lifecycle passes all seven scenari
 and the 17-path boundary. Native and Windows GNU execution/platform Clippy pass;
 actual Windows execution and combined integration remain separate CI evidence.
 
+### 2026-09-16: Bounded concurrent service handoffs
+
+The bootstrap consumer now retains at most16 original Started bindings instead
+of one shared slot. Each entry still has only the sealed binding from the actual
+operation and its full original capability; no caller supplies a root or writer.
+Acquire selects and retains that exact entry under one short registry lock and
+then validates it against the original writer. It does not look up a potentially
+replaced entry after waiting. No lock is held across asynchronous writer access.
+
+Exact release retires that entry before removing it, so already acquired guards
+cannot continue using a released binding. Unrelated entries remain available.
+Global retirement refuses all guards. Copy/receive paths retain their original
+operation and writer checks, while immutable held snapshots retain their bytes.
+Capacity and duplicate-dispatch refusal return the rejected original binding;
+they never replace another entry or manufacture an acknowledgement.
+
+This is a private service registry of original one-shot handoffs, not the public
+mutable root registry rejected below. Offline tests use real original Started
+operations with distinct roots, including identical relative filenames; they
+withhold launch acknowledgement and assert actual NotStarted termination. They
+do not prove running concurrent agents, physical sandbox isolation, per-agent
+Matrix file routing or live multi-agent qualification.
+
 ## Alternatives Considered
 
 - Independent execution and file path maps: leave physical source association

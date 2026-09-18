@@ -117,6 +117,17 @@ integration gates and changes no production configuration or deployment.
 
 ## Consequences
 
+### 2026-09-16 live qualification amendment
+
+The real Linux Codex 0.154.0 initialization stream exposed `emittedAtMs` on
+notifications; the baseline decoder rejected it before any model turn. The
+0.154.0 CLI export names this field as signed int64. A separately versioned
+notification fixture records the exported schema digests. The codec preserves
+this optional field on notifications only, rejects malformed/ambiguous metadata,
+and the connection discards it before emitting lifecycle observations. Host
+monotonic deadlines and correlation authority are unchanged. This compatibility
+extension is not effective sandbox or full runtime-version qualification.
+
 The IO-free codec supplies protocol observations only. Dispatch binding, stream ownership, sandbox enforcement and durable approval or task authority remain separate integration gates.
 
 ## Alternatives Considered

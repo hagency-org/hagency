@@ -48,6 +48,81 @@ Actual sandbox enforcement and owner approval application remain separate gates.
 
 ## Pinned upstream evidence
 
+### 2026-09-16 retained task-context handoff amendment
+
+Genuine pre-activation runtime ownership needs a dispatch capability minted
+later; an already launched parent's inherited environment cannot be updated.
+The Host-only `with_retained_task_context` opt-in now forwards a closed
+`retained_task_context_v1` reference instead of that future secret. The default
+direct inherited capability/task path and the three environment-name ABI remain
+unchanged. No bootstrap or live factory marker exposes this prerequisite yet.
+
+The fixed reference contains only its profile, canonical private record path and
+64-lowercase-hex context ID. The inherited task value is a matching context
+marker, never a caller-selected real task. Its root must already be private,
+retain actual directory identity and be outside the dispatched workspace. One
+non-evicting original job pins the actual Started fingerprint/capability digest,
+original deadline and cancellation owner. Its crate-internal sealed Started
+marker must match the actual capability; a later InProgress snapshot cannot
+substitute for a lost acknowledgement. It checks current DomainStore dispatch
+authority before and after real bounded filesystem work. Caller loss retains the
+original task through actual return; duplicate pending binding is Busy. Failed or
+unknown jobs never rearm. Successful replay only inspects exact original bytes
+and held file/root identity under current authority, without rewriting.
+
+This explicitly extends the original values-only-in-environment decision with
+one create-only **private operational dispatch record**. It holds version, fixed
+context ID, original Started scope/task and capability, at most 4096 bytes. The
+actual private create descriptor is retained before the first write, file sync
+and supported directory sync. It is plaintext private runtime custody (0600 / an
+equivalent checked private ACL), not a canonical agent credential, side master,
+encrypted SDK session or persistent grant. Existing/partial/foreign/aliased/public
+custody refuses; restart cannot adopt or reconstruct the owner. Parent environment,
+runtime JSON, tool arguments, console, receipts and diagnostic output receive no
+capability value. This is not hostile-runtime or same-UID filesystem secrecy.
+
+The original execution owner still receives actual Started before its only spawn.
+The same initialized OwnedSession awaits original context binding through return,
+then admits the fixed typed TaskMcp only while Ready with no helper. Thread opening
+follows; cwd/model/effort, app-server-only argv, original IO reactor, per-tool policy,
+default sandbox and cleanup/Done/reply settlement stay unchanged. No second launcher,
+initialize-and-stop probe, general configuration setter or new approval grant is
+introduced. The native helper accepts only closed matching reference/record grammar,
+reads one bounded regular private file at startup, caches the actual context once
+and continues checking current runner API authority on every call. There is no
+fallback, reload, alternate-file adoption or file-produced execution authority.
+
+Six exact offline selectors cover real writer Started, negative and retained
+caller/file custody, typed driver phase binding, closed native startup grammar and
+the actual owned native MCP child. The latter initializes the parent while the
+record is absent, then verifies actual helper read/heartbeat/readback/successful
+exit even after the startup record is made invalid following native initialization.
+These are bridge/pipe/API fixtures, not effective sandbox, model, pre-activation
+warm-owner/factory readiness, Applied/Active/routes or live qualification. Actual
+retained pre-activation worker/reactor integration remains required. The two real
+sandbox evidence gates still reject their checked-in placeholder; compilation,
+policy echo and a passing bridge do not close them.
+
+### 2026-09-16 live task-maintenance parity amendment
+
+The Linux 0.154.0 / Palpo / Robrix qualification reaches an MCP confirmation
+elicitation before canonical task maintenance. The legacy launch already
+implements ADR-021's exact per-tool settings (`router/src/runner.ts`); this
+native checkpoint omitted them. Typed launch now sets `approval_mode="approve"`
+only for `get_task`, `update_task_execution`, `transition_task`, and
+`complete_task_with_reply` on `hagency_task_writer`. Every call still passes
+the current dispatch capability, task scope, fence and lease through the native
+runner API. Optional file tools, arbitrary tool names, other MCP servers and
+all emitted elicitations retain existing approval/refusal behavior. There is
+no server-wide mode, trust mutation, shell networking or permission grant.
+This supersedes the earlier no-tool-override statement only for that fixed
+catalog; it does not establish model execution, final delivery or full parity.
+The current [official per-tool configuration reference](https://learn.chatgpt.com/docs/config-file/config-reference)
+confirms the field semantics. Unit and real-native-helper fixture assertions
+check the exact map, absence of a server-wide default, and optional-tool exclusion.
+
+### Original pinned checkpoint
+
 Source was inspected from installed Codex **0.153.4**, tag `rust-v0.153.4`, commit
 `3d2ee51ca2d5db578f328aa75e20aa22c0197c9a`. These are implementation-bound semantics,
 not a claim about arbitrary future versions or a fake peer's echo:

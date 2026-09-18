@@ -63,6 +63,30 @@ network or policies fail. Echoes cannot prove the effective sandbox: Codex defau
 configuration loading, temp-directory behavior, runtime/platform qualification and
 actual process restrictions still require independent tests and custody checks.
 
+Local Codex0.154.0 qualification exposed a concrete preparation difference:
+`sandbox: workspace-write` inherited operator network access at thread creation,
+even though the later typed turn explicitly disables it. The existing echo guard
+correctly refused before a prompt. Thread start/resume now also sends fixed
+`sandbox_workspace_write.network_access=false` and empty extra `writable_roots`
+configuration, merged with the optional scoped helper settings. This preserves
+the already-requested turn contract; it neither weakens echo validation nor
+edits the operator's configuration/login. Tests cover both read-only/resume and
+workspace-write/start, with and without scoped helper configuration. A successful
+echo is still not effective sandbox or canonical task completion evidence.
+
+The next real local run exposed `hook/started` and `hook/completed` notifications.
+Their 0.154.0 exported schema digests are retained with the notification fixtures.
+These synchronous hook summaries are bounded Notice observations with required
+thread and optional exact turn scope, including pre-response validation. Turn
+hooks cannot race thread creation; completed hook summaries may occur in a
+validated terminal suffix. Unknown types, foreign identities, malformed fields
+and oversized output fail. Private hook text is not logged or promoted into a
+tool, permission, usage or canonical completion receipt. Existing hook behavior
+is not disabled to force qualification. Static refusal labels distinguish known
+unsupported notification families without emitting peer method names or payloads.
+The official [App Server event contract](https://learn.chatgpt.com/docs/app-server)
+describes these as synchronous lifecycle hook diagnostics, not requests.
+
 ### Correlation and bounded observations
 
 Initialization must finish before a thread opens, and its typed turn starts only
@@ -140,6 +164,25 @@ transport-unknown outcome. No approval request can be accepted by event fields,
 model text, a claimed auto-review result or a successful transport write.
 
 ### Verification and open integration gates
+
+The 2026-09-16 real Linux 0.154.0 initialization also emits
+`remoteControl/status/changed`. Its exported required identity strings and
+four connection-status values are checked within finite bounds, and it is
+exposed only as a global Notice during initialization, deferred lifecycle
+reads, running turns and terminal suffix validation. Any supplied thread or
+turn must still match the current scope. The notice cannot enable remote
+control, approve execution or complete a task; unsupported actionable requests
+remain refused. Offline regression coverage includes this real stream shape.
+
+The same live qualification exposed `mcpServer/startupStatus/updated` without
+a turn ID, plus global `account/rateLimits/updated`. The 0.154.0 exported schema
+digests and sanitized messages are pinned in the notification fixture. Startup
+is validated as bounded app/thread-scoped diagnostics, including deferred RPC
+races and terminal suffixes. Failed/cancelled `hagency_task_writer` startup is
+negative protocol evidence, not a successful model fallback. Global rate-limit
+snapshots grant no canonical usage, quota, execution or completion authority.
+These narrow shape extensions do not qualify the entire new runtime or its
+effective sandbox, and do not enlarge deadlines or permissions.
 
 Offline fixtures use real bounded Tokio duplex streams and schema-shaped payloads.
 They cover fixed settings, both sandbox modes and omitted defaults, exact resume

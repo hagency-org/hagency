@@ -15,7 +15,8 @@ protocol acknowledgements into execution authority.
 
 ### Must
 - Bound frames, nesting, partial-frame age, pending requests and retained server request identities.
-- Follow the installed Codex 0.153.4 JSON schema for wire envelopes and preserve string versus signed integer request identities.
+- Follow the installed Codex 0.153.4 envelope baseline plus the exported 0.154.0 notification metadata extension; preserve string versus signed integer request identities.
+- Treat optional notification emittedAtMs as signed int64 diagnostic metadata only, never a host deadline, scope or approval.
 - Require initialize response followed by initialized notification before normal requests.
 - Reject malformed or ambiguous envelopes, duplicate fields and unknown response identities permanently for the connection.
 - Expire requests by an absolute host-provided monotonic clock even while unrelated notifications arrive.

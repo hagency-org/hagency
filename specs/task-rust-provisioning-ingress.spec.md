@@ -126,15 +126,15 @@ Scenario: The provider approval produces the provision effect
 Scenario: The provision effect is claimed and observed complete
   Test: native_provisioning_effect_completed
   Given a recorded provision effect for an admitted engagement
-  When the wired effect worker claims the effect and reports the provision outcome
-  Then the effects row carries kind=provision state=complete and the engagement_ends row is observed
+  When the approval caller claims that exact effect and synchronously provisions the real account, private home, rooms and runtime, then reports the physically observed outcome
+  Then the effects row carries kind=provision state=complete, the engagement is Active, and no terminal engagement_ends row is created
   Production caller: hagency_matrix::intake::Inner::approve_provision
 
 Scenario: The admitted engagement's project room binds a session route
   Test: native_provisioning_session_route
-  Given an admitted engagement with its project room and an intake plan naming a configured session id
-  When the wired route registrar resolves the verified Matrix session
-  Then the matrix_session_routes row binds the project room to the configured session id so the intake plan's session resolves
+  Given an admitted engagement whose inline provisioner has physically observed its account, device, owner DM, project membership and runtime
+  When the approval caller registers the resulting verified Matrix session
+  Then exactly one matrix_session_routes row binds the project room and observed agent sender to session_{engagement_id}; a planned sender or session id alone cannot produce a route
   Production caller: hagency_matrix::intake::Inner::approve_provision
 
 Scenario: A verdict from a non-representative sender is refused fail-closed

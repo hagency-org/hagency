@@ -19,6 +19,7 @@ eligible events, and preserve unknown SDK and negative authority fences.
 - Keep plaintext encrypted-target traffic and missing or unverified crypto proof ineligible without plaintext fallback.
 - Retain Applying ambiguity limited timelines storage uncertainty and genuine identity or room failures under existing fences.
 - Keep journal history finite private and inspectable without eviction reset or fabricated legacy coverage.
+- The steady-state sync-history successor preserves the 64-entry live bound by archiving completed exact receipts and earliest terminal-source proofs under the owned encrypted journal root; it does not discard history or reconstruct ambiguous SDK output (task-rust-matrix-sync-history).
 
 ### Must Not
 - Do not convert domain handoff authority conflicts into event rejection or loosen current admission.
@@ -75,5 +76,5 @@ Scenario: Receipt bounds and legacy inspection cannot erase history
 ## Out of Scope
 
 Domain admission refusal redesign, automatic decrypt retry/manual recovery,
-receipt compaction, approval intake, full encrypted owned-helper completion,
+approval intake, full encrypted owned-helper completion,
 live enrollment and native cutover remain separate gates.

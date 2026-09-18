@@ -145,6 +145,15 @@ curve and require every requested device to have no prior session; afterwards
 record its actual new persisted session ID. Complete reopen must match these
 original associations. None from get_missing_sessions is not a substitute.
 
+The 2026-09-16 live Robrix run established that receiving a verified encrypted
+room-key message can add an inbound Olm session beside the original outbound
+claim. Complete restoration therefore requires every original claimed ID to
+remain present, not equality with the entire current session list. All current
+sessions still pass the existing recipient-curve/algorithm checks and four-session
+bound. Original identity, master anchors, exact recipient device inventory and
+claim associations are unchanged; no missing original is repaired or re-claimed.
+An offline independent owner SDK now exercises this real inbound/reopen shape.
+
 Existing outgoing encryption keeps OnlyTrustedDevices, fresh keys::accept,
 exact recipient-set equality, forced fresh room keys and current-domain checks
 after the last SDK await. Enrollment does not create a file Send or a dispatch
@@ -233,6 +242,42 @@ restart selectors remain required; a fresh child must establish actual historica
 SDK Complete independently before the first domain Delivered without HTTP replay.
 
 ## Consequences
+
+### 2026-09-16 — original provision SDK current-Active handoff
+
+The original opaque account now retains its exact provision scope alongside its
+successful enrollment Collector. Its explicit Active handoff uses a separate
+read-only writer validator requiring that original acknowledged Started effect
+to be actually Complete and its engagement Active at the current registration.
+The Started/Reserved enrollment validator remains strict. Neither validator
+writes Applied, a transport observation, capability or route.
+
+The handoff admits one retained job under the same Collector busy permit and
+original absolute SDK budget. It requires the already-present original SDK owner
+and protected Agent Complete, then uses ordinary active collection and Complete
+verification on that same owner. Actual whoami, original project binding/powers,
+joined owner+agent encrypted Direct privacy and AS side authority are re-read;
+the original writer is checked after the last await. No configuration, identity,
+store/key/profile binding, queue, signing upload or session claim is replaced.
+
+Successful Active refresh revalidates only this same owner. Running, failed or
+closed handoffs cannot rearm, and pre-activation calls cannot move the job
+backwards. Caller loss retains the admitted job, permit and result without a
+task/owner Arc cycle. Failure after positive collection uses the existing exact
+transport negative CAS; unrelated/newer owners are never revived or fenced.
+
+Offline fixtures explicitly submit Applied as fixture activation, not physical
+factory proof. Their owner-channel identity, Complete/current-room verification,
+no-repeated-upload/claim, held actual TLS read and real canonical revocation
+checks qualify this handoff only. A separate original AS home/account/rooms/SDK
+fixture also hands off this same owner. Revoked or broadened side authority
+refuses even while its dedicated device token still freshly authenticates; the
+device cannot substitute for the original side master. Neither AS registration/
+login nor room/signing/session effects repeat. Full inline warm-runtime consumption and genuine
+factory fulfillment for both ADR-016 profiles, derived routes, AS receiver and
+registration generation and real fleet/client/recovery soaking remain required.
+The original two missing factory selectors remain missing; no new bootstrap
+checkpoint/profile or full-port qualification is established by this amendment.
 
 Fresh opt-in accounts gain a narrowly supported path to the existing verified
 encryption policy. Powerful preexisting signing seeds are not a setup prerequisite.

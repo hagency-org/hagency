@@ -59,31 +59,31 @@ report, not silently bound here.
 ## Acceptance Criteria
 
 Scenario: A rotated message archive keeps whole rows and its last complete line
-  Test: a rotated message archive keeps its last complete line and never splits a JSON row
+  Owed Selector: a rotated message archive keeps its last complete line and never splits a JSON row
   Given a message archive whose final write is a torn partial row
   When it rotates
   Then every line in the retained rotation parses as JSON and no partial row was carried across the boundary
 
 Scenario: A rotated-away message is still found by the membership read
-  Test: archivedMessageExists still finds a message that lives only in a rotation
+  Owed Selector: archivedMessageExists still finds a message that lives only in a rotation
   Given an archived message that exists only inside a rotation, with the live file no longer carrying it
   When the membership read answers for that message id
   Then it answers true, so a committed message is not re-persisted through the dispatch gate
 
 Scenario: A cache entry referenced by a pending delivery survives the sweep
-  Test: a media cache entry referenced by a pending delivery survives the sweep
+  Owed Selector: a media cache entry referenced by a pending delivery survives the sweep
   Given a cache entry whose source is named by a delivery that has not reached a terminal receipt
   When the sweep runs with that source protected
   Then the entry is still present and the pending delivery can still read it
 
 Scenario: A cache entry referenced by an unknown-outcome delivery survives the sweep
-  Test: a media cache entry referenced by an unknown-outcome delivery survives the sweep
+  Owed Selector: a media cache entry referenced by an unknown-outcome delivery survives the sweep
   Given a cache entry whose source is named by a delivery whose outcome is unknown
   When the sweep runs
   Then the entry is retained, because an unknown outcome is evidence and never a prune candidate
 
 Scenario: A failed delete is logged and never refuses a fetch
-  Test: a failed media cache delete is logged and does not refuse a subsequent fetch
+  Owed Selector: a failed media cache delete is logged and does not refuse a subsequent fetch
   Given a cache entry the sweep cannot delete
   When the delete fails and a fetch for that source then arrives
   Then the failure is logged, no fetch is refused because of it, and the entry is retried on the next sweep
@@ -97,14 +97,13 @@ retained scenario in the design's §11a that this contract does not bind.
 
 ## Out of Scope (owed by Node, recorded here as unbound)
 
-The five retained-side `Test:` selectors above — the Vitest sentence names
+The five retained-side `Owed Selector:` entries above — the future Vitest sentence names
 `a rotated message archive keeps its last complete line…`,
 `archivedMessageExists still finds a message…`, the two media-cache
 survival scenarios, and `a failed media cache delete is logged…` — are
-**owed by the Node lane and bound by no Rust test**. This file carries the
-`node` tag, so the rust binding checker defers it and no Rust inventory
-will ever list these names; they remain here as the retained contract's
-scenarios, executable only by the retained Vitest suite
-(`tests/artifact-retention.test.js`, in Allowed Changes). An integrator
-reading the rust gate's `missing` list will never see them, and that is the
-split working as designed — not a gap.
+**owed by the Node lane and bound by no test today**. `Owed Selector:` keeps
+the scenarios visible without falsely claiming registration in either catalog.
+They become `Test:` lines only in the same change that adds
+`tests/artifact-retention.test.js` after ADR-129's missing cross-process cache
+linkage and rotation surfaces are designed. The Node binding gate must not list
+an unimplemented scenario as verified.

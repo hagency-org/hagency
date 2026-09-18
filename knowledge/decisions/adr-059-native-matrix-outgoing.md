@@ -187,3 +187,12 @@ route, domain begin and per-write checks. The leaf neither constructs authority
 nor admits HTTP; approval cards never fabricate an Agent ReplyRoute or notice.
 The independent test peer may name the approval bot while its original Agent
 sender/device defaults remain unchanged.
+
+### ADR152 bounded live cache successor
+
+The authenticated settled-send history in ADR-152 supersedes the permanent
+64-settled-receipt stop only. Older settled evidence remains in the private
+identity-bound receipt trie, with exact bounded queries and atomic journal
+publication. Pending/possible/Complete custody is never rolled or replayed;
+historical file recovery still cannot commit first Delivered from a compact
+receipt. Live cache limits, current-send authority and every other gate remain.

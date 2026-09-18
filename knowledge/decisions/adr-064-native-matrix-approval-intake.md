@@ -47,6 +47,18 @@ negative availability; a new host-approved generation is required.
 
 ### Actual SDK evidence and immutable actions
 
+The original inline factory may append an engagement to this same collector's
+retained membership after receiving its exact Active acknowledgment. This is a
+crate-private admission using the original writer-produced provision scope, not
+a caller-supplied engagement setter. The owned observation job holds the shared
+busy permit, checks that scope on its producing writer before and after actual
+private room observation, and only then records membership. Failed observation
+adds nothing; lost waiters do not abandon the original job. Configured order is
+preserved and the combined static/factory set keeps the existing 64-member bound
+without eviction. Every observe/intake/enrollment/close operation freezes its
+membership under that same permit. Membership never changes fixed bot identity,
+room intents, peer anchors, SDK purpose or current card/verdict authority.
+
 Only the owned SDK receives the authenticated sync response. The inspected
 pinned matrix-sdk-base/crypto 0.18.0 paths are
 `response_processors/timeline.rs`, `machine/mod.rs` and `identities/manager.rs`.
@@ -198,3 +210,41 @@ and fresh private room/key/domain card checks. Unknown intake or enrollment cann
 be stepped over by a new card mutation. Historical delivery is network-free and
 cannot create a verdict. Borrowed close retains its original job/result and blocks
 all later intake/observe admission after closure, including failed shutdown.
+
+### Native service notice-driven polling
+
+The native service pump supplies existing request plans from its original
+single-consumer run notices, never from discovery or event fields. It retains at
+most 64 pending IDs, re-reads their domain summaries, and polls the same original
+collector serially at a bounded cadence while pending requests exist. Channel
+end/cancellation stops it. Any intake refusal or unknown outcome stops further
+polling, retaining original custody without automatic retry or synthetic denial.
+All existing SDK proof, current target, source receipt and finite journal bounds
+remain unchanged; this does not claim unlimited production polling. The store's
+decision is still distinct from card acceptance and native callback application.
+
+### Fleet service scheduling (2026-09-16)
+
+The native pump consumes up to16 original operation notice receivers, each once,
+with round-robin polling and no new notice sender or receiver task. The existing
+one-slot handoff backpressures admission at capacity. Closing one source does not
+close the others; handoff closure drains admitted sources. The shared pending set
+remains64. Due verdict intake has priority over ready notices, and its interval is
+reset after actual intake returns so slow IO cannot instead starve new cards.
+The driver reserves handoff capacity before claiming a dispatch, waits cancellably
+without task/workspace authority, and refuses a closed pump before claim. Once its
+original Operation exists it moves the one receiver through that reserved slot
+synchronously; neither a full queue nor post-Started waiting can lose the handoff
+or consume the original workspace acknowledgment deadline.
+
+The same original ApprovalCollector provides a host-only service scheduling turn
+to pump initialization/send/intake/close and genuine factory membership admission.
+At most16 service callers participate, with one active and waiting bounded by the
+existing SDK wait limit. Cancellation/drop returns only scheduling capacity.
+Original busy permits, retained jobs, unknown/closed refusal, SDK authority and
+current domain checks are unchanged; a lost caller cannot release an in-flight
+owned observer. This is composition, not a new queue for SDK operations or an
+approval proof. Direct collector users retain their existing Busy semantics.
+Pure channel and virtual-time fixtures prove scheduling only; actual executable
+encrypted callbacks, original TLS ownership and physical factory tests remain
+required. Configured fleet execution and real client soaking are separate gates.

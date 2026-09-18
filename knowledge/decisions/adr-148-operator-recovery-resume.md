@@ -9,6 +9,49 @@ tags: [native, dispatch, recovery, operator, console, custody]
 
 ## Context
 
+### Current-source correction (2026-09-16, ADR163)
+
+The current retained TS implementation DOES provide explicit operator recovery:
+`router/src/store.ts::beginOutcomeInspection` and `resolveOutcomeUnknown`,
+`router/src/agent-ops.ts::beginOutcomeInspection/resolveOutcome`, and both
+`/api/router/dispatches/:id/{outcome-inspection,resolve-outcome}` and scoped
+`/api/agent-ops/v1/commands/{begin-outcome-inspection,resolve-outcome}` routes.
+Its resolutions are continue with a NEW instruction/dispatch, accept completed,
+and keep blocked. Existing router-core/backend tests exercise token expiry,
+dirty-generation fencing, replay and actual backend scheduling of a replacement.
+Therefore section1's historical assertion that only orphan homes are reconciled
+must not be used as the current parity reference. The native generic orphan
+endpoint does not implement that complete retained contract.
+
+The operator-only trigger, no automatic replay, original physical proof and
+mutually exclusive stop/orphan clearers remain constraints. G8's old positive
+wiring claim below was withdrawn by task-rust-fleet-stop-custody; ADR162 retains
+evidence but does not settle stops. ADR163 separates proven stopped occupancy
+from unresolved task custody without releasing any workspace or resolving work.
+
+### Addressed-agent binding correction (2026-09-16)
+
+The console route previously shape-validated `{id}` but recovered the body's
+dispatch regardless of its owning engagement. An offline HTTP regression showed
+a lifecycle operator receiving200 through a different existing agent's URL.
+The route now carries `{id}` into the serialized DomainStore recovery call;
+the shared repository recovery transaction checks the original session's
+engagement before any custody mutation. Missing/foreign pairs return404 with
+the same not_found code. This is target binding within the existing lifecycle
+scope, not a new per-agent authorization grant or a new recovery mechanism.
+
+The direct host repository entry reuses the same kernel. Stop-row refusal,
+inspection obligations, task/report bindings and recovery input handling remain
+unchanged. This correction does not satisfy the missing TS operator resolutions
+or permit clearing the current live stopped failure.
+
+Verification: the wrong-agent HTTP regression failed before the change and now
+passes; full console57 and store354 tests pass, along with strict all-target
+store/native Clippy and a native build. The default production-callers checker
+cannot currently enumerate the dirty worktree: its Git-index list includes the
+deleted codex/json.rs module. It is not counted as passing. No live recovery,
+deployment or E2E/soak acceptance is claimed by this correction.
+
 The 2026-09-14/15 audit re-run established that a crashed host's dispatch **is**
 reconciled in production: the driver's claim (`bootstrap/driver.rs:257`) →
 `claim_clock` → `expire` (`domain/execution.rs:810`) → `lose` (`:186-214`)

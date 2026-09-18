@@ -20,6 +20,7 @@ implementation; it does not establish executable coverage or a passing result.
 - Persist original bounded SDK requests and response capacity before starting each external write.
 - Send original device one-time signing and signature uploads in SDK order and require actual complete acknowledgements and fresh verified requery.
 - Preserve exact signed claim request identity and require actual persisted Olm sessions for every original verified recipient curve.
+- Keep original claimed session IDs mandatory on restoration, while permitting bounded SDK-authenticated inbound sessions for those same recipient curves; missing originals still refuse.
 - Keep one owner finite queue absolute deadline original response custody and negative fencing after caller loss.
 - Recover only validated Complete historical enrollment and never reconstruct a live request from a receipt.
 - Require actual native MCP first file delivery and independently proven first Delivered recovery through the original ADR101 selectors.

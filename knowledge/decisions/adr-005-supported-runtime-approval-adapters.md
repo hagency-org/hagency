@@ -92,3 +92,15 @@ operations remain owner-gated.
   different owner workflows.
 - Inject yes/no into the terminal: rejected because terminal focus is not an
   authenticated or replay-safe permission protocol.
+
+## Native noninteractive Claude profile (ADR156)
+
+The native stream-json profile may use the official Agent SDK canUseTool stdio
+control callback instead of the retained tmux MCP channel. Configure exactly one
+approval transport for a process. This is a supported callback transport, not an
+additional verdict authority: original private owner/domain custody, current
+grant checks, auto-mode baseline and protected-operation ask rules still apply.
+Allow preserves the exact original tool input and never installs permission
+updates; cancelled requests get no later response. Production native Claude
+admission remains refused until the full coordinator and effective launch policy
+are integrated and qualified. See ADR156 for the bounded one-shot wire mechanics.

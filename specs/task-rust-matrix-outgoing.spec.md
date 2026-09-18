@@ -13,6 +13,7 @@ HTTPS and owned SDK crypto without losing external outcomes or changing authorit
 ## Constraints
 
 ### Must
+- Preserve settled replay beyond the 64-entry live cache through the authenticated history successor in task-rust-matrix-outgoing-history.spec.md (ADR-152); the original permanent capacity stop is superseded, not silent eviction.
 - Accept only host-owned configured identity and existing domain claims without external route or crypto proof setters.
 - Verify exact authenticated whoami and full current room state before possible writes and persist genuine negative evidence.
 - Commit domain Sending before content or key-share HTTP and preserve unknown outcomes after cancellation timeout or lost responses.

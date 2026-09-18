@@ -94,6 +94,12 @@ configuration and an actual helper Done round-trip are separate remaining work.
 
 ### Cancellation, timing and observability
 
+ADR161 supersedes this section's initial thirty-second operation ceiling and
+sixty-second combined allowance: explicit operation budgets may reach twenty
+minutes, with a matching finite host capability and approval context. Existing
+short configurations, lease renewal, cancellation and RPC/write/receipt bounds
+are unchanged. See ADR161 for the joined limits and validation evidence.
+
 The operation deadline is absolute monotonic time, 100 ms through 30 seconds.
 Native response/write waits are 10 ms through 2 seconds and cannot exceed that
 operation limit. Cancellation checks are scheduled every 20 ms; authority renewal is scheduled
@@ -207,7 +213,98 @@ activate the optional cgroup recovery path or claim simultaneous custodian loss.
 
 ## Consequences
 
+### Concrete inline factory Host bridge (2026-09-16)
+
+Sequential factory work is governed by
+`specs/task-rust-factory-sequential-dispatch.spec.md`. The original warm owner is
+consumed once. A distinct later dispatch may use the same retained Host's normal
+Started-before-spawn path only after a private original-operation witness proves
+successful settlement, full stop and receipt/worker join. Mutable Report output
+and historical SQL cannot supply that witness. Pending/failed/lost work cannot
+fall back to a new launch. A non-cloneable admission ticket is spent before the
+ownership-worker queue and belongs only to its original runtime. Later cold
+launches use the existing direct task/capability binding; the first warm record
+is never overwritten or adopted for another task. No process, account, SDK or
+workspace authority is inferred from a fresh presentation.
+
+The Host-only Matrix provisioning owner may depend on hagency-execution through
+the concrete WarmHostPlan. This is an explicit extension of the initial library
+boundary, not a Matrix/runtime command launcher. The plan retains fixed native
+paths/environment, private task-context root, literal loopback helper endpoint,
+shared ApprovalHost and existing WarmLimits. The native helper/origin/private
+context root are retained together by the non-cloneable WarmTaskBridge, without
+configuration or credential getters. Only the original materialized home and
+writer-produced scope supply each new agent's Host/workspace/account/resource.
+No serde, configuration/credential export, generic callback or observed-ready
+setter is added. The original deadline precedes registry/Host preparation. The
+existing WarmRuntime owns the sole launch/reactor and first dispatch consumes it.
+The Matrix factory owns and revalidates its original SDK before activation; the
+writer's scoped activation uses the same effect transaction kernel. Cleanup
+retains original worker ownership and unknown capacity, never a join-as-clean
+receipt. Complete deployment/fleet/sandbox/live qualification is still required.
+
+### Pre-activation retained owner amendment (2026-09-16)
+
+The explicit Host-only `WarmRuntime` is a narrowly scoped exception to cold
+Started-before-spawn, not a second launcher or runtime-text authority. The actual
+writer captures the original Started provision effect/fence/payload, Reserved
+engagement, current registration and frozen qualified resource/account. Its private
+producer identity and sticky shared claim refuse foreign/reopened producers and
+duplicate warming through a finite non-evicting registry. The original opaque
+materialized home and Host root/account must match. Current checks also accept
+only that effect's genuine later Complete/Active state; they never write it.
+
+One OS worker and current-thread Tokio runtime call the same factored fixed
+OwnedSession/SupervisedProcess spawn. They retain the actual initialized session,
+streams, home and original live reservation. Initialize has its original finite
+absolute budget including preparation and queue delay, with pinned native IO and
+fresh account/scope/root checks. Explicit pre-initialize opt-in alone permits the
+typed Preparing → Ready/no-helper Idle → one Consumed dispatch lifecycle. Ordinary
+or active sessions cannot extend lifetime, helper/thread IO refuses while Idle,
+and consumption retains connection/correlation/settings and the original absolute
+dispatch deadline. The separate finite idle budget is not a default timeout change.
+
+The unique handle passes one private owned-work closure through a bounded slot
+and transfers the very same worker into Operation. Its original admission,
+acknowledged Started, workspace-registration acknowledgment, usage/context/helper,
+thread/turn, stop, settlement and negative reconciliation execute unchanged on
+that reactor. Only the already observed spawn/initialize are not repeated. Lost
+ready waits keep the same owner; explicit handle Drop cancels/joins. Admission is
+serialized with warm failure, so queued work receives the original negative
+finalization rather than a discarded result or cold fallback. One dispatch is
+consumed; persistent multi-task session/service reuse is not established here.
+
+A deterministic actual late-spawn negative control exposed an existing shared
+capacity defect: deadline-unknown startup explicitly released its live slot, and
+cancelled startup with a pending late receiver could release it during retry_stop.
+Both now retain possible-effect capacity until observed full stop. Known pre-child
+refusals retain their existing release behavior and all production budgets remain
+unchanged. No absence of a returned owner certifies that a late child cannot exist.
+
+Offline native fixtures observe the same process initialize before task/activation,
+wait past its initial IO lifetime, then run the real native MCP helper through the
+actual Started/workspace-ack path, including managed-account/two-held-slot coverage.
+They also cover lost ready waits, foreign/expired/cancelled handoff, original scope
+mismatch, revocation during initialize and lost workspace acknowledgment. Heartbeat
+remains canonical InProgress with no final reply; macOS unknown whole-tree cleanup
+retains its lease/capacity. These are not model/effective-sandbox, full inline
+factory/SDK/current-Active handoff, configured fleet or live-soak qualification.
+
 One retained worker owns cancellation, domain reconciliation and the actual process handle. Upstream completion remains distinct from canonical Done, reply custody and platform qualification.
+
+### Fresh warm owner prerequisite (2026-09-16)
+
+The original warm worker must qualify its actual retained physical owner, not
+only publish cached initialization or infer liveness from missing terminal data.
+Ready waits enqueue a bounded inspection on that same worker with an absolute
+deadline captured before enqueue and capped by its original response/idle budgets.
+Waiter loss does not discard the admitted read or replace the owner. Final current
+writer/home/account checks follow the actual guardian/process-handle observation.
+Idle maintenance also observes that owner; a failure is sticky and preserves the
+original stop/finalization path. Dispatch receives no cold fallback. Reads never
+write Applied, a session route or task authority. The complete inline factory
+must consume this prerequisite plus its original Matrix SDK and genuine physical
+fulfillment; neither full factory profile nor live qualification is supplied here.
 
 ### Original runtime observation amendment
 

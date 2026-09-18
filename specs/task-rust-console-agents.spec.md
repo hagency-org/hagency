@@ -26,6 +26,12 @@ is bound there, executed only in the enabled lane.
 - Publish a server-owned `unavailable` list naming every column native has no source for.
 - Stage the page through the asset key map, mime allowlist and `/console/agents` alias; the required key `/console/usage/` stays.
 - Keep the client's exact-key validator on the roster wire item.
+- The ingress roster regression must run the original inline physical factory
+  for both account kinds, using offline TLS, an independent owner and the actual
+  native process. Read its minted engagement by request id from the original
+  store and query the real authenticated console before and after activation.
+  No target activation, approval binding or session route may be seeded. This
+  test does not establish native startup/fleet wiring or live qualification.
 
 ### Must Not
 - Do not serve a credential home, workdir, state dir, workspace path, tmux target, pane buffer or token through any key.
@@ -43,6 +49,8 @@ is bound there, executed only in the enabled lane.
 - native/hagency-store/src/domain_worker.rs
 - native/hagency-store/src/lib.rs
 - native/hagency/tests/console/agents.rs
+- native/hagency/tests/console/real_agent.rs
+- native/hagency/tests/inline_factory/mod.rs
 - native/hagency/tests/console.rs
 - native/hagency/tests/console/browser.rs
 - native/hagency/Cargo.toml

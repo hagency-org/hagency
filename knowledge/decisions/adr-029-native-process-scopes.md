@@ -146,6 +146,50 @@ The split retains both actual checks and improves exit evidence; it changes no
 production startup, stop, identity or timeout behavior. Any later missing version
 report still fails and requires investigation rather than being called a flake.
 
+## Native macOS TS-parity amendment (2026-09-16)
+
+The preceding group-only macOS limitation is superseded for a live guardian's
+observed stop path, not for kernel crash containment. The behavior reference is
+`router/src/runner-guardian.ts`, `owned-process-tree.ts` and the five existing TS
+guardian tests. Native macOS now starts the actual executable with
+POSIX_SPAWN_START_SUSPENDED and CLOEXEC_DEFAULT, explicit cwd/env/stdio and an
+independent process group. The original guardian records the paused child's
+identity and process census before SIGCONT. No shell pause wrapper or extra
+guardian channel reaches the runner.
+
+Private libproc observations bracket SHORTBSDINFO with unique-identity reads.
+The complete bounded census uses the two flavors that support cross-user
+observation, without collecting command lines or environments. Owned descendants
+are found by native parent-birth identity and retained after reparenting. Audit
+token signals revalidate original birth and current PID version; there is no
+public PID-to-authority constructor. Known foreign processes never gain ownership.
+
+Concurrent regression runs found an overly broad first implementation: treating
+every new process with PPID1 as a discovery gap killed unrelated healthy runners.
+XNU preserves the parent birth during reparenting, but refreshes it during exec.
+Its original-parent PID version is retained across exec. The tracker therefore
+distinguishes a known foreign parent, a direct init child matching init's original
+version, and an unexplained adopted-and-exec'd process. The latter still refuses;
+an empty later snapshot cannot repair that gap. See Apple's
+[fork identity initialization](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_fork.c),
+[parent insertion](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c),
+and [libproc observation implementation](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/proc_info.c).
+
+During stop, the original owner pauses known members, refreshes descendants,
+attempts TERM/CONT, escalates to KILL, and reaps only its own direct child. A
+positive receipt requires two complete empty live-member censuses after leader
+exit, accepted signals and no sticky discovery failure. Partial/ambiguous native
+reads, missing ancestry, bounded-capacity exhaustion and deadline expiry remain
+unknown. This is sampled native ancestry observation, not an adversarial process
+containment or filesystem/network sandbox guarantee. macOS requests requiring
+guardian-crash containment still refuse before work. Linux/Windows scopes are
+unchanged. Unsupported kqueue NOTE_TRACK is not used.
+
+Actual native fixtures cover still-parented and already-reparented detached tools,
+early root exit, owner loss, inherited descriptor sealing, unrelated live progress,
+sticky missing discovery and cached terminal receipts. Platform/runtime tests are
+offline; actual installed-runner qualification and Palpo/Robrix remain separate.
+
 ## Consequences
 
 Owned handles and native observations constrain signalling and cleanup claims. Process launch, leader exit and fixture success remain separate from sandbox qualification and canonical task completion.

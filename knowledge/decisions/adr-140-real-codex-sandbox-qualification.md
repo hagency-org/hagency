@@ -61,6 +61,69 @@ the binary, as this ADR defines.
 
 ## Consequences
 
+### 2026-09-16 operator evidence hardening
+
+The unrecorded gate stays red until an actual operator run. Absence of an
+outside file after failed authentication/initialization is no longer a passing
+refusal: the record must contain an observed ungranted command/file approval
+or failed execution tool, and actual whole-tree cleanup. Inside success
+requires tool observation, file creation, completed upstream outcome, no error
+and cleanup. The stream wait respects the remaining qualification budget.
+The outside target is in a fresh private non-/tmp parent, because upstream
+workspace-write normally permits temporary roots. No outside permissions are
+granted and no denied command is retried. Exact binary version/hash and
+LF-normalized compiled launch-source digests bind the evidence; the validator
+rejects source changes. An exported source build can supply its verified base
+commit via `HAGENCY_CODEX_QUALIFY_COMMIT`; that base alone is not freshness proof.
+The operator can explicitly qualify 0.154.0 using `HAGENCY_CODEX_QUALIFY_PIN`,
+writing a separate versioned record; the original 0.153.4 gate is not silently
+replaced. These remain owned-session sandbox checks, not fleet/API parity or
+the live inbox/reply soak. There is no auto-approval or test-side live service.
+
+The operator forwards `CODEX_HOME` as well as `HOME` when the private credential
+namespace is explicitly prepared there, matching the production launch. The
+real mini3 Linux qualification container needed kernel namespace prerequisites
+(`SYS_ADMIN`, unconfined outer seccomp and AppArmor) for Codex's own sandbox to
+start. These are isolated operator-host prerequisites, not a changed Codex
+sandbox policy, an approval grant or qualification of the default native Docker
+deployment. The corrected probe passes the actual inside write but still
+fails outside qualification: upstream completes without attempting that write.
+An explanation/no-file outcome does not establish enforced refusal, so the
+combined gate remains failed.
+
+### Exact command witness successor
+
+The qualifier must bind the actual observed command and cwd, not merely the
+presence of any execution failure. The runtime's accepted scoped item stream
+retains bounded private command metadata with equality predicates; changed
+metadata or contradictory supplied terminal snapshots invalidates the evidence.
+This remains a factual observation, not an approval or execution capability.
+The official App Server documentation describes `commandExecution` command/cwd
+and command-approval scope at https://learn.chatgpt.com/docs/app-server; the
+installed pinned protocol still determines the actual rendered command shape.
+
+The operator matches only enumerated exact single-command shell renderings,
+counts distinct item IDs and rejects unrelated or repeated tools. Inside needs
+actual matching completed execution, exact file contents, completed turn and
+cleanup. Outside needs actual matching failed execution or an exact ungranted
+command callback, no outside file, no stream error and cleanup. Generic file or
+network approvals cannot qualify this shell-write probe. A prompt is not a
+witness. No retry or permission grant is introduced. Observation and probe
+sources join the compiled freshness fingerprint. Deterministic tests remain
+offline, and an actual operator run remains necessary before either red gate
+can be recorded as passing.
+
+A supplementary Unix symlink-escape probe uses a freshly created workspace
+link to the same fresh private outside target. The host verifies exact link
+binding before and after the owned session. Its separate verdict needs the
+matching failed command or ungranted command callback, absence of the physical
+outside file, no stream error and cleanup. It can show actual filesystem-boundary
+enforcement when the model refuses to attempt a direct outside path. The
+original direct-path no-attempt verdict remains failed and is not replaced;
+neither original hosted evidence gate is credited from this supplemental case.
+
+### Original consequences
+
 Good, because the gate fails closed on missing evidence, the selectors bind
 on every hosted leg, and the evidence file is reviewable diff, not prose.
 Bad, because qualification freshness is a commit-time discipline — a source

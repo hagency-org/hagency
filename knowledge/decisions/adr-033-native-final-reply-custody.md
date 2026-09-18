@@ -126,6 +126,27 @@ preview, validation or inspection authority.
 
 ## Consequences
 
+### 2026-09-16: Exact-dispatch selection in a shared native service
+
+The native dispatch driver now uses a host-only scoped claim instead of consuming
+the oldest global pending intent. The single writer authenticates all fields of
+the retained original capability against the historical attempt, requiring both
+that attempt's completed outcome and the dispatch's current completed fence. A
+completed attempt's expired execution lease is not new execution permission.
+It can select only an existing current pending intent with that exact source
+dispatch. Missing output, a claimed/sending/uncertain intent or a retired route
+never falls back to another agent's queue entry.
+
+This selection reuses the original transactional reconciliation, claim fence and
+lease, frozen task epoch/route, begin-send and authenticated delivery checks.
+Expiration before send can re-lease the same current intent; expiration after
+send remains uncertain and cannot create a resend. The unscoped host queue API
+remains available to existing explicit queue consumers, not to this driver.
+No new runner/HTTP endpoint, schema field, content disclosure or recovery proof
+is introduced. Store regressions use two independent completed agent dispatches;
+native child/Matrix fixtures exercise this same scoped API after actual cleanup.
+These prerequisites do not establish configured fleet startup or live soaking.
+
 Frozen routes and one-shot send transitions preserve exact historical delivery evidence. A retry or accepted response cannot silently adopt a changed room, device or task epoch.
 
 ## Alternatives Considered

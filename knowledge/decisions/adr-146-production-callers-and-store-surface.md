@@ -10,6 +10,15 @@ tags: [store, wiring, spec-governance, definition-of-done]
 
 ## Context
 
+Current correction (2026-09-16): **G8 is reopened**. The bootstrap global stop
+sweep had a production caller but no exact stopped-owner/workspace-inspection
+proof. A real original-operation regression demonstrated settlement of another
+dispatch; that unsafe caller is removed. Earlier empty-gap counts and G8 closure
+tables below are historical, superseded by this correction. The positive exact
+inspection selector remains explicitly owed in the development bootstrap spec;
+the fleet-stop-custody spec binds the actual refusal regression. Reachability
+alone is necessary, not sufficient, evidence of correct wiring.
+
 The 2026-09-14 integration wiring audit found that the provisioning-ingress gap
 was not singular: **nine store flows** (G1–G9) write rows that today are reached
 only by tests and fixtures. In a real deployment an admitted engagement never
@@ -95,10 +104,12 @@ collisions are resolved per type in the row's note.
 | `shutdown_observed` | worker.rs:128, domain_worker.rs:2526 | read-only snapshot — writes nothing (worker.rs:128-132); all call sites are inside `#[cfg(test)]` modules (worker.rs:374 covers :391/:410/:472/:493) | immaterial — not a gap |
 | `register_workspace` | domain/execution.rs:670 | now called from production | **closed G6** (2026-09-14): hagency/src/bootstrap.rs:873 (receive-inbox plan workspace before the first claim; the older driver.rs:414 note was setup-code observation, superseded) |
 | `revoke_approval_grant` | domain/approvals.rs:676 | now called from production | **closed G7** (2026-09-14): hagency/src/console/approvals.rs:139 (console route) |
-| `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | now called from production | **closed G8** (2026-09-14): hagency/src/bootstrap/driver.rs:367 |
-| `pending_conversation_stops` | domain/conversation_lifecycle.rs:354 | now called from production | **closed G8** (2026-09-14): hagency/src/bootstrap/driver.rs:358 |
+| `settle_conversation_stop` | domain/conversation_lifecycle.rs:367 | unsafe bootstrap global caller removed | **gap G8 reopened** (2026-09-16): exact original stopped-owner/workspace-inspection handoff still owed |
+| `pending_conversation_stops` | domain/conversation_lifecycle.rs:354 | unsafe bootstrap global sweep removed | **gap G8 reopened** (2026-09-16): a queue read is not cleanup authority |
 
-15 distinct methods. Of the original G1-G8 none remains open in this table: G1, G2, G3, G4, G6, G7 and G8 closed on 2026-09-14 and G5a on 2026-09-15, each as its row records; G9 is resolved as superseded, below. The gaps opened later carry their own ids.
+15 distinct methods. G8 reopened on2026-09-16; its former production reachability
+did not establish correct custody. The other original closures remain historical
+as recorded; G9 is resolved as superseded, below. Later gaps carry their own ids.
 
 ### Superseded — a wired newer path exists; the old method keeps only test/fixture callers
 

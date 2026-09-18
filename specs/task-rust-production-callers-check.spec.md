@@ -21,6 +21,9 @@ production call graph" a machine gate so the gap class cannot regrow silently.
 - Treat a root as the product binaries and services only: the `hagency` bin (`hagency/src/main.rs`), its Salvo handler registrations, the workers and sweeps spawned from it, and the MCP stdio entry (`mcp/stdio.rs` via `main.rs`) — never a probe or fixture bin, so a probe-only write can never score wired.
 - Report `Production caller: owed (Gn)` lines as tracked gaps, never as failures; the `Gn` must resolve to a row in ADR-146's gap table and an unknown id fails the checker.
 - Exit 0 only when every non-owed `Production caller:` name resolves from a root in the stripped graph and every `owed (Gn)` id resolves; exit 1 listing each absent caller or unknown gap id otherwise.
+- Inspect the current worktree: include non-ignored untracked Rust sources,
+  exclude deleted tracked paths, deduplicate staged/untracked enumeration, and
+  retain all existing test/probe exclusions. No commit is required to run the gate.
 
 ### Must Not
 - Do not count a call from a test, fixture or the bootstrap probe as production reachability.
@@ -61,6 +64,12 @@ Scenario: An unknown owed gap id fails the checker
   Given a spec Then line whose Production caller line reads owed with a G-number that names no row in ADR-146's gap table
   When the checker runs
   Then the checker exits 1 listing the unknown gap id
+
+Scenario: Uncommitted migration sources are checked without stale deleted files
+  Test: native_production_callers_current_worktree
+  Given added untracked staged deleted and ignored Rust paths in a Git worktree
+  When the checker discovers the production source graph
+  Then current non-ignored sources resolve once and missing or ignored paths do not
 
 ## Out of Scope
 

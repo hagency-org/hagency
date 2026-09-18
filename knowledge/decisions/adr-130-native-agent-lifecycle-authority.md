@@ -1,7 +1,7 @@
 ---
 kind: decision
 id: ADR-130
-title: "Finite native agent lifecycle authority: start, stop and preset behind one scope"
+title: "Finite native agent lifecycle authority with fail-closed incomplete transitions"
 status: Proposed
 requirements: [REQ-RUST-MIGRATION-EXECUTION]
 tags: [console, agents, lifecycle, scope, authority]
@@ -26,8 +26,10 @@ lives.
 
 **One finite scope owns the agent lifecycle: `Scope::AgentLifecycle`.** Not the
 configure scope, not a widened existing one — a third scope of the console
-authority's own, minted exactly like the others and reaching exactly three
-acts: **start, stop, and preset-apply**.
+authority's own, minted exactly like the others and reaching the reviewed
+lifecycle routes, including stop, recovery, refusal and retirement. Compatibility routes
+for start and preset-apply remain in the same scope but do not grant an operation
+until their durable transitions exist.
 
 **Stop — fence, never settle; the store's verdict.** The route resolves the
 named engagement's dispatch through the live set (`queued`, `leased`,
@@ -45,20 +47,20 @@ stop reports `stop_pending` until the host that owns the process proof
 settles it. A route is a runtime-facing command; it may never call the
 settlement.
 
-**Start — an ensure, never a launcher.** "Start" is the lifecycle act of
-making an agent's engagement dispatchable again (releasing the parked stop,
-re-arming the driver's queue participation) — an idempotent **at-most-once**
-ensure against the store's own state word, refused with a named code when the
-agent is already live. It spawns nothing: ADR-053's fixed launcher is the
-owned-dispatch host's, and this scope grants no power to construct a child
-process, an argv, or a workspace.
+**Start — unavailable until it has a real transition.** Native has no durable
+agent lifecycle record independent of engagements, and no route-owned host proof
+that can settle a stop, release its custody and re-arm queue participation. The
+compatibility route therefore returns `agent_start_unavailable` (HTTP 501) after
+scope validation and before any store read or spawn. A successful no-op is not an
+ensure. ADR-053's fixed launcher remains the owned-dispatch host's.
 
-**Preset-apply — a pointer, not a second editor.** Applying a preset under
-this scope is the act of pointing the agent at an **already-published**
-preset id; the preset's own fields (profile, ceiling) remain the configure
-scope's act, unchanged. The apply is bounded: one pending apply at a time,
-refused for an unknown or unpublished preset id, and it never invents or
-widens a field the store does not hold.
+**Preset-apply — unavailable until it preserves the whole engagement.** The
+resource id on an engagement binds its budget, account association,
+qualification and provision effect. An in-memory pointer to another preset
+changes none of those durable facts and is therefore not an apply. The
+compatibility route returns `agent_preset_unavailable` (HTTP 501) after scope
+validation, creates no pending marker and reports no success. A future design
+must own the full retire/reprovision transition atomically.
 
 **D-SCOPE, in force — the scope's own rules.**
 
@@ -80,24 +82,42 @@ widens a field the store does not hold.
   credential namespace; no dispatch, runner capability or workspace access;
   no Matrix path or content; no child process, argv or workspace
   (ADR-053); no settlement of any stop; no store schema change; no route
-  outside the three lifecycle acts.
+  outside the explicitly routed lifecycle commands.
 
-**The control follows served permissions.** CL-S1's roster read publishes a
-`permissions` object (`publishResource`/`configureResource`'s pattern,
-`console/resources.rs:162-175`); the lifecycle controls render only from
-their served booleans, and a read-only session renders none enabled.
+**The control follows served permissions and implementation state.** CL-S1's
+roster read publishes a `permissions` object. A lifecycle session renders only
+the stop control, whose domain write exists. Start and preset controls remain
+absent while their routes return named unavailable errors; a read-only session
+renders none enabled.
 
 ## Consequences
 
-Good, because the one class of act that changes an agent's runtime posture is
-behind one reviewable scope with the console authority's existing minting
-discipline, the stop cannot report an unobserved success, and start/preset
-are bounded ensures rather than ports of the retained surface's process
-control.
-Bad, because `stopped:true` is unreachable until a host settlement path
-exists (the operator sees `stop_pending`), and the scope is a third grant an
-operator must reason about — mitigated by the mutual-exclusion test and the
-never-grant list.
+### 2026-09-16: Withdraw unproven global host settlement
+
+The later bootstrap sweep was reachable but unsafe: after any operation result,
+including a pre-child failure, it formatted that report and settled every pending
+stop. The store authenticates the supplied stop id/fence; it cannot infer which
+physical owner or workspace the caller inspected. The old fixture directly
+created Started rows and supplied a string, proving only the trusted store seam.
+
+The driver no longer makes that inference. A regression now retains two actual
+original Started operations, fences one through the real operator stop command,
+and returns the other's real failure through the production completion path.
+Before the correction both stops incorrectly became settled; after it both
+retain pending rows, dirty workspaces and leases. Returning the second original
+operation also cannot invent inspected effects. Successful original completion
+publication and final delivery, and explicit operator recovery, are unchanged.
+
+Automatic positive stop settlement remains G8 and requires exact original
+stopped-owner and workspace-inspection evidence. Removing the unsafe sweep is
+not completion of that obligation or of native agent lifecycle parity.
+
+Good, because lifecycle mutations are behind one reviewable finite scope, stop
+cannot report an unobserved settlement, and incomplete start/preset work can no
+longer report operational success without changing state.
+Bad, because `stopped:true` is unreachable until a host settlement path exists,
+and native does not yet offer start or resource rebinding. Those gaps are visible
+as named 501 refusals and absent controls rather than misleading success.
 
 ## Alternatives Considered
 
@@ -107,8 +127,11 @@ never-grant list.
 - A stop-only scope — the original shape of this record; superseded by
   D-SCOPE once the operator put the whole lifecycle behind one scope rather
   than three slices.
-- Port the retained start (spawn a launcher) — rejected: ADR-053's fixed
-  launcher rule; start here is an ensure, never a process birth.
+- Port the retained start as a no-op ensure — rejected: without a durable re-arm
+  transition, success would be false. Spawning a launcher is separately rejected
+  by ADR-053's fixed launcher rule.
+- Keep preset id only in the browser grant — rejected: it is neither durable nor
+  connected to the engagement's budget, account or provision effect.
 - `retire`'s session cascade for stop — rejected: it closes child
   conversations the operator did not name; the widening is a later decision,
   not a default.
