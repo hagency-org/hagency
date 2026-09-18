@@ -45,7 +45,7 @@ async fn native_owned_usage_restart_and_capacity_keeps_execution_separate() {
     assert_eq!(report.canonical_status, Some(TaskState::InProgress));
     assert_eq!(
         report.failure,
-        if cfg!(target_os = "macos") {
+        if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
             Some(Failure::CleanupUnknown)
         } else {
             None
@@ -88,7 +88,7 @@ async fn native_owned_usage_normalization_refusal_keeps_completion_separate() {
     assert_eq!(report.canonical_status, Some(TaskState::InProgress));
     assert_eq!(
         report.failure,
-        if cfg!(target_os = "macos") {
+        if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
             Some(Failure::CleanupUnknown)
         } else {
             None

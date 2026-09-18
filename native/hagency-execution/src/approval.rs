@@ -22,6 +22,11 @@ impl ApprovalRequests {
     pub async fn recv(&mut self) -> Option<ApprovalNotice> {
         self.receive.recv().await
     }
+    /// Move the original single consumer into the host's bounded multiplexer.
+    /// No replacement sender, receiver or approval authority is created.
+    pub fn into_receiver(self) -> mpsc::Receiver<ApprovalNotice> {
+        self.receive
+    }
 }
 pub(crate) fn notices() -> (mpsc::Sender<ApprovalNotice>, ApprovalRequests) {
     let (send, receive) = mpsc::channel(16);

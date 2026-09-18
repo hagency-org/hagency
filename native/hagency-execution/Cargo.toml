@@ -20,6 +20,9 @@ tokio = { workspace = true, features = ["io-util", "net"] }
 serde_json.workspace = true
 thiserror.workspace = true
 
+[target.'cfg(unix)'.dependencies]
+rustix = { version = "=1.1.4", features = ["process"] }
+
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Threading", "Win32_Storage_FileSystem"] }
 

@@ -1,17 +1,11 @@
-//! Private attachment to the one fresh OwnedSession in operation::execute.
+//! Private attachment to the original fresh owned execution session.
 //! Restoring a ledger source is deliberately not an attachment constructor.
 use hagency_core::tasks::RunnerCapability;
-use hagency_metering::{
-    observation::UsageObservation,
-    runtime_usage::{CodexUsage, CounterBreakdown, ProjectionDiagnostics},
-};
-use hagency_runtime::{
-    codex::session::{
-        Observation, ObservationKind, ObservationSource, UsageBreakdown, UsageEvidence,
-    },
-    owned::OwnedSession,
-};
+use hagency_metering::{observation::UsageObservation, runtime_usage::CounterBreakdown};
+use hagency_runtime::codex::session::UsageBreakdown;
 use hagency_store::{DomainStore, OwnedDispatchScope, UsageSource};
+mod capture;
+use capture::{CapturedEvent, Evidence, Kind, OwnedCapture, Source};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum UsageFailure {
@@ -69,10 +63,10 @@ pub(super) struct UsageRun {
     source: UsageSource,
     // This is the acknowledged start response, never runtime-supplied metadata.
     _started: OwnedDispatchScope,
-    stream: Option<ObservationSource>,
+    stream: Option<Source>,
     sequence: u64,
     pending: Option<Pending>,
-    rejected: Option<UsageEvidence>,
+    rejected: Option<Evidence>,
     status: UsageStatus,
 }
 impl UsageRun {
@@ -102,18 +96,24 @@ impl UsageRun {
     pub(super) fn status(&self) -> UsageStatus {
         self.status
     }
-    pub(super) fn attach(&mut self, runner: &OwnedSession) {
-        // Only called after fresh start_thread + start_turn in the private
-        // operation. OwnedSession has no resume or caller-owned source API.
-        match runner.observation_source() {
-            Ok(source) if runner.matches_observation_source(&source) => self.attach_source(source),
+    pub(super) fn attach(&mut self, runner: &impl OwnedCapture) {
+        // Only the original owned adapter can supply this source: after fresh
+        // Codex start_turn or Claude system/init, before later stream messages.
+        match runner.capture_source() {
+            Some(source) => self.attach_source(source),
             _ => self.fence(UsageFailure::Source),
         }
     }
-    fn attach_source(&mut self, source: ObservationSource) {
-        if self.stream.is_some() || self.status.closed || source.is_retired() {
+    fn attach_source(&mut self, source: impl Into<Source>) {
+        let source = source.into();
+        if self.stream.is_some()
+            || self.status.closed
+            || source.is_retired()
+            || self._started.resource().framework != source.family()
+        {
             self.fence(UsageFailure::Source);
         } else {
+            self.sequence = source.baseline();
             self.stream = Some(source);
             self.status.attached = true;
         }
@@ -127,7 +127,7 @@ impl UsageRun {
     }
     /// True only for newly retained usage. Never automatically retries a failed
     /// writer for the next runtime notification, and never reads past one slot.
-    pub(super) fn observe(&mut self, event: &Observation) -> bool {
+    pub(super) fn observe(&mut self, event: &impl CapturedEvent) -> bool {
         if self.status.closed {
             return false;
         }
@@ -135,11 +135,12 @@ impl UsageRun {
             self.fence(UsageFailure::Storage);
             return false;
         }
-        if self.stream.as_ref() != Some(event.source()) {
+        let source = event.source();
+        if self.stream.as_ref() != Some(&source) {
             self.fence(UsageFailure::Source);
             return false;
         }
-        if event.source().is_retired() {
+        if source.is_retired() {
             self.fence(UsageFailure::Retired);
             return false;
         }
@@ -149,21 +150,12 @@ impl UsageRun {
         }
         self.sequence = event.sequence();
         match event.kind() {
-            ObservationKind::Invalidated => self.fence(UsageFailure::Invalidated),
-            ObservationKind::TurnEnded(_) => self.close(),
-            ObservationKind::Usage(evidence) => {
-                self.status.observed += 1; // Session MAX_EVENTS is finite.
-                let diagnostics = evidence.diagnostics();
-                let observation = UsageObservation::codex_runtime(CodexUsage {
-                    total: breakdown(evidence.total()),
-                    last: breakdown(evidence.last()),
-                    context_window: evidence.model_context_window(),
-                    diagnostics: ProjectionDiagnostics {
-                        missing: diagnostics.has_missing_fields(),
-                        invalid: diagnostics.has_invalid_fields(),
-                        unsupported: diagnostics.has_unsupported_fields(),
-                    },
-                });
+            Kind::Invalidated => self.fence(UsageFailure::Invalidated),
+            Kind::End => self.close(),
+            Kind::Usage { evidence, terminal } => {
+                self.status.observed += 1; // Both runtime event budgets are finite.
+                let evidence = evidence.retain();
+                let observation = evidence.normalize();
                 match observation {
                     Ok(observation) => {
                         self.pending = Some(Pending {
@@ -171,18 +163,21 @@ impl UsageRun {
                             observation,
                         });
                         self.status.pending = true;
+                        if terminal {
+                            self.close();
+                        }
                         return true;
                     }
                     Err(_) => {
                         // Preserve the fixed original projection too; an
                         // arithmetic refusal is not a normalized zero snapshot.
-                        self.rejected = Some(evidence.clone());
+                        self.rejected = Some(evidence);
                         self.status.rejected = true;
                         self.fence(UsageFailure::Normalization);
                     }
                 }
             }
-            ObservationKind::Ignored | ObservationKind::Tool(_) => {}
+            Kind::Ignored => {}
         }
         false
     }

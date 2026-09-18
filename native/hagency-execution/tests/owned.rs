@@ -22,6 +22,8 @@ mod approval_fixture;
 mod approvals;
 #[path = "owned/idle.rs"]
 mod idle;
+#[path = "owned/inspection.rs"]
+mod inspection;
 #[path = "owned/receive.rs"]
 mod receive;
 #[path = "owned/registration.rs"]
@@ -317,7 +319,7 @@ async fn native_owned_dispatch_real_pipes() {
         panic!("cleanup observation missing");
     };
     assert!(cleanup.scope.leader_exited);
-    if cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         assert!(!cleanup.scope.whole_tree_stopped);
         assert!(report.retains_process_custody());
         assert_eq!(report.failure, Some(Failure::CleanupUnknown));
@@ -464,7 +466,7 @@ async fn native_owned_runtime_failure_observation() {
         assert_eq!(report.runtime_observation(), Some(&original));
         assert_eq!(report.failure, Some(Failure::Protocol));
         assert_eq!(report.protocol, Protocol::Unknown);
-        if cfg!(target_os = "macos") {
+        if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
             assert!(report.retains_process_custody());
         } else {
             assert!(!report.retains_process_custody());
@@ -515,6 +517,18 @@ async fn native_owned_dispatch_admission_and_protocol_failure() {
                 })
             );
             f.quarantined();
+            if mode == "spawn-failed" {
+                assert!(
+                    matches!(
+                        report.startup_error(),
+                        Some(hagency_runtime::owned::StartError::Uncertain { .. })
+                    ),
+                    "missing original startup diagnostic: {:?}",
+                    report.startup_error()
+                );
+            } else {
+                assert_eq!(report.startup_error(), None);
+            }
         }
         drop(report);
         f.domain.shutdown().await.unwrap();

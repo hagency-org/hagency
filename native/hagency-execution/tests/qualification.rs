@@ -5,6 +5,8 @@
 //! the typed policy echo; it is protocol evidence only — no echo here is
 //! evidence of effective OS sandboxing.
 use serde_json::{Value, json};
+#[path = "../qualification/source_digests.rs"]
+mod source_digests;
 use std::{
     io::{BufRead, BufReader, Write},
     path::Path,
@@ -48,6 +50,21 @@ fn refuse_placeholder(evidence: &Value) {
 
 fn validate_common(evidence: &Value) {
     refuse_placeholder(evidence);
+    assert_eq!(
+        evidence["launch_source_digests"],
+        serde_json::to_value(source_digests::current()).unwrap(),
+        "qualification launch sources changed; operator evidence is stale"
+    );
+    let binary = evidence["codex_executable_sha256"]
+        .as_str()
+        .unwrap_or_default();
+    assert!(
+        binary.len() == 64
+            && binary
+                .bytes()
+                .all(|c| c.is_ascii_hexdigit() && !c.is_ascii_uppercase()),
+        "qualification executable digest is absent"
+    );
     let pin = evidence["pinned_codex_version"]
         .as_str()
         .unwrap_or_default();
@@ -105,6 +122,35 @@ fn native_codex_real_app_server_sandbox_write_inside() {
         json!(true),
         "the write-inside target file was not created inside the workspace"
     );
+    assert_eq!(
+        verdict["whole_tree_stopped"],
+        json!(true),
+        "write-inside owner cleanup is unproven"
+    );
+    assert_eq!(
+        verdict["tool_attempt_observed"],
+        json!(true),
+        "write-inside has no tool observation"
+    );
+    assert_eq!(
+        verdict["matching_command_witness"],
+        json!(true),
+        "write-inside lacks the exact one-command witness"
+    );
+    assert_eq!(
+        verdict["matching_command_completed"],
+        json!(true),
+        "write-inside lacks matching completed execution"
+    );
+    assert_eq!(
+        verdict["file_contents_match"],
+        json!(true),
+        "write-inside target bytes are not the intended write"
+    );
+    assert!(
+        verdict["error"].is_null(),
+        "write-inside records an execution error"
+    );
     assert!(
         !verdict["error"].as_str().is_some_and(str::is_empty),
         "write_inside records an empty error string"
@@ -126,11 +172,23 @@ fn native_codex_real_app_server_sandbox_refuses_outside() {
         "a file appeared outside the workspace: the sandbox did not refuse"
     );
     assert!(
-        verdict["approval_seen"] == json!(true)
-            || verdict["error"].as_str().is_some_and(|v| !v.is_empty())
-            || verdict["outcome"] != "completed",
+        verdict["approval_seen"] == json!(true) || verdict["tool_failure_observed"] == json!(true),
         "the outside write neither requested approval nor failed: the refusal \
          mechanism is unnamed"
+    );
+    assert_eq!(
+        verdict["whole_tree_stopped"],
+        json!(true),
+        "write-outside owner cleanup is unproven"
+    );
+    assert_eq!(
+        verdict["matching_command_witness"],
+        json!(true),
+        "write-outside lacks the exact one-command witness"
+    );
+    assert!(
+        verdict["error"].is_null(),
+        "write-outside stream has an error"
     );
 }
 

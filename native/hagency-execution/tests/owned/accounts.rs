@@ -1,4 +1,97 @@
 use super::*;
+#[cfg(unix)]
+#[tokio::test]
+async fn native_local_codex_host() {
+    for choice in [
+        "selected",
+        "preset",
+        "seat",
+        "managed",
+        "replacement",
+        "workspace",
+        "during",
+    ] {
+        let f = Fixture::configured_account(false, choice == "managed");
+        let root = f.root.path().canonicalize().unwrap();
+        let home = root.join("provider-home");
+        let codex = root.join("provider-codex");
+        fs::create_dir(&home).unwrap();
+        fs::create_dir(&codex).unwrap();
+        fs::write(codex.join("fixture-account-marker"), "selected-local").unwrap();
+        let binding = hagency_execution::LocalCodex::new(
+            if choice == "preset" {
+                "foreign"
+            } else {
+                "pool"
+            }
+            .into(),
+            if choice == "seat" { "foreign" } else { "seat" }.into(),
+            home.clone(),
+            if choice == "workspace" {
+                f.work.clone()
+            } else {
+                codex.clone()
+            },
+        )
+        .unwrap();
+        let host = f
+            .host(
+                if choice == "during" {
+                    "silent"
+                } else {
+                    "local-account"
+                },
+                "work",
+                false,
+            )
+            .with_local_codex(binding)
+            .unwrap();
+        if choice == "replacement" {
+            fs::rename(&codex, root.join("original-codex")).unwrap();
+            fs::create_dir(&codex).unwrap();
+        }
+        let mut operation =
+            Operation::start(f.domain.clone(), f.cap.clone(), host, limits()).unwrap();
+        if choice == "during" {
+            f.entered().await;
+            fs::rename(&codex, root.join("original-codex")).unwrap();
+            fs::create_dir(&codex).unwrap();
+        }
+        let report = operation.wait().await.unwrap();
+        match choice {
+            "selected" => {
+                assert_eq!(report.protocol, Protocol::Completed, "{:?}", report.failure);
+                assert_eq!(report.failure, None);
+                let observation: serde_json::Value = serde_json::from_slice(
+                    &fs::read(f.work.join("local-account-observed.json")).unwrap(),
+                )
+                .unwrap();
+                assert_eq!(
+                    observation,
+                    json!({"selected":true,"same_home":false,"ambient_key":false})
+                );
+                assert_eq!(f.count("SELECT COUNT(*) FROM managed_accounts"), 0);
+                assert_eq!(
+                    f.count("SELECT COUNT(*) FROM account_login_observations"),
+                    0
+                );
+                assert_eq!(report.canonical_status, Some(TaskState::InProgress));
+            }
+            "during" => {
+                assert_eq!(report.failure, Some(Failure::LostAuthority));
+                f.quarantined();
+            }
+            _ => {
+                assert_eq!(report.protocol, Protocol::NotStarted, "{choice}");
+                assert!(!f.marker().exists(), "{choice}");
+            }
+        }
+        assert!(fs::read_to_string(home.join("auth.json")).is_err());
+        drop(report);
+        f.domain.shutdown().await.unwrap();
+    }
+}
+
 #[tokio::test]
 async fn native_account_host_consumer() {
     for choice in [
@@ -71,7 +164,7 @@ async fn native_account_host_consumer() {
                 panic!("cleanup remains unknown")
             };
             assert!(cleanup.scope.leader_exited);
-            if cfg!(target_os = "macos") {
+            if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
                 assert!(report.retains_process_custody());
             } else {
                 assert!(cleanup.scope.whole_tree_stopped);
@@ -96,7 +189,7 @@ async fn native_account_host_consumer() {
     let report = operation.wait().await.unwrap();
     assert_eq!(report.failure, Some(Failure::LostAuthority));
     assert_eq!(report.protocol, Protocol::Unknown);
-    if cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         assert!(report.retains_process_custody());
     }
     f.quarantined();

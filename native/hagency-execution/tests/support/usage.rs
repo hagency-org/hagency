@@ -2,13 +2,15 @@ use super::*;
 use crate::test_common::*;
 use hagency_core::tasks::*;
 use hagency_runtime::codex::{
-    session::{SessionDriver, Settings},
+    session::{Observation, SessionDriver, Settings},
     transport,
 };
 use hagency_store::{DomainRepository, EffectOutcome};
 use serde_json::{Value, json};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::io::{AsyncReadExt, AsyncWriteExt, DuplexStream};
+#[path = "claude_usage.rs"]
+mod claude;
 
 fn now() -> u64 {
     SystemTime::now()
@@ -23,10 +25,18 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::family("codex").await
+    }
+    async fn family(family: &str) -> Self {
         let root = tempfile::tempdir().unwrap();
         let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
         db.register(&registration()).unwrap();
-        let pool = resource("pool", "seat", 1000);
+        let mut pool = resource("pool", "seat", 1000);
+        pool.framework = family.into();
+        if family == "claude" {
+            pool.model = "claude-sonnet-5".into();
+            pool.reasoning = None;
+        }
         db.put_resource(&pool).unwrap();
         let proof = proof(&request("allocation", "Worker", &pool, 100));
         let engagement = db.admit(&proof, 1000).unwrap();
@@ -183,7 +193,9 @@ async fn native_owned_usage_normalization_refusal_retains_evidence() {
     assert!(!f.run.observe(&event));
     assert!(f.run.status().rejected && f.run.status().closed);
     assert_eq!(f.run.status().failure, Some(UsageFailure::Normalization));
-    let evidence = f.run.rejected.as_ref().unwrap();
+    let Evidence::Codex(evidence) = f.run.rejected.as_ref().unwrap() else {
+        panic!("wrong retained usage family")
+    };
     assert_eq!(evidence.total().input_tokens(), Some(9_007_199_254_740_991));
     assert_eq!(evidence.total().output_tokens(), Some(1));
     assert_eq!(evidence.total().total_tokens(), None);

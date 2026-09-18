@@ -2,6 +2,102 @@ use super::{approval_fixture::*, *};
 use hagency_core::approvals::ApprovalChoice;
 
 #[tokio::test]
+async fn native_owned_approval_long_budget() {
+    let f = Fixture::configured(true);
+    let long = Limits {
+        operation_ms: hagency_core::tasks::MAX_OWNED_OPERATION_MS,
+        response_ms: 1500,
+    };
+    let policy = hagency_execution::ApprovalHost::new(4, 2, 60_000, 2000).unwrap();
+    let host = f
+        .host("owned-approval-mcp", "work", false)
+        .with_approvals(policy)
+        .unwrap();
+    let mut op = Operation::start(f.domain.clone(), f.cap.clone(), host, long).unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let request = notice(&f, &mut op, &mut notices).await;
+    assert!(
+        request.owner_expires_at > now() + 30_000,
+        "owner window must exceed the old bound"
+    );
+    assert_eq!(f.state(), "parked");
+    choose(&f, &request.request_id, ApprovalChoice::Once).await;
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}",
+        report.failure,
+        report.runtime_observation()
+    );
+    assert_eq!(responses(&f).len(), 1);
+    unconfirmed(&f);
+    drop(report);
+    drop(op);
+    f.domain.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn native_owned_mcp_approval_once() {
+    for choice in [ApprovalChoice::Once, ApprovalChoice::Deny] {
+        let f = Fixture::configured(true);
+        let (mut op, mut notices) = operation(&f, "owned-approval-mcp", policy());
+        let request = notice(&f, &mut op, &mut notices).await;
+        let card = f
+            .domain
+            .private_approval(request.request_id.clone())
+            .await
+            .unwrap();
+        assert!(!card.summary.reusable_scope);
+        assert_eq!(card.method, "mcpServer/elicitation/request");
+        assert_eq!(card.params["itemId"], "file-item");
+        assert_eq!(card.params["correlatedToolCall"]["toolName"], "send_file");
+        assert_eq!(
+            card.params["correlatedToolCall"]["arguments"],
+            card.params["nativeRequest"]["_meta"]["tool_params"]
+        );
+        assert!(card.params["nativeRequest"].get("itemId").is_none());
+        assert_eq!(f.state(), "parked");
+        assert!(responses(&f).is_empty());
+        for unsupported in [ApprovalChoice::Task, ApprovalChoice::Always] {
+            assert!(
+                f.domain
+                    .observe_owner_verdict(hagency_core::approvals::OwnerVerdictObservation {
+                        request_id: request.request_id.clone(),
+                        request_digest: card.digest.clone(),
+                        binding_generation: card.binding_generation,
+                        server_name: "example.test".into(),
+                        room_id: card.room_id.clone(),
+                        sender_mxid: card.owner_mxid.clone(),
+                        event_id: format!("$unsupported-{unsupported:?}"),
+                        encrypted: true,
+                        choice: unsupported,
+                    })
+                    .await
+                    .is_err()
+            );
+        }
+        choose(&f, &request.request_id, choice).await;
+        let report = op.wait().await.unwrap();
+        assert_eq!(
+            report.protocol,
+            Protocol::Completed,
+            "{:?} {:?}",
+            report.failure,
+            report.runtime_observation()
+        );
+        marker(&f, "approval-continued").await;
+        let responses = responses(&f);
+        assert_eq!(responses.len(), 1);
+        assert_eq!(
+            responses[0]["result"],
+            json!({"action":if choice==ApprovalChoice::Once {"accept"} else {"decline"},"content":null,"_meta":null})
+        );
+        unconfirmed(&f);
+    }
+}
+
+#[tokio::test]
 async fn native_owned_approval_resume() {
     for choice in [ApprovalChoice::Once, ApprovalChoice::Deny] {
         let f = Fixture::configured(true);

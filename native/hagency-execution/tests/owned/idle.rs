@@ -1,6 +1,85 @@
 use super::*;
 
 #[tokio::test]
+async fn native_owned_turn_long_lifetime() {
+    let f = Fixture::new();
+    let began = std::time::Instant::now();
+    let mut operation = Operation::start(
+        f.domain.clone(),
+        f.cap.clone(),
+        f.host("quiet-long-turn", "work", false),
+        Limits {
+            operation_ms: 45_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let report = operation.wait().await.unwrap();
+    assert!(
+        began.elapsed() >= Duration::from_secs(31),
+        "early exit after {:?}: protocol={:?}, failure={:?}, startup={:?}, observation={:?}",
+        began.elapsed(),
+        report.protocol,
+        report.failure,
+        report.startup_error(),
+        report.runtime_observation()
+    );
+    assert_eq!(
+        report.protocol,
+        Protocol::Completed,
+        "{:?} {:?}",
+        report.failure,
+        report.runtime_observation()
+    );
+    assert_eq!(report.text.as_deref(), Some("离线管道验证完成"));
+    if cfg!(any(target_os = "linux", target_os = "macos", windows)) {
+        assert_eq!(report.failure, None);
+        assert_eq!(report.settlement, Settlement::Completed);
+        assert_eq!(f.state(), "completed");
+        assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
+    } else {
+        assert_eq!(report.failure, Some(Failure::CleanupUnknown));
+        f.quarantined();
+    }
+    drop(report);
+    drop(operation);
+    f.domain.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn native_owned_turn_long_cancel() {
+    let f = Fixture::new();
+    let mut operation = Operation::start(
+        f.domain.clone(),
+        f.cap.clone(),
+        f.host("quiet-open", "work", false),
+        Limits {
+            operation_ms: hagency_core::tasks::MAX_OWNED_OPERATION_MS,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let until = tokio::time::Instant::now() + Duration::from_secs(4);
+    while !f.work.join("owned-dispatch.quiet").is_file() {
+        assert!(tokio::time::Instant::now() < until);
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let began = std::time::Instant::now();
+    operation.cancel();
+    let report = operation.wait().await.unwrap();
+    assert!(
+        began.elapsed() < Duration::from_secs(8),
+        "cancellation must not wait for the long operation budget"
+    );
+    assert_eq!(report.failure, Some(Failure::Cancelled));
+    f.quarantined();
+    assert!(!report.retains_process_custody());
+    drop(report);
+    drop(operation);
+    f.domain.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn native_owned_turn_quiet_notification_wait() {
     let f = Fixture::new();
     let at = std::time::Instant::now();
@@ -11,7 +90,7 @@ async fn native_owned_turn_quiet_notification_wait() {
     assert_eq!(report.text.as_deref(), Some("离线管道验证完成"));
     assert!(at.elapsed() >= Duration::from_millis(2200));
     assert_ne!(report.failure, Some(Failure::Protocol));
-    if cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         // Preserve this generic fixture's existing unqualified descendant scope.
         assert_eq!(report.failure, Some(Failure::CleanupUnknown));
         f.quarantined();

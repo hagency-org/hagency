@@ -1,21 +1,29 @@
 //! Host-only, single-operation integration. Production availability is false:
 //! directory provisioning, effective sandbox and owner approval IO remain gates.
 mod approval;
+mod factory;
 mod host;
+mod inspection;
+mod local_codex;
 mod operation;
 mod registration;
 mod usage;
+mod warm;
 mod workspace;
 #[cfg(any(test, feature = "test-diagnostics"))]
 pub use approval::diagnostics;
 pub use approval::{ApprovalHost, ApprovalNotice, ApprovalRequests};
-pub use host::{Host, Limits};
+pub use factory::{FactoryDispatch, FactoryRuntime, WarmHostPlan, WarmTaskBridge};
+pub use host::{Host, Limits, SharedHost};
+pub use inspection::StopInspectionStatus;
+pub use local_codex::LocalCodex;
 pub use operation::{
     Failure, Operation, Protocol, Report, RuntimeObservation, RuntimeStage,
     RuntimeWriteObservation, Settlement, SettlementCause,
 };
 pub use registration::{LaunchAck, RegistrationError, WorkspaceRegistration};
 pub use usage::{UsageFailure, UsageStatus};
+pub use warm::{WarmLimits, WarmRuntime};
 pub use workspace::{
     StartedWorkspace, WorkspaceError, WorkspaceReceive, WorkspaceReceiveError, ordinary_launch_path,
 };

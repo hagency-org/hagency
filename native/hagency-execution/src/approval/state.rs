@@ -256,7 +256,7 @@ impl Callbacks {
             upstream_id: rpc_id(request.id())?,
             item_id: request.item_id().into(),
             method: request.method().into(),
-            params: request.params().clone(),
+            params: request.host_params(),
             expires_at,
         };
         let key = request.id().clone();

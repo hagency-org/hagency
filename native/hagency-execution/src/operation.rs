@@ -1,7 +1,7 @@
 use crate::registration::{Gate, RegistrationSlot, WorkspaceRegistration};
 use crate::usage::{UsageFailure, UsageRun, UsageStatus};
 use crate::workspace::{Binding, Handoff};
-use crate::{Host, Limits, StartedWorkspace};
+use crate::{Host, Limits, SharedHost, StartedWorkspace};
 use hagency_core::tasks::{RunnerCapability, RunnerCommand, Task, TaskState};
 use hagency_runtime::{
     codex::session::{self, Outcome, Update},
@@ -226,6 +226,8 @@ pub struct RuntimeWriteObservation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuntimeObservation {
     pub stage: RuntimeStage,
+    pub server_request: Option<&'static str>,
+    pub refused_notification: Option<&'static str>,
     pub session_error: Option<session::Error>,
     pub transport_cause: Option<hagency_runtime::codex::transport::Error>,
     pub pending_requests: Option<usize>,
@@ -237,6 +239,8 @@ impl RuntimeObservation {
         let termination = runner.transport_termination();
         Self {
             stage,
+            server_request: runner.last_server_request(),
+            refused_notification: runner.refused_notification(),
             session_error: match runner.protocol_outcome() {
                 Some(Outcome::Unknown { reason }) => Some(*reason),
                 _ => None,
@@ -265,10 +269,14 @@ pub struct Report {
     /// never used for authority, retry, reply or lease decisions.
     pub settlement_cause: Option<SettlementCause>,
     pub failure: Option<Failure>,
+    /// Fixed original startup diagnostics, never authority or child-stop proof.
+    startup_error: Option<StartError>,
     runtime_observation: Option<RuntimeObservation>,
     runtime_stage: RuntimeStage,
     pub text: Option<String>,
-    owner: Option<OwnedSession>,
+    pub(crate) owner: Option<OwnedSession>,
+    pub(crate) warm: Option<crate::warm::Binding>,
+    factory: Option<crate::warm::Binding>,
     /// Custody for a child whose spawn was abandoned at the deadline (ADR-053
     /// amendment): the detached blocking thread try-sends the spawn result here;
     /// the teardown adopts any late OwnedSession before capture, or it drops on
@@ -276,17 +284,20 @@ pub struct Report {
     /// process-group kill. Never blocks: a gone receiver is the backstop's trigger.
     late_child: Option<oneshot::Receiver<Result<OwnedSession, StartError>>>,
     approvals: Option<crate::approval::ApprovalRun>,
-    live: Option<crate::approval::Reservation>,
+    pub(crate) live: Option<crate::approval::Reservation>,
     reconciliation: Option<(DomainStore, RunnerCapability, OwnedFailure)>,
     usage: Option<UsageRun>,
     // After owner in field order: actual cleanup drops before retained roots.
     workspace: Option<Arc<Binding>>,
-    account: Option<hagency_store::ManagedLaunch>,
+    stopped_scope: Option<hagency_store::OwnedDispatchScope>,
+    stop_inspection: crate::inspection::Inspection,
+    pub(crate) account: Option<hagency_store::ManagedLaunch>,
+    local_codex: Option<Arc<crate::LocalCodex>>,
     handoff: Handoff,
     registration: Option<Gate>,
 }
 impl Report {
-    fn new(handoff: Handoff) -> Self {
+    pub(crate) fn new(handoff: Handoff) -> Self {
         Self {
             protocol: Protocol::NotStarted,
             cleanup: Cleanup::Pending,
@@ -294,17 +305,23 @@ impl Report {
             settlement: Settlement::Pending,
             settlement_cause: None,
             failure: None,
+            startup_error: None,
             runtime_observation: None,
             runtime_stage: RuntimeStage::Initialize,
             text: None,
             owner: None,
+            warm: None,
+            factory: None,
             late_child: None,
             approvals: None,
             live: None,
             reconciliation: None,
             usage: None,
             workspace: None,
+            stopped_scope: None,
+            stop_inspection: crate::inspection::Inspection::unavailable(),
             account: None,
+            local_codex: None,
             handoff,
             registration: None,
         }
@@ -313,6 +330,17 @@ impl Report {
     /// owner. No descriptor, process ID, payload or private stderr is exposed.
     pub fn runtime_observation(&self) -> Option<&RuntimeObservation> {
         self.runtime_observation.as_ref()
+    }
+    pub fn startup_error(&self) -> Option<StartError> {
+        self.startup_error
+    }
+    pub fn stop_inspection_status(&self) -> crate::StopInspectionStatus {
+        self.stop_inspection.status()
+    }
+    /// Re-record only the original frozen observation after receipt loss. This
+    /// cannot scan a new root or mint evidence from caller-modified diagnostics.
+    pub async fn retry_stop_inspection(&mut self) -> crate::StopInspectionStatus {
+        self.stop_inspection.retry().await
     }
     #[cfg(test)]
     pub(crate) fn approval_custody(&self) -> (usize, usize, usize, usize) {
@@ -365,6 +393,7 @@ impl Report {
         if let Some(owner) = &mut self.owner {
             self.cleanup = owner.stop();
         } else if self.cleanup == Cleanup::Pending
+            && self.late_child.is_none()
             && let Some(live) = &mut self.live
         {
             live.release();
@@ -414,7 +443,7 @@ fn stopped(cleanup: Cleanup) -> bool {
 /// One host operation, one retained OS worker, one result slot. No scheduler or
 /// detached cleanup. Dropping a waiting future requests cancellation; the worker
 /// still stops and reconciles. Dropping this handle joins it synchronously, with
-/// the conservative 60 s combined wait allowance documented by `Limits`. It must
+/// the operation-budget-plus-30 s allowance documented by `Limits`. It must
 /// not be dropped on a latency-sensitive HTTP/UI worker. There is no forced
 /// thread termination or claim that an unknown child/guardian outcome is clean.
 pub struct Operation {
@@ -424,7 +453,51 @@ pub struct Operation {
     workspace: Handoff,
     registration: RegistrationSlot,
     approvals: Option<crate::ApprovalRequests>,
+    continuation: Arc<Continuation>,
 }
+/// Private original result custody. Neither Report mutation nor a caller's
+/// cleanup/status metadata can populate this slot or acknowledge its worker.
+pub(crate) struct Continuation {
+    binding: Mutex<Option<crate::warm::Binding>>,
+    acknowledged: AtomicBool,
+    cancel: Arc<AtomicBool>,
+}
+impl Continuation {
+    pub(crate) fn binding(&self) -> Result<crate::warm::Binding, Failure> {
+        if !self.acknowledged.load(Ordering::Acquire) {
+            return Err(Failure::Admission);
+        }
+        self.binding
+            .lock()
+            .map_err(|_| Failure::Worker)?
+            .clone()
+            .ok_or(Failure::Admission)
+    }
+    pub(crate) fn cancel(&self) {
+        self.cancel.store(true, Ordering::Release);
+    }
+    fn record(&self, report: &Report) {
+        let usage = report.usage_status();
+        if report.failure.is_none()
+            && stopped(report.cleanup)
+            && matches!(
+                report.settlement,
+                Settlement::Completed | Settlement::CanonicalReplyReady
+            )
+            && report.owner.is_none()
+            && report.late_child.is_none()
+            && usage.bound
+            && usage.closed
+            && !usage.pending
+            && !usage.rejected
+            && usage.failure.is_none()
+            && let Ok(mut binding) = self.binding.lock()
+        {
+            *binding = report.factory.as_ref().or(report.warm.as_ref()).cloned();
+        }
+    }
+}
+pub(crate) type OwnedWork = Box<dyn FnOnce(&tokio::runtime::Runtime, Option<Box<Report>>) + Send>;
 impl Operation {
     pub fn start(
         domain: DomainStore,
@@ -432,7 +505,7 @@ impl Operation {
         host: Host,
         limits: Limits,
     ) -> Result<Self, Failure> {
-        Self::start_mode(domain, capability, host, limits, false)
+        Self::start_mode(domain, capability, host.into_shared(), limits, false)
     }
     /// Require the host to register the exact Started workspace before any child.
     pub fn start_requiring_workspace(
@@ -441,15 +514,78 @@ impl Operation {
         host: Host,
         limits: Limits,
     ) -> Result<Self, Failure> {
+        Self::start_mode(domain, capability, host.into_shared(), limits, true)
+    }
+    /// Require workspace registration while retaining the same originally
+    /// admitted host configuration for another sequential operation.
+    pub fn start_requiring_workspace_shared(
+        domain: DomainStore,
+        capability: RunnerCapability,
+        host: SharedHost,
+        limits: Limits,
+    ) -> Result<Self, Failure> {
         Self::start_mode(domain, capability, host, limits, true)
     }
     fn start_mode(
         domain: DomainStore,
         capability: RunnerCapability,
-        host: Host,
+        host: SharedHost,
         limits: Limits,
         required: bool,
     ) -> Result<Self, Failure> {
+        let (mut operation, work) =
+            Self::prepare(domain, capability, host, limits, required, false)?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| Failure::Worker)?;
+        let worker = std::thread::Builder::new()
+            .name("hagency-owned-dispatch".into())
+            .spawn(move || work(&runtime, None))
+            .map_err(|_| Failure::Worker)?;
+        operation.worker = Some(worker);
+        Ok(operation)
+    }
+    pub(crate) fn prepare(
+        domain: DomainStore,
+        capability: RunnerCapability,
+        host: SharedHost,
+        limits: Limits,
+        required: bool,
+        reuse_live: bool,
+    ) -> Result<(Self, OwnedWork), Failure> {
+        Self::prepare_bound(domain, capability, host, limits, required, reuse_live, None)
+    }
+    pub(crate) fn start_factory_followup(
+        domain: DomainStore,
+        capability: RunnerCapability,
+        host: SharedHost,
+        limits: Limits,
+        binding: crate::warm::Binding,
+    ) -> Result<Self, Failure> {
+        let (mut operation, work) =
+            Self::prepare_bound(domain, capability, host, limits, true, false, Some(binding))?;
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| Failure::Worker)?;
+        operation.worker = Some(
+            std::thread::Builder::new()
+                .name("hagency-owned-dispatch".into())
+                .spawn(move || work(&runtime, None))
+                .map_err(|_| Failure::Worker)?,
+        );
+        Ok(operation)
+    }
+    fn prepare_bound(
+        domain: DomainStore,
+        capability: RunnerCapability,
+        host: SharedHost,
+        limits: Limits,
+        required: bool,
+        reuse_live: bool,
+        factory: Option<crate::warm::Binding>,
+    ) -> Result<(Self, OwnedWork), Failure> {
         if !limits.validate() {
             return Err(Failure::Admission);
         }
@@ -457,115 +593,153 @@ impl Operation {
         let expires_at = crate::approval::state::wall_now()?
             .checked_add(limits.operation_ms)
             .ok_or(Failure::Deadline)?;
-        let (live, approval_run, approval_requests) = if let Some(policy) = &host.approvals {
+        let (live, approval_run, approval_requests) = if let Some(policy) = &host.0.approvals {
             if !policy.fits(limits) {
                 return Err(Failure::Admission);
             }
-            let live = policy.reserve_live()?;
+            let live = if reuse_live {
+                None
+            } else {
+                Some(policy.reserve_live()?)
+            };
             let (send, receive) = crate::approval::notices();
             (
-                Some(live),
+                live,
                 Some(crate::approval::ApprovalRun::new(policy.clone(), send)),
                 Some(receive),
             )
         } else {
             (None, None, None)
         };
-        // Runtime construction has no child/domain effect and fails synchronously.
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|_| Failure::Worker)?;
         let cancel = Arc::new(AtomicBool::new(false));
+        let continuation = Arc::new(Continuation {
+            binding: Mutex::new(None),
+            acknowledged: AtomicBool::new(false),
+            cancel: cancel.clone(),
+        });
+        let original_completion = continuation.clone();
         let signal = cancel.clone();
         let (reply, result) = oneshot::channel();
         let workspace = Arc::new(Mutex::new(None));
         let handoff = workspace.clone();
         let (gate, registration) = Gate::new();
-        let worker = std::thread::Builder::new()
-            .name("hagency-owned-dispatch".into())
-            .spawn(move || {
-                let mut report = Box::new(Report::new(handoff));
-                report.registration = required.then_some(gate);
+        let work: OwnedWork = Box::new(move |runtime, warm| {
+            let mut report = warm.unwrap_or_else(|| Box::new(Report::new(handoff.clone())));
+            report.handoff = handoff;
+            report.registration = required.then_some(gate);
+            if report.live.is_none() {
                 report.live = live;
-                report.approvals = approval_run;
-                #[cfg(test)]
-                if let Some(run) = &mut report.approvals {
-                    run.set_fault(host.approval_fault, host.approval_gate.clone());
+            }
+            report.approvals = approval_run;
+            report.factory = factory;
+            #[cfg(test)]
+            if let Some(run) = &mut report.approvals {
+                run.set_fault(host.0.approval_fault, host.0.approval_gate.clone());
+            }
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if reuse_live
+                    && (report.warm.is_none()
+                        || report.owner.is_none()
+                        || (host.0.approvals.is_some() && report.live.is_none()))
+                {
+                    return Err(Failure::Worker);
                 }
-                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    runtime.block_on(execute(
-                        &domain,
-                        &capability,
-                        host,
-                        limits,
-                        &signal,
-                        Deadline { until, expires_at },
-                        &mut report,
-                    ))
-                }))
-                .unwrap_or(Err(Failure::Worker));
-                if let Some(usage) = &mut report.usage {
-                    usage.close();
+                runtime.block_on(execute(
+                    &domain,
+                    &capability,
+                    host.0,
+                    limits,
+                    &signal,
+                    Deadline { until, expires_at },
+                    &mut report,
+                ))
+            }))
+            .unwrap_or(Err(Failure::Worker));
+            if let Some(usage) = &mut report.usage {
+                usage.close();
+            }
+            if let Err(failure) = outcome {
+                // execute retains any returned owner; stop before negative domain
+                // observation too. This can never authorize lease release.
+                // ADOPTION (ADR-053 amendment): a spawn abandoned at the
+                // deadline may still complete on its detached thread — the
+                // late child arrives through SpawnCustody. Adopt it BEFORE
+                // capture/stop and BEFORE the fence is written, so the
+                // existing teardown (observe_stop's guardian stop/reap;
+                // on a miss, SupervisedProcess::Drop's socket EOF triggers
+                // the guardian's process-group kill) is what reaps it. The
+                // receive is try-only — bounded by the thread having
+                // already signalled — so finalization never waits.
+                if report.runtime_observation.is_none()
+                    && report.owner.is_none()
+                    && let Some(mut late) = report.late_child.take()
+                    && let Ok(Ok(session)) = late.try_recv()
+                {
+                    report.owner = Some(session);
                 }
-                if let Err(failure) = outcome {
-                    // execute retains any returned owner; stop before negative domain
-                    // observation too. This can never authorize lease release.
-                    // ADOPTION (ADR-053 amendment): a spawn abandoned at the
-                    // deadline may still complete on its detached thread — the
-                    // late child arrives through SpawnCustody. Adopt it BEFORE
-                    // capture/stop and BEFORE the fence is written, so the
-                    // existing teardown (observe_stop's guardian stop/reap;
-                    // on a miss, SupervisedProcess::Drop's socket EOF triggers
-                    // the guardian's process-group kill) is what reaps it. The
-                    // receive is try-only — bounded by the thread having
-                    // already signalled — so finalization never waits.
-                    if report.runtime_observation.is_none()
-                        && report.owner.is_none()
-                        && let Some(mut late) = report.late_child.take()
-                        && let Ok(Ok(session)) = late.try_recv()
-                    {
-                        report.owner = Some(session);
+                if report.runtime_observation.is_none()
+                    && let Some(owner) = &report.owner
+                {
+                    report.runtime_observation =
+                        Some(RuntimeObservation::capture(report.runtime_stage, owner));
+                }
+                report.retry_stop();
+                // The payload-carrying refusal (ADR-142) forces one owned
+                // observation here; project it before the move into `failure`.
+                let observation = failure.observation();
+                report.failure = Some(failure);
+                report.reconciliation =
+                    Some((domain.clone(), capability.clone(), observation.clone()));
+                report.settlement = match runtime
+                    .block_on(domain.observe_owned_failure(capability.clone(), observation))
+                {
+                    Ok(value) => {
+                        report.reconciliation = None;
+                        Settlement::Negative(value)
                     }
-                    if report.runtime_observation.is_none()
-                        && let Some(owner) = &report.owner
-                    {
-                        report.runtime_observation =
-                            Some(RuntimeObservation::capture(report.runtime_stage, owner));
-                    }
-                    report.retry_stop();
-                    // The payload-carrying refusal (ADR-142) forces one owned
-                    // observation here; project it before the move into `failure`.
-                    let observation = failure.observation();
-                    report.failure = Some(failure);
-                    report.reconciliation =
-                        Some((domain.clone(), capability.clone(), observation.clone()));
-                    report.settlement = match runtime
-                        .block_on(domain.observe_owned_failure(capability, observation))
-                    {
-                        Ok(value) => {
-                            report.reconciliation = None;
-                            Settlement::Negative(value)
-                        }
-                        Err(_) => Settlement::Unknown,
-                    };
+                    Err(_) => Settlement::Unknown,
+                };
+                if stopped(report.cleanup)
+                    && report.late_child.is_none()
+                    && report.settlement == Settlement::Negative(OwnedObservation::Fenced)
+                    && let (Some(scope), Some(workspace)) =
+                        (&report.stopped_scope, &report.workspace)
+                {
+                    report.stop_inspection =
+                        runtime.block_on(crate::inspection::Inspection::capture(
+                            &domain,
+                            &capability,
+                            scope,
+                            workspace,
+                        ));
                 }
-                if let Some(approvals) = &mut report.approvals {
-                    approvals.finish_notices();
-                }
-                // If the host dropped its handle, sending returns ownership and its
-                // Drop still runs here before this retained worker exits.
-                let _ = reply.send(report);
-            })
-            .map_err(|_| Failure::Worker)?;
-        Ok(Self {
-            cancel,
-            worker: Some(worker),
-            result,
-            workspace,
-            registration,
-            approvals: approval_requests,
-        })
+            }
+            if let Some(approvals) = &mut report.approvals {
+                approvals.finish_notices();
+            }
+            original_completion.record(&report);
+            // If the host dropped its handle, sending returns ownership and its
+            // Drop still runs here before this retained worker exits.
+            let _ = reply.send(report);
+        });
+        Ok((
+            Self {
+                cancel,
+                worker: None,
+                result,
+                workspace,
+                registration,
+                approvals: approval_requests,
+                continuation,
+            },
+            work,
+        ))
+    }
+    pub(crate) fn continuation(&self) -> Arc<Continuation> {
+        self.continuation.clone()
+    }
+    pub(crate) fn adopt_worker(&mut self, worker: JoinHandle<()>) {
+        self.worker = Some(worker);
     }
     /// Nonblocking, one-shot handoff. None means not ready, already taken, or
     /// unavailable. A late value remains sealed but refuses retired access.
@@ -601,6 +775,11 @@ impl Operation {
         guard.done = true;
         if let Some(worker) = self.worker.take() {
             worker.join().map_err(|_| Failure::Worker)?;
+        }
+        if result.is_ok() {
+            self.continuation
+                .acknowledged
+                .store(true, Ordering::Release);
         }
         result
     }
@@ -683,121 +862,24 @@ pub(crate) struct Deadline {
     pub until: Instant,
     pub expires_at: u64,
 }
-async fn execute(
-    domain: &DomainStore,
-    cap: &RunnerCapability,
-    host: Host,
+pub(crate) struct NativeStartup {
+    pub launch: hagency_platform::Launch,
+    pub settings: hagency_runtime::codex::session::Settings,
+    pub io_limits: hagency_runtime::codex::transport::Limits,
+}
+pub(crate) async fn spawn_prepared(
+    host: Arc<Host>,
+    startup: NativeStartup,
     limits: Limits,
     cancel: &Arc<AtomicBool>,
-    deadline: Deadline,
+    until: Instant,
     report: &mut Report,
 ) -> Result<(), Failure> {
-    let Deadline { until, expires_at } = deadline;
-    let scope = bounded(domain.owned_dispatch_scope(cap.clone()), cancel, until)
-        .await?
-        .map_err(|_| Failure::Admission)?;
-    let expected = scope.fingerprint().to_owned();
-    // MA-S2 (ADR-053 amendment): the Host admission re-check. Re-read the
-    // bound account's readiness with the store's own predicate before any
-    // workspace or process work — a fact that settled between selection and
-    // admission parks the row with the named reason (committed, it is the
-    // audit record) and refuses here. Neither the selector nor this admission
-    // trusts the other's cache.
-    bounded(domain.admit_owned_dispatch(cap.clone()), cancel, until)
-        .await?
-        .map_err(|_| Failure::Admission)?;
-    let crate::host::Prepared {
+    let NativeStartup {
         launch,
         settings,
         io_limits,
-        input,
-        root,
-        account,
-    } = host.prepare(&scope, cap, limits)?;
-    report.account = account;
-    checkpoint(cancel, until)?;
-    let start_reply = bounded(
-        domain.start_owned_dispatch(cap.clone(), expected.clone()),
-        cancel,
-        until,
-    )
-    .await?;
-    // Delivery-loss test double only. DomainStore has actually committed the
-    // start; production contains no way to manufacture or recover a lost reply.
-    #[cfg(test)]
-    let start_reply = if host.discard_start_reply && start_reply.is_ok() {
-        Err(hagency_store::Error::OutcomeUnknown)
-    } else {
-        start_reply
-    };
-    let started = start_reply.map_err(|error| {
-        if matches!(
-            error,
-            hagency_store::Error::OutcomeUnknown | hagency_store::Error::Unavailable
-        ) {
-            Failure::StartUnknown
-        } else {
-            Failure::Admission
-        }
-    })?;
-    let approval_workspace = if host.approvals.is_some() {
-        Some(root.approval_path()?)
-    } else {
-        None
-    };
-    let workspace = Binding::start(root, domain.clone(), cap, &started, cancel.clone())?;
-    let _retire_workspace = workspace.retirement(); // all returns and unwinds
-    report.workspace = Some(workspace.clone()); // before any child can exist
-    let required = report.registration.is_some();
-    if let Some(gate) = report.registration.take() {
-        let acknowledged = gate.publish(workspace.handoff())?;
-        bounded(acknowledged, cancel, until)
-            .await?
-            .map_err(|_| Failure::Admission)?;
-    } else {
-        *report.handoff.lock().map_err(|_| Failure::Worker)? = Some(workspace.handoff());
-    }
-    #[cfg(test)]
-    if host.panic_after_workspace {
-        panic!("offline post-Started workspace unwind");
-    }
-    report.canonical_status = Some(started.task().status);
-    checkpoint(cancel, until)?;
-    let binding = bounded(
-        UsageRun::bind(domain.clone(), cap.clone(), started.clone()),
-        cancel,
-        until,
-    )
-    .await?;
-    // Test build only: discard an actual acknowledged source binding, never
-    // manufacture a successful write or reopen execution after receipt loss.
-    #[cfg(test)]
-    let binding = if host.discard_usage_binding_reply && binding.is_ok() {
-        Err(hagency_store::Error::OutcomeUnknown)
-    } else {
-        binding
-    };
-    report.usage = Some(binding.map_err(|_| Failure::UsageBinding)?);
-    checkpoint(cancel, until)?;
-    if required {
-        bounded(
-            domain.check_owned_dispatch(cap.clone(), expected.clone()),
-            cancel,
-            until,
-        )
-        .await?
-        .map_err(|_| Failure::LostAuthority)?;
-        checkpoint(cancel, until)?;
-    }
-    workspace.check_root().map_err(|_| Failure::Admission)?;
-    if let Some(account) = &report.account {
-        account.check().map_err(|_| Failure::LostAuthority)?;
-    }
-    checkpoint(cancel, until)?;
-    let approval_may_write = !settings.is_read_only();
-    if let Some(live) = &mut report.live {
-        live.possible();
-    }
+    } = startup;
     // ADR-053 amendment: the operation budget bounds the spawn itself.
     // The blocking guardian handshake (supervisor/unix.rs spawn_inner:
     // Prepare -> Prepared -> Start -> Started against its own watch)
@@ -854,6 +936,7 @@ async fn execute(
             match late_child.try_recv() {
                 Ok(Ok(session)) => report.owner = Some(session),
                 Ok(Err(error)) => {
+                    report.startup_error = Some(error);
                     if let StartError::Uncertain { cleanup, .. } = error {
                         report.cleanup = cleanup;
                         if stopped(cleanup)
@@ -895,9 +978,8 @@ async fn execute(
             report.cleanup = Cleanup::Unknown {
                 kind: std::io::ErrorKind::TimedOut,
             };
-            if let Some(live) = &mut report.live {
-                live.release();
-            }
+            // A possible late child is not observed full cleanup. Keep the
+            // original live slot held until an actual stop proves release.
             report.late_child = Some(late_child);
             return Err(Failure::SpawnFailed);
         }
@@ -912,20 +994,201 @@ async fn execute(
     if host.approval_fault == Some(crate::approval::Fault::SpawnPanic) {
         panic!("actual owned spawn unwind");
     }
+    Ok(())
+}
+
+async fn execute(
+    domain: &DomainStore,
+    cap: &RunnerCapability,
+    host: Arc<Host>,
+    limits: Limits,
+    cancel: &Arc<AtomicBool>,
+    deadline: Deadline,
+    report: &mut Report,
+) -> Result<(), Failure> {
+    let Deadline { until, expires_at } = deadline;
+    let scope = bounded(domain.owned_dispatch_scope(cap.clone()), cancel, until)
+        .await?
+        .map_err(|_| Failure::Admission)?;
+    let expected = scope.fingerprint().to_owned();
+    // MA-S2 (ADR-053 amendment): the Host admission re-check. Re-read the
+    // bound account's readiness with the store's own predicate before any
+    // workspace or process work — a fact that settled between selection and
+    // admission parks the row with the named reason (committed, it is the
+    // audit record) and refuses here. Neither the selector nor this admission
+    // trusts the other's cache.
+    bounded(domain.admit_owned_dispatch(cap.clone()), cancel, until)
+        .await?
+        .map_err(|_| Failure::Admission)?;
+    if let Some(binding) = report.factory.as_ref().or(report.warm.as_ref()) {
+        binding.check(domain, &scope, cancel, until).await?;
+    }
+    let crate::host::Prepared {
+        launch,
+        settings,
+        io_limits,
+        input,
+        root,
+        account,
+        late_helper,
+    } = if report.factory.is_some() {
+        host.prepare_followup(&scope, cap, limits)?
+    } else {
+        host.prepare(&scope, cap, limits)?
+    };
+    report.account = account;
+    report.local_codex = host.local_codex.clone();
+    checkpoint(cancel, until)?;
+    let start_reply = bounded(
+        domain.start_owned_dispatch(cap.clone(), expected.clone()),
+        cancel,
+        until,
+    )
+    .await?;
+    // Delivery-loss test double only. DomainStore has actually committed the
+    // start; production contains no way to manufacture or recover a lost reply.
+    #[cfg(test)]
+    let start_reply = if host.discard_start_reply && start_reply.is_ok() {
+        Err(hagency_store::Error::OutcomeUnknown)
+    } else {
+        start_reply
+    };
+    let started = start_reply.map_err(|error| {
+        if matches!(
+            error,
+            hagency_store::Error::OutcomeUnknown | hagency_store::Error::Unavailable
+        ) {
+            Failure::StartUnknown
+        } else {
+            Failure::Admission
+        }
+    })?;
+    let approval_workspace = if host.approvals.is_some() {
+        Some(root.approval_path()?)
+    } else {
+        None
+    };
+    let workspace = Binding::start(root, domain.clone(), cap, &started, cancel.clone())?;
+    let _retire_workspace = workspace.retirement(); // all returns and unwinds
+    report.workspace = Some(workspace.clone()); // before any child can exist
+    report.stopped_scope = Some(started.clone());
+    let required = report.registration.is_some();
+    if let Some(gate) = report.registration.take() {
+        let acknowledged = gate.publish(workspace.handoff())?;
+        bounded(acknowledged, cancel, until)
+            .await?
+            .map_err(|_| Failure::Admission)?;
+    } else {
+        *report.handoff.lock().map_err(|_| Failure::Worker)? = Some(workspace.handoff());
+    }
+    #[cfg(test)]
+    if host.panic_after_workspace {
+        panic!("offline post-Started workspace unwind");
+    }
+    report.canonical_status = Some(started.task().status);
+    checkpoint(cancel, until)?;
+    let binding = bounded(
+        UsageRun::bind(domain.clone(), cap.clone(), started.clone()),
+        cancel,
+        until,
+    )
+    .await?;
+    // Test build only: discard an actual acknowledged source binding, never
+    // manufacture a successful write or reopen execution after receipt loss.
+    #[cfg(test)]
+    let binding = if host.discard_usage_binding_reply && binding.is_ok() {
+        Err(hagency_store::Error::OutcomeUnknown)
+    } else {
+        binding
+    };
+    report.usage = Some(binding.map_err(|_| Failure::UsageBinding)?);
+    checkpoint(cancel, until)?;
+    if required {
+        bounded(
+            domain.check_owned_dispatch(cap.clone(), expected.clone()),
+            cancel,
+            until,
+        )
+        .await?
+        .map_err(|_| Failure::LostAuthority)?;
+        checkpoint(cancel, until)?;
+    }
+    workspace.check_root().map_err(|_| Failure::Admission)?;
+    if let Some(account) = &report.account {
+        account.check().map_err(|_| Failure::LostAuthority)?;
+    }
+    if let Some(local) = &report.local_codex {
+        local.check()?;
+    }
+    checkpoint(cancel, until)?;
+    let approval_may_write = !settings.is_read_only();
+    if let Some(live) = &mut report.live {
+        live.possible();
+    }
+    if report.owner.is_none() {
+        spawn_prepared(
+            host.clone(),
+            NativeStartup {
+                launch,
+                settings,
+                io_limits,
+            },
+            limits,
+            cancel,
+            until,
+            report,
+        )
+        .await?;
+    } else {
+        report
+            .owner
+            .as_mut()
+            .ok_or(Failure::SpawnFailed)?
+            .consume_warm_idle(io_limits, limits.response_ms, until)
+            .map_err(|_| Failure::Protocol)?;
+    }
     // The actual child owner is retained before initialize or any startup await.
     let runner = report.owner.as_mut().ok_or(Failure::SpawnFailed)?;
     let runtime_stage = &mut report.runtime_stage;
+    let initialized = report.warm.is_some();
+    let local_codex = report.local_codex.clone();
     let drive = async {
-        watched(
-            runner.initialize(),
-            domain,
-            cap,
-            &expected,
-            cancel,
-            until,
-            &mut report.canonical_status,
-        )
-        .await?;
+        if !initialized {
+            watched(
+                runner.initialize(),
+                domain,
+                cap,
+                &expected,
+                cancel,
+                until,
+                &mut report.canonical_status,
+            )
+            .await?;
+        }
+        if let Some(helper) = late_helper {
+            let context = host.task_context.as_ref().ok_or(Failure::Admission)?;
+            // Await the original retained physical job through return. Do not
+            // abandon its IO at a wrapper timeout or create a second launcher.
+            let binding = context
+                .bind(
+                    domain.clone(),
+                    cap.clone(),
+                    started.clone(),
+                    until.into_std(),
+                    cancel.clone(),
+                )
+                .await;
+            checkpoint(cancel, until)?;
+            binding.map_err(|error| match error {
+                hagency_store::Error::RunnerAuthority | hagency_store::Error::Quarantined => {
+                    Failure::LostAuthority
+                }
+                _ => Failure::Admission,
+            })?;
+            runner
+                .bind_task_mcp(helper)
+                .map_err(|_| Failure::Protocol)?;
+        }
         *runtime_stage = RuntimeStage::ThreadStart;
         let thread_id = watched(
             runner.start_thread(),
@@ -1029,8 +1292,11 @@ async fn execute(
             }
         }
         Ok(())
-    }
-    .await;
+    };
+    let drive = match local_codex {
+        Some(local) => local.watch(drive).await,
+        None => drive.await,
+    };
     // Capture before coordinator stop/removal. The runtime's own failure guard
     // may already have stopped it; its first transport cause remains retained.
     // Observation cannot alter the original drive or cleanup result.

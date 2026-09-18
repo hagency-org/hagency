@@ -569,11 +569,11 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
         host_response_frames(&work).len(),
         probe_read_frames(&work).len()
     );
-    // The retained owner process cleanup reports unknown on macOS, as in
-    // tests/owned/usage.rs; the reconcile itself adds no failure anywhere.
+    // Supported process scopes prove cleanup, as in tests/owned/usage.rs;
+    // other Unix targets remain unknown. Reconcile adds no failure anywhere.
     assert_eq!(
         report.failure,
-        if cfg!(target_os = "macos") {
+        if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
             Some(Failure::CleanupUnknown)
         } else {
             None
@@ -585,12 +585,12 @@ async fn native_owned_approval_acceptance_reconcile_accepted() {
     // Negative control: this fixture drives approval acceptance only and never
     // records a completion row, so the completion block is skipped on every
     // platform and the successful drive completes plainly. The two branches
-    // below differ in which cleanup gate refuses, not in custody: on Linux the
-    // owner's cleanup is proven; on macOS the retained owner's cleanup stays
-    // unproven, so the second gate refuses with `CleanupUnknown` and the
+    // below differ in which cleanup gate refuses, not in custody: supported
+    // scopes prove the owner's cleanup; other Unix scopes leave it unproven,
+    // so the second gate refuses with `CleanupUnknown` and the
     // failure finalization records the store's observation beside it, and the
     // host asserts no unobserved Done.
-    if cfg!(target_os = "macos") {
+    if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         // The worker's failure finalization records the store's observation
         // of the cleanup failure as the settlement: the lease is fenced for
         // reconciliation, never published.
@@ -893,11 +893,10 @@ async fn native_owned_approval_in_flight_resolution_takes_the_quiet_path() {
     // no frame reached the wire, nothing was accepted, and the entry stayed
     // in flight so it was never re-selected.
     let trace = crate::approval::diagnostics::dispatch_trace(&cap.dispatch_id);
-    // The retained owner's cleanup reports unknown on macOS (the supervisor
-    // cannot prove `whole_tree_stopped` there; the same platform-aware
-    // outcome as the resolved-before-first-byte scenario) — an equality, so
+    // Other Unix scopes cannot prove `whole_tree_stopped`, matching the
+    // platform-aware resolved-before-first-byte scenario — an equality, so
     // any other failure is still refused on every platform.
-    let expected = if cfg!(target_os = "macos") {
+    let expected = if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         Some(Failure::CleanupUnknown)
     } else {
         None
@@ -1100,7 +1099,7 @@ async fn native_owned_approval_receipt_before_resolution() {
         report.runtime_observation(),
         crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
-    let expected = if cfg!(target_os = "macos") {
+    let expected = if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         Some(Failure::CleanupUnknown)
     } else {
         None
@@ -1208,7 +1207,7 @@ async fn native_owned_approval_resolved_before_first_byte() {
         report.runtime_observation(),
         crate::approval::diagnostics::last_cancellation_trace(&cap.dispatch_id)
     );
-    let expected = if cfg!(target_os = "macos") {
+    let expected = if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         Some(Failure::CleanupUnknown)
     } else {
         None
@@ -1465,7 +1464,7 @@ async fn native_owned_approval_turn_end_untransmitted() {
     // reachable only through the pump's old re-mapping, which the turn-end rule
     // now forbids (`approval/control.rs:209-215`). Tolerating it would swallow a
     // regression that started cancelling this arm.
-    let acceptable = if cfg!(target_os = "macos") {
+    let acceptable = if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         matches!(report.failure, None | Some(Failure::CleanupUnknown))
     } else {
         report.failure.is_none()

@@ -26,7 +26,9 @@ impl ApprovalHost {
             || response_reserve_ms == 0
             || owner_wait_ms
                 .checked_add(response_reserve_ms)
-                .is_none_or(|n| n > 30_000)
+                // The durable request's existing maximum is ten minutes.
+                // fits() and the callback also cap this by original execution.
+                .is_none_or(|n| n > 600_000)
         {
             return Err(Failure::Admission);
         }
