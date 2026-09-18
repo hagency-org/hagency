@@ -11478,3 +11478,67 @@ with StateAt("admission"). The operator authorized a private policy overlay for
 qualification; the session's permission layer refused to run it, so no live task
 has completed yet. Instance local-native-palpo-e2e-20260918T203925Z holds its
 accounts and rooms with no engagement and no service.
+
+
+2026-09-18 (Claude) FIRST PASSING live two-agent project-room run, local
+provider-owned Codex 0.154.0 through the existing Palpo.
+
+Instance local-native-palpo-e2e2-20260918T231138Z, port 19441, binary from
+dd93dde3. Coordinator plus two factory agents provisioned in about 30 s, all three
+healthy (`failed=false`). The first agent logged its superseded `_1_2` plan as the
+second joined and kept running (ADR178 amendment, second live confirmation). One
+unaddressed project message, then exact mentions to both agents a second apart:
+both reached `running` together, 2 dispatches completed, 2 canonical tasks done,
+2 final replies delivered, 0 leases, two distinct project sessions, the
+unaddressed input woke nobody, each agent wrote its own exact file
+(`ISO_CODEX_PROJECT_<n>_BYTES\n`), and the homeserver's project timeline shows
+`ISO_CODEX_PROJECT_1_OK` and `ISO_CODEX_PROJECT_2_OK` from the two agent accounts.
+About 50 s from mention to both replies. Robrix rendering was not checked by me.
+
+Three things beyond source changes were needed, all recorded so the run can be
+repeated:
+
+1. Model. The operator's provider quota on this date exists only for model id
+   `gpt-reserve` (`gpt-5.6-sol` refused until 09-24, `gpt-5.6-luna` until 09-20).
+   lib/role-capacity.json admits only `gpt-5.6-sol` for codex, so a `gpt-reserve`
+   resource fails adoption with StateAt("admission"). This run used a PRIVATE,
+   operator-authorized, never-committed build with one extra medium-tier row for
+   `gpt-reserve`; the policy file was restored immediately after the build and
+   the instance's build.json says so. The product policy is unchanged.
+2. Homeserver limiter. Palpo's limiters key on the connecting IP and every client
+   behind the proxy shares one address. `rc_registration` and `rc_message` are
+   now `per_second = 0` in that deployment's palpo.toml (backup kept beside it,
+   container restarted healthy, 90 authenticated requests in 1.8 s all 200).
+   `rc_login` and `rc_password` stay on: the server is public. Setup and adoption
+   then pass first try; before, adoption needed up to five attempts.
+3. No shared request pacing. With `matrix_request_interval_ms: 1000` (ADR176) the
+   coordinator ended `unavailable`/`refresh` with `Matrix inbox intake refused
+   error=Timeout`, 59 s and 62 s after the first agent's superseded line on two
+   separate instances, and the second agent stayed `reserved`. That pacing is one
+   1 req/s budget for every Matrix client in the process: with the first agent
+   alive and polling, the second agent's inline provisioning starves and the
+   coordinator's inline intake runs past the 60 s SDK budget. It had only
+   appeared to work earlier because the first agent had already died of the
+   superseded-plan defect. Without the pacing setting, service ready takes 4 s
+   instead of 30 s and both agents provision in about 30 s. ADR176's pacing should
+   not be combined with inline factory provisioning as configured; that is a
+   design follow-up, not changed here.
+
+An earlier instance the same afternoon (e2e, port 19440, pacing still on) gave the
+first single completed project task on the surviving agent before its coordinator
+timed out: dispatch completed, task done, reply delivered and visible, exact file.
+
+Hosted dd93dde3: general CI green; Native Rust Ubuntu GREEN for the first time
+with this work (fleet fixtures, approval round trips and the new regression test
+included), console-browser green, macOS red on one test only,
+`native_configured_fleet_media_two_agents` with a scripted-peer `peer_eof` during
+the media round, the intermittent ADR178 already records; Windows paused.
+
+Sustained run on the same instance, same afternoon: six further rounds, each an
+exact mention to both agents a moment apart, each verified before the next
+(two more delivered replies, both files exact, zero leases, fleet not failed).
+All passed, 30 to 45 s per round. Totals with the first round: 14 dispatches, 14
+completed; 14 canonical tasks, 14 done; 14 final replies delivered. No retry, no
+restart, no operator recovery action. This is a short soak (about six minutes of
+work), not the sustained qualification the plan asks for. The instance was left
+running for operator inspection in Robrix.

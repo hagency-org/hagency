@@ -677,3 +677,15 @@ limit is exhausted until 2026-09-24. Still open for Codex end to end once it is
 lifted: a completed two-agent project-room reply, groups/DMs, uncertain-media
 recovery, outside-workspace sandbox qualification and the sustained soak; and the
 shared Palpo rate-limit bucket, which ended one coordinator with a Matrix timeout.
+
+### Two-agent project-room path passes live (2026-09-18)
+
+Coordinator and two factory agents healthy together; unaddressed input admitted
+without wake; exact mentions to both agents executed concurrently on local Codex
+and completed: canonical Done, exact files, delivered replies visible on the
+homeserver, zero leases. Conditions, recorded in docs/progress.md: a private
+`gpt-reserve` policy overlay (provider quota), the homeserver's registration and
+general limiters disabled, and no shared request pacing, which starves inline
+provisioning of a second agent while the first is alive. Remaining for Codex end
+to end: a sustained multi-round soak on this setup, groups/DMs beyond this case,
+uncertain-media recovery, and outside-workspace sandbox qualification.
