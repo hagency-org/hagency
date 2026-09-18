@@ -11,6 +11,10 @@ use std::{
 pub(super) struct Snapshot {
     pub pid: i32,
     pub parent_pid: i32,
+    /// Process group. A group lives inside exactly one session, and a session is
+    /// entered only by fork inheritance or by creating it, so a group never mixes
+    /// the owned leader's descendants with unrelated processes.
+    pub group: i32,
     pub birth: u64,
     pub parent_birth: u64,
     pub version: u32,
@@ -45,6 +49,8 @@ struct Short {
     reserved: u32,
 }
 const _: () = assert!(size_of::<Unique>() == 56 && size_of::<Short>() == 64);
+/// <sys/spawn.h>, macOS 10.15 and later; the libc crate does not export it.
+const POSIX_SPAWN_SETSID: i32 = 0x0400;
 unsafe extern "C" {
     fn proc_signal_with_audittoken(token: *mut [u32; 8], signal: i32) -> i32;
     fn posix_spawn_file_actions_addchdir_np(
@@ -117,6 +123,7 @@ pub(super) fn observe(pid: i32) -> io::Result<Option<Snapshot>> {
     Ok(Some(Snapshot {
         pid,
         parent_pid: short.parent as i32,
+        group: short.group as i32,
         birth: after.birth,
         parent_birth: after.parent,
         version: after.version as u32,
@@ -289,16 +296,19 @@ pub(super) fn spawn(launch: &Launch, pipes: Option<ChildPipes>) -> io::Result<Ro
         let mut actions = std::mem::zeroed();
         code(libc::posix_spawn_file_actions_init(&mut actions))?;
         let mut actions = Actions(actions);
+        // The leader starts its own session, not merely its own group. Group
+        // membership is then sound tracking evidence: no owned process can join
+        // an unrelated group, and no unrelated process can join an owned one,
+        // because setpgid never crosses a session.
         let flags = libc::POSIX_SPAWN_START_SUSPENDED
             | libc::POSIX_SPAWN_CLOEXEC_DEFAULT
-            | libc::POSIX_SPAWN_SETPGROUP
+            | POSIX_SPAWN_SETSID
             | libc::POSIX_SPAWN_SETSIGMASK
             | libc::POSIX_SPAWN_SETSIGDEF;
         code(libc::posix_spawnattr_setflags(
             &mut attributes.0,
             flags as i16,
         ))?;
-        code(libc::posix_spawnattr_setpgroup(&mut attributes.0, 0))?;
         let mut mask = std::mem::zeroed();
         code(libc::sigemptyset(&mut mask))?;
         code(libc::posix_spawnattr_setsigmask(&mut attributes.0, &mask))?;

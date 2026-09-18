@@ -190,6 +190,50 @@ early root exit, owner loss, inherited descriptor sealing, unrelated live progre
 sticky missing discovery and cached terminal receipts. Platform/runtime tests are
 offline; actual installed-runner qualification and Palpo/Robrix remain separate.
 
+## Session-scoped group evidence amendment (2026-09-18)
+
+The remaining refusal was still too broad for a working machine. Every new
+process anywhere on the host whose parent exited between two censuses, whether
+adopted by init or not, was an unexplained ancestry, and the guardian's loop
+takes a census about every 25 ms and stops the owned tree with
+ObservationFailure on the first one. `sh -c '(tool &)'`, a build's helper
+processes and another agent's own commands all have that shape. The live
+two-agent fleet on 2026-09-18 recorded it as a warm Codex runtime losing
+authority before Started: `lost_authority`, protocol `not_started`, transport
+`host_closed`, cleanup `unknown`, 240 ms after the claim, after minutes of warm
+idle. An idle fixture reproduces it offline: 48 quiet observations pass, and one
+unrelated survivor of an unseen parent fails the second observation. The TS
+reference never had this failure, because it has no gap rule at all: a process
+whose visible parent is not owned is simply not owned.
+
+The refusal stays, but only for a newcomer that nothing classifies. Two changes
+make a sound classification available first.
+
+The leader now starts with POSIX_SPAWN_SETSID instead of SETPGROUP, so it leads
+its own session as well as its own group. A process enters a session only by
+being forked inside it or by creating it, and `setpgid` never crosses a session.
+Every process group therefore lies wholly inside the owned leader's session or a
+session one of its descendants created, or wholly outside them: a group never
+mixes owned and unrelated processes. XNU's fork allocation, cited above, skips a
+PID while it still names a live process, group or session, so a group id cannot
+be recycled under a census.
+
+When ancestry stalls, the tracker reads the process group that SHORTBSDINFO
+already returns. A pending newcomer that shares its group with a process already
+classified in the same census takes that classification: owned, and then stopped
+with the tree, or unrelated. A group with no classified member in that census, or
+with conflicting members, proves nothing; that newcomer remains unexplained and
+the sticky refusal applies as before. Evidence is never remembered across
+censuses. A descendant that daemonizes through an unseen parent into a session of
+its own is the case this cannot classify, and it still refuses.
+
+This is evidence about sessions, not a new authority: signals still go only to
+original lifetime identities, and crash containment on macOS still refuses.
+`native_macos_group_evidence_classifies_unseen_parent` covers the rule,
+`native_macos_unrelated_churn_keeps_descendant_proof` the idle owner under
+unrelated churn, and `native_macos_unseen_parent_in_owned_group_is_stopped` an
+owned survivor of an unseen parent. Both fixtures fail on the previous tracker.
+
 ## Consequences
 
 Owned handles and native observations constrain signalling and cleanup claims. Process launch, leader exit and fixture success remain separate from sandbox qualification and canonical task completion.

@@ -88,7 +88,7 @@ impl Tracking {
             if pending.is_empty() {
                 break;
             }
-            if pending.len() == before {
+            if pending.len() == before && !self.classify_by_group(rows, &mut pending) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
                     if pending.iter().any(|s| s.parent_pid <= 1) {
@@ -117,6 +117,45 @@ impl Tracking {
         }
         Ok(live)
     }
+    /// Ancestry has stalled: each pending newcomer's parent exited before any
+    /// census saw it. That happens constantly on a working machine and says
+    /// nothing about the owned tree, so look for evidence that cannot be forged.
+    ///
+    /// A process group lives inside exactly one session. A process enters a
+    /// session only by being forked inside it or by creating it, and `setpgid`
+    /// never crosses a session. The owned leader starts its own session, so
+    /// every group is wholly owned (the leader's session, or one a descendant
+    /// created) or wholly unrelated. A newcomer sharing its group with a process
+    /// already classified in this same census therefore has that classification.
+    /// A group with no classified member, or with conflicting members, proves
+    /// nothing, and the newcomer stays unconfirmed.
+    fn classify_by_group(&mut self, rows: &[Snapshot], pending: &mut Vec<&Snapshot>) -> bool {
+        let mut groups: BTreeMap<i32, Option<bool>> = BTreeMap::new();
+        for row in rows.iter().filter(|row| row.group > 0) {
+            if let Some(&own) = self.known.get(&row.birth) {
+                groups
+                    .entry(row.group)
+                    .and_modify(|verdict| {
+                        if *verdict != Some(own) {
+                            *verdict = None;
+                        }
+                    })
+                    .or_insert(Some(own));
+            }
+        }
+        let before = pending.len();
+        pending.retain(|s| match groups.get(&s.group).copied().flatten() {
+            Some(own) => {
+                self.known.insert(s.birth, own);
+                if own {
+                    self.owned.insert(s.birth, **s);
+                }
+                false
+            }
+            None => true,
+        });
+        pending.len() != before
+    }
 }
 fn gap() -> io::Error {
     io::Error::new(
@@ -131,6 +170,7 @@ mod tests {
     fn row(pid: i32, birth: u64, parent: u64) -> Snapshot {
         Snapshot {
             pid,
+            group: pid,
             birth,
             parent_birth: parent,
             parent_pid: 10,
@@ -188,6 +228,49 @@ mod tests {
         let mut t = Tracking::new(&[root], root);
         assert!(t.update(&[root, root]).is_err());
         t.fail();
+        assert!(t.failed());
+    }
+    #[test]
+    fn native_macos_group_evidence_classifies_unseen_parent() {
+        let root = row(10, 100, 1);
+        let foreign = row(20, 200, 1);
+        let grouped = |pid, birth, parent, group| Snapshot {
+            group,
+            ..row(pid, birth, parent)
+        };
+        // An unrelated survivor of a parent no census saw, in a known foreign
+        // group: foreign, and its own children then resolve by ancestry.
+        let mut t = Tracking::new(&[root, foreign], root);
+        let survivor = grouped(50, 500, 999, 20);
+        let child = row(51, 510, 500);
+        assert_eq!(
+            t.update(&[root, foreign, survivor, child]).unwrap().len(),
+            1
+        );
+        assert!(!t.failed());
+        assert_eq!(t.owned().len(), 1);
+        // The same shape inside the owned leader's group is owned and live.
+        let escaped = grouped(60, 600, 998, 10);
+        assert_eq!(
+            t.update(&[root, foreign, survivor, escaped]).unwrap().len(),
+            2
+        );
+        assert_eq!(t.owned().len(), 2);
+        assert!(!t.failed());
+        // A group with no classified member proves nothing.
+        let mut t = Tracking::new(&[root, foreign], root);
+        assert!(
+            t.update(&[root, foreign, grouped(70, 700, 997, 70)])
+                .is_err()
+        );
+        assert!(t.failed());
+        // Evidence must be present in the same census, not remembered.
+        let mut t = Tracking::new(&[root, foreign], root);
+        assert!(t.update(&[root, grouped(50, 500, 999, 20)]).is_err());
+        // Conflicting members prove nothing.
+        let mut t = Tracking::new(&[root, foreign], root);
+        let mixed = grouped(20, 200, 1, 10);
+        assert!(t.update(&[root, mixed, grouped(80, 800, 996, 10)]).is_err());
         assert!(t.failed());
     }
 }

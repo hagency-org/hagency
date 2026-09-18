@@ -22,6 +22,10 @@ exit for descendant observation or claim kernel crash containment.
 - Stop and inspect detached descendants while preserving unrelated processes.
 - Keep lost inspection, unclassified new ancestry, capacity and deadline outcomes
   explicitly unknown. No fresh census repairs an earlier tracking gap.
+- Start the leader in its own session. When ancestry stalls, classify a newcomer
+  only by a process it shares a group with in that same census; a group with no
+  classified member, or with conflicting members, classifies nothing.
+- Unrelated process churn on the host must not end an idle owner's observation.
 - Preserve Linux subreaper and Windows Job behavior and existing bounded waits.
 - Run actual local native process fixtures and then the local runtime path.
 
@@ -83,6 +87,25 @@ Scenario: Missing ancestry cannot produce a positive stop receipt
   When original known processes are stopped
   Then leader exit remains separate from unproven descendant cleanup
 
+Scenario: Group membership classifies a newcomer whose parent no census saw
+  Test: native_macos_group_evidence_classifies_unseen_parent
+  Given newcomers with unseen parents in a foreign group, the owned group and an unknown group
+  When the tracker updates from one census
+  Then the first is unrelated, the second is owned and live, and the third still refuses
+  And evidence absent from that census or conflicting within a group classifies nothing
+
+Scenario: Unrelated churn does not cost an idle owner its observation or stop proof
+  Test: native_macos_unrelated_churn_keeps_descendant_proof
+  Given an idle supervised leader observed every 100 ms
+  When unrelated processes keep surviving parents that exit before any census
+  Then every observation stays positive and the stop receipt proves the whole tree
+
+Scenario: An owned survivor of an unseen parent is stopped with its tree
+  Test: native_macos_unseen_parent_in_owned_group_is_stopped
+  Given a leader whose subshell forks a survivor and exits at once
+  When the owner observes and then stops the tree
+  Then observation stays positive, the receipt proves the whole tree and the survivor is gone
+
 Scenario: Local operator configuration cannot widen the requested thread policy
   Test: native_codex_session_settings
   Given provider-owned login and existing operator sandbox settings
@@ -101,3 +124,8 @@ Scenario: Local Codex hook notices preserve their exact thread and turn
 Extend ADR029 with the TS behavior baseline and native macOS implementation.
 Process observations are not a filesystem/network sandbox or a guarantee against
 guardian death. The real local Palpo/Robrix run remains required after this link.
+
+2026-09-18: ADR029's session-scoped group evidence amendment. The live two-agent
+fleet lost a warm Codex runtime's authority before Started because any process on
+the host with an unseen parent stopped the owned tree. The refusal now applies
+only to a newcomer that neither ancestry nor its process group classifies.

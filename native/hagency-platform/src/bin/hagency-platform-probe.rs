@@ -98,6 +98,25 @@ fn main() -> io::Result<()> {
             std::process::exit(0);
         }
         #[cfg(target_os = "macos")]
+        Some("unseen-middle") => {
+            // The subshell forks the survivor and exits at once, so no census
+            // sees the survivor's parent. A non-interactive shell changes no
+            // process group: the survivor stays in the leader's.
+            let status = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg("(/bin/sleep 30 & echo $! > \"$0\"); exit 0")
+                .arg(marker.with_extension("survivor"))
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()?;
+            if !status.success() {
+                return Err(io::Error::other("unseen middle failed"));
+            }
+            fs::write(marker.with_extension("entered"), b"entered")?;
+            pulse(marker)
+        }
+        #[cfg(target_os = "macos")]
         Some("tracked-middle") => {
             let mut child = detached_command()?
                 .arg("detached-leaf")
