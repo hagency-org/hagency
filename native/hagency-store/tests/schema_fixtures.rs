@@ -1,6 +1,51 @@
 mod common;
 
 #[test]
+fn native_stopped_inspection_schema34_upgrade() {
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let mut db = hagency_store::DomainRepository::open(&state).unwrap();
+    let resource = common::resource("preserved", "seat", 1000);
+    db.put_resource(&resource).unwrap();
+    drop(db);
+    let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+    sql.execute_batch("DROP TABLE owned_stop_inspections; PRAGMA user_version=33;")
+        .unwrap();
+    let before: String = sql
+        .query_row(
+            "SELECT config FROM resources WHERE id=?1",
+            [resource.id()],
+            |r| r.get(0),
+        )
+        .unwrap();
+    drop(sql);
+    for _ in 0..2 {
+        let db = hagency_store::DomainRepository::open(&state).unwrap();
+        assert!(
+            db.owned_stop_inspection("no_original_receipt", 1)
+                .unwrap()
+                .is_none()
+        );
+        drop(db);
+        let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
+        assert_eq!(
+            sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
+                .unwrap(),
+            35
+        );
+        assert_eq!(
+            sql.query_row(
+                "SELECT config FROM resources WHERE id=?1",
+                [resource.id()],
+                |r| r.get::<_, String>(0)
+            )
+            .unwrap(),
+            before
+        );
+    }
+}
+
+#[test]
 fn native_owner_approval_recovery_crlf_fixture() {
     let schemas = [
         include_str!("../src/domain.sql"),
@@ -69,7 +114,7 @@ fn native_account_schema22() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        33
+        35
     );
     assert_eq!(before, snapshot(&sql));
     drop(sql);

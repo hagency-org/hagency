@@ -931,7 +931,7 @@ fn native_file_delivery_schema_migration() {
     assert_eq!(
         sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
             .unwrap(),
-        33
+        35
     );
     assert_eq!(count(&sql, "file_deliveries"), 0);
     drop(db);

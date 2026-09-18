@@ -153,6 +153,209 @@ fn count(db: &rusqlite::Connection, table: &str) -> u64 {
         .unwrap()
 }
 
+#[tokio::test]
+async fn native_factory_group_generation() {
+    let mut f = Fixture::new(false, None);
+    let mut direct = f.room.clone();
+    direct.room_id = "!separate:example.test".into();
+    direct.privacy = RoomPrivacy::Direct {
+        human_mxid: "@owner:example.test".into(),
+    };
+    direct.encrypted = true;
+    f.db.observe_matrix_room(&direct, 1007).unwrap();
+    let dm = SessionBinding {
+        id: "private_session".into(),
+        room_id: direct.room_id.clone(),
+        ..f.binding.clone()
+    };
+    f.db.resolve_verified_matrix_session(&dm, 1008).unwrap();
+    let prior =
+        f.db.matrix_room_state(&f.engagement, &f.room.room_id)
+            .unwrap()
+            .unwrap();
+    let unchanged =
+        f.db.refresh_matrix_group_room(&f.room, Some(&prior), 1009)
+            .unwrap();
+    assert_eq!(unchanged.generation, 1);
+    assert!(f.db.matrix_intake_route(&f.binding.id).is_ok());
+    let mut changed = f.room.clone();
+    changed.joined.insert("@second:example.test".into());
+    let observed =
+        f.db.refresh_matrix_group_room(&changed, Some(&prior), 1010)
+            .unwrap();
+    assert_eq!(observed.generation, 2);
+    assert!(
+        f.db.matrix_intake_route(&f.binding.id).is_err(),
+        "old group session stays retired"
+    );
+    assert_eq!(
+        f.db.matrix_intake_route(&dm.id).unwrap().room_generation,
+        1,
+        "independent original owner DM stays current"
+    );
+    assert!(f.db.runner_task(&f.cap, "task", 1011).is_err());
+    assert_eq!(count(&f.sql(), "dispatch_stops"), 1);
+    assert!(matches!(
+        f.db.refresh_matrix_group_room(&changed, Some(&prior), 1012),
+        Err(Error::Generation)
+    ));
+    let current =
+        f.db.matrix_room_state(&f.engagement, &f.room.room_id)
+            .unwrap()
+            .unwrap();
+    assert_eq!(
+        f.db.refresh_matrix_group_room(&observed, Some(&current), 1013)
+            .unwrap()
+            .generation,
+        2
+    );
+    // Same repository through its real bounded writer; no schema or test-only
+    // availability flag is used to publish another valid snapshot.
+    let store = hagency_store::DomainStore::start(f.db, 16).unwrap();
+    let same = store
+        .refresh_matrix_group_room(observed, Some(current))
+        .await
+        .unwrap();
+    assert_eq!(same.generation, 2);
+    assert_eq!(
+        store
+            .matrix_intake_route(dm.id)
+            .await
+            .unwrap()
+            .room_generation,
+        1
+    );
+    store.shutdown().await.unwrap();
+}
+
+#[test]
+fn native_factory_group_generation_refusals() {
+    for kind in [
+        "missing",
+        "stale",
+        "unavailable",
+        "generation",
+        "transport",
+        "registration",
+        "privacy",
+        "room",
+        "encryption",
+        "invite",
+        "sender",
+        "owner",
+        "foreign_member",
+    ] {
+        let mut f = Fixture::new(false, None);
+        let mut input = f.room.clone();
+        let mut prior =
+            f.db.matrix_room_state(&f.engagement, &input.room_id)
+                .unwrap();
+        match kind {
+            "missing" => prior = None,
+            "stale" => prior.as_mut().unwrap().generation = 2,
+            "unavailable" => {
+                f.db.invalidate_matrix_room(
+                    &MatrixRoomInvalidation {
+                        engagement_id: f.engagement.clone(),
+                        registration_generation: 1,
+                        transport_generation: 1,
+                        room_id: input.room_id.clone(),
+                        generation: 2,
+                        reason: "original negative".into(),
+                    },
+                    1007,
+                )
+                .unwrap();
+                prior =
+                    f.db.matrix_room_state(&f.engagement, &input.room_id)
+                        .unwrap();
+                input.generation = 2;
+            }
+            "generation" => input.generation = 2,
+            "transport" => input.transport_generation = 2,
+            "registration" => input.registration_generation = 2,
+            "privacy" => {
+                input.privacy = RoomPrivacy::Direct {
+                    human_mxid: "@owner:example.test".into(),
+                }
+            }
+            "room" => input.room_id = "!foreign:example.test".into(),
+            "encryption" => input.encrypted = true,
+            "invite" => input.invite_only = false,
+            "sender" => {
+                input.joined.remove("@worker:example.test");
+            }
+            "owner" => {
+                input.joined.remove("@owner:example.test");
+            }
+            "foreign_member" => {
+                input.joined.insert("not_a_full_mxid".into());
+            }
+            _ => unreachable!(),
+        }
+        let result = f.db.refresh_matrix_group_room(&input, prior.as_ref(), 1008);
+        let state =
+            f.db.matrix_room_state(&f.engagement, &f.room.room_id)
+                .unwrap()
+                .unwrap();
+        if matches!(kind, "sender" | "owner" | "foreign_member") {
+            assert_eq!(result.unwrap().generation, 2);
+            assert!(!state.available);
+            assert!(f.db.matrix_intake_route(&f.binding.id).is_err());
+            let mut restore = f.room.clone();
+            restore.generation = 2;
+            assert!(matches!(
+                f.db.refresh_matrix_group_room(&restore, Some(&state), 1009),
+                Err(Error::Generation)
+            ));
+        } else {
+            assert!(result.is_err(), "{kind}");
+            assert_eq!(
+                (state.generation, state.available),
+                if kind == "unavailable" {
+                    (2, false)
+                } else {
+                    (1, true)
+                },
+                "{kind}"
+            );
+        }
+    }
+    let mut f = Fixture::new(true, None);
+    let mut group = f.room.clone();
+    group.room_id = "!project:example.test".into();
+    group.privacy = RoomPrivacy::Group {};
+    group.encrypted = false;
+    assert!(
+        f.db.matrix_room_state(&f.engagement, &group.room_id)
+            .unwrap()
+            .is_none()
+    );
+    let original = group.clone();
+    group.joined.remove("@owner:example.test");
+    assert!(matches!(
+        f.db.refresh_matrix_group_room(&group, None, 1007),
+        Err(Error::UnsafeSnapshot(_))
+    ));
+    assert!(
+        f.db.matrix_room_state(&f.engagement, &group.room_id)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(
+        f.db.refresh_matrix_group_room(&original, None, 1008)
+            .unwrap()
+            .generation,
+        1
+    );
+    assert_eq!(
+        f.db.matrix_intake_route(&f.binding.id)
+            .unwrap()
+            .room_generation,
+        1
+    );
+}
+
 #[test]
 fn native_reply_routes() {
     trait Ambiguous<A> {
@@ -968,7 +1171,7 @@ fn native_reply_routes_schema_ten_does_not_invent_legacy_privacy() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        33
+        35
     );
     assert_eq!(
         sql.query_row(

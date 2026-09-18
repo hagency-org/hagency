@@ -7,6 +7,120 @@ use hagency_core::{
 use hagency_store::{DomainRepository, DomainStore, EffectOutcome, EffectState, Error};
 use serde_json::json;
 
+#[tokio::test]
+async fn native_provision_account_current_scope() {
+    let (dir, mut db) = setup();
+    let pool = resource("physical_account", "physical_seat", 100);
+    db.put_resource(&pool).unwrap();
+    let request = request("physical_one", "Physical", &pool, 40);
+    let proof = proof(&request);
+    db.admit(&proof, 1000).unwrap();
+    db.approve("physical_approve", &proof, 1000).unwrap();
+    let effect = db
+        .claim_effect_for(&format!("provision_{}", request.engagement_id().unwrap()))
+        .unwrap()
+        .unwrap();
+    let store = DomainStore::start(db, 16).unwrap();
+    store
+        .validate_provision_account(effect.clone(), registration())
+        .await
+        .unwrap();
+    for kind in [
+        "id",
+        "fence",
+        "payload",
+        "engagement",
+        "kind",
+        "state",
+        "registration",
+    ] {
+        let mut changed = effect.clone();
+        let mut reg = registration();
+        match kind {
+            "id" => changed.id = "missing_effect".into(),
+            "fence" => changed.fence += 1,
+            "payload" => changed.payload["substituted"] = true.into(),
+            "engagement" => changed.engagement_id = "en_substituted".into(),
+            "kind" => changed.kind = "retire".into(),
+            "state" => changed.state = EffectState::Pending,
+            _ => reg.generation += 1,
+        }
+        assert!(
+            store
+                .validate_provision_account(changed, reg)
+                .await
+                .is_err(),
+            "{kind}"
+        );
+    }
+    let inspection = rusqlite::Connection::open(dir.path().join("state/domain.sqlite3")).unwrap();
+    inspection
+        .execute("UPDATE effects SET fence=fence+1 WHERE id=?1", [&effect.id])
+        .unwrap();
+    assert!(
+        store
+            .validate_provision_account(effect.clone(), registration())
+            .await
+            .is_err()
+    );
+    inspection
+        .execute(
+            "UPDATE effects SET fence=?1 WHERE id=?2",
+            rusqlite::params![effect.fence, effect.id],
+        )
+        .unwrap();
+    let payload = serde_json::to_string(&effect.payload).unwrap();
+    inspection
+        .execute(
+            "UPDATE effects SET payload=?1 WHERE id=?2",
+            rusqlite::params!["{}", effect.id],
+        )
+        .unwrap();
+    assert!(
+        store
+            .validate_provision_account(effect.clone(), registration())
+            .await
+            .is_err()
+    );
+    inspection
+        .execute(
+            "UPDATE effects SET payload=?1 WHERE id=?2",
+            rusqlite::params![payload, effect.id],
+        )
+        .unwrap();
+    // Restore only synthetic fixture mutations; production never restores a
+    // changed fence/payload or uses these tests as a retry/repair operation.
+    store
+        .validate_provision_account(effect.clone(), registration())
+        .await
+        .unwrap();
+    store
+        .revoke("physical_revoke".into(), effect.engagement_id.clone())
+        .await
+        .unwrap();
+    assert!(
+        store
+            .validate_provision_account(effect.clone(), registration())
+            .await
+            .is_err()
+    );
+    store.shutdown().await.unwrap();
+    let mut reopened = DomainRepository::open(&dir.path().join("state")).unwrap();
+    assert!(
+        reopened
+            .validate_provision_account(&effect, &registration())
+            .is_err()
+    );
+    assert_eq!(
+        reopened.get(&effect.engagement_id).unwrap().state,
+        EngagementState::Revoked
+    );
+    assert_ne!(
+        reopened.effect(&effect.id).unwrap().state,
+        EffectState::Complete
+    );
+}
+
 fn setup() -> (tempfile::TempDir, DomainRepository) {
     let dir = tempfile::tempdir().unwrap();
     let mut db = DomainRepository::open(&dir.path().join("state")).unwrap();
@@ -308,6 +422,127 @@ fn domain_effect_recovery_and_revocation() {
         db.get(&engagement.id).unwrap().cleanup,
         CleanupState::Complete
     );
+}
+
+#[tokio::test]
+async fn native_provision_claim_exact_owner() {
+    let (dir, mut db) = setup();
+    let pool = resource("inline_preset", "inline_seat", 100);
+    db.put_resource(&pool).unwrap();
+    let first = request("inline_one", "InlineOne", &pool, 40);
+    let second = request("inline_two", "InlineTwo", &pool, 40);
+    for (index, request) in [&first, &second].iter().enumerate() {
+        let proof = proof(request);
+        db.admit(&proof, 1000).unwrap();
+        db.approve(&format!("inline_approve_{index}"), &proof, 1000)
+            .unwrap();
+    }
+    let mut ids = [
+        format!("provision_{}", first.engagement_id().unwrap()),
+        format!("provision_{}", second.engagement_id().unwrap()),
+    ];
+    ids.sort();
+    let untouched = db.effect(&ids[0]).unwrap();
+    let store = DomainStore::start(db, 16).unwrap();
+    assert!(
+        store
+            .claim_effect_for("missing_effect".into())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    let (a, b) = tokio::join!(
+        store.claim_effect_for(ids[1].clone()),
+        store.claim_effect_for(ids[1].clone())
+    );
+    let a = a.unwrap();
+    let b = b.unwrap();
+    assert_eq!(usize::from(a.is_some()) + usize::from(b.is_some()), 1);
+    let owned = a.or(b).unwrap();
+    assert_eq!(owned.id, ids[1]);
+    assert_eq!(owned.state, EffectState::Started);
+    assert_eq!(owned.fence, 1);
+    assert!(
+        store
+            .claim_effect_for(ids[1].clone())
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // A real claim still has no physical outcome. Shutdown/reopen preserves
+    // original uncertainty rather than fabricating an Active engagement.
+    store.shutdown().await.unwrap();
+    let mut reopened = DomainRepository::open(&dir.path().join("state")).unwrap();
+    let other = reopened.effect(&ids[0]).unwrap();
+    assert_eq!(other.state, untouched.state);
+    assert_eq!(other.fence, untouched.fence);
+    assert_eq!(
+        reopened.effect(&owned.id).unwrap().state,
+        EffectState::Uncertain
+    );
+    assert_eq!(
+        reopened.get(&owned.engagement_id).unwrap().state,
+        EngagementState::Reserved
+    );
+    assert!(reopened.claim_effect_for(&owned.id).unwrap().is_none());
+    assert_eq!(
+        reopened.claim_effect_for(&ids[0]).unwrap().unwrap().id,
+        ids[0]
+    );
+}
+
+#[test]
+fn native_provision_claim_recovery_fences() {
+    let (dir, mut db) = setup();
+    let pool = resource("inline_preset", "inline_seat", 100);
+    db.put_resource(&pool).unwrap();
+    let first = request("inline_one", "InlineOne", &pool, 40);
+    let second = request("inline_two", "InlineTwo", &pool, 40);
+    for (index, request) in [&first, &second].iter().enumerate() {
+        let proof = proof(request);
+        db.admit(&proof, 1000).unwrap();
+        db.approve(&format!("inline_approve_{index}"), &proof, 1000)
+            .unwrap();
+    }
+    let id = format!("provision_{}", first.engagement_id().unwrap());
+    let other_id = format!("provision_{}", second.engagement_id().unwrap());
+    let sql = rusqlite::Connection::open(dir.path().join("state/domain.sqlite3")).unwrap();
+    // Bound fixture IDs come from the actual domain, never external SQL text.
+    sql.execute_batch(&format!("CREATE TRIGGER inline_claim_abort BEFORE UPDATE ON effects WHEN OLD.id='{id}' AND NEW.state='started' BEGIN SELECT RAISE(ABORT,'fixture inline claim rollback'); END;")).unwrap();
+    assert!(db.claim_effect_for(&id).is_err());
+    assert_eq!(db.effect(&id).unwrap().state, EffectState::Pending);
+    assert_eq!(db.effect(&id).unwrap().fence, 0);
+    assert_eq!(db.effect(&other_id).unwrap().state, EffectState::Pending);
+    assert_eq!(db.effect(&other_id).unwrap().fence, 0);
+    sql.execute_batch("DROP TRIGGER inline_claim_abort")
+        .unwrap();
+    sql.execute(
+        "UPDATE effects SET fence=?2 WHERE id=?1",
+        rusqlite::params![id, hagency_core::JSON_SAFE_MAX],
+    )
+    .unwrap();
+    assert!(matches!(db.claim_effect_for(&id), Err(Error::State)));
+    assert_eq!(db.effect(&id).unwrap().state, EffectState::Pending);
+    assert_eq!(db.effect(&id).unwrap().fence, hagency_core::JSON_SAFE_MAX);
+    assert_eq!(db.effect(&other_id).unwrap().fence, 0);
+    assert!(db.claim_effect_for("").is_err());
+    assert!(db.claim_effect_for(&"x".repeat(129)).is_err());
+    assert!(db.claim_effect_for("bad/effect").is_err());
+    // Revocation cancels only the original provision and creates its separate
+    // retire intent. Exact provision lookup must not claim that cleanup.
+    db.revoke("inline_revoke", &second.engagement_id().unwrap())
+        .unwrap();
+    assert!(db.claim_effect_for(&other_id).unwrap().is_none());
+    let mut next = registration();
+    next.generation += 1;
+    db.register(&next).unwrap();
+    // Old-registration pending custody is not available, even with capacity
+    // to increment its restored fixture fence.
+    sql.execute("UPDATE effects SET fence=0 WHERE id=?1", [&id])
+        .unwrap();
+    assert!(db.claim_effect_for(&id).unwrap().is_none());
+    assert_eq!(db.effect(&id).unwrap().state, EffectState::Pending);
+    assert_eq!(db.effect(&id).unwrap().fence, 0);
 }
 
 #[test]

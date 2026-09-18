@@ -123,6 +123,9 @@ pub(super) struct Association {
     generation: u64,
     seat: String,
 }
+pub(super) fn provision_account_id(association: &Association) -> &str {
+    &association.id
+}
 
 /// Never Clone or Deserialize; only the original registry constructs this owner.
 pub struct ManagedAccount {
@@ -167,6 +170,20 @@ impl ManagedAccount {
         &self.binding.association.id
     }
     pub fn prepare_launch(&self, scope: &OwnedDispatchScope) -> Result<ManagedLaunch, Error> {
+        self.binding.check()?;
+        if scope.account.as_ref() != Some(&self.binding.association)
+            || scope.resource().seat_id != self.binding.association.seat
+        {
+            return Err(Error::RunnerAuthority);
+        }
+        Ok(ManagedLaunch {
+            binding: self.binding.clone(),
+        })
+    }
+    pub fn prepare_provision_launch(
+        &self,
+        scope: &super::OwnedProvisionScope,
+    ) -> Result<ManagedLaunch, Error> {
         self.binding.check()?;
         if scope.account.as_ref() != Some(&self.binding.association)
             || scope.resource().seat_id != self.binding.association.seat
@@ -405,6 +422,17 @@ fn account_association(db: &Connection, id: &str) -> Result<Association, Error> 
     .optional()?
     .ok_or(Error::LocalAuthority)
 }
+pub(super) fn warm_ready(
+    db: &Connection,
+    account: Option<&Association>,
+    now: u64,
+) -> Result<bool, Error> {
+    let Some(account) = account else {
+        return Ok(true);
+    };
+    Ok(db.query_row("SELECT EXISTS(SELECT 1 FROM account_login_observations f WHERE f.account_id=?1 AND f.account_generation=?2 AND f.outcome='observed' AND f.expires_at_ms>?3 AND NOT EXISTS(SELECT 1 FROM account_login_observations l WHERE l.account_id=?1 AND l.account_generation=?2 AND (l.observed_at_ms>f.observed_at_ms OR (l.observed_at_ms=f.observed_at_ms AND l.attempt>f.attempt))))",
+        params![account.id,account.generation,now],|r|r.get(0))?)
+}
 pub(super) fn association(
     db: &Connection,
     resource: &Resource,
@@ -459,36 +487,7 @@ fn preparation_deadline(deadline: Instant) -> Result<(), Error> {
     }
 }
 fn sync_directory(dir: &Dir) -> Result<(), Error> {
-    #[cfg(unix)]
-    {
-        use cap_fs_ext::{
-            FollowSymlinks, OpenOptionsFollowExt, OpenOptionsMaybeDirExt, OpenOptionsSyncExt,
-        };
-        let mut options = cap_std::fs::OpenOptions::new();
-        options
-            .read(true)
-            .follow(FollowSymlinks::No)
-            .maybe_dir(true)
-            .nonblock(true);
-        let file = dir.open_with(".", &options)?.into_std();
-        private::check_handle(&file)?;
-        if !same_directory(&file, &dir.try_clone()?.into_std_file())? {
-            return Err(Error::Private);
-        }
-        file.sync_all()?;
-        Ok(())
-    }
-    #[cfg(windows)]
-    {
-        private::WindowsDirectorySync::open(dir)?
-            .ok_or(Error::PlatformUnavailable)?
-            .sync()
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        let _ = dir;
-        Err(Error::PlatformUnavailable)
-    }
+    private::sync_directory(dir)
 }
 impl DomainRepository {
     pub fn account_choices(&self) -> Result<Vec<AccountChoice>, Error> {

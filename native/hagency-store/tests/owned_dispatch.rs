@@ -49,6 +49,158 @@ fn sql(root: &tempfile::TempDir) -> rusqlite::Connection {
 }
 
 #[test]
+fn native_owned_stopped_inspection_store() {
+    let (root, mut db, _, cap) = setup();
+    let before = db.owned_dispatch_scope(&cap, 1002).unwrap();
+    // Store-only contract fixture: not claimed as physical process evidence.
+    let inventory =
+        json!({"profile":"stopped-content-inventory-v1","root":{"fixture":true},"entries":[]});
+    assert!(matches!(
+        db.record_owned_stop_inspection(&cap, &before, &inventory, 1002),
+        Err(Error::RunnerAuthority)
+    ));
+    let started = db
+        .start_owned_dispatch(&cap, before.fingerprint(), 1003)
+        .unwrap();
+    assert!(matches!(
+        db.record_owned_stop_inspection(&cap, &started, &inventory, 1004),
+        Err(Error::State)
+    ));
+    assert_eq!(
+        db.observe_owned_failure(&cap, OwnedFailure::Protocol, 4000)
+            .unwrap(),
+        OwnedObservation::Fenced
+    );
+    let digest = db
+        .record_owned_stop_inspection(&cap, &started, &inventory, 4001)
+        .unwrap();
+    let receipt = db
+        .owned_stop_inspection(&cap.dispatch_id, cap.fence)
+        .unwrap()
+        .unwrap();
+    assert_eq!(receipt["digest"], digest);
+    assert_eq!(
+        db.record_owned_stop_inspection(&cap, &started, &inventory, 4002)
+            .unwrap(),
+        digest
+    );
+    assert_eq!(
+        db.owned_stop_inspection(&cap.dispatch_id, cap.fence)
+            .unwrap(),
+        Some(receipt.clone())
+    );
+    let mut changed = inventory.clone();
+    changed["entries"] = json!([{"path":"changed"}]);
+    assert!(matches!(
+        db.record_owned_stop_inspection(&cap, &started, &changed, 4003),
+        Err(Error::Conflict)
+    ));
+    for field in ["secret", "runner", "dispatch", "fence"] {
+        let mut foreign = cap.clone();
+        match field {
+            "secret" => foreign.secret.push('x'),
+            "runner" => foreign.runner_id.push('x'),
+            "dispatch" => foreign.dispatch_id.push('x'),
+            _ => foreign.fence += 1,
+        }
+        assert!(matches!(
+            db.record_owned_stop_inspection(&foreign, &started, &inventory, 4004),
+            Err(Error::RunnerAuthority)
+        ));
+    }
+    assert_eq!(
+        db.canonical_task("task").unwrap().status,
+        TaskState::InProgress
+    );
+    let counts:(u64,u64,u64,u64)=sql(&root).query_row("SELECT (SELECT COUNT(*) FROM resource_leases),(SELECT COUNT(*) FROM dispatch_stops WHERE settled_at IS NULL),(SELECT dirty FROM workspace_resources),(SELECT quarantined FROM runner_sessions)",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+    assert_eq!(counts, (1, 1, 1, 1));
+    drop(db);
+    let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
+    assert_eq!(
+        db.record_owned_stop_inspection(&cap, &started, &inventory, 5000)
+            .unwrap(),
+        digest
+    );
+    assert_eq!(
+        db.owned_stop_inspection(&cap.dispatch_id, cap.fence)
+            .unwrap(),
+        Some(receipt)
+    );
+}
+
+#[tokio::test]
+async fn native_fleet_runner_service_scope() {
+    let (root, mut db, first, cap) = setup();
+    let pool = resource("pool", "seat", 1000);
+    let proof = proof(&request("second_allocated", "OtherWorker", &pool, 100));
+    let second = db.admit(&proof, 1000).unwrap();
+    db.approve("second_approved", &proof, 1000).unwrap();
+    let effect = db.claim_effect().unwrap().unwrap();
+    db.observe_effect(
+        &effect.id,
+        effect.fence,
+        &EffectOutcome::Applied {
+            receipt: "offline second routing fixture".into(),
+        },
+    )
+    .unwrap();
+    db.register_session(&SessionBinding {
+        id: "second_session".into(),
+        engagement_id: second.id.clone(),
+        room_id: "!other:example.test".into(),
+        thread_root: None,
+    })
+    .unwrap();
+    db.register_workspace("second_workspace").unwrap();
+    db.create_canonical_task("second_task", "second_session", "Other original task", 1000)
+        .unwrap();
+    db.enqueue_dispatch(&DispatchInput {
+        id: "second_dispatch".into(),
+        session_id: "second_session".into(),
+        task_id: Some("second_task".into()),
+        resources: vec![ResourceLease {
+            id: "second_workspace".into(),
+            exclusive: true,
+        }],
+        payload: json!({"instruction":"original backend selection"}),
+    })
+    .unwrap();
+    let other = db
+        .claim_dispatch("other_runner", 1002, 1000, 2000, 2)
+        .unwrap()
+        .unwrap();
+    assert_eq!(db.runner_service_engagement(&cap).unwrap(), first);
+    assert_eq!(db.runner_service_engagement(&other).unwrap(), second.id);
+    let before: String=sql(&root).query_row("SELECT json_group_array(json_array(id,state,fence,runner_id,lease_until,capability_until)) FROM runner_dispatches",[],|row|row.get(0)).unwrap();
+    for field in ["secret", "runner", "dispatch", "fence"] {
+        let mut foreign = cap.clone();
+        match field {
+            "secret" => foreign.secret = other.secret.clone(),
+            "runner" => foreign.runner_id = other.runner_id.clone(),
+            "dispatch" => foreign.dispatch_id = other.dispatch_id.clone(),
+            _ => foreign.fence += 1,
+        }
+        assert!(matches!(
+            db.runner_service_engagement(&foreign),
+            Err(Error::RunnerAuthority)
+        ));
+    }
+    // Expired credentials still name the historical backend, but do not
+    // resurrect a current scope, extend leases, or mutate either attempt.
+    assert!(db.owned_dispatch_scope(&cap, 4000).is_err());
+    assert_eq!(db.runner_service_engagement(&cap).unwrap(), first);
+    let after: String=sql(&root).query_row("SELECT json_group_array(json_array(id,state,fence,runner_id,lease_until,capability_until)) FROM runner_dispatches",[],|row|row.get(0)).unwrap();
+    assert_eq!(before, after);
+    let store = hagency_store::DomainStore::start(db, 8).unwrap();
+    assert_eq!(store.runner_service_engagement(cap).await.unwrap(), first);
+    assert_eq!(
+        store.runner_service_engagement(other).await.unwrap(),
+        second.id
+    );
+    store.shutdown().await.unwrap();
+}
+
+#[test]
 fn native_owned_dispatch_start_scope() {
     let (root, mut db, _, cap) = setup();
     let before = db.owned_dispatch_scope(&cap, 1002).unwrap();

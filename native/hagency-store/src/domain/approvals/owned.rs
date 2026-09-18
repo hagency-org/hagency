@@ -76,7 +76,7 @@ impl DomainRepository {
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let now = sample()?;
         deadline(until, expires_at, now)?;
-        if expires_at - now > 30_000 {
+        if expires_at - now > hagency_core::tasks::MAX_OWNED_OPERATION_MS {
             return Err(Error::Capacity);
         }
         let started = super::super::owned_dispatch::scope(&tx, cap, now, &["started"])?;

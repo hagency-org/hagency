@@ -2,6 +2,43 @@ use super::*;
 use std::time::{Duration, Instant};
 
 #[test]
+fn native_owned_approval_context_long_limit() {
+    let max = hagency_core::tasks::MAX_OWNED_OPERATION_MS;
+    for budget in [30_001, max, max + 1] {
+        let mut f = Fixture::configured(true, 1000, 60_000, false);
+        let until = Instant::now() + Duration::from_millis(budget);
+        let scope = f.db.bind_owned_approval_context(
+            &f.caps[0],
+            &f.fingerprints[0],
+            &f.contexts[0],
+            until,
+            1010 + budget,
+            1010,
+        );
+        if budget > max {
+            assert!(scope.is_err());
+            continue;
+        }
+        let scope = scope.unwrap();
+        assert!(f.db.maintain_owned_approval(&scope, 1011).is_ok());
+        assert!(
+            f.db.bind_owned_approval_context(
+                &f.caps[0],
+                &f.fingerprints[0],
+                &f.contexts[0],
+                until,
+                1011 + budget,
+                1011
+            )
+            .is_err(),
+            "rebinding must not restart a long deadline"
+        );
+        // The context's long deadline does not bypass the actual short lease.
+        assert!(f.db.maintain_owned_approval(&scope, 6011).is_err());
+    }
+}
+
+#[test]
 fn native_owned_approval_maintenance() {
     let mut f = Fixture::configured(true, 1000, 60_000, false);
     let until = Instant::now() + Duration::from_secs(5);

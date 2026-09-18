@@ -221,6 +221,24 @@ impl DomainRepository {
         now: u64,
         lease_ms: u64,
     ) -> Result<Option<ReplyClaim>, Error> {
+        self.claim_final_reply_matching(now, lease_ms, None)
+    }
+    /// Host-only selection of output from this exact completed original attempt.
+    /// Historical authentication never restores execution or creates an intent.
+    pub fn claim_final_reply_for_dispatch(
+        &mut self,
+        capability: &RunnerCapability,
+        now: u64,
+        lease_ms: u64,
+    ) -> Result<Option<ReplyClaim>, Error> {
+        self.claim_final_reply_matching(now, lease_ms, Some(capability))
+    }
+    fn claim_final_reply_matching(
+        &mut self,
+        now: u64,
+        lease_ms: u64,
+        source: Option<&RunnerCapability>,
+    ) -> Result<Option<ReplyClaim>, Error> {
         clock(now)?;
         if !(1..=60_000).contains(&lease_ms) || now > JSON_SAFE_MAX - lease_ms {
             return Err(hagency_core::InvalidInput("invalid reply lease").into());
@@ -228,8 +246,22 @@ impl DomainRepository {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        if let Some(cap) = source {
+            identifier(&cap.dispatch_id, 128)?;
+            identifier(&cap.runner_id, 128)?;
+            generation(cap.fence)?;
+            let original: Option<(String, String)> = tx.query_row(
+                "SELECT a.runner_id,a.capability_hash FROM runner_attempts a JOIN runner_dispatches d ON d.id=a.dispatch_id AND d.fence=a.fence WHERE a.dispatch_id=?1 AND a.fence=?2 AND a.outcome='completed' AND d.state='completed'",
+                params![cap.dispatch_id, cap.fence], |row| Ok((row.get(0)?, row.get(1)?)),
+            ).optional()?;
+            let (runner, hash) = original.ok_or(Error::RunnerAuthority)?;
+            if runner != cap.runner_id || !execution::matches_secret(&hash, &cap.secret)? {
+                return Err(Error::RunnerAuthority);
+            }
+        }
         reconcile(&tx, now, false)?;
-        let id:Option<String>=tx.query_row("SELECT f.id FROM final_replies f JOIN current_final_replies c ON c.id=f.id WHERE f.state='pending' AND f.cancel_requested=0 ORDER BY f.rowid LIMIT 1",[],|r|r.get(0)).optional()?;
+        let id:Option<String>=tx.query_row("SELECT f.id FROM final_replies f JOIN current_final_replies c ON c.id=f.id WHERE f.state='pending' AND f.cancel_requested=0 AND (?1 IS NULL OR f.source_dispatch_id=?1) ORDER BY f.rowid LIMIT 1",
+            [source.map(|cap|cap.dispatch_id.as_str())],|r|r.get(0)).optional()?;
         let Some(id) = id else {
             tx.commit()?;
             return Ok(None);
@@ -256,6 +288,15 @@ impl DomainRepository {
         }
         current(&self.db, &claim.id)?;
         snapshot(&self.db, &claim.id)
+    }
+    /// Historical conflict query only: never supplies acceptance or authority.
+    /// A missing retained row is not a newly claimed row; actual protected SDK
+    /// history remains mandatory before the caller reports past acceptance.
+    pub fn final_reply_history_conflicts(&self, id: &str, fence: u64) -> Result<bool, Error> {
+        identifier(id, 128)?;
+        generation(fence)?;
+        Ok(self.db.query_row("SELECT EXISTS(SELECT 1 FROM final_replies WHERE id=?1 AND (fence!=?2 OR state!='delivered'))",
+            params![id, fence], |row| row.get(0))?)
     }
     /// Recheck the exact still-current Sending claim immediately before a host
     /// transport write. It is not an atomic fence on a remote homeserver.

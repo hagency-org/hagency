@@ -548,6 +548,75 @@ fn native_dispatch_recovery() {
     assert!(fresh.fence > old.fence);
 }
 
+#[tokio::test]
+async fn native_dispatch_recovery_agent_binding() {
+    let (root, mut db, engagement) = setup();
+    db.create_canonical_task("task", "s1", "Scoped recovery", 1000)
+        .unwrap();
+    db.enqueue_dispatch(&input("d1", "s1", Some("task"), true))
+        .unwrap();
+    let cap = claim(&mut db, 1000);
+    db.start_dispatch(&cap, 1001).unwrap();
+    db.reconcile_dispatches(61_001).unwrap();
+    let inspect = sql(&root);
+    let before: String = inspect
+        .query_row(
+            "SELECT input FROM runner_dispatches WHERE id='d1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let store = hagency_store::DomainStore::start(db, 8).unwrap();
+    let mut recovery = input("recovery", "s1", Some("task"), true);
+    recovery.payload = json!({"instruction":"Continue after explicit fixture inspection"});
+    for agent in ["foreign_agent", ""] {
+        let result = store
+            .recover_dispatch(
+                agent.into(),
+                "d1".into(),
+                recovery.clone(),
+                "fixture stopped owner and workspace inspection".into(),
+                61_002,
+            )
+            .await;
+        if agent.is_empty() {
+            assert!(matches!(result, Err(Error::Invalid(_))));
+        } else {
+            assert!(matches!(result, Err(Error::NotFound)));
+        }
+        assert_eq!(count(&inspect, "dispatch_recoveries"), 0);
+        assert_eq!(count(&inspect, "resource_leases"), 1);
+        let state: (String, String, bool, bool) = inspect.query_row(
+            "SELECT d.state,d.input,s.quarantined,w.dirty FROM runner_dispatches d \
+             JOIN runner_sessions s ON s.id=d.session_id JOIN workspace_resources w ON w.id='work' WHERE d.id='d1'",
+            [], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).unwrap();
+        assert_eq!(
+            state,
+            ("outcome_unknown".into(), before.clone(), true, true)
+        );
+    }
+    store
+        .recover_dispatch(
+            engagement,
+            "d1".into(),
+            recovery,
+            "fixture stopped owner and workspace inspection".into(),
+            61_003,
+        )
+        .await
+        .unwrap();
+    assert_eq!(count(&inspect, "dispatch_recoveries"), 1);
+    assert_eq!(count(&inspect, "resource_leases"), 0);
+    let next = store
+        .claim_dispatch("next_host".into(), 61_004, 60_000, 60_000, 1)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(next.dispatch_id, "recovery");
+    drop(inspect);
+    store.shutdown().await.unwrap();
+}
+
 #[test]
 fn native_recovery_payload_identity() {
     let (root, mut db, _) = setup();

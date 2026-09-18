@@ -17,6 +17,7 @@ pub struct OwnedClaimRoom {
     id: String,
     generation: u64,
     privacy: hagency_core::replies::RoomPrivacy,
+    plaintext_project: bool,
 }
 impl OwnedClaimRoom {
     pub fn new(
@@ -35,13 +36,58 @@ impl OwnedClaimRoom {
             id,
             generation,
             privacy,
+            plaintext_project: false,
         })
     }
+    /// Explicit host selection for its authenticated shared project. The writer
+    /// still requires the route to name this engagement's registered project.
+    /// Ordinary selections and all private DMs keep the encryption requirement.
+    pub fn with_plaintext_project(mut self) -> Result<Self, Error> {
+        if !matches!(self.privacy, hagency_core::replies::RoomPrivacy::Group {}) {
+            return Err(Error::RunnerAuthority);
+        }
+        self.plaintext_project = true;
+        Ok(self)
+    }
 }
+/// Bounded host selection metadata, never execution authority. Reusing the
+/// same admitted host profile for another claim does not duplicate a runner
+/// capability; every successful claim still receives a new store-minted one.
+#[derive(Clone)]
 pub struct OwnedClaimProfile(String);
 impl OwnedClaimProfile {
     pub(super) fn from_account_binding(encoded: String) -> Self {
         Self(encoded)
+    }
+    /// Refresh only the original host's room selections. Preserve its frozen
+    /// transport, workspaces and provider/account restrictions. This metadata
+    /// never substitutes for claim authority or the executor's handoff checks.
+    pub fn refresh_matrix_rooms(
+        self,
+        transport: hagency_core::replies::MatrixTransportObservation,
+        rooms: Vec<OwnedClaimRoom>,
+    ) -> Result<Self, Error> {
+        let mut value: serde_json::Value = serde_json::from_str(&self.0)?;
+        let prior = value["rooms"].as_array().ok_or(Error::RunnerAuthority)?;
+        if value["transport"] != json!(transport) || prior.len() != rooms.len() {
+            return Err(Error::RunnerAuthority);
+        }
+        let mut seen = std::collections::BTreeSet::new();
+        for room in &rooms {
+            if !seen.insert(&room.id)
+                || !prior
+                    .iter()
+                    .any(|old| old["id"] == room.id && old["privacy"] == json!(room.privacy))
+            {
+                return Err(Error::RunnerAuthority);
+            }
+        }
+        value["rooms"]=json!(rooms.iter().map(|r|json!({"id":r.id,"generation":r.generation,"privacy":r.privacy,"plaintext_project":r.plaintext_project})).collect::<Vec<_>>());
+        let encoded = serde_json::to_string(&value)?;
+        if encoded.len() > 16 * 1024 {
+            return Err(Error::Capacity);
+        }
+        Ok(Self(encoded))
     }
     pub fn new(
         transport: hagency_core::replies::MatrixTransportObservation,
@@ -78,7 +124,7 @@ impl OwnedClaimProfile {
         }
         let encoded = serde_json::to_string(&json!({
             "transport": transport,
-            "rooms": rooms.iter().map(|r|json!({"id":r.id,"generation":r.generation,"privacy":r.privacy})).collect::<Vec<_>>(),
+            "rooms": rooms.iter().map(|r|json!({"id":r.id,"generation":r.generation,"privacy":r.privacy,"plaintext_project":r.plaintext_project})).collect::<Vec<_>>(),
             "workspaces": workspaces,
         }))?;
         if encoded.len() > 16 * 1024 {
@@ -106,6 +152,23 @@ impl OwnedClaimProfile {
     pub(crate) fn encoded(&self) -> &str {
         &self.0
     }
+    /// Narrow selection to one host-bound preset/seat. This never grants
+    /// readiness or changes the resource captured by the provision effect.
+    pub fn restrict_resource(self, preset: String, seat: String) -> Result<Self, Error> {
+        hagency_core::project::identifier(&preset, 128)?;
+        hagency_core::project::identifier(&seat, 128)?;
+        let mut value: serde_json::Value = serde_json::from_str(&self.0)?;
+        let resource = json!({"preset":preset,"seat":seat});
+        if value.get("resource").is_some_and(|old| old != &resource) {
+            return Err(Error::Conflict);
+        }
+        value["resource"] = resource;
+        let encoded = serde_json::to_string(&value)?;
+        if encoded.len() > 16 * 1024 {
+            return Err(Error::Capacity);
+        }
+        Ok(Self(encoded))
+    }
 }
 
 /// Constructed from the writer's exact authorized snapshot. This is logical
@@ -117,6 +180,7 @@ pub struct OwnedDispatchScope {
     resource: Resource,
     pub(super) account: Option<super::accounts::Association>,
     fingerprint: String,
+    engagement_id: String,
     started: Option<(String, u64, String)>,
 }
 impl OwnedDispatchScope {
@@ -129,11 +193,12 @@ impl OwnedDispatchScope {
             &self.resource,
             &self.account,
             &self.fingerprint,
+            &self.engagement_id,
             &self.started,
         )
     }
 
-    pub(super) fn check_started(&self, cap: &RunnerCapability) -> Result<(), Error> {
+    pub(crate) fn check_started(&self, cap: &RunnerCapability) -> Result<(), Error> {
         let hash = canonical::digest(&json!(cap.secret))?;
         if self.input.id != cap.dispatch_id
             || self.started.as_ref() != Some(&(cap.runner_id.clone(), cap.fence, hash))
@@ -157,6 +222,9 @@ impl OwnedDispatchScope {
     }
     pub fn fingerprint(&self) -> &str {
         &self.fingerprint
+    }
+    pub fn engagement_id(&self) -> &str {
+        &self.engagement_id
     }
 }
 
@@ -204,6 +272,24 @@ pub(super) fn projection(
     dispatch: &execution::Dispatch,
     completed_epoch: Option<u64>,
 ) -> Result<OwnedDispatchScope, Error> {
+    project_dispatch(db, &cap.dispatch_id, dispatch, completed_epoch)
+}
+/// Read-only reconstruction for original host inspection comparison. It never
+/// authorizes a runner or creates a started scope.
+pub(super) fn inspection_projection(
+    db: &Connection,
+    id: &str,
+    dispatch: &execution::Dispatch,
+) -> Result<OwnedDispatchScope, Error> {
+    let task = execution::task(db, dispatch.task_id.as_deref().ok_or(Error::State)?)?;
+    project_dispatch(db, id, dispatch, Some(task.execution_epoch))
+}
+fn project_dispatch(
+    db: &Connection,
+    id: &str,
+    dispatch: &execution::Dispatch,
+    completed_epoch: Option<u64>,
+) -> Result<OwnedDispatchScope, Error> {
     if dispatch.report_task.is_some() {
         return Err(Error::RunnerAuthority);
     }
@@ -211,7 +297,7 @@ pub(super) fn projection(
     input.validate()?;
     let task_id = dispatch.task_id.as_deref().ok_or(Error::RunnerAuthority)?;
     let task = execution::task(db, task_id)?;
-    if input.id != cap.dispatch_id
+    if input.id != id
         || input.session_id != dispatch.session_id
         || input.task_id.as_deref() != Some(task_id)
         || task.session_id != input.session_id
@@ -244,7 +330,7 @@ pub(super) fn projection(
     }
     let count: usize = db.query_row(
         "SELECT COUNT(*) FROM resource_leases WHERE dispatch_id=?1",
-        [&cap.dispatch_id],
+        [&id],
         |r| r.get(0),
     )?;
     if count != input.resources.len() {
@@ -253,7 +339,7 @@ pub(super) fn projection(
     for expected in &input.resources {
         let actual: Option<(bool, bool, bool)> = db.query_row(
             "SELECT l.exclusive,d.exclusive,w.dirty FROM resource_leases l JOIN dispatch_resources d ON d.dispatch_id=l.dispatch_id AND d.resource_id=l.resource_id JOIN workspace_resources w ON w.id=l.resource_id WHERE l.dispatch_id=?1 AND l.resource_id=?2",
-            params![cap.dispatch_id,expected.id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
+            params![id,expected.id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
         ).optional()?;
         if !actual.is_some_and(|(lease, frozen, dirty)| {
             lease == expected.exclusive
@@ -277,6 +363,7 @@ pub(super) fn projection(
         resource,
         account,
         fingerprint,
+        engagement_id: engagement.id,
         started: None,
     })
 }
@@ -441,6 +528,24 @@ impl DomainRepository {
         )?;
         tx.commit()?;
         Ok(value.task)
+    }
+
+    /// Host-only backend selection metadata. Authenticate the full original
+    /// attempt, including historical expired/fenced attempts, without granting
+    /// current execution, file IO or inspection of any other attempt's rows.
+    pub fn runner_service_engagement(&self, cap: &RunnerCapability) -> Result<String, Error> {
+        hagency_core::project::identifier(&cap.dispatch_id, 128)?;
+        hagency_core::project::identifier(&cap.runner_id, 128)?;
+        hagency_core::replies::generation(cap.fence)?;
+        let original: Option<(String,String,String)>=self.db.query_row(
+            "SELECT a.runner_id,a.capability_hash,s.engagement_id FROM runner_attempts a JOIN runner_dispatches d ON d.id=a.dispatch_id JOIN runner_sessions s ON s.id=d.session_id WHERE a.dispatch_id=?1 AND a.fence=?2",
+            params![cap.dispatch_id,cap.fence],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?)),
+        ).optional()?;
+        let (runner, hash, engagement) = original.ok_or(Error::RunnerAuthority)?;
+        if runner != cap.runner_id || !execution::matches_secret(&hash, &cap.secret)? {
+            return Err(Error::RunnerAuthority);
+        }
+        Ok(engagement)
     }
 
     /// Authenticates the original attempt, even after expiry/revocation. It may

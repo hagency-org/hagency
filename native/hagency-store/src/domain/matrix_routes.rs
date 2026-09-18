@@ -302,6 +302,69 @@ impl DomainRepository {
         input: &MatrixRoomObservation,
         now: u64,
     ) -> Result<(), Error> {
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        Self::observe_room(&tx, input, now)?;
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// Host-coordinated authenticated project membership refresh. The prior
+    /// generation is captured BEFORE HTTP; this is not an automatic retry or
+    /// recovery of an unavailable scope. Existing sessions are never rebound.
+    pub fn refresh_matrix_group_room(
+        &mut self,
+        input: &MatrixRoomObservation,
+        expected: Option<&MatrixRoomState>,
+        now: u64,
+    ) -> Result<MatrixRoomObservation, Error> {
+        clock(now)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let c = context(&tx, &input.engagement_id)?;
+        if !matches!(input.privacy, RoomPrivacy::Group {}) || input.room_id != c.project_room {
+            return Err(Error::RunnerAuthority);
+        }
+        if input.joined.len() > 1000
+            || input.joined.iter().map(String::len).sum::<usize>() > 48 * 1024
+        {
+            return Err(Error::Capacity);
+        }
+        let privacy = serialize(&input.privacy)?;
+        let joined = serialize(&input.joined)?;
+        let prior: Option<(u64,bool,bool,bool)>=tx.query_row(
+            "SELECT generation,available,registration_generation=?5 AND owner_mxid=?6 AND privacy=?7 AND encrypted=?8 AND invite_only=?9 AND direct_sender IS NULL,joined=?10 FROM matrix_room_scopes WHERE server_name=?1 AND room_id=?2 AND fleet_id=?3 AND project_id=?4",
+            params![c.registration.server_name,input.room_id,c.registration.fleet_id,c.project,c.registration.generation,c.owner,privacy,input.encrypted,input.invite_only,joined],
+            |r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?))).optional()?;
+        let mut observed = input.clone();
+        match (prior, expected) {
+            (None, None) if input.generation == 1 => {}
+            (Some((generation, true, true, same_members)), Some(expected))
+                if expected.available
+                    && expected.generation == generation
+                    && input.generation == generation =>
+            {
+                observed.generation = if same_members {
+                    generation
+                } else {
+                    generation.checked_add(1).ok_or(Error::Capacity)?
+                };
+            }
+            _ => return Err(Error::Generation),
+        }
+        // The SAME validator owns active identity, original transport, unsafe
+        // member refusal, membership publication and old-scope retirement.
+        Self::observe_room(&tx, &observed, now)?;
+        tx.commit()?;
+        Ok(observed)
+    }
+    fn observe_room(
+        tx: &Transaction<'_>,
+        input: &MatrixRoomObservation,
+        now: u64,
+    ) -> Result<(), Error> {
         clock(now)?;
         generation(input.generation)?;
         if input.joined.len() > 1000
@@ -310,16 +373,13 @@ impl DomainRepository {
         {
             return Err(Error::Capacity);
         }
-        let tx = self
-            .db
-            .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let c = context(&tx, &input.engagement_id)?;
+        let c = context(tx, &input.engagement_id)?;
         matrix_room(&input.room_id, &c.registration.server_name)?;
         if input.room_id == c.approval_room || input.room_id == c.registration.reception_room_id {
             return Err(Error::RunnerAuthority);
         }
         let sender = observed_transport(
-            &tx,
+            tx,
             &c,
             &input.engagement_id,
             input.registration_generation,
@@ -360,8 +420,7 @@ impl DomainRepository {
             if !prior_exists {
                 return Err(Error::UnsafeSnapshot(reason));
             }
-            invalidate(&tx, &c, &input.room_id, input.generation, &reason, now)?;
-            tx.commit()?;
+            invalidate(tx, &c, &input.room_id, input.generation, &reason, now)?;
             return Ok(());
         }
         let privacy = serialize(&input.privacy)?;
@@ -377,14 +436,13 @@ impl DomainRepository {
                     || direct_sender.as_deref() != Some(&sender))
             {
                 invalidate(
-                    &tx,
+                    tx,
                     &c,
                     &input.room_id,
                     input.generation,
                     "incompatible privacy classification",
                     now,
                 )?;
-                tx.commit()?;
                 return Ok(());
             }
             if old_gen == input.generation {
@@ -393,13 +451,12 @@ impl DomainRepository {
                     return Err(Error::Conflict);
                 }
                 membership(
-                    &tx,
+                    tx,
                     input,
                     &c.registration.server_name,
                     input.transport_generation,
                 )?;
-                reconcile(&tx, now)?;
-                tx.commit()?;
+                reconcile(tx, now)?;
                 return Ok(());
             }
             if input.generation != old_gen.checked_add(1).ok_or(Error::Capacity)? {
@@ -425,13 +482,12 @@ impl DomainRepository {
             params![c.registration.server_name, input.room_id, now],
         )?;
         membership(
-            &tx,
+            tx,
             input,
             &c.registration.server_name,
             input.transport_generation,
         )?;
-        reconcile(&tx, now)?;
-        tx.commit()?;
+        reconcile(tx, now)?;
         Ok(())
     }
 

@@ -3,6 +3,10 @@ use crate::{InvalidInput, JSON_SAFE_MAX, project::identifier};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+/// Explicit host execution budgets (ADR161), not runtime-selected deadlines.
+pub const MAX_OWNED_OPERATION_MS: u64 = 20 * 60_000;
+pub const MAX_OWNED_CAPABILITY_MS: u64 = MAX_OWNED_OPERATION_MS + 30_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TaskState {

@@ -42,8 +42,12 @@ pub use execution::{
 };
 pub use messages::{CorpusSweepOutcome, MESSAGE_RETENTION_FLOOR, RetentionStatus};
 mod notice_custody;
+mod outcome_resolution;
 mod owned_completion;
 mod owned_dispatch;
+mod stopped_inspection;
+pub use outcome_resolution::{OutcomeAction, OutcomeResolution};
+mod provision_runtime;
 pub use owned_completion::OwnedCompletion;
 pub use owned_dispatch::{
     OwnedClaimProfile, OwnedClaimRoom, OwnedDispatchScope, OwnedFailure, OwnedObservation,
@@ -52,6 +56,7 @@ pub use peers::{
     PEER_RECEIPT_CEILING, PEER_RETENTION_CEILING, PEER_RETENTION_FLOOR, PeerRetentionStatus,
     PeerSweepOutcome,
 };
+pub use provision_runtime::OwnedProvisionScope;
 pub(crate) mod file_delivery;
 mod peers;
 pub(crate) mod received_files;
@@ -69,12 +74,14 @@ pub use usage::{
     SourceUsage, UsageCeiling, UsageEvidence, UsagePeriod, UsagePeriodKind, UsageReceipt,
     UsageReport, UsageSource, UsageSummary,
 };
+pub use verified_ingress::StaleMatrixSessionReceipt;
 
 pub struct DomainRepository {
     db: Connection,
     accounts: accounts::Registry,
     _ownership: File,
     approval_owner: std::sync::Arc<()>,
+    warm_scopes: std::collections::BTreeMap<String, OwnedProvisionScope>,
 }
 impl DomainRepository {
     pub(super) fn drop_observed(self, probe: &std::sync::Arc<crate::shutdown::Probe>) {
@@ -602,7 +609,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 33,
+                version: 35,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -652,9 +659,17 @@ impl DomainRepository {
                     // PC-C1 landed first and holds 32 (integration 3580f3bb);
                     // MA-S2 takes the next free number, 033, by landing order.
                     (33, include_str!("migrations/033-dispatch-park-reason.sql")),
+                    (
+                        34,
+                        include_str!("migrations/034-owned-stop-inspections.sql"),
+                    ),
+                    (35, include_str!("migrations/035-outcome-resolutions.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
+                    "SELECT id,dispatch_id,fence,receipt_digest,snapshot_digest,token_hash,created_at,expires_at,consumed_at FROM outcome_inspections LIMIT 0",
+                    "SELECT request_id,dispatch_id,inspection_id,request_digest,action,response,resolved_at FROM outcome_resolutions LIMIT 0",
+                    "SELECT dispatch_id,fence,digest,config,observed_at FROM owned_stop_inspections LIMIT 0",
                     "SELECT sequence,engagement_id,source_key,scope_digest,digest,config,source_session_id,wake,pruned_at_ms FROM retained_message_archive LIMIT 0",
                     "SELECT source_key,digest,sequence,pruned_at_ms FROM retained_peer_index LIMIT 0",
                     "SELECT sequence,phase,pruned,oldest_ref,newest_ref,remaining,elapsed_ms,at_ms,payload FROM retention_prune_receipts LIMIT 0",
@@ -725,6 +740,7 @@ impl DomainRepository {
             db: database.connection,
             _ownership: database.ownership,
             approval_owner: std::sync::Arc::new(()),
+            warm_scopes: std::collections::BTreeMap::new(),
         })
     }
     pub fn register(&mut self, registration: &Registration) -> Result<(), Error> {
@@ -1336,10 +1352,19 @@ impl DomainRepository {
         read_effect(&self.db, id)
     }
     pub fn claim_effect(&mut self) -> Result<Option<Effect>, Error> {
+        self.claim_matching_effect(None)
+    }
+    /// Host-only inline claim. Selecting first and filtering the returned ID
+    /// afterwards would leave an unrelated engagement Started on mismatch.
+    pub fn claim_effect_for(&mut self, id: &str) -> Result<Option<Effect>, Error> {
+        project::identifier(id, 128)?;
+        self.claim_matching_effect(Some(id))
+    }
+    fn claim_matching_effect(&mut self, expected: Option<&str>) -> Result<Option<Effect>, Error> {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let id: Option<String> = tx.query_row("SELECT f.id FROM effects f JOIN engagements e ON e.id=f.engagement_id JOIN registrations r ON r.fleet_id=e.fleet_id WHERE f.state='pending' AND e.generation=r.generation AND ((f.kind='provision' AND e.state='reserved') OR (f.kind='retire' AND e.state='revoked')) ORDER BY f.id LIMIT 1", [], |r| r.get(0)).optional()?;
+        let id: Option<String> = tx.query_row("SELECT f.id FROM effects f JOIN engagements e ON e.id=f.engagement_id JOIN registrations r ON r.fleet_id=e.fleet_id WHERE (?1 IS NULL OR f.id=?1) AND f.state='pending' AND e.generation=r.generation AND ((f.kind='provision' AND e.state='reserved') OR (f.kind='retire' AND e.state='revoked')) ORDER BY f.id LIMIT 1", [expected], |r| r.get(0)).optional()?;
         let Some(id) = id else {
             return Ok(None);
         };
@@ -1373,67 +1398,78 @@ impl DomainRepository {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let effect = read_effect(&tx, id)?;
-        let digest = canonical::digest(&serde_json::to_value(outcome)?)?;
-        if effect.fence != fence {
-            return Err(Error::Generation);
-        }
-        let old: Option<String> = tx.query_row(
-            "SELECT outcome_digest FROM effects WHERE id=?1",
-            [id],
-            |r| r.get(0),
-        )?;
-        if old.as_ref() == Some(&digest) {
-            return read_engagement(&tx, &effect.engagement_id);
-        }
-        if !matches!(effect.state, EffectState::Started | EffectState::Uncertain) {
-            return Err(Error::State);
-        }
-        let mut value = read_engagement(&tx, &effect.engagement_id)?;
-        let current: bool = tx.query_row("SELECT e.generation=r.generation FROM engagements e JOIN registrations r ON r.fleet_id=e.fleet_id WHERE e.id=?1", [&value.id], |r| r.get(0))?;
-        if !current {
-            return Err(Error::Generation);
-        }
-        let state = match outcome {
-            EffectOutcome::Applied { .. } => {
-                if effect.kind == "provision" {
-                    value.state = EngagementState::Active;
-                } else {
-                    value.cleanup = CleanupState::Complete;
-                }
-                "complete"
-            }
-            EffectOutcome::NotApplied { .. } => {
-                if effect.kind == "provision" {
-                    value.state = EngagementState::Failed;
-                    // ADR-095 Slice 6: first terminal transition records the
-                    // ended-at instant (advisory metadata, side table).
-                    tx.execute(
-                        "INSERT INTO engagement_ends(engagement_id,ended_at) VALUES(?1,?2) \
-                         ON CONFLICT(engagement_id) DO NOTHING",
-                        params![value.id, graphs::now_ms()?],
-                    )?;
-                    "failed"
-                } else {
-                    value.cleanup = CleanupState::Pending;
-                    "failed"
-                }
-            }
-            EffectOutcome::Unknown => {
-                if effect.kind == "retire" {
-                    value.cleanup = CleanupState::Uncertain;
-                }
-                "uncertain"
-            }
-        };
-        tx.execute(
-            "UPDATE effects SET state=?2,outcome_digest=?3 WHERE id=?1",
-            params![id, state, digest],
-        )?;
-        write_engagement(&tx, &value)?;
+        let value = observe_effect_transaction(&tx, id, fence, outcome)?;
         tx.commit()?;
         Ok(value)
     }
+}
+// Shared effect kernel: scoped factory activation and ordinary observations
+// differ in admission only, never in their durable transition implementation.
+fn observe_effect_transaction(
+    tx: &rusqlite::Transaction<'_>,
+    id: &str,
+    fence: u64,
+    outcome: &EffectOutcome,
+) -> Result<Engagement, Error> {
+    let effect = read_effect(tx, id)?;
+    let digest = canonical::digest(&serde_json::to_value(outcome)?)?;
+    if effect.fence != fence {
+        return Err(Error::Generation);
+    }
+    let old: Option<String> = tx.query_row(
+        "SELECT outcome_digest FROM effects WHERE id=?1",
+        [id],
+        |r| r.get(0),
+    )?;
+    if old.as_ref() == Some(&digest) {
+        return read_engagement(tx, &effect.engagement_id);
+    }
+    if !matches!(effect.state, EffectState::Started | EffectState::Uncertain) {
+        return Err(Error::State);
+    }
+    let mut value = read_engagement(tx, &effect.engagement_id)?;
+    let current: bool = tx.query_row("SELECT e.generation=r.generation FROM engagements e JOIN registrations r ON r.fleet_id=e.fleet_id WHERE e.id=?1", [&value.id], |r| r.get(0))?;
+    if !current {
+        return Err(Error::Generation);
+    }
+    let state = match outcome {
+        EffectOutcome::Applied { .. } => {
+            if effect.kind == "provision" {
+                value.state = EngagementState::Active;
+            } else {
+                value.cleanup = CleanupState::Complete;
+            }
+            "complete"
+        }
+        EffectOutcome::NotApplied { .. } => {
+            if effect.kind == "provision" {
+                value.state = EngagementState::Failed;
+                // ADR-095 Slice 6: first terminal transition records the
+                // ended-at instant (advisory metadata, side table).
+                tx.execute(
+                    "INSERT INTO engagement_ends(engagement_id,ended_at) VALUES(?1,?2) \
+                         ON CONFLICT(engagement_id) DO NOTHING",
+                    params![value.id, graphs::now_ms()?],
+                )?;
+                "failed"
+            } else {
+                value.cleanup = CleanupState::Pending;
+                "failed"
+            }
+        }
+        EffectOutcome::Unknown => {
+            if effect.kind == "retire" {
+                value.cleanup = CleanupState::Uncertain;
+            }
+            "uncertain"
+        }
+    };
+    tx.execute(
+        "UPDATE effects SET state=?2,outcome_digest=?3 WHERE id=?1",
+        params![id, state, digest],
+    )?;
+    write_engagement(tx, &value)?;
+    Ok(value)
 }
 fn read_effect(db: &Connection, id: &str) -> Result<Effect, Error> {
     let row: (String, String, String, u64, String) = db

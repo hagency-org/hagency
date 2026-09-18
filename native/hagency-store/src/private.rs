@@ -110,6 +110,41 @@ pub fn check_handle(file: &File) -> Result<(), Error> {
     Ok(())
 }
 
+/// Sync the original directory, not an ambient path or Linux O_PATH descriptor.
+/// This is the same retained-object adapter used by managed account publication.
+pub(crate) fn sync_directory(dir: &cap_std::fs::Dir) -> Result<(), Error> {
+    #[cfg(unix)]
+    {
+        use cap_fs_ext::{
+            FollowSymlinks, OpenOptionsFollowExt, OpenOptionsMaybeDirExt, OpenOptionsSyncExt,
+        };
+        let mut options = cap_std::fs::OpenOptions::new();
+        options
+            .read(true)
+            .follow(FollowSymlinks::No)
+            .maybe_dir(true)
+            .nonblock(true);
+        let file = dir.open_with(".", &options)?.into_std();
+        check_handle(&file)?;
+        if !hagency_platform::same_directory(&file, &dir.try_clone()?.into_std_file())? {
+            return Err(Error::Private);
+        }
+        file.sync_all()?;
+        Ok(())
+    }
+    #[cfg(windows)]
+    {
+        WindowsDirectorySync::open(dir)?
+            .ok_or(Error::PlatformUnavailable)?
+            .sync()
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = dir;
+        Err(Error::PlatformUnavailable)
+    }
+}
+
 /// Creation-only adapter for the retained handle returned by successful
 /// create_new. Call BEFORE any bytes are written, never for an existing object.
 /// Windows assigns the current SID and a protected private DACL, then applies
@@ -188,6 +223,36 @@ mod windows;
 mod tests {
     use super::*;
     use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn native_private_retained_directory_sync() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join("original");
+        directory(&path).unwrap();
+        let retained =
+            cap_std::fs::Dir::open_ambient_dir(&path, cap_std::ambient_authority()).unwrap();
+        // Reproduce the invalid descriptor on Linux; never accept it as sync.
+        #[cfg(target_os = "linux")]
+        assert_eq!(
+            retained
+                .try_clone()
+                .unwrap()
+                .into_std_file()
+                .sync_all()
+                .unwrap_err()
+                .raw_os_error(),
+            Some(9)
+        );
+        sync_directory(&retained).unwrap();
+        let moved = temporary.path().join("held");
+        fs::rename(&path, &moved).unwrap();
+        directory(&path).unwrap();
+        // A public ambient replacement must neither be opened nor grant sync.
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        sync_directory(&retained).unwrap();
+        fs::set_permissions(&moved, fs::Permissions::from_mode(0o755)).unwrap();
+        assert!(matches!(sync_directory(&retained), Err(Error::Private)));
+    }
 
     #[test]
     fn native_private_directory_creation() {

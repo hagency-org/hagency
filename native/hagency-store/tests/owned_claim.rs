@@ -15,6 +15,14 @@ impl Fixture {
         Self::with_runtime("codex", None, "medium")
     }
     fn with_runtime(framework: &str, provider: Option<&str>, reasoning: &str) -> Self {
+        Self::with_runtime_and_room(framework, provider, reasoning, true)
+    }
+    fn with_runtime_and_room(
+        framework: &str,
+        provider: Option<&str>,
+        reasoning: &str,
+        encrypted: bool,
+    ) -> Self {
         let root = tempfile::tempdir().unwrap();
         let mut db = DomainRepository::open(&root.path().join("state")).unwrap();
         db.register(&registration()).unwrap();
@@ -59,7 +67,7 @@ impl Fixture {
                     "@owner:example.test".into(),
                 ]),
                 invite_only: true,
-                encrypted: true,
+                encrypted,
             },
             1002,
         )
@@ -114,6 +122,388 @@ impl Fixture {
         .unwrap()
     }
 }
+#[test]
+fn native_owned_claim_plaintext_project() {
+    let mut f = Fixture::with_runtime_and_room("codex", None, "medium", false);
+    f.queue("other_workspace", "other");
+    f.queue("selected", "work");
+    let ordinary = f.profile("DEVICE_1", RoomPrivacy::Group {});
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&ordinary, "default", 2000, 60_000, 60_000, 1)
+            .unwrap()
+            .is_none()
+    );
+    assert!(
+        OwnedClaimRoom::new(
+            "!direct:example.test".into(),
+            1,
+            RoomPrivacy::Direct {
+                human_mxid: "@owner:example.test".into()
+            }
+        )
+        .unwrap()
+        .with_plaintext_project()
+        .is_err()
+    );
+    let profile = |transport: MatrixTransportObservation, generation| {
+        OwnedClaimProfile::new(
+            transport,
+            vec![
+                OwnedClaimRoom::new(
+                    "!project:example.test".into(),
+                    generation,
+                    RoomPrivacy::Group {},
+                )
+                .unwrap()
+                .with_plaintext_project()
+                .unwrap(),
+            ],
+            vec!["work".into()],
+        )
+        .unwrap()
+    };
+    let stale = profile(f.transport.clone(), 2);
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&stale, "wrong_generation", 2000, 60_000, 60_000, 1)
+            .unwrap()
+            .is_none()
+    );
+    let mut foreign = f.transport.clone();
+    foreign.device_id = "OTHER".into();
+    assert!(
+        f.db.claim_owned_dispatch_for_host(
+            &profile(foreign, 1),
+            "wrong_device",
+            2000,
+            60_000,
+            60_000,
+            1
+        )
+        .unwrap()
+        .is_none()
+    );
+    let rooms = || {
+        vec![
+            OwnedClaimRoom::new("!project:example.test".into(), 1, RoomPrivacy::Group {})
+                .unwrap()
+                .with_plaintext_project()
+                .unwrap(),
+        ]
+    };
+    let bound = ordinary
+        .restrict_resource("pool".into(), "seat".into())
+        .unwrap();
+    let mut foreign = f.transport.clone();
+    foreign.generation = 2;
+    assert!(
+        bound
+            .clone()
+            .refresh_matrix_rooms(foreign, rooms())
+            .is_err()
+    );
+    assert!(
+        bound
+            .clone()
+            .refresh_matrix_rooms(
+                f.transport.clone(),
+                vec![
+                    OwnedClaimRoom::new("!other:example.test".into(), 1, RoomPrivacy::Group {})
+                        .unwrap()
+                ]
+            )
+            .is_err()
+    );
+    assert!(
+        bound
+            .clone()
+            .refresh_matrix_rooms(
+                f.transport.clone(),
+                vec![
+                    OwnedClaimRoom::new(
+                        "!project:example.test".into(),
+                        1,
+                        RoomPrivacy::Direct {
+                            human_mxid: "@owner:example.test".into()
+                        }
+                    )
+                    .unwrap()
+                ]
+            )
+            .is_err()
+    );
+    let selected = bound
+        .refresh_matrix_rooms(f.transport.clone(), rooms())
+        .unwrap();
+    assert!(
+        selected
+            .clone()
+            .restrict_resource("other".into(), "seat".into())
+            .is_err(),
+        "room refresh cannot replace original provider binding"
+    );
+    let cap =
+        f.db.claim_owned_dispatch_for_host(&selected, "project", 2000, 60_000, 60_000, 1)
+            .unwrap()
+            .unwrap();
+    assert_eq!(cap.dispatch_id, "selected");
+    let scope = f.db.owned_dispatch_scope(&cap, 2001).unwrap();
+    f.db.invalidate_matrix_room(
+        &MatrixRoomInvalidation {
+            engagement_id: f.transport.engagement_id.clone(),
+            registration_generation: 1,
+            transport_generation: 1,
+            room_id: "!project:example.test".into(),
+            generation: 2,
+            reason: "original project authority revoked".into(),
+        },
+        2002,
+    )
+    .unwrap();
+    assert!(
+        f.db.start_owned_dispatch(&cap, scope.fingerprint(), 2003)
+            .is_err()
+    );
+}
+#[test]
+fn native_owned_claim_stopped_capacity() {
+    let mut f = Fixture::new();
+    f.queue("original", "work");
+    f.queue("same_workspace", "work");
+    f.queue("independent", "other");
+    f.db.register_workspace("third").unwrap();
+    let profile = OwnedClaimProfile::new(
+        f.transport.clone(),
+        vec![
+            OwnedClaimRoom::new("!project:example.test".into(), 1, RoomPrivacy::Group {}).unwrap(),
+        ],
+        vec!["work".into(), "other".into(), "third".into()],
+    )
+    .unwrap();
+    let cap =
+        f.db.claim_owned_dispatch_for_host(&profile, "original_host", 2000, 60_000, 60_000, 1)
+            .unwrap()
+            .unwrap();
+    assert_eq!(cap.dispatch_id, "original");
+    let admission = f.db.owned_dispatch_scope(&cap, 2001).unwrap();
+    let started =
+        f.db.start_owned_dispatch(&cap, admission.fingerprint(), 2001)
+            .unwrap();
+    f.db.enqueue_dispatch(&DispatchInput {
+        id: "same_session".into(),
+        session_id: "original".into(),
+        task_id: Some("original".into()),
+        resources: vec![ResourceLease {
+            id: "third".into(),
+            exclusive: true,
+        }],
+        payload: json!({"instruction":"must stay blocked"}),
+    })
+    .unwrap();
+    f.db.observe_owned_failure(&cap, hagency_store::OwnedFailure::Protocol, 2002)
+        .unwrap();
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&profile, "missing_proof", 2003, 60_000, 60_000, 1)
+            .unwrap()
+            .is_none()
+    );
+    // Store contract fixture only; actual-process proof is exercised in execution.
+    f.db.record_owned_stop_inspection(
+        &cap,
+        &started,
+        &json!({"profile":"stopped-content-inventory-v1","root":{"fixture":true},"entries":[]}),
+        2004,
+    )
+    .unwrap();
+    let sql = rusqlite::Connection::open(f._root.path().join("state/domain.sqlite3")).unwrap();
+    // Negative corruption control: another attempt's receipt cannot free this one.
+    sql.execute("UPDATE owned_stop_inspections SET fence=fence+1", [])
+        .unwrap();
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&profile, "wrong_fence", 2005, 60_000, 60_000, 1)
+            .unwrap()
+            .is_none()
+    );
+    sql.execute("UPDATE owned_stop_inspections SET fence=fence-1", [])
+        .unwrap();
+    drop(f.db);
+    f.db = DomainRepository::open(&f._root.path().join("state")).unwrap();
+    let next =
+        f.db.claim_owned_dispatch_for_host(&profile, "next_host", 2006, 60_000, 60_000, 1)
+            .unwrap()
+            .expect("proven stopped owner is not a live process");
+    assert_eq!(next.dispatch_id, "independent");
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&profile, "same_scope", 2007, 60_000, 60_000, 128)
+            .unwrap()
+            .is_none()
+    );
+    let state:(String,u64,u64,u64,u64)=sql.query_row("SELECT d.state,s.quarantined,w.dirty,(SELECT COUNT(*) FROM resource_leases WHERE dispatch_id=d.id),(SELECT COUNT(*) FROM dispatch_stops WHERE dispatch_id=d.id AND settled_at IS NULL) FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id JOIN workspace_resources w ON w.id='work' WHERE d.id='original'",[],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?,r.get(3)?,r.get(4)?))).unwrap();
+    assert_eq!(state, ("outcome_unknown".into(), 1, 1, 1, 1));
+    assert_eq!(
+        f.db.canonical_task("original").unwrap().status,
+        TaskState::InProgress
+    );
+    f.queue("third_independent", "third");
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&profile, "cap_is_still_one", 2008, 60_000, 60_000, 1)
+            .unwrap()
+            .is_none()
+    );
+}
+
+#[test]
+fn native_owned_claim_long_budget() {
+    let mut f = Fixture::new();
+    f.queue("selected", "work");
+    let profile = f.profile("DEVICE_1", RoomPrivacy::Group {});
+    let max = hagency_core::tasks::MAX_OWNED_CAPABILITY_MS;
+    assert!(
+        f.db.claim_dispatch("generic", 2000, 60_000, 300_001, 1)
+            .is_err()
+    );
+    for capability_ms in [0, max + 1, u64::MAX] {
+        assert!(
+            f.db.claim_owned_dispatch_for_host(&profile, "host", 2000, 60_000, capability_ms, 1)
+                .is_err()
+        );
+    }
+    assert!(
+        f.db.claim_owned_dispatch_for_host(
+            &profile,
+            "host",
+            hagency_core::JSON_SAFE_MAX - max + 1,
+            60_000,
+            max,
+            1
+        )
+        .is_err()
+    );
+    assert!(
+        f.db.claim_owned_dispatch_for_host(&profile, "host", 2000, 300_001, max, 1)
+            .is_err()
+    );
+    let sql = rusqlite::Connection::open(f._root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM runner_attempts", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+    let cap =
+        f.db.claim_owned_dispatch_for_host(&profile, "host", 2000, 60_000, max, 1)
+            .unwrap()
+            .unwrap();
+    let before = f.db.owned_dispatch_scope(&cap, 2001).unwrap();
+    let started =
+        f.db.start_owned_dispatch(&cap, before.fingerprint(), 2001)
+            .unwrap();
+    let expiry = 2000 + max;
+    for at in (2002..expiry).step_by(1000) {
+        f.db.renew_dispatch(&cap, at, 5000).unwrap();
+        f.db.check_owned_dispatch(&cap, started.fingerprint(), at)
+            .unwrap();
+        let (lease, until) = sql
+            .query_row(
+                "SELECT lease_until,capability_until FROM runner_dispatches WHERE id='selected'",
+                [],
+                |r| Ok((r.get::<_, u64>(0)?, r.get::<_, u64>(1)?)),
+            )
+            .unwrap();
+        assert_eq!(until, expiry);
+        assert_eq!(lease, (at + 5000).min(expiry));
+    }
+    assert!(f.db.renew_dispatch(&cap, expiry, 5000).is_err());
+    assert!(
+        f.db.check_owned_dispatch(&cap, started.fingerprint(), expiry)
+            .is_err()
+    );
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM runner_attempts", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        1
+    );
+
+    // A longer capability never overrides revocation or an unrenewed lease.
+    for revoke in [false, true] {
+        let mut f = Fixture::new();
+        f.queue("selected", "work");
+        let profile = f.profile("DEVICE_1", RoomPrivacy::Group {});
+        let cap =
+            f.db.claim_owned_dispatch_for_host(&profile, "host", 2000, 60_000, max, 1)
+                .unwrap()
+                .unwrap();
+        let scope = f.db.owned_dispatch_scope(&cap, 2001).unwrap();
+        f.db.start_owned_dispatch(&cap, scope.fingerprint(), 2001)
+            .unwrap();
+        let at = if revoke {
+            f.db.revoke("revoked", &f.transport.engagement_id).unwrap();
+            2002
+        } else {
+            62_000
+        };
+        assert!(f.db.renew_dispatch(&cap, at, 5000).is_err());
+        assert!(
+            f.db.check_owned_dispatch(&cap, scope.fingerprint(), at)
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn native_owned_claim_resource_binding() {
+    let mut f = Fixture::new();
+    f.queue("selected", "work");
+    let profile = f.profile("DEVICE_1", RoomPrivacy::Group {});
+    for (preset, seat) in [("foreign", "seat"), ("pool", "foreign")] {
+        let wrong = profile
+            .clone()
+            .restrict_resource(preset.into(), seat.into())
+            .unwrap();
+        assert!(
+            f.db.claim_owned_dispatch_for_host(&wrong, "host", 2000, 60_000, 60_000, 1)
+                .unwrap()
+                .is_none()
+        );
+    }
+    let sql = rusqlite::Connection::open(f._root.path().join("state/domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM runner_attempts", [], |row| row
+            .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+    assert_eq!(
+        sql.query_row(
+            "SELECT state FROM runner_dispatches WHERE id='selected'",
+            [],
+            |row| row.get::<_, String>(0)
+        )
+        .unwrap(),
+        "queued"
+    );
+    let selected = profile
+        .restrict_resource("pool".into(), "seat".into())
+        .unwrap();
+    assert!(
+        selected
+            .clone()
+            .restrict_resource("other".into(), "seat".into())
+            .is_err()
+    );
+    let selected = selected
+        .restrict_resource("pool".into(), "seat".into())
+        .unwrap();
+    let cap =
+        f.db.claim_owned_dispatch_for_host(&selected, "host", 2000, 60_000, 60_000, 1)
+            .unwrap()
+            .unwrap();
+    assert_eq!(cap.dispatch_id, "selected");
+    let scope = f.db.owned_dispatch_scope(&cap, 2001).unwrap();
+    assert_eq!(scope.resource().preset_id, "pool");
+    assert_eq!(scope.resource().seat_id, "seat");
+}
+
 #[test]
 fn native_owned_claim_profile() {
     let mut f = Fixture::new();

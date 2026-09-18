@@ -377,37 +377,53 @@ impl DomainRepository {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let row: Option<(u64, Option<String>)> = tx
-            .query_row(
-                "SELECT fence,evidence FROM dispatch_stops WHERE dispatch_id=?1",
-                [id],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .optional()?;
-        let (current, prior) = row.ok_or(Error::NotFound)?;
-        if current != fence {
-            return Err(Error::RunnerAuthority);
-        }
-        if let Some(prior) = prior {
-            return if prior == evidence {
-                Ok(())
-            } else {
-                Err(Error::Conflict)
-            };
-        }
-        let valid:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM runner_dispatches WHERE id=?1 AND fence=?2 AND state='outcome_unknown')",params![id,fence],|r|r.get(0))?;
-        if !valid {
-            return Err(Error::State);
-        }
-        tx.execute(
-            "UPDATE dispatch_stops SET evidence=?2,settled_at=?3 WHERE dispatch_id=?1",
-            params![id, evidence, now],
-        )?;
-        tx.execute("DELETE FROM resource_leases WHERE dispatch_id=?1", [id])?;
-        tx.execute("UPDATE workspace_resources SET dirty=0 WHERE id IN (SELECT resource_id FROM dispatch_resources WHERE dispatch_id=?1 AND exclusive=1) AND NOT EXISTS(SELECT 1 FROM unresolved_dispatches u JOIN dispatch_resources r ON r.dispatch_id=u.id WHERE r.resource_id=workspace_resources.id AND r.exclusive=1)",[id])?;
-        tx.execute("UPDATE runner_sessions SET quarantined=0 WHERE id=(SELECT session_id FROM runner_dispatches WHERE id=?1) AND NOT EXISTS(SELECT 1 FROM unresolved_dispatches u WHERE u.session_id=runner_sessions.id)",[id])?;
-        release_inputs(&tx, id)?;
+        settle_stop_in_transaction(&tx, id, fence, evidence, now, true)?;
         tx.commit()?;
         Ok(())
     }
+}
+
+/// Shared settlement kernel. Continuation transfers the still-held inputs in
+/// the same transaction; ordinary host settlement releases their assignments.
+pub(super) fn settle_stop_in_transaction(
+    tx: &Transaction<'_>,
+    id: &str,
+    fence: u64,
+    evidence: &str,
+    now: u64,
+    release_assignments: bool,
+) -> Result<(), Error> {
+    let row: Option<(u64, Option<String>)> = tx
+        .query_row(
+            "SELECT fence,evidence FROM dispatch_stops WHERE dispatch_id=?1",
+            [id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .optional()?;
+    let (current, prior) = row.ok_or(Error::NotFound)?;
+    if current != fence {
+        return Err(Error::RunnerAuthority);
+    }
+    if let Some(prior) = prior {
+        return if prior == evidence {
+            Ok(())
+        } else {
+            Err(Error::Conflict)
+        };
+    }
+    let valid:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM runner_dispatches WHERE id=?1 AND fence=?2 AND state='outcome_unknown')",params![id,fence],|r|r.get(0))?;
+    if !valid {
+        return Err(Error::State);
+    }
+    tx.execute(
+        "UPDATE dispatch_stops SET evidence=?2,settled_at=?3 WHERE dispatch_id=?1",
+        params![id, evidence, now],
+    )?;
+    tx.execute("DELETE FROM resource_leases WHERE dispatch_id=?1", [id])?;
+    tx.execute("UPDATE workspace_resources SET dirty=0 WHERE id IN (SELECT resource_id FROM dispatch_resources WHERE dispatch_id=?1 AND exclusive=1) AND NOT EXISTS(SELECT 1 FROM unresolved_dispatches u JOIN dispatch_resources r ON r.dispatch_id=u.id WHERE r.resource_id=workspace_resources.id AND r.exclusive=1)",[id])?;
+    tx.execute("UPDATE runner_sessions SET quarantined=0 WHERE id=(SELECT session_id FROM runner_dispatches WHERE id=?1) AND NOT EXISTS(SELECT 1 FROM unresolved_dispatches u WHERE u.session_id=runner_sessions.id)",[id])?;
+    if release_assignments {
+        release_inputs(tx, id)?;
+    }
+    Ok(())
 }

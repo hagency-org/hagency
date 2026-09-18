@@ -1,8 +1,13 @@
 mod common;
 use common::*;
 use hagency_core::{
-    attachments::*, ingress::MatrixEventObservation, messages::InboundMessage, received_files::*,
-    replies::*, tasks::*,
+    agent_inbox::{AgentInboxPlan, AgentInboxSelection},
+    attachments::*,
+    ingress::MatrixEventObservation,
+    messages::InboundMessage,
+    received_files::*,
+    replies::*,
+    tasks::*,
 };
 use hagency_store::{DomainRepository, EffectOutcome, Error, ReceiveAdmission};
 use std::collections::BTreeSet;
@@ -708,6 +713,64 @@ fn native_receive_inbox_selection() {
     );
 }
 
+#[test]
+fn native_agent_inbox_mints_one_deterministic_task_and_dispatch() {
+    let mut f = Fixture::new(1);
+    let input = MatrixEventObservation {
+        scope: f.db.matrix_ingress_scope("s0").unwrap(),
+        event: InboundMessage {
+            server_name: "example.test".into(),
+            room_id: "!project:example.test".into(),
+            event_id: "$agent_wake".into(),
+            sender_mxid: "@owner:example.test".into(),
+            thread_root: Some("$thread_s0".into()),
+            body: "Please inspect the workspace and report the result.".into(),
+            kind: "m.text".into(),
+            origin_ts: 3000,
+        },
+        mentions: BTreeSet::from(["@worker:example.test".into()]),
+        encrypted: true,
+    };
+    let receipt = f.db.admit_matrix_event(&input, 3001).unwrap();
+    assert!(receipt.wake);
+    let plan = AgentInboxPlan {
+        session_id: "s0".into(),
+        workspace_id: "work0".into(),
+    };
+    let selected = f.db.select_agent_inbox(&plan, 3002).unwrap();
+    let AgentInboxSelection::Selected {
+        dispatch_id,
+        task_id,
+        count,
+        replayed,
+    } = selected
+    else {
+        panic!("verified wake did not create an agent dispatch")
+    };
+    assert_eq!(count, 1);
+    assert!(!replayed);
+    assert!(dispatch_id.starts_with("matrix_dispatch_"));
+    assert!(task_id.starts_with("matrix_task_"));
+    let input: String = f
+        .sql()
+        .query_row(
+            "SELECT input FROM runner_dispatches WHERE id=?1",
+            [&dispatch_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let input: serde_json::Value = serde_json::from_str(&input).unwrap();
+    assert_eq!(input["task_id"], task_id);
+    assert_eq!(
+        input["payload"]["inbox"][0]["message"]["event_id"],
+        "$agent_wake"
+    );
+    assert_eq!(
+        f.db.select_agent_inbox(&plan, 3003).unwrap(),
+        AgentInboxSelection::NoWake
+    );
+}
+
 fn verify_schema_upgrade() {
     let f = Fixture::new(1);
     let sql = f.sql();
@@ -730,7 +793,7 @@ fn verify_schema_upgrade() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        33
+        35
     );
     assert_eq!(
         sql.query_row(

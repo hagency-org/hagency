@@ -841,7 +841,7 @@ fn native_retained_peer_corpus_migration_replays_after_rewind() {
             .unwrap();
         sql.pragma_update(None, "user_version", 26).unwrap();
     }
-    // The double open: the second run is at head 33 and replays nothing.
+    // The double open: the second run is at head 35 and replays nothing.
     for _ in 0..2 {
         let db = DomainRepository::open(&state).unwrap();
         drop(db);
@@ -849,7 +849,7 @@ fn native_retained_peer_corpus_migration_replays_after_rewind() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            33
+            35
         );
         let index: u64 = sql
             .query_row("SELECT COUNT(*) FROM retained_peer_index", [], |r| r.get(0))
@@ -900,7 +900,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
     let _ = f.send_one("head_row", 2000);
     let state = f.root.path().join("state");
     drop(f.db);
-    // A fresh database opens at head 33 — and a deeper rewind (to 24, the
+    // A fresh database opens at head 35 — and a deeper rewind (to 24, the
     // ceiling-alerts fixture's shape) replays 025, 026 AND 027 over a live
     // database, proving the whole retention block replays in order.
     {
@@ -908,7 +908,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            33
+            35
         );
         // 025 is NOT idempotent (ALTER TABLE ... ADD COLUMN status): a
         // deeper rewind to 24 replays it over a table that already carries
@@ -932,7 +932,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            33,
+            35,
             "every reopen lands at the current head"
         );
     }

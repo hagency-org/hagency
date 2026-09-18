@@ -14,6 +14,20 @@ use hagency_core::{
 use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serde_json::json;
 
+/// Negative-only evidence minted by the original domain owner. No public
+/// constructor, Deserialize or identity/text projection, and no retry grant.
+#[derive(Clone)]
+pub struct StaleMatrixSessionReceipt {
+    input_digest: String,
+    since: u64,
+}
+impl StaleMatrixSessionReceipt {
+    pub fn matches(&self, input: &MatrixEventObservation) -> bool {
+        input.event.origin_ts < self.since
+            && canonical::digest(&json!(input)).is_ok_and(|digest| digest == self.input_digest)
+    }
+}
+
 fn scoped(db: &Connection, scope: &MatrixIngressScope) -> Result<ReplyRoute, Error> {
     scope.validate()?;
     let route = matrix_routes::route(db, &scope.session_id)?;
@@ -164,6 +178,44 @@ fn bound_intent(db: &Connection, session: &str) -> Result<Option<(String, String
 }
 
 impl DomainRepository {
+    pub fn stale_matrix_session_receipt(
+        &self,
+        input: &MatrixEventObservation,
+    ) -> Result<Option<StaleMatrixSessionReceipt>, Error> {
+        input.validate()?;
+        // Original frozen rows establish only a negative decision. A retired
+        // route is not re-armed or treated as current positive authority.
+        let encoded: String = self
+            .db
+            .query_row(
+                "SELECT config FROM matrix_session_routes WHERE session_id=?1",
+                [&input.scope.session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or(Error::RunnerAuthority)?;
+        let route: ReplyRoute = serde_json::from_str(&encoded)?;
+        if !input.scope.matches(&route)
+            || input.event.server_name != route.server_name
+            || input.event.room_id != route.room_id
+            || (route.encrypted && !input.encrypted)
+        {
+            return Err(Error::RunnerAuthority);
+        }
+        let since: Option<u64> = self.db.query_row(
+            "SELECT ingress_since FROM matrix_session_routes WHERE session_id=?1",
+            [&input.scope.session_id],
+            |row| row.get(0),
+        )?;
+        let since = since.ok_or(Error::RunnerAuthority)?;
+        if input.event.origin_ts >= since || self.matrix_ingress_receipt(input)?.is_some() {
+            return Ok(None);
+        }
+        Ok(Some(StaleMatrixSessionReceipt {
+            input_digest: canonical::digest(&json!(input))?,
+            since,
+        }))
+    }
     pub fn matrix_ingress_scope(&self, session: &str) -> Result<MatrixIngressScope, Error> {
         identifier(session, 128)?;
         let route = matrix_routes::route(&self.db, session)?;
@@ -211,6 +263,68 @@ impl DomainRepository {
             .optional()?
             .ok_or(Error::NotFound)?;
         Ok(serde_json::from_str(&encoded)?)
+    }
+
+    /// Host-only current physical-account boundary. This read establishes no
+    /// Applied receipt and cannot reconstruct a lost claim acknowledgement.
+    pub fn validate_provision_account(
+        &mut self,
+        expected: &super::Effect,
+        registration: &hagency_core::authority::Registration,
+    ) -> Result<(), Error> {
+        self.validate_provision_account_at(expected, registration, false)
+    }
+    /// Original acknowledged owner after a separately observed Applied. This
+    /// read cannot complete provisioning or reconstruct a lost Started claim.
+    pub fn validate_active_provision_account(
+        &mut self,
+        expected: &super::Effect,
+        registration: &hagency_core::authority::Registration,
+    ) -> Result<(), Error> {
+        self.validate_provision_account_at(expected, registration, true)
+    }
+    fn validate_provision_account_at(
+        &mut self,
+        expected: &super::Effect,
+        registration: &hagency_core::authority::Registration,
+        active: bool,
+    ) -> Result<(), Error> {
+        identifier(&expected.id, 128)?;
+        registration.validate()?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let actual = super::read_effect(&tx, &expected.id)?;
+        let required = if active {
+            super::EffectState::Complete
+        } else {
+            super::EffectState::Started
+        };
+        if expected.kind != "provision"
+            || expected.state != super::EffectState::Started
+            || actual.kind != expected.kind
+            || actual.state != required
+            || actual.engagement_id != expected.engagement_id
+            || actual.fence != expected.fence
+            || actual.fence == 0
+            || canonical::transport_digest(&actual.payload)?
+                != canonical::transport_digest(&expected.payload)?
+        {
+            return Err(Error::State);
+        }
+        let encoded: Option<String> = tx.query_row(
+            "SELECT r.config FROM engagements e JOIN registrations r ON r.fleet_id=e.fleet_id AND r.generation=e.generation WHERE e.id=?1 AND e.state=?2",
+            rusqlite::params![actual.engagement_id,if active {"active"} else {"reserved"}], |row| row.get(0),
+        ).optional()?;
+        let current: hagency_core::authority::Registration =
+            serde_json::from_str(&encoded.ok_or(Error::Generation)?)?;
+        if canonical::transport_digest(&serde_json::to_value(current)?)?
+            != canonical::transport_digest(&serde_json::to_value(registration)?)?
+        {
+            return Err(Error::Generation);
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     /// The enrolled owner-DM room for a requesting owner, recorded by the

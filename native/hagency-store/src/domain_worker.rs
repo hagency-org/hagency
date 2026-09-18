@@ -908,6 +908,83 @@ mod clock_tests {
     }
 
     #[tokio::test]
+    async fn native_stopped_inspection_queue_reply_loss() {
+        for committed in [false, true] {
+            let root = tempfile::tempdir().unwrap();
+            let (mut db, cap) = owned_fixture(root.path());
+            let admission = db.owned_dispatch_scope(&cap, now()).unwrap();
+            let scope = db
+                .start_owned_dispatch(&cap, admission.fingerprint(), now())
+                .unwrap();
+            db.observe_owned_failure(&cap, crate::OwnedFailure::Protocol, now())
+                .unwrap();
+            let inventory = json!({"profile":"stopped-content-inventory-v1","root":{"store_fixture":true},"entries":[]});
+            let store = DomainStore::start(db, 16).unwrap();
+            let (entered, ready) = oneshot::channel();
+            let (release, gate) = std::sync::mpsc::channel();
+            let worker = store.clone();
+            let original = (cap.clone(), scope.clone(), inventory.clone());
+            let withheld = tokio::spawn(async move {
+                worker
+                    .call(1, move |db| {
+                        if committed {
+                            db.record_owned_stop_inspection(
+                                &original.0,
+                                &original.1,
+                                &original.2,
+                                now(),
+                            )?;
+                        }
+                        let _ = entered.send(());
+                        gate.recv_timeout(Duration::from_secs(4))
+                            .map_err(|_| Error::Unavailable)?;
+                        Ok(())
+                    })
+                    .await
+            });
+            ready.await.unwrap();
+            if !committed {
+                assert!(matches!(
+                    store
+                        .record_owned_stop_inspection(cap.clone(), scope.clone(), inventory.clone())
+                        .await,
+                    Err(Error::OutcomeUnknown)
+                ));
+            }
+            assert!(matches!(
+                withheld.await.unwrap(),
+                Err(Error::OutcomeUnknown)
+            ));
+            release.send(()).unwrap();
+            let before = store
+                .owned_stop_inspection(cap.dispatch_id.clone(), cap.fence)
+                .await
+                .unwrap();
+            assert_eq!(before.is_some(), committed);
+            let digest = store
+                .record_owned_stop_inspection(cap.clone(), scope, inventory)
+                .await
+                .unwrap();
+            let after = store
+                .owned_stop_inspection(cap.dispatch_id.clone(), cap.fence)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(after["digest"], digest);
+            if let Some(before) = before {
+                assert_eq!(after, before);
+            }
+            store.shutdown().await.unwrap();
+            let db = DomainRepository::open(&root.path().join("state")).unwrap();
+            assert_eq!(
+                db.owned_stop_inspection(&cap.dispatch_id, cap.fence)
+                    .unwrap(),
+                Some(after)
+            );
+        }
+    }
+
+    #[tokio::test]
     async fn native_owned_completion_queue_reply_loss() {
         for committed in [false, true] {
             let root = tempfile::tempdir().unwrap();
@@ -1484,6 +1561,29 @@ impl DomainStore {
         })
         .await
     }
+    /// Original stopped owner only; neither runtime output nor status JSON.
+    pub async fn record_owned_stop_inspection(
+        &self,
+        cap: RunnerCapability,
+        scope: crate::OwnedDispatchScope,
+        inventory: serde_json::Value,
+    ) -> Result<String, Error> {
+        let size = weight(&(&cap, scope.queue_value(), &inventory))?;
+        self.call(size, move |db| {
+            db.record_owned_stop_inspection(&cap, &scope, &inventory, writer_time()?)
+        })
+        .await
+    }
+    pub async fn owned_stop_inspection(
+        &self,
+        id: String,
+        fence: u64,
+    ) -> Result<Option<serde_json::Value>, Error> {
+        self.call(weight(&(&id, fence))?, move |db| {
+            db.owned_stop_inspection(&id, fence)
+        })
+        .await
+    }
     /// The caller must hold an actually stopped owner. This host API does not
     /// manufacture that process observation and has no runner HTTP equivalent.
     pub async fn complete_owned_dispatch(
@@ -1724,6 +1824,15 @@ impl DomainStore {
         })
         .await
     }
+    pub async fn stale_matrix_session_receipt(
+        &self,
+        input: hagency_core::ingress::MatrixEventObservation,
+    ) -> Result<Option<crate::StaleMatrixSessionReceipt>, Error> {
+        self.call(weight(&input)?, move |db| {
+            db.stale_matrix_session_receipt(&input)
+        })
+        .await
+    }
     pub async fn admit_matrix_attachment(
         &self,
         input: hagency_core::attachments::MatrixAttachmentObservation,
@@ -1875,6 +1984,16 @@ impl DomainStore {
         })
         .await
     }
+    pub async fn refresh_matrix_group_room(
+        &self,
+        input: MatrixRoomObservation,
+        expected: Option<MatrixRoomState>,
+    ) -> Result<MatrixRoomObservation, Error> {
+        self.call(weight(&(&input, &expected))?, move |db| {
+            db.refresh_matrix_group_room(&input, expected.as_ref(), writer_time()?)
+        })
+        .await
+    }
     pub async fn invalidate_matrix_room(&self, input: MatrixRoomInvalidation) -> Result<(), Error> {
         let bytes = weight(&input)?;
         self.call_with_policy(
@@ -1898,11 +2017,31 @@ impl DomainStore {
         self.call(1, move |db| db.claim_final_reply(writer_time()?, lease_ms))
             .await
     }
+    pub async fn claim_final_reply_for_dispatch(
+        &self,
+        capability: RunnerCapability,
+        lease_ms: u64,
+    ) -> Result<Option<ReplyClaim>, Error> {
+        self.call(weight(&capability)?, move |db| {
+            db.claim_final_reply_for_dispatch(&capability, writer_time()?, lease_ms)
+        })
+        .await
+    }
     pub async fn preview_final_reply(&self, claim: ReplyClaim) -> Result<ReplySend, Error> {
         self.call(
             weight(&(&claim.id, claim.fence, &claim.secret))?,
             move |db| db.preview_final_reply(&claim, writer_time()?),
         )
+        .await
+    }
+    pub async fn final_reply_history_conflicts(
+        &self,
+        id: String,
+        fence: u64,
+    ) -> Result<bool, Error> {
+        self.call(weight(&(&id, fence))?, move |db| {
+            db.final_reply_history_conflicts(&id, fence)
+        })
         .await
     }
     pub async fn validate_final_reply_send(&self, claim: ReplyClaim) -> Result<(), Error> {
@@ -2242,6 +2381,12 @@ impl DomainStore {
         })
         .await
     }
+    /// Historical routing data only; the selected service still authenticates
+    /// its exact current operation or historical row independently.
+    pub async fn runner_service_engagement(&self, cap: RunnerCapability) -> Result<String, Error> {
+        self.call(weight(&cap)?, move |db| db.runner_service_engagement(&cap))
+            .await
+    }
     pub async fn start_dispatch(
         &self,
         cap: RunnerCapability,
@@ -2305,16 +2450,93 @@ impl DomainStore {
     pub async fn reconcile_dispatches(&self, now: u64) -> Result<(), Error> {
         self.call(1, move |db| db.reconcile_dispatches(now)).await
     }
+    pub async fn stopped_dispatch_inspection(
+        &self,
+        engagement: String,
+        id: String,
+    ) -> Result<serde_json::Value, Error> {
+        self.call(weight(&(&engagement, &id))?, move |db| {
+            db.stopped_dispatch_inspection(&engagement, &id)
+        })
+        .await
+    }
+    pub async fn stopped_dispatches_for_agent(
+        &self,
+        engagement: String,
+        after: String,
+    ) -> Result<serde_json::Value, Error> {
+        self.call(weight(&(&engagement, &after))?, move |db| {
+            db.stopped_dispatches_for_agent(&engagement, &after)
+        })
+        .await
+    }
+    pub async fn owned_stop_resolution_recorded(
+        &self,
+        cap: RunnerCapability,
+    ) -> Result<bool, Error> {
+        self.call(weight(&cap)?, move |db| {
+            db.owned_stop_resolution_recorded(&cap)
+        })
+        .await
+    }
+    pub async fn begin_outcome_inspection(
+        &self,
+        engagement: String,
+        id: String,
+        ttl_ms: u64,
+    ) -> Result<serde_json::Value, Error> {
+        self.call(weight(&(&engagement, &id))?, move |db| {
+            db.begin_outcome_inspection_clock(&engagement, &id, ttl_ms, writer_time)
+        })
+        .await
+    }
+    pub async fn resolve_stopped_dispatch(
+        &self,
+        engagement: String,
+        input: crate::OutcomeResolution,
+    ) -> Result<serde_json::Value, Error> {
+        self.call(weight(&(&engagement, &input))?, move |db| {
+            db.resolve_stopped_dispatch_clock(&engagement, &input, writer_time)
+        })
+        .await
+    }
+    pub async fn continue_stopped_dispatch(
+        &self,
+        engagement: String,
+        original: String,
+        receipt: (u64, String),
+        replacement: DispatchInput,
+        evidence: String,
+    ) -> Result<(), Error> {
+        self.call(
+            weight(&(&engagement, &original, &receipt, &replacement, &evidence))?,
+            move |db| {
+                db.continue_stopped_dispatch(
+                    &engagement,
+                    &original,
+                    (receipt.0, &receipt.1),
+                    &replacement,
+                    &evidence,
+                    writer_time()?,
+                )
+            },
+        )
+        .await
+    }
     pub async fn recover_dispatch(
         &self,
+        engagement: String,
         original: String,
         replacement: DispatchInput,
         evidence: String,
         now: u64,
     ) -> Result<(), Error> {
-        self.call(weight(&(&original, &replacement, &evidence))?, move |db| {
-            db.recover_dispatch(&original, &replacement, &evidence, now)
-        })
+        self.call(
+            weight(&(&engagement, &original, &replacement, &evidence))?,
+            move |db| {
+                db.recover_dispatch_for_agent(&engagement, &original, &replacement, &evidence, now)
+            },
+        )
         .await
     }
     pub async fn runner_task(
@@ -2918,6 +3140,66 @@ impl DomainStore {
     pub async fn claim_effect(&self) -> Result<Option<Effect>, Error> {
         self.call(1, DomainRepository::claim_effect).await
     }
+    /// Exact host-only effect ownership, never a RunnerCommand or HTTP setter.
+    pub async fn claim_effect_for(&self, id: String) -> Result<Option<Effect>, Error> {
+        self.call(weight(&id)?, move |db| db.claim_effect_for(&id))
+            .await
+    }
+    /// Original writer check for an already-acknowledged physical account owner.
+    pub async fn validate_provision_account(
+        &self,
+        effect: Effect,
+        registration: hagency_core::authority::Registration,
+    ) -> Result<(), Error> {
+        self.call(weight(&(&effect, &registration))?, move |db| {
+            db.validate_provision_account(&effect, &registration)
+        })
+        .await
+    }
+    pub async fn provision_runtime_scope(
+        &self,
+        effect: Effect,
+        registration: hagency_core::authority::Registration,
+    ) -> Result<crate::OwnedProvisionScope, Error> {
+        self.call(weight(&(&effect, &registration))?, move |db| {
+            db.provision_runtime_scope(&effect, &registration)
+        })
+        .await
+    }
+    pub async fn provision_runtime_account(
+        &self,
+        scope: crate::OwnedProvisionScope,
+    ) -> Result<Option<crate::ManagedAccount>, Error> {
+        let size = weight(&scope.queue_value())?;
+        self.call(size, move |db| db.provision_runtime_account(&scope))
+            .await
+    }
+    pub async fn complete_original_provision(
+        &self,
+        scope: crate::OwnedProvisionScope,
+    ) -> Result<Engagement, Error> {
+        let size = weight(&scope.queue_value())?;
+        self.call(size, move |db| db.complete_original_provision(&scope))
+            .await
+    }
+    pub async fn validate_active_provision_account(
+        &self,
+        effect: Effect,
+        registration: hagency_core::authority::Registration,
+    ) -> Result<(), Error> {
+        self.call(weight(&(&effect, &registration))?, move |db| {
+            db.validate_active_provision_account(&effect, &registration)
+        })
+        .await
+    }
+    pub async fn validate_warm_runtime_scope(
+        &self,
+        scope: crate::OwnedProvisionScope,
+    ) -> Result<(), Error> {
+        let size = weight(&scope.queue_value())?;
+        self.call(size, move |db| db.validate_warm_runtime_scope(&scope))
+            .await
+    }
     pub async fn retry_cleanup(&self, command: String, id: String) -> Result<Engagement, Error> {
         self.call(weight(&(&command, &id))?, move |db| {
             db.retry_cleanup(&command, &id)
@@ -3454,6 +3736,16 @@ mod received_file_commands {
     use crate::domain::received_files as received;
     use hagency_core::received_files::*;
     impl DomainStore {
+        pub async fn select_agent_inbox(
+            &self,
+            plan: hagency_core::agent_inbox::AgentInboxPlan,
+        ) -> Result<hagency_core::agent_inbox::AgentInboxSelection, Error> {
+            plan.validate()?;
+            self.call(weight(&plan)?, move |db| {
+                db.select_agent_inbox(&plan, writer_time()?)
+            })
+            .await
+        }
         pub async fn select_receive_inbox(
             &self,
             plan: ReceiveInboxPlan,

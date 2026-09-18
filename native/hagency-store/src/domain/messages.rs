@@ -574,9 +574,15 @@ pub(super) fn enqueue_inbox(
     sequences: &[u64],
 ) -> Result<(), Error> {
     input.validate()?;
-    if ["inbox", "recoveryInbox", "peerInbox", "recoveryPeerInbox"]
-        .iter()
-        .any(|k| input.payload.get(k).is_some())
+    if [
+        "inbox",
+        "agentInbox",
+        "recoveryInbox",
+        "peerInbox",
+        "recoveryPeerInbox",
+    ]
+    .iter()
+    .any(|k| input.payload.get(k).is_some())
     {
         return Err(hagency_core::InvalidInput("dispatch input is host-owned").into());
     }
@@ -745,6 +751,106 @@ pub(super) fn select_receive(
         replayed: false,
     })
 }
+
+/// Select the oldest verified wake for one continuous agent session and mint
+/// its canonical task plus dispatch in the same writer transaction. IDs are a
+/// deterministic projection of the session and trigger sequence, so replay is
+/// content-checked rather than duplicated.
+pub(super) fn select_agent(
+    tx: &rusqlite::Transaction<'_>,
+    plan: &hagency_core::agent_inbox::AgentInboxPlan,
+    now: u64,
+) -> Result<hagency_core::agent_inbox::AgentInboxSelection, Error> {
+    use hagency_core::{
+        agent_inbox::AgentInboxSelection,
+        tasks::{DispatchInput, ResourceLease},
+    };
+    plan.validate()?;
+    clock(now)?;
+    let route = super::matrix_routes::route(tx, &plan.session_id)?;
+    let since: Option<u64> = tx.query_row(
+        "SELECT ingress_since FROM matrix_session_routes WHERE session_id=?1",
+        [&plan.session_id],
+        |r| r.get(0),
+    )?;
+    let since = since.ok_or(Error::RunnerAuthority)?;
+    let trigger: Option<u64> = tx
+        .query_row(
+            "SELECT message_sequence FROM session_inputs WHERE session_id=?1 AND wake=1 AND processed_at IS NULL AND dispatch_id IS NULL AND json_extract(config,'$.origin_ts')>=?2 ORDER BY message_sequence LIMIT 1",
+            params![plan.session_id, since],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(trigger) = trigger else {
+        return Ok(AgentInboxSelection::NoWake);
+    };
+    let rows: Vec<(u64, bool)> = tx
+        .prepare(
+            "SELECT message_sequence,wake FROM session_inputs WHERE session_id=?1 AND processed_at IS NULL AND dispatch_id IS NULL AND message_sequence<=?2 AND json_extract(config,'$.origin_ts')>=?3 ORDER BY message_sequence DESC LIMIT 100",
+        )?
+        .query_map(params![plan.session_id, trigger, since], |r| {
+            Ok((r.get(0)?, r.get(1)?))
+        })?
+        .collect::<Result<_, _>>()?;
+    let suffix = canonical::digest(&serde_json::json!([
+        "matrix_agent_inbox_v1",
+        plan.session_id,
+        trigger
+    ]))?;
+    let task_id = format!("matrix_task_{}", &suffix[..32]);
+    let dispatch_id = format!("matrix_dispatch_{}", &suffix[..32]);
+    let base = DispatchInput {
+        id: dispatch_id.clone(),
+        session_id: plan.session_id.clone(),
+        task_id: Some(task_id.clone()),
+        resources: vec![ResourceLease {
+            id: plan.workspace_id.clone(),
+            exclusive: true,
+        }],
+        payload: serde_json::json!({
+            "instruction": "Handle the verified Matrix inbox as the user request. You MUST use the Hagency task tools: inspect the canonical task, perform the request, and call complete_task_with_reply with the final reply for Matrix delivery before ending the turn. A normal assistant final response does not complete this task."
+        }),
+    };
+    let mut items = Vec::new();
+    for (sequence, wake) in rows {
+        let item = InboxItem {
+            message: super::verified_ingress::input_message(tx, &plan.session_id, sequence)?,
+            wake,
+        };
+        super::verified_ingress::provenance(tx, &route, &item.message)?;
+        items.push(item);
+        let mut test = base.clone();
+        let mut ordered = items.clone();
+        ordered.reverse();
+        test.payload["inbox"] = serde_json::to_value(ordered)?;
+        if test.validate().is_err() {
+            items.pop();
+            if items.is_empty() {
+                return Err(Error::Capacity);
+            }
+            break;
+        }
+    }
+    let mut sequences: Vec<u64> = items.iter().map(|v| v.message.sequence).collect();
+    sequences.reverse();
+    if sequences.last() != Some(&trigger) {
+        return Err(Error::Schema);
+    }
+    let replayed: bool = tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM runner_dispatches WHERE id=?1)",
+        [&dispatch_id],
+        |r| r.get(0),
+    )?;
+    execution::create_task(tx, &task_id, &plan.session_id, None, "Matrix request", now)?;
+    enqueue_inbox(tx, &base, &sequences)?;
+    Ok(AgentInboxSelection::Selected {
+        dispatch_id,
+        task_id,
+        count: sequences.len(),
+        replayed,
+    })
+}
+
 impl DomainRepository {
     pub fn select_receive_inbox(
         &mut self,
@@ -754,6 +860,18 @@ impl DomainRepository {
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         let result = select_receive(&tx, plan)?;
+        tx.commit()?;
+        Ok(result)
+    }
+    pub fn select_agent_inbox(
+        &mut self,
+        plan: &hagency_core::agent_inbox::AgentInboxPlan,
+        now: u64,
+    ) -> Result<hagency_core::agent_inbox::AgentInboxSelection, Error> {
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let result = select_agent(&tx, plan, now)?;
         tx.commit()?;
         Ok(result)
     }

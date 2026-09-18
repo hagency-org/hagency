@@ -797,7 +797,7 @@ fn native_ceiling_alert_schema_upgrade() {
     let head: u64 = sql
         .pragma_query_value(None, "user_version", |r| r.get(0))
         .unwrap();
-    assert_eq!(head, 33);
+    assert_eq!(head, 35);
     // The backfill: a resolved row serves 'resolved' with an empty map.
     // The open-alerts read deliberately excludes resolved rows, so this
     // half is verified on the table the read is served from.
