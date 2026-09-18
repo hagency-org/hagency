@@ -4,6 +4,7 @@ const ENV: &str = "HAGENCY_FILE_PUBLICATION_RECOVERY_FIXTURE";
 pub(super) async fn settle_ack_loss() {
     late_recovery(RecoveryCase::LostSettleAck).await;
     late_recovery(RecoveryCase::CompleteBeforeSettle).await;
+    late_recovery(RecoveryCase::ArchivedSettledReceipt).await;
 }
 
 pub(super) async fn settled_receipt_substitution() {
@@ -15,6 +16,7 @@ enum RecoveryCase {
     LostSettleAck,
     CompleteBeforeSettle,
     ChangedSettledReceipt,
+    ArchivedSettledReceipt,
 }
 
 async fn late_recovery(case: RecoveryCase) {
@@ -184,6 +186,20 @@ async fn late_recovery(case: RecoveryCase) {
             .unwrap();
         assert_eq!(restored.attempt_digest, before.attempt_digest);
         assert_eq!(acceptance(), original_acceptance);
+    }
+    if case == RecoveryCase::ArchivedSettledReceipt {
+        let guard = f.collector.inner.owner.lock().await;
+        let owner = guard.as_ref().unwrap();
+        // Archive the actual completed SDK receipt, not synthetic delivery
+        // metadata. Cache-capacity stress is proven by the 150-send test.
+        owner.outgoing_archive_settled_fixture().await;
+        let view = owner
+            .outgoing(crate::outgoing::state::Command::Read)
+            .await
+            .unwrap();
+        assert!(view.attempt.is_none());
+        assert!(!view.receipts.iter().any(|receipt| receipt.id == id.id()));
+        assert_eq!(op.outcome().unwrap(), Some(Err(Error::OutcomeUnknown)));
     }
     f.collector.reopen_upload_owner(&cancel).await.unwrap();
     let settled = f.collector.resume_outgoing_custody(&cancel).await.unwrap();

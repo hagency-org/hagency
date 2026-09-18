@@ -14,7 +14,7 @@ impl ApprovalCollector {
         let permit = self.delivery_permit(false)?;
         let deadline = Instant::now() + self.inner.config.limits.sdk;
         let inner = self.inner.clone();
-        let engagements = self.engagements.clone();
+        let engagements = self.engagements.snapshot()?;
         let cancel = cancel.child_token();
         let job=self.jobs.start(false,false,permit,async move{
             let original_rooms=inner.approval_rooms(&engagements).await?;

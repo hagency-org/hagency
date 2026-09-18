@@ -2,6 +2,7 @@ use crate::collector::fixtures as common;
 use crate::{CancellationToken, Collector, Error};
 mod fixture;
 mod recovery;
+pub(crate) use fixture::crypto;
 use fixture::*;
 use serde_json::json;
 

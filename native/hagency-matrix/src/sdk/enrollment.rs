@@ -796,7 +796,11 @@ pub(super) async fn completed(machine: &OlmMachine, record: &Ledger) -> Result<(
         return Err(Error::Recipients);
     }
     for session in &record.sessions {
-        if session.ids.is_empty() || session_ids(machine, &session.curve).await? != session.ids {
+        // Verified inbound Olm traffic can add a session for the same original
+        // recipient curve. It does not replace the enrollment's claimed IDs.
+        // Keep every original ID mandatory and validate/bound all SDK sessions.
+        let actual = session_ids(machine, &session.curve).await?;
+        if session.ids.is_empty() || session.ids.iter().any(|id| !actual.contains(id)) {
             return Err(Error::Recipients);
         }
     }

@@ -129,6 +129,33 @@ async fn native_matrix_upload_ciphertext_origin() {
 }
 
 #[tokio::test]
+async fn native_matrix_upload_blurhash_response() {
+    let media = media(b"independent encrypted media");
+    let mut fake = Fake::start(true).await;
+    let client = uploader(&fake, 1024, 1, 1);
+    for raw in [
+        include_bytes!("fixtures/palpo-upload-response.json").as_slice(),
+        br#"{"blurhash":"LEHV6nWB2yk8pyo0adR*.7kCMdnj","content_uri":"mxc://media.remote:8448/Abc_123-XYZ"}"#.as_slice(),
+    ] {
+        let mut attempt = client.prepare(&media.encrypted).unwrap();
+        let cancel = CancellationToken::new();
+        let (result, ()) = tokio::join!(attempt.send(&cancel), async {
+            let request = fake.next().await;
+            assert_eq!(request.body, media.encrypted.ciphertext());
+            request.raw(reply(raw));
+        });
+        result.unwrap();
+        let observed = attempt.observed_response().unwrap();
+        assert_eq!(observed.body(), raw);
+        assert_eq!(observed.body_sha256(), &<[u8; 32]>::from(Sha256::digest(raw)));
+        assert_eq!(observed.media_id().to_mxc(), "mxc://media.remote:8448/Abc_123-XYZ");
+        assert_eq!(attempt.send(&cancel).await, Err(Failure::Terminal));
+    }
+    fake.quiesced(fake.requests(), &common::limits()).await;
+    fake.close().await;
+}
+
+#[tokio::test]
 async fn native_matrix_upload_response_bounds() {
     let valid = serde_json::to_vec(&accepted()).unwrap();
     let mut too_large = valid.clone();
@@ -142,6 +169,14 @@ async fn native_matrix_upload_response_bounds() {
     let mut invalid = vec![
         reply(br#"{"content_uri":"mxc://a/a","content_uri":"mxc://b/b"}"#),
         reply(br#"{"content_uri":"mxc://a/a","extra":1}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":null,"blurhash":null}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":null,"content_uri":"mxc://b/b"}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":false}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":42}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":{}}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":[]}"#),
+        reply(br#"{"blurhash":null}"#),
+        reply(br#"{"content_uri":"mxc://a/a","blurhash":null,"extra":1}"#),
         reply(br#"{"content_uri":1}"#),
         reply(b"null"),
         reply(b"[]"),

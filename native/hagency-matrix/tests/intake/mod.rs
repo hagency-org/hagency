@@ -63,6 +63,275 @@ fn sync(token: &str, events: Vec<Value>) -> Value {
 fn plan() -> HostIntakePlan {
     HostIntakePlan::new(vec!["root".into()]).unwrap()
 }
+
+#[tokio::test]
+async fn native_matrix_stale_session_refusal() {
+    let f = common::Fixture::new();
+    let mut fake = common::Fake::start(false).await;
+    let c = Collector::new(
+        config(&f, &fake.endpoint, f.identity.clone(), 1, false),
+        f.store.clone(),
+    )
+    .unwrap();
+    prime(&c, &f, &mut fake, false).await;
+    let targets = vec![f.store.matrix_intake_route("root".into()).await.unwrap()];
+    let mut stale = event(
+        "pre_session",
+        "Synthetic old request",
+        &["@worker:example.test"],
+        None,
+    );
+    stale["origin_server_ts"] = json!(1);
+    let raw = sync(
+        "refusal",
+        vec![
+            event(
+                "committed_prefix",
+                "Already acknowledged",
+                &["@worker:example.test"],
+                None,
+            ),
+            stale.clone(),
+        ],
+    );
+    let digest;
+    {
+        let guard = c.inner.owner.lock().await;
+        let owner = guard.as_ref().unwrap();
+        owner
+            .intake_start(raw.clone(), targets.clone())
+            .await
+            .unwrap();
+        let batch = owner.batch().await.unwrap().unwrap();
+        assert_eq!(batch.events.len(), 2);
+        digest = batch.digest.clone();
+        let receipt = f
+            .store
+            .admit_matrix_event(batch.events[0].observation())
+            .await
+            .unwrap();
+        owner
+            .intake_ack(digest.clone(), 0, Acknowledgement::from(&receipt))
+            .await
+            .unwrap();
+        assert!(
+            f.store
+                .admit_matrix_event(batch.events[1].observation())
+                .await
+                .is_err()
+        );
+        owner
+            .intake_quarantine("domain refused the frozen event scope or content".into())
+            .await
+            .unwrap();
+        assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("bootstrap"));
+    }
+    assert_eq!(
+        c.refuse_stale_session_batch("f".repeat(64)).await,
+        Err(Error::Conflict)
+    );
+    assert_eq!(
+        c.refuse_stale_session_batch(digest.clone()).await.unwrap(),
+        1
+    );
+    assert_eq!(rows(&f, "admitted_messages"), 1);
+    assert!(
+        f.available().await,
+        "negative refusal did not revive or retire current authority"
+    );
+    {
+        let guard = c.inner.owner.lock().await;
+        let owner = guard.as_ref().unwrap();
+        assert!(owner.batch().await.unwrap().is_none());
+        assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("refusal"));
+    }
+    c.close_refusal_owner().await.unwrap();
+    assert_eq!(
+        c.refuse_stale_session_batch(digest).await.unwrap(),
+        1,
+        "exact protected completed refusal after restart"
+    );
+    {
+        let guard = c.inner.owner.lock().await;
+        let owner = guard.as_ref().unwrap();
+        // The negative source proof survives rolling beyond the live cache.
+        for index in 0..70 {
+            owner
+                .intake_start(
+                    sync(&format!("refusal_history_{index}"), vec![]),
+                    targets.clone(),
+                )
+                .await
+                .unwrap();
+            let batch = owner.batch().await.unwrap().unwrap();
+            owner.intake_finish(batch.digest).await.unwrap();
+        }
+        owner
+            .intake_start(sync("stale_repeated", vec![stale]), targets)
+            .await
+            .unwrap();
+        let batch = owner.batch().await.unwrap().unwrap();
+        assert_eq!((batch.events.len(), batch.rejected()), (0, 1));
+        owner.intake_finish(batch.digest).await.unwrap();
+    }
+    assert_eq!(rows(&f, "admitted_messages"), 1);
+    c.close().await.unwrap();
+    f.store.shutdown().await.unwrap();
+    fake.close().await;
+}
+
+#[tokio::test]
+async fn native_matrix_stale_session_refusal_negative() {
+    for variant in [
+        "current",
+        "changed",
+        "committed",
+        "applying",
+        "rollback",
+        "coverage",
+    ] {
+        let f = common::Fixture::new();
+        let mut fake = common::Fake::start(false).await;
+        let c = Collector::new(
+            config(&f, &fake.endpoint, f.identity.clone(), 1, false),
+            f.store.clone(),
+        )
+        .unwrap();
+        prime(&c, &f, &mut fake, false).await;
+        let targets = vec![f.store.matrix_intake_route("root".into()).await.unwrap()];
+        let mut value = event(
+            "refusal_negative",
+            "Original SDK content",
+            &["@worker:example.test"],
+            None,
+        );
+        if !matches!(variant, "current" | "committed") {
+            value["origin_server_ts"] = json!(1);
+        }
+        let digest;
+        let sql = rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3")).unwrap();
+        {
+            let guard = c.inner.owner.lock().await;
+            let owner = guard.as_ref().unwrap();
+            if variant == "applying" {
+                owner.apply_fault().await;
+            }
+            let result = owner
+                .intake_start(sync("refusal_negative", vec![value]), targets)
+                .await;
+            if variant == "applying" {
+                assert_eq!(result, Err(Error::OutcomeUnknown));
+            } else {
+                result.unwrap();
+            }
+            let batch = owner.batch().await.unwrap().unwrap();
+            digest = batch.digest.clone();
+            if variant == "committed" {
+                f.store
+                    .admit_matrix_event(batch.events[0].observation())
+                    .await
+                    .unwrap();
+                // Test-only changed boundary: even a now-pre-boundary source
+                // with a canonical commit cannot acquire negative evidence.
+                sql.execute(
+                    "UPDATE matrix_session_routes SET ingress_since=?1 WHERE session_id='root'",
+                    [now() + 1000],
+                )
+                .unwrap();
+            }
+            if variant != "applying" {
+                owner
+                    .intake_quarantine(
+                        if variant == "coverage" {
+                            "unsupported SDK event or incomplete timeline"
+                        } else {
+                            "domain refused the frozen event scope or content"
+                        }
+                        .into(),
+                    )
+                    .await
+                    .unwrap();
+            }
+            if variant == "changed" {
+                let mut observation = batch.events[0].observation();
+                observation.event.body = "Caller supplied replacement content".into();
+                let proof = f
+                    .store
+                    .stale_matrix_session_receipt(observation.clone())
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(!proof.matches(&batch.events[0].observation()));
+                assert_eq!(
+                    owner.intake_refuse_stale(digest.clone(), vec![proof]).await,
+                    Err(Error::Generation)
+                );
+                observation.scope.session_id = "missing".into();
+                assert!(
+                    f.store
+                        .stale_matrix_session_receipt(observation)
+                        .await
+                        .is_err()
+                );
+            }
+        }
+        if variant == "rollback" {
+            let sdk_sql =
+                rusqlite::Connection::open(f.root.path().join("sdk/matrix-sdk-state.sqlite3"))
+                    .unwrap();
+            sdk_sql.execute_batch("CREATE TRIGGER refusal_root_abort BEFORE INSERT ON kv_blob BEGIN SELECT RAISE(ABORT,'fixture refusal rollback'); END;").unwrap();
+            assert_eq!(
+                c.refuse_stale_session_batch(digest.clone()).await,
+                Err(Error::OutcomeUnknown)
+            );
+            sdk_sql
+                .execute_batch("DROP TRIGGER refusal_root_abort")
+                .unwrap();
+            assert!(
+                c.inner
+                    .owner
+                    .lock()
+                    .await
+                    .as_ref()
+                    .unwrap()
+                    .batch()
+                    .await
+                    .unwrap()
+                    .unwrap()
+                    .phase
+                    == Phase::Quarantined
+            );
+            c.close_refusal_owner().await.unwrap();
+            assert_eq!(c.refuse_stale_session_batch(digest).await.unwrap(), 1);
+        } else if variant != "changed" {
+            assert!(
+                c.refuse_stale_session_batch(digest).await.is_err(),
+                "{variant}"
+            );
+            let guard = c.inner.owner.lock().await;
+            let batch = guard.as_ref().unwrap().batch().await.unwrap().unwrap();
+            assert_eq!(
+                batch.events.len(),
+                if variant == "applying" { 0 } else { 1 }
+            );
+            assert!(
+                batch.phase
+                    == if variant == "applying" {
+                        Phase::Applying
+                    } else {
+                        Phase::Quarantined
+                    }
+            );
+        }
+        assert_eq!(
+            rows(&f, "admitted_messages"),
+            u64::from(variant == "committed")
+        );
+        c.close().await.unwrap();
+        f.store.shutdown().await.unwrap();
+        fake.close().await;
+    }
+}
 async fn prime(c: &Collector, f: &common::Fixture, fake: &mut common::Fake, encrypted: bool) {
     prime_named(c, f, fake, encrypted, "intake prime", None).await;
 }
@@ -815,24 +1084,23 @@ async fn native_matrix_intake_bounds_receipts_never_evict_and_ack_rollback_prese
         let batch = owner.batch().await.unwrap().unwrap();
         owner.intake_finish(batch.digest).await.unwrap();
     }
-    assert_eq!(
-        owner
-            .intake_start(sync("overflow", vec![]), targets.clone())
-            .await,
-        Err(Error::Capacity)
-    );
+    owner
+        .intake_start(sync("overflow", vec![]), targets.clone())
+        .await
+        .unwrap();
+    let batch = owner.batch().await.unwrap().unwrap();
+    owner.intake_finish(batch.digest).await.unwrap();
     owner
         .intake_start(sync("empty2", vec![]), targets.clone())
         .await
         .unwrap();
     let mut changed = sync("empty2", vec![]);
     changed["opaque"] = json!(0.125);
-    assert_eq!(
-        owner.intake_start(changed, targets).await,
-        Err(Error::Conflict)
-    );
+    owner.intake_start(changed, targets).await.unwrap();
+    let batch = owner.batch().await.unwrap().unwrap();
+    owner.intake_finish(batch.digest).await.unwrap();
     assert!(owner.batch().await.unwrap().is_none());
-    assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("empty63"));
+    assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("empty2"));
     assert_eq!(
         owner.sync(common::sync("skip_intake")).await,
         Err(Error::Busy)
@@ -937,6 +1205,15 @@ async fn native_matrix_intake_bounds_unchanged_observation_token_transfers_curso
             .intake_mode()
             .await
             .unwrap()
+    );
+    let mut fresh_metadata = common::sync("bootstrap");
+    fresh_metadata["device_one_time_keys_count"] = json!({"signed_curve25519":50});
+    assert_eq!(
+        run(&c, &mut fake, fresh_metadata, false)
+            .await
+            .unwrap()
+            .admitted,
+        0
     );
     c.close().await.unwrap();
     let mut identity = f.identity.clone();

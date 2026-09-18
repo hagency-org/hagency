@@ -482,6 +482,13 @@ async fn native_matrix_rejection_bounds_restore_refuses_changed_dispositions() {
 
 #[tokio::test]
 async fn native_matrix_rejection_bounds_actual_terminal_receipts_never_evict() {
+    archived_terminal_source().await;
+}
+#[tokio::test]
+async fn native_matrix_sync_history_terminal_source() {
+    archived_terminal_source().await;
+}
+async fn archived_terminal_source() {
     let (f, fake, c) = ready(false).await;
     let targets = vec![f.store.matrix_intake_route("root".into()).await.unwrap()];
     let guard = c.inner.owner.lock().await;
@@ -506,12 +513,41 @@ async fn native_matrix_rejection_bounds_actual_terminal_receipts_never_evict() {
         }
         owner.intake_finish(batch.digest).await.unwrap();
     }
-    assert_eq!(
-        owner.intake_start(sync("overflow", vec![]), targets).await,
-        Err(Error::Capacity)
-    );
+    owner
+        .intake_start(sync("overflow", vec![]), targets.clone())
+        .await
+        .unwrap();
+    let batch = owner.batch().await.unwrap().unwrap();
+    owner.intake_finish(batch.digest).await.unwrap();
     assert!(owner.batch().await.unwrap().is_none());
-    assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("terminal63"));
+    assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("overflow"));
+    // Push the original non-target source out of the hot journal, then change
+    // its content to mention the worker. Protected oldest history still wins.
+    owner
+        .intake_start(sync("rollover", vec![]), targets.clone())
+        .await
+        .unwrap();
+    let batch = owner.batch().await.unwrap().unwrap();
+    owner.intake_finish(batch.digest).await.unwrap();
+    owner
+        .intake_start(
+            sync(
+                "changed_source",
+                vec![event(
+                    "filtered0",
+                    "Now selected",
+                    &["@worker:example.test"],
+                    None,
+                )],
+            ),
+            targets,
+        )
+        .await
+        .unwrap();
+    let batch = owner.batch().await.unwrap().unwrap();
+    assert!(batch.events.is_empty());
+    assert_eq!(batch.rejected(), 1);
+    owner.intake_finish(batch.digest).await.unwrap();
     assert_eq!(rows(&f, "admitted_messages"), 0);
     drop(guard);
     c.close().await.unwrap();

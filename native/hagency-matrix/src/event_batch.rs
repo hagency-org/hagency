@@ -9,7 +9,7 @@ use matrix_sdk_common::deserialized_responses::{
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::BTreeSet;
-mod disposition;
+pub(crate) mod disposition;
 use disposition::{Decision, Disposition, Rejection, Source};
 
 pub(crate) const MAX_TIMELINE: usize = 100;
@@ -151,6 +151,46 @@ pub(crate) struct Receipt {
     pub dispositions: Option<Vec<Disposition>>,
 }
 impl Batch {
+    pub(crate) fn refuse_stale_session(
+        &mut self,
+        proofs: &[hagency_store::StaleMatrixSessionReceipt],
+    ) -> Result<usize, Error> {
+        if self.phase != Phase::Quarantined
+            || self.reason.as_deref() != Some("domain refused the frozen event scope or content")
+            || self.acknowledgements.len() >= self.events.len()
+            || proofs.len() != self.events.len() - self.acknowledgements.len()
+        {
+            return Err(Error::Unsupported);
+        }
+        for (event, proof) in self.events[self.acknowledgements.len()..]
+            .iter()
+            .zip(proofs)
+        {
+            if event.attachment.is_some() || !proof.matches(&event.observation()) {
+                return Err(Error::Generation);
+            }
+        }
+        let dispositions = self.dispositions.as_mut().ok_or(Error::Unsupported)?;
+        disposition::validate(dispositions, self.events.len(), self.filtered)?;
+        let count = proofs.len();
+        for value in dispositions {
+            if matches!(value.decision, Decision::Candidate { index } if index >= self.acknowledgements.len())
+            {
+                value.decision = Decision::Rejected {
+                    reason: Rejection::StaleSession,
+                };
+            }
+        }
+        self.events.truncate(self.acknowledgements.len());
+        self.phase = Phase::Derived;
+        self.reason = Some("stale session inputs explicitly refused".into());
+        self.validate_restored(
+            &self.sdk_identity,
+            &self.targets[0].sender_mxid,
+            &self.targets[0].device_id,
+        )?;
+        Ok(count)
+    }
     pub(crate) fn new(
         raw: Value,
         targets: Vec<ReplyRoute>,
@@ -180,7 +220,16 @@ impl Batch {
             dispositions: Some(vec![]),
         })
     }
+    #[cfg(test)]
     pub(crate) fn derive(&mut self, sync: SyncResponse, history: &[Receipt]) -> Result<(), Error> {
+        self.derive_with_history(sync, history, &[])
+    }
+    pub(crate) fn derive_with_history(
+        &mut self,
+        sync: SyncResponse,
+        history: &[Receipt],
+        archived: &[Disposition],
+    ) -> Result<(), Error> {
         if sync
             .rooms
             .left
@@ -235,7 +284,9 @@ impl Batch {
                 return Err(Error::Conflict);
             }
             let source = Source::new(room, original)?;
-            let decision = if let Some(prior) = Disposition::prior(&source, history) {
+            let decision = if let Some(prior) = Disposition::prior_values(&source, archived.iter())
+                .or_else(|| Disposition::prior(&source, history))
+            {
                 prior
             } else if timeline.raw().deserialize().is_err() {
                 Decision::Rejected {

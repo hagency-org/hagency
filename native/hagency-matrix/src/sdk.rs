@@ -41,6 +41,7 @@ pub(crate) mod enrollment;
 pub(crate) mod file_publication;
 mod keys;
 mod outgoing;
+mod sync_history;
 mod upload_custody;
 #[path = "upload_custody.rs"]
 pub(crate) mod upload_state;
@@ -71,6 +72,8 @@ struct Journal {
     approval_outcomes: Vec<crate::approval_batch::Tombstone>,
     pending: Option<Value>,
     receipts: Vec<(String, String)>,
+    #[serde(default)]
+    sync_history: Option<String>,
     #[serde(default)]
     intake_enabled: bool,
     #[serde(default)]
@@ -125,6 +128,8 @@ enum Command {
     OutgoingSettleReplyFault(oneshot::Sender<()>),
     #[cfg(test)]
     OutgoingSettledReceiptFixture(bool, oneshot::Sender<()>),
+    #[cfg(test)]
+    OutgoingArchiveSettledFixture(oneshot::Sender<()>),
     Outgoing(
         crate::outgoing::state::Command,
         oneshot::Sender<Result<crate::outgoing::state::View, Error>>,
@@ -159,6 +164,11 @@ enum Command {
     ),
     IntakeFinish(String, oneshot::Sender<Result<(), Error>>),
     IntakeQuarantine(String, oneshot::Sender<Result<(), Error>>),
+    IntakeRefuseStale(
+        String,
+        Vec<hagency_store::StaleMatrixSessionReceipt>,
+        oneshot::Sender<Result<(usize, bool), Error>>,
+    ),
     Sync(Value, oneshot::Sender<Result<(), Error>>),
     Close(oneshot::Sender<Result<(), Error>>),
 }
@@ -167,6 +177,8 @@ pub(crate) struct Owner {
     tx: mpsc::Sender<Command>,
     timeout: Duration,
 }
+#[cfg(test)]
+pub(crate) struct OwnerIdentity(mpsc::WeakSender<Command>);
 struct Init {
     enrollment: Option<crate::enrollment::state::Profile>,
     upload_context: upload_state::Context,
@@ -180,6 +192,17 @@ struct Init {
     device: String,
 }
 impl Owner {
+    #[cfg(test)]
+    pub(crate) fn owner_identity(&self) -> OwnerIdentity {
+        OwnerIdentity(self.tx.downgrade())
+    }
+    #[cfg(test)]
+    pub(crate) fn same_owner(&self, identity: &OwnerIdentity) -> bool {
+        identity
+            .0
+            .upgrade()
+            .is_some_and(|tx| self.tx.same_channel(&tx))
+    }
     pub(crate) async fn open(config: &HostConfig) -> Result<Self, Error> {
         Self::open_mode(config, false).await
     }
@@ -403,6 +426,11 @@ impl Owner {
                                 sdk.persist().await.unwrap();
                                 let _ = reply.send(());
                             }
+                            #[cfg(test)]
+                            Command::OutgoingArchiveSettledFixture(reply) => {
+                                sdk.archive_settled_file_fixture().await;
+                                let _ = reply.send(());
+                            }
                             Command::Outgoing(command, reply) => {
                                 let new_start = matches!(&command, crate::outgoing::state::Command::Start(..) | crate::outgoing::state::Command::StartFile(..));
                                 if new_start && (sdk.enrollment_poisoned || sdk.enrollment.as_ref().is_some_and(|r| r.phase != crate::enrollment::state::Phase::Complete)
@@ -522,6 +550,9 @@ impl Owner {
                                 observation::command(&command_observation, ObservationPhase::Returned, result.as_ref().err().cloned());
                                 let _ = reply.send(result);
                             }
+                            Command::IntakeRefuseStale(digest, proofs, reply) => {
+                                let _ = reply.send(sdk.intake_refuse_stale(&digest, &proofs).await);
+                            }
                             Command::Cursor(reply) => {
                                 let cursor = sdk.journal.receipts.last().map(|r| r.0.clone());
                                 #[cfg(test)]
@@ -601,7 +632,7 @@ impl Owner {
             Command::Outgoing(command, _) => {
                 use crate::outgoing::state::Command as Outgoing;
                 CommandTrace::current(match command {
-                    Outgoing::Read => SdkCommand::OutgoingRead,
+                    Outgoing::Read | Outgoing::Lookup { .. } => SdkCommand::OutgoingRead,
                     Outgoing::Start(..) | Outgoing::StartFile(..) => SdkCommand::OutgoingStart,
                     Outgoing::Begun => SdkCommand::OutgoingBegun,
                     Outgoing::Query => SdkCommand::OutgoingQuery,
@@ -645,6 +676,9 @@ impl Owner {
     ) -> Result<crate::outgoing::state::View, Error> {
         // Caller-side budget before queue ownership. HTTP is independently capped.
         match &command {
+            crate::outgoing::state::Command::Lookup { id, fence } => {
+                crate::outgoing::state::receipt_key(id, *fence)?;
+            }
             crate::outgoing::state::Command::Encrypt(value) => {
                 crate::outgoing::state::encode(value, crate::outgoing::state::MAX_QUERY)?;
             }
@@ -830,6 +864,18 @@ impl Owner {
             result.as_ref().err().cloned(),
         );
         result
+    }
+    pub(crate) async fn intake_refuse_stale(
+        &self,
+        digest: String,
+        proofs: Vec<hagency_store::StaleMatrixSessionReceipt>,
+    ) -> Result<(usize, bool), Error> {
+        let (send, reply) = oneshot::channel();
+        let _observation = self.enqueue(Command::IntakeRefuseStale(digest, proofs, send))?;
+        tokio::time::timeout(self.timeout, reply)
+            .await
+            .map_err(|_| Error::OutcomeUnknown)?
+            .map_err(|_| Error::OutcomeUnknown)?
     }
     pub(crate) async fn close(self) -> Result<(), Error> {
         let (send, reply) = oneshot::channel();
@@ -1047,8 +1093,8 @@ impl Sdk {
             user_id: init.user.parse().map_err(|_| Error::Config)?,
             device_id: init.device.as_str().into(),
         };
-        // Only this collector can populate these stores: fixed <=16 room IDs and
-        // <=64 bounded sync batches, so RoomLoadSettings::All stays finite.
+        // Only this collector populates these stores: fixed <=16 room IDs;
+        // replay history is queried by bounded proof paths, never loaded here.
         observe!(Activate);
         client
             .activate(meta, RoomLoadSettings::All, None)
@@ -1142,12 +1188,8 @@ impl Sdk {
             }
             let mut outgoing_ids = std::collections::BTreeSet::new();
             for receipt in &journal.outgoing_receipts {
-                if receipt.id.is_empty()
-                    || receipt.id.len() > 128
-                    || receipt.fence == 0
-                    || !crate::outgoing::state::digest(&receipt.attempt_digest)
-                    || !outgoing_ids.insert((receipt.id.clone(), receipt.fence))
-                {
+                receipt.validate()?;
+                if !outgoing_ids.insert((receipt.id.clone(), receipt.fence)) {
                     return Err(Error::Storage);
                 }
                 if journal.outgoing.as_ref().is_some_and(|a| {
@@ -1173,12 +1215,12 @@ impl Sdk {
             }
             let sdk_cursor = client.sync_token().await;
             let committed = journal.receipts.last().map(|r| r.0.as_str());
-            let mut tokens = std::collections::BTreeSet::new();
+            let mut responses = std::collections::BTreeSet::new();
             if journal.receipts.iter().any(|(token, digest)| {
                 token.is_empty()
                     || token.len() > 4096
                     || digest.len() != 64
-                    || !tokens.insert(token)
+                    || !responses.insert((token, digest))
             }) {
                 return Err(Error::Storage);
             }
@@ -1191,7 +1233,9 @@ impl Sdk {
                     Phase::Applying if sdk_cursor.as_deref() == committed => committed,
                     _ => Some(batch.token.as_str()),
                 };
-                if sdk_cursor.as_deref() != expected || tokens.contains(&batch.token) {
+                if sdk_cursor.as_deref() != expected
+                    || responses.contains(&(&batch.token, &batch.digest))
+                {
                     return Err(Error::Storage);
                 }
             } else if sdk_cursor.as_deref() != committed {
@@ -1343,15 +1387,13 @@ impl Sdk {
         phase!(IntakeBatchBuild);
         let batch = Batch::new(value, targets, self.identity.clone())?;
         phase!(IntakeBatchBuilt);
-        if let Some((_, old)) = self
+        if self
             .journal
             .receipts
             .iter()
-            .find(|(token, _)| *token == batch.token)
+            .any(|(token, digest)| *token == batch.token && *digest == batch.digest)
+            || self.archived_sync(&batch.token, &batch.digest).await?
         {
-            if old != &batch.digest {
-                return Err(Error::Conflict);
-            }
             // An unchanged observation-era token is still an accepted intake
             // transition. Persist cursor ownership before reporting success.
             if !self.journal.intake_enabled {
@@ -1362,14 +1404,30 @@ impl Sdk {
             }
             return Ok(());
         }
-        if self.journal.receipts.len() >= MAX_SYNCS {
-            return Err(Error::Capacity);
-        }
+        self.sync_receipt_room().await?;
         self.journal.intake_enabled = true;
         self.journal.intake = Some(batch);
         phase!(IntakePreparedPersist);
         self.persist().await?;
         phase!(IntakePreparedPersisted);
+        // Historical lookups still precede any SDK mutation. A malformed
+        // timeline or missing proof must retain its prepared raw custody,
+        // not disappear merely because pre-apply history validation refused.
+        let archived = match self
+            .archived_sources(&self.journal.intake.as_ref().unwrap().raw)
+            .await
+        {
+            Ok(history) => history,
+            Err(error) => {
+                phase!(IntakeEventQuarantine);
+                self.intake_quarantine(
+                    "historical source proof or incomplete timeline refused".into(),
+                )
+                .await?;
+                phase!(IntakeEventQuarantined);
+                return Err(error);
+            }
+        };
         // Applying is durable before SDK mutation. Restart never pretends that
         // replaying an already-consumed next_batch would return lost timelines.
         self.journal.intake.as_mut().unwrap().phase = Phase::Applying;
@@ -1398,13 +1456,11 @@ impl Sdk {
             return Err(Error::OutcomeUnknown);
         }
         phase!(IntakeDerive);
-        if let Err(error) = self
-            .journal
-            .intake
-            .as_mut()
-            .unwrap()
-            .derive(processed, &self.journal.intake_receipts)
-        {
+        if let Err(error) = self.journal.intake.as_mut().unwrap().derive_with_history(
+            processed,
+            &self.journal.intake_receipts,
+            &archived,
+        ) {
             phase!(IntakeEventQuarantine);
             self.intake_quarantine("unsupported SDK event or incomplete timeline".into())
                 .await?;
@@ -1511,6 +1567,62 @@ impl Sdk {
         batch.reason = Some(reason);
         self.persist().await
     }
+    async fn intake_refuse_stale(
+        &mut self,
+        digest: &str,
+        proofs: &[hagency_store::StaleMatrixSessionReceipt],
+    ) -> Result<(usize, bool), Error> {
+        let stale_count = |values: Option<&[crate::event_batch::disposition::Disposition]>| {
+            values
+                .unwrap_or_default()
+                .iter()
+                .filter(|value| {
+                    matches!(
+                        value.decision,
+                        crate::event_batch::disposition::Decision::Rejected {
+                            reason: crate::event_batch::disposition::Rejection::StaleSession
+                        }
+                    )
+                })
+                .count()
+        };
+        let Some(original) = self.journal.intake.clone() else {
+            let receipt = self
+                .journal
+                .intake_receipts
+                .iter()
+                .find(|receipt| receipt.digest == digest)
+                .ok_or(Error::Conflict)?;
+            let count = stale_count(receipt.dispositions.as_deref());
+            if count == 0 || !proofs.is_empty() {
+                return Err(Error::Conflict);
+            }
+            return Ok((count, true)); // Exact protected completed negative receipt.
+        };
+        if original.digest != digest {
+            return Err(Error::Conflict);
+        }
+        if original.phase == Phase::Derived
+            && original.reason.as_deref() == Some("stale session inputs explicitly refused")
+        {
+            let count = stale_count(original.dispositions.as_deref());
+            if count == 0
+                || !proofs.is_empty()
+                || original.events.len() != original.acknowledgements.len()
+            {
+                return Err(Error::Conflict);
+            }
+            return Ok((count, false)); // Negative commit persisted; finish still owed.
+        }
+        let mut candidate = original.clone();
+        let count = candidate.refuse_stale_session(proofs)?;
+        self.journal.intake = Some(candidate);
+        if self.persist().await.is_err() {
+            self.journal.intake = Some(original);
+            return Err(Error::OutcomeUnknown);
+        }
+        Ok((count, false))
+    }
     async fn sync(&mut self, value: Value) -> Result<(), Error> {
         if self.approval {
             return Err(Error::Generation);
@@ -1528,16 +1640,20 @@ impl Sdk {
             .ok_or(Error::Wire)?
             .to_owned();
         let digest = canonical::transport_digest(&value).map_err(|_| Error::Wire)?;
-        if let Some((_, old)) = self.journal.receipts.iter().find(|(t, _)| *t == token) {
-            return if *old == digest {
-                Ok(())
-            } else {
-                Err(Error::Conflict)
-            };
+        // next_batch is a cursor, not an immutable response ID. Fresh
+        // key counts or to-device data may change without advancing it.
+        // Replay only an exact accepted response; distinct responses retain
+        // their own protected pending/apply/receipt custody at the same cursor.
+        if self
+            .journal
+            .receipts
+            .iter()
+            .any(|(t, d)| *t == token && *d == digest)
+            || self.archived_sync(&token, &digest).await?
+        {
+            return Ok(());
         }
-        if self.journal.receipts.len() >= MAX_SYNCS {
-            return Err(Error::Capacity);
-        }
+        self.sync_receipt_room().await?;
         use ruma::api::IncomingResponse;
         let response = ruma::api::client::sync::sync_events::v3::Response::try_from_http_response(
             http::Response::builder()
@@ -1692,17 +1808,20 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let c = config(root.path());
         let owner = Owner::open(&c).await.unwrap();
-        for n in 0..MAX_SYNCS {
+        owner.sync(response("batch0")).await.unwrap();
+        let mut changed = response("batch0");
+        changed["device_one_time_keys_count"] = json!({"signed_curve25519":50});
+        owner.sync(changed).await.unwrap();
+        for n in 1..MAX_SYNCS - 1 {
             owner.sync(response(&format!("batch{n}"))).await.unwrap();
         }
         owner.sync(response("batch0")).await.unwrap();
-        let mut changed = response("batch0");
-        changed["fixture"] = json!(0.125);
-        assert_eq!(owner.sync(changed).await, Err(Error::Conflict));
-        assert_eq!(owner.sync(response("overflow")).await, Err(Error::Capacity));
+        owner.sync(response("overflow")).await.unwrap();
+        assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("overflow"));
         owner.close().await.unwrap();
         let owner = Owner::open(&c).await.unwrap();
-        assert_eq!(owner.sync(response("overflow")).await, Err(Error::Capacity));
+        owner.sync(response("batch0")).await.unwrap();
+        assert_eq!(owner.cursor().await.unwrap().as_deref(), Some("overflow"));
         owner.close().await.unwrap();
         let root = tempfile::tempdir().unwrap();
         let c = config(root.path());
@@ -1844,6 +1963,13 @@ impl Owner {
         let (send, reply) = oneshot::channel();
         self.tx
             .try_send(Command::OutgoingSettledReceiptFixture(corrupt, send))
+            .unwrap_or_else(|_| panic!("fixture queue"));
+        reply.await.unwrap();
+    }
+    pub(crate) async fn outgoing_archive_settled_fixture(&self) {
+        let (send, reply) = oneshot::channel();
+        self.tx
+            .try_send(Command::OutgoingArchiveSettledFixture(send))
             .unwrap_or_else(|_| panic!("fixture queue"));
         reply.await.unwrap();
     }

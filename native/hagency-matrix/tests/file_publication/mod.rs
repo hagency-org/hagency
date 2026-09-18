@@ -503,12 +503,22 @@ async fn native_file_publication_journal() {
             reopened.unwrap();
             let (next, next_id, _) = accepted(&mut f, "catalog-full", None).await.unwrap();
             let (claim, send) = publication(&f, next_id).await;
-            let mut refused = next
+            let mut independent = next
                 .prepare_file_publication(claim, send)
                 .map_err(|e| e.error())
                 .unwrap();
-            assert_eq!(refused.run(&cancel).await, Err(Error::Capacity));
-            drop(refused);
+            // The synthetic full catalog tests finite cache admission only;
+            // it is not evidence of 64 actual deliveries. Its settled entries
+            // can roll without settling the original unresolved publication.
+            let (result, ()) = common::scripted(independent.run(&cancel), async {
+                let (request, _) =
+                    wire(&mut f.fake, &peer, ruma::room_id!("!direct:example.test")).await;
+                request.json(200, json!({"event_id":"$independent_after_cache_rollover"}));
+            })
+            .await;
+            assert_eq!(result.unwrap().state, OutgoingState::Delivered);
+            assert_eq!(op.outcome().unwrap(), Some(Err(Error::Busy)));
+            drop(independent);
         } else if variant == 10 || variant == 11 {
             reopened.unwrap(); // A valid envelope is not original metadata proof.
             assert!(

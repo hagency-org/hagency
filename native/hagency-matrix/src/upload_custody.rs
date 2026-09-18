@@ -260,16 +260,11 @@ impl Response {
         format!("{:x}", hash.finalize())
     }
     fn validate(&self, record: &str) -> Result<(), Error> {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Reply {
-            content_uri: String,
-        }
         if self.body.len() > MAX_BODY || self.mxc.len() > 517 {
             return Err(Error::Storage);
         }
-        let reply: Reply = serde_json::from_slice(&self.body).map_err(|_| Error::Storage)?;
-        if reply.content_uri != self.mxc
+        let media_id = UploadResponse::parse_media_id(&self.body).map_err(|_| Error::Storage)?;
+        if media_id.to_mxc() != self.mxc
             || MediaId::new(&self.mxc)
                 .map_err(|_| Error::Storage)?
                 .to_mxc()

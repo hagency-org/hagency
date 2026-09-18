@@ -432,6 +432,38 @@ async fn native_matrix_upload_custody_persistence() {
 }
 
 #[tokio::test]
+async fn native_matrix_upload_blurhash_custody_reopen() {
+    let _serial = serial().lock().await;
+    let mut domain = Domain::new();
+    let mut fake = common::Fake::start(true).await;
+    let config = domain.config(&fake.endpoint);
+    let owner = Owner::open(&config).await.unwrap();
+    let reference = enable(&owner, &mut domain, "palpo").await;
+    let media = media();
+    let raw = include_bytes!("../fixtures/palpo-upload-response.json");
+    let attempt = response(&media, &config, &mut fake, raw).await;
+    let accepted = receipt(
+        owner
+            .accept_upload(&reference, attempt.observed_response().unwrap())
+            .await
+            .unwrap(),
+    );
+    let id = reference.id().to_owned();
+    drop(attempt);
+    drop(reference);
+    owner.close().await.unwrap();
+    let owner = Owner::open_existing(&config).await.unwrap();
+    let reference = owner.restore_upload_reference(&id).await.unwrap();
+    same_receipt(
+        &accepted,
+        &receipt(owner.inspect_upload(&reference).await.unwrap()),
+    );
+    fake.quiesced(fake.requests(), &common::limits()).await;
+    owner.close().await.unwrap();
+    fake.close().await;
+}
+
+#[tokio::test]
 async fn native_matrix_upload_custody_nonrearmable() {
     let _serial = serial().lock().await;
     let mut domain = Domain::new();

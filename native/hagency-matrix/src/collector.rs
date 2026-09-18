@@ -96,6 +96,12 @@ impl Collector {
             .clone()
             .try_acquire_owned()
             .map_err(|_| Error::Busy)?;
+        self.close_with_permit(_permit).await
+    }
+    pub(crate) async fn close_with_permit(
+        &self,
+        _permit: tokio::sync::OwnedSemaphorePermit,
+    ) -> Result<(), Error> {
         self.inner.uploads.close()?;
         let inner = self.inner.clone();
         #[cfg(test)]
@@ -162,7 +168,10 @@ impl Inner {
         }))
     }
 
-    async fn collect(&self, cancel: &CancellationToken) -> Result<ObservationSummary, Error> {
+    pub(crate) async fn collect(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<ObservationSummary, Error> {
         let t = &self.config.identity.transport;
         observe!(ExpectedTransport);
         let prior = self
@@ -221,7 +230,7 @@ impl Inner {
                     .request(&["_matrix", "client", "v3", "sync"], Some(&query), cancel)
                     .await?
                     .success()?;
-                self.sync_bounds(&value)?;
+                let value = self.scope_sync(value)?;
                 observe!(SyncApply);
                 owner.sync(value).await?;
             }
@@ -321,6 +330,38 @@ impl Inner {
         }
         Err(error)
     }
+    /// Only original factory Group rooms may advance beyond startup metadata.
+    /// A current database row alone cannot replace this collector's own proof.
+    pub(crate) async fn observed_room_generation(&self, target: &HostRoom) -> Result<u64, Error> {
+        if self.config.factory_rooms.is_none() || !matches!(target.privacy, RoomPrivacy::Group {}) {
+            return Ok(target.generation);
+        }
+        let observation = self
+            .room_facts
+            .lock()
+            .await
+            .get(&target.room_id)
+            .map(|(observation, _)| observation.clone())
+            .ok_or(Error::Generation)?;
+        let t = &self.config.identity.transport;
+        if observation.engagement_id != t.engagement_id
+            || observation.registration_generation != t.registration_generation
+            || observation.transport_generation != t.generation
+            || observation.room_id != target.room_id
+            || observation.privacy != target.privacy
+        {
+            return Err(Error::Generation);
+        }
+        let current = self
+            .domain
+            .matrix_room_state(t.engagement_id.clone(), target.room_id.clone())
+            .await?;
+        if !current.is_some_and(|room| room.available && room.generation == observation.generation)
+        {
+            return Err(Error::Generation);
+        }
+        Ok(observation.generation)
+    }
     pub(crate) async fn collect_room(
         &self,
         target: &HostRoom,
@@ -347,6 +388,22 @@ impl Inner {
             .rooms
             .iter()
             .any(|r| r.room_id == target.room_id);
+        let coordinator = self
+            .config
+            .factory_rooms
+            .as_ref()
+            .filter(|_| publish && matches!(target.privacy, RoomPrivacy::Group {}));
+        // Serialize the complete original read/GET/CAS/recheck across the
+        // finite warm factory, not independent per-device generation guesses.
+        let _room_guard = if let Some(coordinator) = coordinator {
+            Some(tokio::select! {
+                biased;
+                _=cancel.cancelled()=>return Err(Error::Cancelled),
+                guard=tokio::time::timeout(self.config.limits.sdk,coordinator.lock())=>guard.map_err(|_|Error::Timeout)?,
+            })
+        } else {
+            None
+        };
         observe!(RoomPrior);
         // The prior read exists to retire stale positive evidence when the
         // fetch fails; a never-published room can hold none, so a verify-only
@@ -371,25 +428,37 @@ impl Inner {
                 .success()?;
             // Representable unsafe membership/privacy must reach the domain's
             // shared-room invalidation path rather than becoming a local-only error.
-            let (observation, facts) = self.room(target, state)?;
-            self.room_facts
-                .lock()
-                .await
-                .insert(target.room_id.clone(), (observation.clone(), facts));
+            let (mut observation, facts) = self.room(target, state)?;
             if cancel.is_cancelled() {
                 return Err(Error::Cancelled);
             }
             if !publish {
+                self.room_facts
+                    .lock()
+                    .await
+                    .insert(target.room_id.clone(), (observation.clone(), facts));
                 return Ok(observation);
             }
             observe!(RoomPublish);
-            self.domain.observe_matrix_room(observation.clone()).await?;
+            if coordinator.is_some() {
+                observation.generation = prior.as_ref().map_or(1, |room| room.generation);
+                observation = self
+                    .domain
+                    .refresh_matrix_group_room(observation, prior.clone())
+                    .await?;
+            } else {
+                self.domain.observe_matrix_room(observation.clone()).await?;
+            }
+            self.room_facts
+                .lock()
+                .await
+                .insert(target.room_id.clone(), (observation.clone(), facts));
             observe!(RoomRecheck);
             let current = self
                 .domain
                 .matrix_room_state(t.engagement_id.clone(), target.room_id.clone())
                 .await?;
-            if !current.is_some_and(|s| s.available && s.generation == target.generation) {
+            if !current.is_some_and(|s| s.available && s.generation == observation.generation) {
                 return Err(Error::Wire);
             }
             Ok(observation)
@@ -429,6 +498,9 @@ impl Inner {
         result
     }
     pub(crate) async fn whoami(&self, cancel: &CancellationToken) -> Result<(), Error> {
+        if let Some(guard) = &self.config.as_guard {
+            guard.check(cancel).await?;
+        }
         let value = self
             .http
             .request(
@@ -448,6 +520,9 @@ impl Inner {
         {
             return Err(Error::Identity);
         }
+        if let Some(guard) = &self.config.as_guard {
+            guard.check(cancel).await?;
+        }
         Ok(())
     }
     pub(crate) fn sync_bounds(&self, value: &Value) -> Result<(), Error> {
@@ -458,11 +533,6 @@ impl Inner {
         if token.is_empty() || token.len() > 4096 || token.chars().any(char::is_control) {
             return Err(Error::Wire);
         }
-        let allowed = self
-            .config
-            .observed_rooms()
-            .map(|r| r.room_id.as_str())
-            .collect::<BTreeSet<_>>();
         if let Some(rooms) = value.get("rooms") {
             let rooms = rooms.as_object().ok_or(Error::Wire)?;
             for (kind, rooms) in rooms {
@@ -470,37 +540,74 @@ impl Inner {
                     return Err(Error::Wire);
                 }
                 for id in rooms.as_object().ok_or(Error::Wire)?.keys() {
-                    if !allowed.contains(id.as_str()) {
-                        return Err(Error::Wire);
-                    }
+                    ruma::RoomId::parse(id).map_err(|_| Error::Wire)?;
                 }
             }
         }
-        fn count(v: &Value, n: &mut usize, max: usize) -> Result<(), Error> {
-            match v {
-                Value::Object(o) => {
-                    for (k, v) in o {
-                        if k == "events" {
-                            *n = n
-                                .checked_add(v.as_array().ok_or(Error::Wire)?.len())
-                                .ok_or(Error::Capacity)?;
-                            if *n > max {
-                                return Err(Error::Capacity);
-                            }
-                        }
-                        count(v, n, max)?;
-                    }
+        fn count(section: &Value, n: &mut usize, max: usize) -> Result<(), Error> {
+            let section = section.as_object().ok_or(Error::Wire)?;
+            if let Some(events) = section.get("events") {
+                *n = n
+                    .checked_add(events.as_array().ok_or(Error::Wire)?.len())
+                    .ok_or(Error::Capacity)?;
+                if *n > max {
+                    return Err(Error::Capacity);
                 }
-                Value::Array(a) => {
-                    for v in a {
-                        count(v, n, max)?;
-                    }
-                }
-                _ => {}
             }
             Ok(())
         }
-        count(value, &mut 0, self.config.limits.events)
+        // Only protocol event-list locations count. An event's arbitrary
+        // content may itself contain an `events` map (power levels) or list;
+        // it is not another sync batch and remains bounded by the HTTP body.
+        let mut total = 0;
+        for name in ["to_device", "presence", "account_data"] {
+            if let Some(section) = value.get(name) {
+                count(section, &mut total, self.config.limits.events)?;
+            }
+        }
+        if let Some(rooms) = value.get("rooms").and_then(Value::as_object) {
+            for rooms in rooms.values() {
+                for room in rooms.as_object().ok_or(Error::Wire)?.values() {
+                    let room = room.as_object().ok_or(Error::Wire)?;
+                    for name in [
+                        "state",
+                        "timeline",
+                        "ephemeral",
+                        "account_data",
+                        "invite_state",
+                        "knock_state",
+                    ] {
+                        if let Some(section) = room.get(name) {
+                            count(section, &mut total, self.config.limits.events)?;
+                        }
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+    /// A server-side room filter is a bandwidth hint, not our authority
+    /// boundary. Some homeservers return other joined rooms despite it.
+    /// Validate the ENTIRE response's shape/event budget before narrowing the
+    /// SDK application view to configured rooms. Account-scoped to-device and
+    /// key metadata remain intact so crypto can progress; unrelated room state
+    /// and timeline events never enter the SDK or an intake journal.
+    pub(crate) fn scope_sync(&self, mut value: Value) -> Result<Value, Error> {
+        self.sync_bounds(&value)?;
+        let allowed = self
+            .config
+            .observed_rooms()
+            .map(|r| r.room_id.as_str())
+            .collect::<BTreeSet<_>>();
+        if let Some(rooms) = value.get_mut("rooms").and_then(Value::as_object_mut) {
+            for rooms in rooms.values_mut() {
+                rooms
+                    .as_object_mut()
+                    .ok_or(Error::Wire)?
+                    .retain(|id, _| allowed.contains(id.as_str()));
+            }
+        }
+        Ok(value)
     }
     pub(crate) fn room(
         &self,
@@ -631,6 +738,133 @@ pub(crate) mod fixtures;
 mod tests {
     use super::fixtures as common;
     use super::*;
+    #[tokio::test]
+    async fn native_factory_observed_group_generation() {
+        let f = common::Fixture::new();
+        let mut fake = common::Fake::start(false).await;
+        let coordinator = Arc::new(Mutex::new(()));
+        let config = |name: &str| {
+            let mut config = f.config(&fake.endpoint);
+            config.root = f.root.path().join(name);
+            config.rooms = vec![HostRoom {
+                room_id: "!project:example.test".into(),
+                generation: 1,
+                privacy: RoomPrivacy::Group {},
+            }];
+            config.factory_rooms = Some(coordinator.clone());
+            config
+        };
+        let first = Collector::new(config("first"), f.store.clone()).unwrap();
+        let second = Collector::new(config("second"), f.store.clone()).unwrap();
+        let target = &first.inner.config.rooms[0];
+        let cancel = CancellationToken::new();
+        assert_eq!(
+            first.inner.observed_room_generation(target).await,
+            Err(Error::Generation)
+        );
+        f.store
+            .observe_matrix_transport(f.identity.transport.clone())
+            .await
+            .unwrap();
+        let (result, _) = tokio::join!(
+            first.inner.collect_room_observation(target, &cancel),
+            async {
+                let request = fake.next().await;
+                assert!(request.target.ends_with("/state"));
+                request.json(200, common::state());
+            }
+        );
+        assert_eq!(result.unwrap().generation, 1);
+        assert_eq!(first.inner.observed_room_generation(target).await, Ok(1));
+        let mut changed = common::state();
+        changed.as_array_mut().unwrap().push(json!({"type":"m.room.member","state_key":"@new_member:example.test","content":{"membership":"join"}}));
+        let (result, _) = tokio::join!(
+            second
+                .inner
+                .collect_room_observation(&second.inner.config.rooms[0], &cancel),
+            async {
+                fake.next().await.json(200, changed.clone());
+            }
+        );
+        assert_eq!(result.unwrap().generation, 2);
+        assert_eq!(
+            first.inner.observed_room_generation(target).await,
+            Err(Error::Generation),
+            "another owner cannot supply this collector's observation"
+        );
+        let (result, _) = tokio::join!(
+            first.inner.collect_room_observation(target, &cancel),
+            async {
+                fake.next().await.json(200, changed);
+            }
+        );
+        assert_eq!(result.unwrap().generation, 2);
+        assert_eq!(first.inner.observed_room_generation(target).await, Ok(2));
+        f.store
+            .invalidate_matrix_room(MatrixRoomInvalidation {
+                engagement_id: f.identity.transport.engagement_id.clone(),
+                registration_generation: 1,
+                transport_generation: 1,
+                room_id: target.room_id.clone(),
+                generation: 3,
+                reason: "original fixture authority revoked".into(),
+            })
+            .await
+            .unwrap();
+        assert_eq!(
+            first.inner.observed_room_generation(target).await,
+            Err(Error::Generation)
+        );
+        assert_eq!(
+            second
+                .inner
+                .observed_room_generation(&second.inner.config.rooms[0])
+                .await,
+            Err(Error::Generation)
+        );
+        let current = f
+            .store
+            .matrix_room_state(
+                f.identity.transport.engagement_id.clone(),
+                target.room_id.clone(),
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(current.generation, 3);
+        assert!(!current.available);
+        first.close_refusal_owner().await.unwrap();
+        second.close_refusal_owner().await.unwrap();
+        f.store.shutdown().await.unwrap();
+        fake.close().await;
+    }
+    #[tokio::test]
+    async fn native_matrix_sync_scope_narrows_ignored_server_filter_after_full_bounds() {
+        let f = common::Fixture::new();
+        let c = Collector::new(f.config("https://127.0.0.1:19443/"), f.store.clone()).unwrap();
+        let mut scoped = common::sync("scoped");
+        scoped["rooms"]["join"]["!direct:example.test"] = json!({
+            "state": {"events": [{"type":"m.room.power_levels","content":{"events":{"m.room.message":0}}}]},
+            "timeline": {"events": [], "limited": false}
+        });
+        let mut raw = scoped.clone();
+        raw["rooms"]["join"]["!unrelated:example.test"] = json!({
+            "state": {"events": [{"type":"m.room.name","content":{"name":"outside"}}]},
+            "timeline": {"events": [{"type":"m.room.message","content":{"body":"outside"}}]}
+        });
+        raw["to_device"] = json!({"events":[{"type":"m.room_key","content":{}}]});
+        raw["device_lists"] = json!({"changed":["@owner:example.test"],"left":[]});
+        let narrowed = c.inner.scope_sync(raw.clone()).unwrap();
+        assert_eq!(narrowed["rooms"], scoped["rooms"]);
+        assert_eq!(narrowed["to_device"], raw["to_device"]);
+        assert_eq!(narrowed["device_lists"], raw["device_lists"]);
+        assert_eq!(narrowed["next_batch"], "scoped");
+        raw["rooms"]["join"]["!unrelated:example.test"]["timeline"]["events"] =
+            json!(vec![json!({}); c.inner.config.limits.events + 1]);
+        assert_eq!(c.inner.scope_sync(raw), Err(Error::Capacity));
+        c.close().await.unwrap();
+        f.store.shutdown().await.unwrap();
+    }
     #[tokio::test]
     async fn native_matrix_transport_generation_lost_positive_response_fences_attempted_identity() {
         let mut fake = common::Fake::start(false).await;

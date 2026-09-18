@@ -77,7 +77,7 @@ impl ApprovalCollector {
         if self.inner.config.enrollment.is_none()
             || !self
                 .engagements
-                .contains(&card.target().authority.engagement_id)
+                .contains(&card.target().authority.engagement_id)?
         {
             return Err(Error::Config);
         }
@@ -149,7 +149,7 @@ impl ApprovalCollector {
         if self.inner.config.enrollment.is_none()
             || !self
                 .engagements
-                .contains(&card.target().authority.engagement_id)
+                .contains(&card.target().authority.engagement_id)?
         {
             return Err(Error::Config);
         }

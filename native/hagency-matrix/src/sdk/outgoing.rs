@@ -18,19 +18,29 @@ impl Sdk {
             Command::StartFile(start) => Command::Start(Box::new(self.start_file(*start)?)),
             other => other,
         };
+        if let Command::Lookup { id, fence } = &command {
+            return Ok(View {
+                attempt: self.journal.outgoing.clone(),
+                receipts: self
+                    .settled_outgoing_receipt(id, *fence)
+                    .await?
+                    .into_iter()
+                    .collect(),
+            });
+        }
         match command {
             Command::StartFile(_) => unreachable!(),
+            Command::Lookup { .. } => unreachable!(),
             Command::Read => {}
             Command::Start(mut attempt) => {
                 if self.journal.outgoing.is_some() {
                     return Err(Error::OutcomeUnknown);
                 }
-                if self.journal.outgoing_receipts.len() >= state::MAX_RECEIPTS {
-                    return Err(Error::Capacity);
-                }
-                if self.journal.outgoing_receipts.iter().any(|r| {
-                    r.kind == attempt.kind && r.id == attempt.id && r.fence == attempt.fence
-                }) {
+                if self
+                    .settled_outgoing_receipt(&attempt.id, attempt.fence)
+                    .await?
+                    .is_some()
+                {
                     return Err(Error::Conflict);
                 }
                 attempt.identity = self.identity.clone();
@@ -47,8 +57,22 @@ impl Sdk {
                     &self.upload_context,
                 )?;
                 drop(guard);
+                let root = self.prepare_outgoing_rollover().await?;
+                let previous_root = self.journal.sync_history.clone();
+                let removed = root.map(|root| {
+                    self.journal.sync_history = Some(root);
+                    self.journal.outgoing_receipts.remove(0)
+                });
                 self.journal.outgoing = Some(*attempt);
-                self.persist_outgoing().await?;
+                if let Err(error) = self.persist_outgoing().await {
+                    self.journal.sync_history = previous_root;
+                    if let Some(receipt) = removed {
+                        self.journal.outgoing_receipts.insert(0, receipt);
+                    }
+                    // Retain the original attempted command and poisoned owner;
+                    // memory is not a committed Prepared or resend grant.
+                    return Err(error);
+                }
             }
             Command::Begun => {
                 let attempt = self.journal.outgoing.as_mut().ok_or(Error::Storage)?;
@@ -171,12 +195,31 @@ impl Sdk {
                     .as_ref()
                     .ok_or(Error::Storage)?
                     .receipt()?;
-                if self.journal.outgoing_receipts.len() >= state::MAX_RECEIPTS {
-                    return Err(Error::Capacity);
+                receipt.validate()?;
+                if self
+                    .settled_outgoing_receipt(&receipt.id, receipt.fence)
+                    .await?
+                    .is_some()
+                {
+                    return Err(Error::Conflict);
                 }
+                let root = self.prepare_outgoing_rollover().await?;
+                let previous_root = self.journal.sync_history.clone();
+                let removed = root.map(|root| {
+                    self.journal.sync_history = Some(root);
+                    self.journal.outgoing_receipts.remove(0)
+                });
                 self.journal.outgoing_receipts.push(receipt);
-                self.journal.outgoing = None;
-                self.persist_outgoing().await?;
+                let original = self.journal.outgoing.take();
+                if let Err(error) = self.persist_outgoing().await {
+                    self.journal.outgoing = original;
+                    self.journal.outgoing_receipts.pop();
+                    if let Some(receipt) = removed {
+                        self.journal.outgoing_receipts.insert(0, receipt);
+                    }
+                    self.journal.sync_history = previous_root;
+                    return Err(error);
+                }
             }
         }
         Ok(View {

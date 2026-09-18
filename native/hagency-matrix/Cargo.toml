@@ -9,9 +9,11 @@ publish.workspace = true
 [dependencies]
 hagency-core = { path = "../hagency-core" }
 hagency-store = { path = "../hagency-store" }
+hagency-execution = { path = "../hagency-execution" }
 hagency-matrix-format = { path = "../hagency-matrix-format" }
 hagency-media = { path = "../hagency-media" }
 hagency-media-store = { path = "../hagency-media-store" }
+getrandom = "=0.3.4"
 sha2.workspace = true
 serde.workspace = true
 serde_json.workspace = true

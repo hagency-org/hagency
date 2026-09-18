@@ -179,7 +179,7 @@ impl Inner {
 
     pub(crate) async fn resume_settled_file_publication(
         &self,
-        receipts: &[crate::outgoing::state::Receipt],
+        owner: &crate::sdk::Owner,
     ) -> Result<OutgoingSummary, Error> {
         use crate::outgoing::{OutgoingState, state::Kind};
         // The original shared media permits bound this snapshot. The registry
@@ -201,6 +201,13 @@ impl Inner {
             });
         }
         for job in jobs {
+            let view = owner
+                .outgoing(crate::outgoing::state::Command::Lookup {
+                    id: job.locator.delivery_id.clone(),
+                    fence: job.locator.fence,
+                })
+                .await?;
+            let receipts = &view.receipts;
             let mut matching = receipts.iter().filter(|receipt| {
                 receipt.kind == Kind::File
                     && receipt.id == job.locator.delivery_id

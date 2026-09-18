@@ -5,9 +5,13 @@ use crate::{
     sdk::Owner,
 };
 use hagency_core::{approvals::*, project::identifier, replies::RoomPrivacy};
-use hagency_store::DomainStore;
+use hagency_store::{DomainStore, OwnedProvisionScope};
 use serde_json::json;
-use std::{collections::BTreeSet, sync::Arc, time::Duration};
+use std::{
+    collections::BTreeSet,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 /// Host configuration only. The shared identity tuple names the approval bot,
 /// never an Agent Matrix transport. Its persisted SDK purpose is independent.
 pub struct HostApprovalConfig {
@@ -104,32 +108,153 @@ pub struct ApprovalCustodyStatus {
 }
 pub struct ApprovalCollector {
     pub(crate) inner: Arc<Inner>,
-    pub(crate) engagements: Vec<String>,
+    pub(crate) engagements: Arc<Membership>,
     pub(crate) jobs: crate::approval_delivery::jobs::Jobs,
+    service: Arc<tokio::sync::Semaphore>,
+    service_slots: Arc<tokio::sync::Semaphore>,
+}
+/// Host scheduling only. It grants no SDK, membership, card or verdict proof;
+/// each original collector method still acquires its own custody/busy permit.
+pub struct ApprovalServiceTurn {
+    _turn: tokio::sync::OwnedSemaphorePermit,
+    _slot: tokio::sync::OwnedSemaphorePermit,
+}
+/// Every caller holds the original collector permit while freezing or adding
+/// membership. The mutex is only a short synchronous copy/update; never an IO
+/// owner or a way to change fixed bot/room/SDK configuration.
+pub(crate) struct Membership {
+    members: Mutex<Vec<String>>,
+}
+impl Membership {
+    fn new(configured: Vec<String>) -> Self {
+        Self {
+            members: Mutex::new(configured),
+        }
+    }
+    pub(crate) fn snapshot(&self) -> Result<Vec<String>, Error> {
+        Ok(self
+            .members
+            .lock()
+            .map_err(|_| Error::OutcomeUnknown)?
+            .clone())
+    }
+    pub(crate) fn contains(&self, engagement: &str) -> Result<bool, Error> {
+        Ok(self
+            .members
+            .lock()
+            .map_err(|_| Error::OutcomeUnknown)?
+            .iter()
+            .any(|id| id == engagement))
+    }
+    fn capacity(&self, engagement: &str) -> Result<(), Error> {
+        let members = self.members.lock().map_err(|_| Error::OutcomeUnknown)?;
+        if members.len() >= 64 && !members.iter().any(|id| id == engagement) {
+            return Err(Error::Capacity);
+        }
+        Ok(())
+    }
+    fn admit(&self, engagement: String) -> Result<(), Error> {
+        let mut members = self.members.lock().map_err(|_| Error::OutcomeUnknown)?;
+        if !members.contains(&engagement) {
+            if members.len() >= 64 {
+                return Err(Error::Capacity);
+            }
+            members.push(engagement);
+        }
+        Ok(())
+    }
 }
 impl ApprovalCollector {
     pub fn new(config: HostApprovalConfig, domain: DomainStore) -> Result<Self, Error> {
         Ok(Self {
             inner: Inner::new(config.config, domain)?,
-            engagements: config.engagements,
+            engagements: Arc::new(Membership::new(config.engagements)),
             jobs: Default::default(),
+            service: Arc::new(tokio::sync::Semaphore::new(1)),
+            service_slots: Arc::new(tokio::sync::Semaphore::new(16)),
+        })
+    }
+    /// Serialize the native service and original factory membership observer.
+    /// At most16 callers participate; no task or SDK is spawned by waiting.
+    /// A lost waiter returns only scheduling capacity, never original SDK jobs.
+    pub async fn service_turn(
+        &self,
+        cancel: &CancellationToken,
+    ) -> Result<ApprovalServiceTurn, Error> {
+        let slot = self
+            .service_slots
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Busy)?;
+        let turn = tokio::select! {
+            biased;
+            _ = cancel.cancelled()=>return Err(Error::Cancelled),
+            result=tokio::time::timeout(self.inner.config.limits.sdk,self.service.clone().acquire_owned())=>
+                result.map_err(|_|Error::Timeout)?.map_err(|_|Error::OutcomeUnknown)?,
+        };
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        Ok(ApprovalServiceTurn {
+            _turn: turn,
+            _slot: slot,
         })
     }
     /// Refreshes authenticated private binding snapshots without taking a sync.
     pub async fn observe(&self, cancel: &CancellationToken) -> Result<(), Error> {
+        self.observe_engagements(None, cancel).await
+    }
+    /// Concrete inline Host use only. The fixed original bot configuration and
+    /// current original scope gate this admission. No metadata setter or SDK
+    /// replacement can admit an engagement to the approval purpose.
+    pub(crate) async fn observe_factory_engagement(
+        &self,
+        scope: OwnedProvisionScope,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        self.observe_engagements(Some(scope), cancel).await
+    }
+    async fn observe_engagements(
+        &self,
+        scope: Option<OwnedProvisionScope>,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
         let permit = self.delivery_permit(false)?;
+        let engagements = match &scope {
+            Some(scope) => {
+                self.engagements.capacity(scope.engagement_id())?;
+                vec![scope.engagement_id().to_owned()]
+            }
+            None => self.engagements.snapshot()?,
+        };
+        let membership = self.engagements.clone();
         let inner = self.inner.clone();
-        let engagements = self.engagements.clone();
         let cancel = cancel.clone();
         #[cfg(test)]
         let observation = crate::collector::observation::current();
         tokio::spawn(async move {
             let _permit = permit;
             let work = async {
+                if let Some(scope) = &scope {
+                    inner
+                        .domain
+                        .validate_warm_runtime_scope(scope.clone())
+                        .await?;
+                }
                 observe!(RoomPrior);
                 let rooms = inner.approval_rooms(&engagements).await?;
                 observe!(Whoami);
                 inner.refresh_approval_rooms(&rooms, &cancel).await?;
+                if let Some(scope) = scope {
+                    inner
+                        .domain
+                        .validate_warm_runtime_scope(scope.clone())
+                        .await?;
+                    if cancel.is_cancelled() {
+                        return Err(Error::Cancelled);
+                    }
+                    membership.admit(scope.engagement_id().to_owned())?;
+                }
                 Ok(())
             };
             #[cfg(test)]
@@ -160,7 +285,7 @@ impl ApprovalCollector {
     ) -> Result<ApprovalIntakeSummary, Error> {
         let permit = self.delivery_permit(plan.is_none())?;
         let inner = self.inner.clone();
-        let engagements = self.engagements.clone();
+        let engagements = self.engagements.snapshot()?;
         let cancel = cancel.child_token();
         tokio::spawn(async move {let _permit=permit;let work=inner.approval_intake(engagements,plan,&cancel);tokio::pin!(work);
             tokio::select!{r=&mut work=>r,_=tokio::time::sleep(Duration::from_secs(45))=>{cancel.cancel();work.await}}
@@ -228,7 +353,7 @@ impl ApprovalCollector {
         let observation = crate::collector::observation::current();
         let missing_owner = self.jobs.missing_owner_result();
         let inner = self.inner.clone();
-        let engagements = self.engagements.clone();
+        let engagements = self.engagements.snapshot()?;
         let job = self.jobs.start(true, false, permit, async move {
             let work = async {
                 let fence = async {
@@ -467,7 +592,7 @@ impl Inner {
                 .request(&["_matrix", "client", "v3", "sync"], Some(&query), cancel)
                 .await?
                 .success()?;
-            self.sync_bounds(&raw)?;
+            let raw = self.scope_sync(raw)?;
             // Complete response freezes before any SDK crypto or cursor mutation.
             view = owner
                 .approval(Command::Start(Box::new(Batch::new(
@@ -695,3 +820,37 @@ impl Inner {
 #[cfg(test)]
 #[path = "../tests/approval_intake/mod.rs"]
 mod tests;
+
+#[cfg(test)]
+mod membership_tests {
+    use super::*;
+    #[test]
+    fn native_factory_approval_membership_bounds() {
+        let original = vec!["last_configured".into(), "first_configured".into()];
+        let members = Membership::new(original.clone());
+        let frozen = members.snapshot().unwrap();
+        for index in 0..62 {
+            let id = format!("factory_{index}");
+            members.capacity(&id).unwrap();
+            members.admit(id.clone()).unwrap();
+            members.admit(id).unwrap();
+        }
+        let expected = original
+            .into_iter()
+            .chain((0..62).map(|index| format!("factory_{index}")))
+            .collect::<Vec<_>>();
+        assert_eq!(members.snapshot().unwrap(), expected);
+        assert_eq!(
+            frozen,
+            vec!["last_configured", "first_configured"],
+            "an in-flight snapshot cannot grow"
+        );
+        assert_eq!(members.capacity("overflow"), Err(Error::Capacity));
+        assert_eq!(members.admit("overflow".into()), Err(Error::Capacity));
+        assert!(!members.contains("overflow").unwrap());
+        assert_eq!(members.snapshot().unwrap(), expected);
+        members.capacity("factory_0").unwrap();
+        members.admit("factory_0".into()).unwrap();
+        assert_eq!(members.snapshot().unwrap(), expected);
+    }
+}

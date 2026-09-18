@@ -18,17 +18,24 @@ mod receive;
 mod upload;
 pub use upload::{FilePublicationAdmissionFailure, FilePublicationOperation};
 pub use upload::{StagedUpload, UploadAdmissionFailure, UploadOperation};
+mod provisioning;
 mod sdk;
+mod token_provision;
 mod wire;
 pub use collector::{Collector, ObservationSummary};
 pub use config::{HostConfig, HostIdentity, HostRoom, Limits};
+pub use http::RequestPacing;
 pub use intake::{HostIntakePlan, IntakeStatus, IntakeSummary};
 pub use media_download::{MediaDownloadError, MediaDownloadLimits, MediaDownloader, MediaId};
 pub use media_upload::{
     MediaUploadError, MediaUploadLimits, MediaUploader, UploadAttempt, UploadState,
 };
 pub use outgoing::{OutgoingState, OutgoingSummary};
+pub use provisioning::{ProvisionedAgent, TokenProvisioningHost};
 pub use receive::{ReceiveError, ReceivedAttachment, ReceivedScope};
+pub use token_provision::{
+    ApplicationServiceCredential, ProvisionedTokenAccount, TokenAccountProvision,
+};
 pub use tokio_util::sync::CancellationToken;
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Error {
@@ -101,7 +108,7 @@ mod approval_batch;
 mod approval_intake;
 pub use approval_intake::{
     ApprovalCollector, ApprovalCustodyStage, ApprovalCustodyStatus, ApprovalIntakeSummary,
-    HostApprovalConfig, HostApprovalPlan,
+    ApprovalServiceTurn, HostApprovalConfig, HostApprovalPlan,
 };
 
 mod approval_delivery;

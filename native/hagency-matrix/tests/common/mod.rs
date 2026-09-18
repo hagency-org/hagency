@@ -551,7 +551,12 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
     {
         let mut remaining = pieces.into_iter();
         for (delay, bytes) in remaining.by_ref().take(hold_after) {
-            tokio::time::sleep(delay).await;
+            // An immediate fixture response needs no timer tick. This also
+            // permits explicitly clocked deadline tests to keep time stationary
+            // while real TLS IO completes, without changing positive delays.
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
             if stream.write_all(&bytes).await.is_err() {
                 return;
             }
@@ -565,7 +570,9 @@ async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
             return;
         }
         for (delay, bytes) in remaining {
-            tokio::time::sleep(delay).await;
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
             if stream.write_all(&bytes).await.is_err() {
                 return;
             }

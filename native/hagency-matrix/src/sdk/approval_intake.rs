@@ -42,7 +42,7 @@ pub(super) fn validate_journal(
     for r in &journal.approval_receipts {
         if r.token.is_empty()
             || r.token.len() > 4096
-            || !seen.insert(&r.token)
+            || !seen.insert((&r.token, &r.digest))
             || !crate::outgoing::state::digest(&r.digest)
             || !crate::outgoing::state::digest(&r.targets_digest)
         {
@@ -61,7 +61,11 @@ pub(super) fn validate_journal(
     }
     if let Some(b) = &journal.approval {
         b.validate(identity, user, device)?;
-        if journal.approval_receipts.iter().any(|r| r.token == b.token) {
+        if journal
+            .approval_receipts
+            .iter()
+            .any(|r| r.token == b.token && r.digest == b.digest)
+        {
             return Err(Error::Storage);
         }
         for e in &b.events {
@@ -152,15 +156,15 @@ impl Sdk {
                 if self.journal.approval.is_some() {
                     return Err(Error::OutcomeUnknown);
                 }
-                if let Some(r) = self
+                // next_batch is a cursor, not an immutable response identity.
+                // Only the exact protected response replays; changed bodies
+                // retain their own prepare/apply/derive custody at that cursor.
+                if self
                     .journal
                     .approval_receipts
                     .iter()
-                    .find(|r| r.token == b.token)
+                    .any(|r| r.token == b.token && r.digest == b.digest)
                 {
-                    if r.digest != b.digest {
-                        return Err(Error::Conflict);
-                    }
                     return self.approval_view();
                 }
                 if self.journal.approval_receipts.len() >= state::MAX_BATCHES {

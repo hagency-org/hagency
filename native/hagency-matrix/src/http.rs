@@ -48,6 +48,49 @@ pub(crate) struct Http {
     base: Url,
     limits: Limits,
 }
+/// Host-owned shared cadence, independent of credentials and Matrix authority.
+/// Keep one Arc across the fleet; no process-global endpoint registry or timers.
+pub struct RequestPacing {
+    endpoint: Url,
+    interval: std::time::Duration,
+    next: tokio::sync::Mutex<Option<Instant>>,
+}
+impl RequestPacing {
+    pub fn new(endpoint: &str, interval: std::time::Duration) -> Result<Self, Error> {
+        if !(std::time::Duration::from_millis(10)..=std::time::Duration::from_secs(1))
+            .contains(&interval)
+        {
+            return Err(Error::Config);
+        }
+        Ok(Self {
+            endpoint: crate::config::host_endpoint(endpoint)?,
+            interval,
+            next: tokio::sync::Mutex::new(None),
+        })
+    }
+    pub(crate) fn check_endpoint(&self, endpoint: &Url) -> Result<(), Error> {
+        if self.endpoint == *endpoint {
+            Ok(())
+        } else {
+            Err(Error::Config)
+        }
+    }
+    async fn enter(&self, cancel: &CancellationToken, deadline: Instant) -> Result<(), Error> {
+        let mut next = wait(cancel, deadline, self.next.lock()).await?;
+        if let Some(at) = *next {
+            wait(cancel, deadline, tokio::time::sleep_until(at)).await?;
+        }
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let now = Instant::now();
+        if now >= deadline {
+            return Err(Error::Timeout);
+        }
+        *next = Some(now + self.interval);
+        Ok(())
+    }
+}
 /// Exact complete body of a validated HTTP200 encrypted-upload response. Only
 /// the actual bounded transport constructs this value. It carries no room,
 /// dispatch, sender verification, persistence or current-execution authority.
@@ -58,6 +101,30 @@ pub struct UploadResponse {
     media_id: crate::MediaId,
 }
 impl UploadResponse {
+    /// One content identity plus Palpo's optional non-authoritative metadata.
+    /// Use the same strict grammar for original HTTP and protected SDK reopen.
+    pub(crate) fn parse_media_id(bytes: &[u8]) -> Result<crate::MediaId, Error> {
+        if bytes.len() > 4096 {
+            return Err(Error::BodyTooLarge);
+        }
+        let body = wire::json(bytes)?;
+        let object = body.as_object().ok_or(Error::Wire)?;
+        if object
+            .keys()
+            .any(|key| key != "content_uri" && key != "blurhash")
+            || object
+                .get("blurhash")
+                .is_some_and(|value| !value.is_null() && !value.is_string())
+        {
+            return Err(Error::Wire);
+        }
+        let mxc = object
+            .get("content_uri")
+            .and_then(Value::as_str)
+            .ok_or(Error::Wire)?;
+        crate::MediaId::new(mxc).map_err(|_| Error::Wire)
+    }
+
     pub fn body(&self) -> &[u8] {
         &self.body
     }
@@ -73,6 +140,7 @@ impl UploadResponse {
 pub(crate) struct Response {
     pub status: u16,
     pub value: Option<Value>,
+    retry_delay: Option<std::time::Duration>,
 }
 impl Response {
     pub fn success(self) -> Result<Value, Error> {
@@ -121,6 +189,7 @@ impl Http {
         cancel: &CancellationToken,
     ) -> Result<UploadResponse, Error> {
         const CAP: usize = 4096;
+        self.pace(cancel, deadline).await?;
         let mut response = wait(
             cancel,
             deadline.min(Instant::now() + self.limits.headers),
@@ -202,16 +271,7 @@ impl Http {
         if declared.is_some_and(|n| n != bytes.len() as u64) {
             return Err(Error::Transport);
         }
-        let body = wire::json(&bytes)?;
-        let object = body
-            .as_object()
-            .filter(|v| v.len() == 1)
-            .ok_or(Error::Wire)?;
-        let mxc = object
-            .get("content_uri")
-            .and_then(Value::as_str)
-            .ok_or(Error::Wire)?;
-        let media_id = crate::MediaId::new(mxc).map_err(|_| Error::Wire)?;
+        let media_id = UploadResponse::parse_media_id(&bytes)?;
         let body_sha256 = Sha256::digest(&bytes).into();
         Ok(UploadResponse {
             body: bytes,
@@ -236,6 +296,7 @@ impl Http {
             .map_err(|_| Error::Config)?
             .clear()
             .extend(segments);
+        self.pace(cancel, deadline).await?;
         let mut response = wait(
             cancel,
             deadline.min(Instant::now() + self.limits.headers),
@@ -318,8 +379,28 @@ impl Http {
     }
 
     pub(crate) fn new(config: &HostConfig) -> Result<Self, Error> {
+        Self::for_host(
+            &config.endpoint,
+            Some(&config.authorization),
+            &config.limits,
+            &config.roots,
+        )
+    }
+    /// Crate-private construction for the fixed account provisioner. There is
+    /// deliberately no public mutable credential/endpoint selector.
+    pub(crate) fn for_host(
+        endpoint: &Url,
+        authorization: Option<&HeaderValue>,
+        limits: &Limits,
+        roots: &[reqwest::Certificate],
+    ) -> Result<Self, Error> {
+        if let Some(pacing) = &limits.request_pacing {
+            pacing.check_endpoint(endpoint)?;
+        }
         let mut headers = HeaderMap::new();
-        headers.insert(header::AUTHORIZATION, config.authorization.clone());
+        if let Some(authorization) = authorization {
+            headers.insert(header::AUTHORIZATION, authorization.clone());
+        }
         headers.insert(header::ACCEPT, HeaderValue::from_static("application/json"));
         headers.insert(
             header::ACCEPT_ENCODING,
@@ -333,19 +414,19 @@ impl Http {
             .referer(false)
             .http1_only()
             .pool_max_idle_per_host(0)
-            .connect_timeout(config.limits.connect)
+            .connect_timeout(limits.connect)
             .default_headers(headers)
             .dns_resolver(Arc::new(Resolver {
-                host: config.endpoint.host_str().ok_or(Error::Config)?.into(),
+                host: endpoint.host_str().ok_or(Error::Config)?.into(),
                 permits: Arc::new(Semaphore::new(3)),
             }));
-        for root in &config.roots {
+        for root in roots {
             builder = builder.add_root_certificate(root.clone());
         }
         Ok(Self {
             client: builder.build().map_err(|_| Error::Config)?,
-            base: config.endpoint.clone(),
-            limits: config.limits.clone(),
+            base: endpoint.clone(),
+            limits: limits.clone(),
         })
     }
 
@@ -355,8 +436,36 @@ impl Http {
         query: Option<&[(&str, &str)]>,
         cancel: &CancellationToken,
     ) -> Result<Response, Error> {
-        self.perform(reqwest::Method::GET, segments, query, None, cancel)
-            .await
+        let deadline = Instant::now() + self.limits.request;
+        for attempt in 0..4 {
+            let response = self
+                .perform(
+                    reqwest::Method::GET,
+                    segments,
+                    query,
+                    None,
+                    cancel,
+                    deadline,
+                )
+                .await?;
+            if response.status != 429 || attempt == 3 {
+                return Ok(response);
+            }
+            let Some(delay) = response
+                .retry_delay
+                .and_then(|delay| delay.checked_mul(1 << attempt))
+            else {
+                return Ok(response);
+            };
+            let Some(next) = Instant::now()
+                .checked_add(delay)
+                .filter(|next| *next < deadline)
+            else {
+                return Ok(response);
+            };
+            wait(cancel, deadline, tokio::time::sleep_until(next)).await?;
+        }
+        unreachable!("finite GET loop always returns its last response")
     }
     pub(crate) async fn post(
         &self,
@@ -364,8 +473,15 @@ impl Http {
         body: String,
         cancel: &CancellationToken,
     ) -> Result<Response, Error> {
-        self.perform(reqwest::Method::POST, segments, None, Some(body), cancel)
-            .await
+        self.perform(
+            reqwest::Method::POST,
+            segments,
+            None,
+            Some(body),
+            cancel,
+            Instant::now() + self.limits.request,
+        )
+        .await
     }
     pub(crate) async fn put(
         &self,
@@ -373,8 +489,15 @@ impl Http {
         body: String,
         cancel: &CancellationToken,
     ) -> Result<Response, Error> {
-        self.perform(reqwest::Method::PUT, segments, None, Some(body), cancel)
-            .await
+        self.perform(
+            reqwest::Method::PUT,
+            segments,
+            None,
+            Some(body),
+            cancel,
+            Instant::now() + self.limits.request,
+        )
+        .await
     }
     async fn perform(
         &self,
@@ -383,6 +506,7 @@ impl Http {
         query: Option<&[(&str, &str)]>,
         body: Option<String>,
         cancel: &CancellationToken,
+        deadline: Instant,
     ) -> Result<Response, Error> {
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);
@@ -404,11 +528,14 @@ impl Http {
                 .header(header::CONTENT_TYPE, "application/json")
                 .body(body);
         }
-        let begin = Instant::now();
-        let deadline = begin + self.limits.request;
-        let mut response = wait(cancel, begin + self.limits.headers, request.send())
-            .await?
-            .map_err(|_| Error::Transport)?;
+        self.pace(cancel, deadline).await?;
+        let mut response = wait(
+            cancel,
+            deadline.min(Instant::now() + self.limits.headers),
+            request.send(),
+        )
+        .await?
+        .map_err(|_| Error::Transport)?;
         let status = response.status().as_u16();
         // Hyper 1.11's HTTP/1 parser itself has a 417792-byte header buffer cap.
         // The accepted header projection here is stricter, 16 KiB / 64 fields.
@@ -438,6 +565,17 @@ impl Http {
         if status == 200 && !json_type {
             return Err(Error::Headers);
         }
+        let retry_header = if status == 429 {
+            Some(
+                headers
+                    .get_all(header::RETRY_AFTER)
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>(),
+            )
+        } else {
+            None
+        };
         let cap = self.limits.bytes;
         if response.content_length().is_some_and(|n| n > cap as u64) {
             return Err(Error::BodyTooLarge);
@@ -468,7 +606,20 @@ impl Http {
         } else {
             None
         };
-        Ok(Response { status, value })
+        let retry_delay = retry_header
+            .as_ref()
+            .and_then(|headers| read_retry_delay(headers, value.as_ref()));
+        Ok(Response {
+            status,
+            value,
+            retry_delay,
+        })
+    }
+    async fn pace(&self, cancel: &CancellationToken, deadline: Instant) -> Result<(), Error> {
+        if let Some(pacing) = &self.limits.request_pacing {
+            pacing.enter(cancel, deadline).await?;
+        }
+        Ok(())
     }
 }
 async fn wait<T>(
@@ -482,3 +633,41 @@ async fn wait<T>(
         result = timeout_at(deadline, future) => result.map_err(|_| Error::Timeout),
     }
 }
+
+fn read_retry_delay(headers: &[HeaderValue], value: Option<&Value>) -> Option<std::time::Duration> {
+    use std::time::Duration;
+    if headers.len() > 1 {
+        return None;
+    }
+    let seconds = if let Some(value) = headers.first() {
+        let value = value.to_str().ok()?;
+        if value.is_empty() || !value.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        Some(value.parse::<u64>().ok()?)
+    } else {
+        None
+    };
+    let milliseconds = value
+        .and_then(|value| value.get("retry_after_ms"))
+        .map(Value::as_u64);
+    if milliseconds == Some(None) {
+        return None;
+    }
+    if seconds.is_none() && milliseconds.is_none() {
+        return Some(Duration::from_secs(1));
+    }
+    Some(
+        Duration::from_secs(seconds.unwrap_or(0))
+            .max(Duration::from_millis(milliseconds.flatten().unwrap_or(0)))
+            .max(Duration::from_millis(10)),
+    )
+}
+
+#[cfg(test)]
+#[path = "http/rate_limit_tests.rs"]
+mod rate_limit_tests;
+
+#[cfg(test)]
+#[path = "http/pacing_tests.rs"]
+mod pacing_tests;

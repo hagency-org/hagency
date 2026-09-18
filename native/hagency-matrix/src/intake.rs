@@ -86,6 +86,79 @@ impl IntakeStatus {
     }
 }
 impl Collector {
+    /// The offline negative-only operator owns no published observations.
+    /// Close its original SDK custody without retiring somebody else's route.
+    /// Ordinary live collectors must continue to use `close()`.
+    pub async fn close_refusal_owner(&self) -> Result<(), Error> {
+        let _permit = self
+            .inner
+            .busy
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Busy)?;
+        let mut guard = self.inner.owner.lock().await;
+        if let Some(owner) = guard.take() {
+            owner.close().await?;
+        }
+        Ok(())
+    }
+    /// Explicit local operator negative-only act. Never called by normal
+    /// intake/startup, and never retries a model, SDK apply or domain admission.
+    pub async fn refuse_stale_session_batch(&self, digest: String) -> Result<usize, Error> {
+        if digest.len() != 64
+            || !digest
+                .bytes()
+                .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+        {
+            return Err(Error::Config);
+        }
+        let _permit = self
+            .inner
+            .busy
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Busy)?;
+        let mut guard = self.inner.owner.lock().await;
+        if guard.is_none() {
+            *guard = Some(Owner::open_existing(&self.inner.config).await?);
+        }
+        let owner = guard.as_ref().ok_or(Error::Storage)?;
+        let mut proofs = Vec::new();
+        if let Some(batch) = owner.batch().await? {
+            if batch.digest != digest {
+                return Err(Error::Conflict);
+            }
+            if batch.phase == Phase::Quarantined
+                && batch.reason.as_deref()
+                    == Some("domain refused the frozen event scope or content")
+            {
+                if batch.acknowledgements.len() >= batch.events.len() {
+                    return Err(Error::Unsupported);
+                }
+                for event in &batch.events[batch.acknowledgements.len()..] {
+                    if event.attachment.is_some() {
+                        return Err(Error::Unsupported);
+                    }
+                    proofs.push(
+                        self.inner
+                            .domain
+                            .stale_matrix_session_receipt(event.observation())
+                            .await?
+                            .ok_or(Error::Generation)?,
+                    );
+                }
+            } else if batch.phase != Phase::Derived
+                || batch.reason.as_deref() != Some("stale session inputs explicitly refused")
+            {
+                return Err(Error::Unsupported);
+            }
+        }
+        let (count, complete) = owner.intake_refuse_stale(digest.clone(), proofs).await?;
+        if !complete {
+            owner.intake_finish(digest).await?;
+        }
+        Ok(count)
+    }
     pub async fn intake(
         &self,
         plan: HostIntakePlan,
@@ -285,6 +358,7 @@ impl Inner {
     async fn approve_provision(
         &self,
         msg: &hagency_core::messages::InboundMessage,
+        cancel: &CancellationToken,
     ) -> Result<bool, Error> {
         let body: serde_json::Value = serde_json::from_str(&msg.body).map_err(|_| Error::Wire)?;
         if body.get("decision").and_then(serde_json::Value::as_str) != Some("approve") {
@@ -327,6 +401,12 @@ impl Inner {
             .get("room_id")
             .and_then(serde_json::Value::as_str)
             .ok_or(Error::Wire)?;
+        // The target is verify-only, not a continuously observed host room.
+        // A physical account step cannot authorize itself from the request's
+        // cached project snapshot when a later verdict arrives.
+        if self.config.provisioning.is_some() {
+            self.room_facts.lock().await.remove(&request.target_room_id);
+        }
         let (reception_obs, reception_facts) = self
             .verify_room_facts(source_room, 1, RoomPrivacy::Group {})
             .await?;
@@ -386,77 +466,24 @@ impl Inner {
         };
         let verified =
             verify_request(&reg, request, request_observation).map_err(|_| Error::Wire)?;
-        let engagement_id = verified
-            .request()
-            .engagement_id()
-            .map_err(|_| Error::Wire)?;
         // The request id keys the decision: an identical re-delivery replays
         // the recorded verdict (replay_decision) instead of re-reserving.
         let command_id = format!("approve_{request_id}");
-        self.domain
+        let engagement = self
+            .domain
             .approve(command_id, verified, msg.origin_ts)
             .await?;
-        // The retained product runs the provision synchronously in its decide
-        // handler (ADR-022 "provisions agents on approval"): no async external
-        // worker exists in this slice, so the intake claims the just-recorded
-        // provision effect and observes it complete in the same handoff. The
-        // claim is idempotent on a replayed verdict (claim_effect sees no
-        // pending row for an already-completed effect and returns None).
-        if let Some(effect) = self.domain.claim_effect().await? {
-            self.domain
-                .observe_effect(
-                    effect.id,
-                    effect.fence,
-                    hagency_store::EffectOutcome::Applied {
-                        receipt: format!("provisioned {request_id}"),
-                    },
-                )
+        if let Some(host) = &self.config.provisioning {
+            host.account(&self.domain, &reg, &engagement.id, cancel)
                 .await?;
         }
-        // G3: the provisioned engagement becomes routable. Its project room is
-        // now the engagement's own project room (admit wrote the projects row),
-        // so the collector may publish it into matrix_room_scopes; the new
-        // engagement's transport reuses the host's worker sender/device; and
-        // the verified session binds the project room to a session id. All
-        // three writes replay-safe: identical re-delivery finds the existing
-        // rows and resolves to the prior binding.
-        let t = &self.config.identity.transport;
-        let engagement_sender = format!("@{}:{}", engagement_id, reg.server_name);
-        let mut route_joined = project_obs.joined.clone();
-        route_joined.insert(engagement_sender.clone());
-        self.domain
-            .observe_matrix_transport(hagency_core::replies::MatrixTransportObservation {
-                engagement_id: engagement_id.clone(),
-                registration_generation: reg.generation,
-                generation: t.generation,
-                sender_mxid: engagement_sender.clone(),
-                device_id: format!("DEVICE_{engagement_id}"),
-            })
-            .await?;
-        self.domain
-            .observe_matrix_room(hagency_core::replies::MatrixRoomObservation {
-                engagement_id: engagement_id.clone(),
-                registration_generation: reg.generation,
-                transport_generation: t.generation,
-                room_id: project_obs.room_id.clone(),
-                generation: 1,
-                privacy: RoomPrivacy::Group {},
-                joined: route_joined,
-                invite_only: project_obs.invite_only,
-                encrypted: project_obs.encrypted,
-            })
-            .await?;
-        self.domain
-            .resolve_verified_matrix_session(hagency_core::tasks::SessionBinding {
-                id: format!("session_{engagement_id}"),
-                engagement_id,
-                room_id: project_obs.room_id.clone(),
-                thread_root: None,
-            })
-            .await?;
+        // The explicit private account-stage profile runs inline, not through
+        // a separate effect worker. Without it the approved effect stays Pending.
+        // An observed account alone leaves the claimed effect Started: managed
+        // home/rooms/SDK/runtime remain required before Applied/Active/routes.
         // prior_state was captured before approve: 'pending' marks a fresh
         // verdict; anything else means replay_decision returned the recorded
-        // engagement, so the handoff counts this as a replay.
+        // reservation, so the handoff counts this as a replay.
         Ok(prior_state == "pending")
     }
     /// The in-memory authority facts for a verify-only room, fetched from
@@ -516,7 +543,7 @@ impl Inner {
                 || route.sender_mxid != identity.transport.sender_mxid
                 || route.device_id != identity.transport.device_id
                 || route.server_name != identity.server_name
-                || route.room_generation != room.generation
+                || route.room_generation != self.observed_room_generation(room).await?
                 || route.privacy != room.privacy
                 || !scopes.insert((route.room_id.clone(), route.thread_root.clone()))
             {
@@ -576,7 +603,7 @@ impl Inner {
                     .request(&["_matrix", "client", "v3", "sync"], Some(&query), cancel)
                     .await?
                     .success()?;
-                self.sync_bounds(&value)?;
+                let value = self.scope_sync(value)?;
                 // Once a complete response is accepted, cancellation cannot discard it
                 // before protected custody is written and the SDK owner takes over.
                 observe!(IntakeStart);
@@ -641,7 +668,7 @@ impl Inner {
             // ADR-095: the request event mints via admit; the provider's
             // approval event is the separate verdict that reserves via approve.
             let result = if msg.kind == "com.hagency.engagement.approval.v1" {
-                self.approve_provision(&msg).await
+                self.approve_provision(&msg, cancel).await
             } else {
                 self.provision(&msg).await.map(|(_e, created)| created)
             };

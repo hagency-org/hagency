@@ -770,11 +770,11 @@ async fn native_matrix_outgoing_scope_failed_whoami_retires_cached_route() {
 }
 
 #[tokio::test]
-async fn native_matrix_outgoing_bounds_real_receipts_stop_capacity_without_eviction() {
+async fn native_matrix_outgoing_history_rollover() {
     let (f, mut fake, c) = ready(false, false).await;
     let cancel = CancellationToken::new();
     let mut first = None;
-    for i in 0..state::MAX_RECEIPTS {
+    for i in 0..150 {
         let claim = final_claim_named(&f, &format!("task{i}")).await;
         if first.is_none() {
             first = Some(claim.clone());
@@ -786,20 +786,19 @@ async fn native_matrix_outgoing_bounds_real_receipts_stop_capacity_without_evict
         })
         .await;
         assert_eq!(r.unwrap().state, OutgoingState::Delivered);
-    }
-    let next = final_claim_named(&f, "full").await;
-    assert_eq!(
-        c.send_final(next.clone(), &cancel).await,
-        Err(Error::Capacity)
-    );
-    fake.quiesced(fake.requests(), &common::limits()).await;
-    assert_eq!(state(&f, &next.id), "claimed");
-    assert!(
-        c.send_final(first.unwrap(), &cancel)
-            .await
+        let guard = c.inner.owner.lock().await;
+        let view = guard
+            .as_ref()
             .unwrap()
-            .replayed
-    );
+            .outgoing(Command::Read)
+            .await
+            .unwrap();
+        assert_eq!(view.receipts.len(), (i + 1).min(state::MAX_RECEIPTS));
+        assert!(view.attempt.is_none());
+    }
+    let first = first.unwrap();
+    fake.quiesced(fake.requests(), &common::limits()).await;
+    assert!(c.send_final(first.clone(), &cancel).await.unwrap().replayed);
     stop_sdk(c).await;
     let c = Collector::new(
         config(&f, &fake.endpoint, f.identity.clone(), false),
@@ -810,7 +809,242 @@ async fn native_matrix_outgoing_bounds_real_receipts_stop_capacity_without_evict
         c.resume_outgoing_custody(&cancel).await.unwrap().state,
         OutgoingState::Idle
     );
-    assert_eq!(c.send_final(next, &cancel).await, Err(Error::Capacity));
+    assert!(c.send_final(first.clone(), &cancel).await.unwrap().replayed);
+    fake.quiesced(fake.requests(), &common::limits()).await;
+    let next = final_claim_named(&f, "after_history_restart").await;
+    let (result, ()) = common::scripted(c.send_final(next, &cancel), async {
+        plain_wire(&mut fake)
+            .await
+            .json(200, json!({"event_id":"$after_history_restart"}));
+    })
+    .await;
+    assert_eq!(result.unwrap().state, OutgoingState::Delivered);
+    let guard = c.inner.owner.lock().await;
+    let owner = guard.as_ref().unwrap();
+    let view = owner.outgoing(Command::Read).await.unwrap();
+    assert_eq!(view.receipts.len(), state::MAX_RECEIPTS);
+    assert!(!view.receipts.iter().any(|receipt| receipt.id == first.id));
+    let exact = owner
+        .outgoing(Command::Lookup {
+            id: first.id.clone(),
+            fence: first.fence,
+        })
+        .await
+        .unwrap();
+    assert_eq!(exact.receipts.len(), 1);
+    assert!(matches!(exact.receipts[0].kind, Kind::Final));
+    drop(guard);
+    c.close().await.unwrap();
+    f.store.shutdown().await.unwrap();
+    fake.close().await;
+}
+
+#[tokio::test]
+async fn native_matrix_outgoing_history_negative() {
+    use matrix_sdk_store_encryption::StoreCipher;
+    let (f, mut fake, c) = ready(false, false).await;
+    let cancel = CancellationToken::new();
+    let mut first = None;
+    for index in 0..state::MAX_RECEIPTS {
+        let claim = final_claim_named(&f, &format!("history_negative_{index}")).await;
+        if first.is_none() {
+            first = Some(claim.clone());
+        }
+        let (result, ()) = common::scripted(c.send_final(claim, &cancel), async {
+            plain_wire(&mut fake).await.json(
+                200,
+                json!({"event_id":format!("$negative_accepted_{index}")}),
+            );
+        })
+        .await;
+        result.unwrap();
+    }
+    let first = first.unwrap();
+    let sql =
+        rusqlite::Connection::open(f.root.path().join("sdk/matrix-sdk-state.sqlite3")).unwrap();
+    let exported: Vec<u8> = sql
+        .query_row("SELECT value FROM kv WHERE key='cipher'", [], |row| {
+            row.get(0)
+        })
+        .unwrap();
+    let sdk_cipher = StoreCipher::import_with_key(&[42; 32], &exported).unwrap();
+    let journal_key = sdk_cipher.hash_key("kv_blob", b"custom:hagency.observer.sync.v1");
+    let encoded = journal_key
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    // Refuse only the root journal commit: immutable nodes may reach storage
+    // first, but cannot evict live proof or authorize a new domain begin.
+    sql.execute_batch(&format!("CREATE TRIGGER outgoing_history_root_abort BEFORE INSERT ON kv_blob WHEN NEW.key=X'{encoded}' BEGIN SELECT RAISE(ABORT,'fixture outgoing root rollback'); END;")).unwrap();
+    let next = final_claim_named(&f, "history_root_refused").await;
+    let (result, ()) = common::scripted(c.send_final(next.clone(), &cancel), async {
+        preflight(&mut fake, false).await;
+    })
+    .await;
+    assert_eq!(result, Err(Error::OutcomeUnknown));
+    assert_eq!(state(&f, &next.id), "claimed");
+    assert!(matches!(
+        c.inner
+            .owner
+            .lock()
+            .await
+            .as_ref()
+            .unwrap()
+            .outgoing(Command::Read)
+            .await,
+        Err(Error::OutcomeUnknown)
+    ));
+    let cipher = StoreCipher::import_with_key(
+        &[42; 32],
+        &std::fs::read(f.root.path().join("sdk/journal.key")).unwrap(),
+    )
+    .unwrap();
+    let bytes: Vec<u8> = sql
+        .query_row(
+            "SELECT value FROM kv_blob WHERE key=?1",
+            [journal_key.as_slice()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let journal: Value = cipher.decrypt_value(&bytes).unwrap();
+    assert_eq!(
+        journal["outgoing_receipts"].as_array().unwrap().len(),
+        state::MAX_RECEIPTS
+    );
+    assert_eq!(journal["outgoing_receipts"][0]["id"], first.id);
+    assert!(journal["sync_history"].is_null());
+    assert!(journal["outgoing"].is_null());
+    sql.execute_batch("DROP TRIGGER outgoing_history_root_abort")
+        .unwrap();
+    fake.quiesced(fake.requests(), &common::limits()).await;
+    stop_sdk(c).await;
+    let c = Collector::new(
+        config(&f, &fake.endpoint, f.identity.clone(), false),
+        f.store.clone(),
+    )
+    .unwrap();
+    assert_eq!(
+        c.resume_outgoing_custody(&cancel).await.unwrap().state,
+        OutgoingState::Idle
+    );
+    assert!(c.send_final(first.clone(), &cancel).await.unwrap().replayed);
+    // New independent send; never automatically retries the refused claim.
+    let fresh = final_claim_named(&f, "history_independent_send").await;
+    let (result, ()) = common::scripted(c.send_final(fresh, &cancel), async {
+        plain_wire(&mut fake)
+            .await
+            .json(200, json!({"event_id":"$independent_history"}));
+    })
+    .await;
+    result.unwrap();
+    assert_eq!(state(&f, &next.id), "claimed");
+    let bytes: Vec<u8> = sql
+        .query_row(
+            "SELECT value FROM kv_blob WHERE key=?1",
+            [journal_key.as_slice()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let journal: Value = cipher.decrypt_value(&bytes).unwrap();
+    let root = journal["sync_history"].as_str().unwrap();
+    let node_key = sdk_cipher.hash_key(
+        "kv_blob",
+        format!("custom:hagency.sync.history.v1.{root}").as_bytes(),
+    );
+    let node: Vec<u8> = sql
+        .query_row(
+            "SELECT value FROM kv_blob WHERE key=?1",
+            [node_key.as_slice()],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        sql.execute("DELETE FROM kv_blob WHERE key=?1", [node_key.as_slice()])
+            .unwrap(),
+        1
+    );
+    let bad = final_claim_named(&f, "history_missing_proof").await;
+    assert_eq!(
+        c.send_final(bad.clone(), &cancel).await,
+        Err(Error::Storage)
+    );
+    assert_eq!(state(&f, &bad.id), "claimed");
+    assert_eq!(
+        c.send_final(first.clone(), &cancel).await,
+        Err(Error::Storage)
+    );
+    fake.quiesced(fake.requests(), &common::limits()).await;
+    sql.execute(
+        "INSERT INTO kv_blob(key,value) VALUES(?1,?2)",
+        rusqlite::params![node_key.as_slice(), node],
+    )
+    .unwrap();
+    assert!(
+        !f.store
+            .final_reply_history_conflicts(first.id.clone(), first.fence)
+            .await
+            .unwrap()
+    );
+    assert!(
+        f.store
+            .final_reply_history_conflicts(first.id.clone(), first.fence + 1)
+            .await
+            .unwrap()
+    );
+    let mut domain =
+        rusqlite::Connection::open(f.root.path().join("domain/domain.sqlite3")).unwrap();
+    // Removed canonical data does not erase actual SDK acceptance. Rename
+    // this fixture row and its references temporarily, preserving FK integrity.
+    // This is a retention counterfactual, not a runtime pruning/cascade proof.
+    let mut rename = |from: &str, to: &str| {
+        let tx = domain.transaction().unwrap();
+        tx.execute_batch("PRAGMA defer_foreign_keys=ON").unwrap();
+        assert_eq!(
+            tx.execute(
+                "UPDATE final_replies SET id=?2 WHERE id=?1",
+                rusqlite::params![from, to]
+            )
+            .unwrap(),
+            1
+        );
+        for table in [
+            "final_reply_calls",
+            "final_reply_inspections",
+            "owned_task_completions",
+        ] {
+            tx.execute(
+                &format!("UPDATE {table} SET reply_id=?2 WHERE reply_id=?1"),
+                rusqlite::params![from, to],
+            )
+            .unwrap();
+        }
+        tx.commit().unwrap();
+    };
+    rename(&first.id, "fixture_retained_elsewhere");
+    assert!(c.send_final(first.clone(), &cancel).await.unwrap().replayed);
+    rename("fixture_retained_elsewhere", &first.id);
+    assert!(
+        domain
+            .prepare("PRAGMA foreign_key_check")
+            .unwrap()
+            .query([])
+            .unwrap()
+            .next()
+            .unwrap()
+            .is_none()
+    );
+    // Test-only re-admitted current-row counterfactual. SDK key equality is
+    // not evidence that this newly claimed row has already been delivered.
+    domain.execute("UPDATE final_replies SET state='pending',fence=0,claim_hash=NULL,claim_until=NULL WHERE id=?1", [&first.id]).unwrap();
+    let new_claim = f.store.claim_final_reply(60_000).await.unwrap().unwrap();
+    assert_eq!(new_claim.id, first.id);
+    assert_eq!(new_claim.fence, first.fence);
+    assert!(new_claim.secret != first.secret);
+    assert_eq!(
+        c.send_final(new_claim.clone(), &cancel).await,
+        Err(Error::Conflict)
+    );
+    assert_eq!(state(&f, &new_claim.id), "claimed");
     fake.quiesced(fake.requests(), &common::limits()).await;
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();

@@ -14,17 +14,20 @@ use std::{
 };
 use tokio::time::Instant;
 
+pub(crate) mod provisioning;
 pub(crate) mod state;
 #[derive(Clone, Copy)]
 pub(crate) enum Scope<'a> {
     Agent,
     Approval(&'a [String]),
+    Provision(&'a provisioning::Scope),
 }
 impl Scope<'_> {
     fn purpose(self) -> Purpose {
         match self {
             Self::Agent => Purpose::Agent,
             Self::Approval(_) => Purpose::Approval,
+            Self::Provision(_) => Purpose::Agent,
         }
     }
 }
@@ -107,7 +110,10 @@ impl Inner {
     async fn enrollment_handle(&self, scope: Scope<'_>) -> Result<Handle, Error> {
         let mut guard = self.owner.lock().await;
         if guard.is_none() {
-            *guard = Some(Owner::open_existing(&self.config).await?);
+            *guard = Some(match scope {
+                Scope::Provision(_) => Owner::open(&self.config).await?,
+                _ => Owner::open_existing(&self.config).await?,
+            });
         }
         Ok(guard
             .as_ref()
@@ -117,10 +123,12 @@ impl Inner {
     async fn enrollment_current(&self, cancel: &CancellationToken) -> Result<Vec<String>, Error> {
         self.expected_transport().await?;
         self.whoami(cancel).await?;
-        let mut users = BTreeSet::new();
+        let mut users = BTreeSet::from([self.config.identity.transport.sender_mxid.clone()]);
         for room in &self.config.rooms {
             let observation = self.collect_room_observation(room, cancel).await?;
-            users.extend(observation.joined);
+            if observation.encrypted {
+                users.extend(observation.joined);
+            }
             if users.len() > 17 {
                 return Err(Error::Capacity);
             }
@@ -150,6 +158,7 @@ impl Inner {
             Scope::Approval(engagements) => {
                 self.approval_enrollment_current(engagements, cancel).await
             }
+            Scope::Provision(scope) => scope.current(self, cancel).await,
         }
     }
     async fn enrollment_query(
@@ -176,6 +185,12 @@ impl Inner {
         deadline: Instant,
     ) -> Result<(), Error> {
         checkpoint(cancel, deadline)?;
+        // A new provisioning SDK must not be created until the returned token
+        // and the actual pre-activation room/writer scope have been observed.
+        if let Scope::Provision(scope) = scope {
+            scope.current(self, cancel).await?;
+            checkpoint(cancel, deadline)?;
+        }
         let owner = self.enrollment_handle(scope).await?;
         let complete = match owner.command(Command::Status).await? {
             View::Absent => false,
@@ -275,3 +290,5 @@ pub(crate) fn checkpoint(cancel: &CancellationToken, deadline: Instant) -> Resul
 #[cfg(test)]
 #[path = "../tests/enrollment/mod.rs"]
 mod tests;
+#[cfg(test)]
+pub(crate) use tests::crypto as crypto_fixture;

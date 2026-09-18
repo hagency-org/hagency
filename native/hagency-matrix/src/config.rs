@@ -13,6 +13,8 @@ pub struct Limits {
     pub sdk: Duration,
     pub bytes: usize,
     pub events: usize,
+    /// Optional original host-wide scheduler. Clones share its finite cadence.
+    pub request_pacing: Option<std::sync::Arc<crate::RequestPacing>>,
 }
 impl Default for Limits {
     fn default() -> Self {
@@ -24,11 +26,12 @@ impl Default for Limits {
             sdk: Duration::from_secs(20),
             bytes: 1024 * 1024,
             events: 1000,
+            request_pacing: None,
         }
     }
 }
 impl Limits {
-    fn validate(&self) -> Result<(), Error> {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
         if [
             self.connect,
             self.headers,
@@ -65,6 +68,10 @@ pub struct HostRoom {
 }
 /// Constructed by the process host only. No Deserialize, Debug or credential setters.
 pub struct HostConfig {
+    /// The original warm factory's shared scheduling guard; never authority.
+    pub(crate) factory_rooms: Option<std::sync::Arc<tokio::sync::Mutex<()>>>,
+    pub(crate) as_guard: Option<std::sync::Arc<crate::token_provision::application_service::Guard>>,
+    pub(crate) provisioning: Option<std::sync::Arc<crate::TokenProvisioningHost>>,
     pub(crate) enrollment: Option<crate::enrollment::state::Profile>,
     pub(crate) approval: bool,
     pub(crate) endpoint: Url,
@@ -129,36 +136,17 @@ impl HostConfig {
                 }
             }
         }
-        let url = Url::parse(endpoint).map_err(|_| Error::Config)?;
-        if endpoint.len() > 2048
-            || endpoint.bytes().any(|b| b <= 32 || b == b'\\')
-            || endpoint.contains(['@', '%'])
-            || url.as_str() != endpoint
-            || !url.username().is_empty()
-            || url.password().is_some()
-            || url.query().is_some()
-            || url.fragment().is_some()
-            || url.path() != "/"
-            || url.port() == Some(0)
-            || url.host_str().is_none()
-            || !matches!(url.scheme(), "https" | "http")
-        {
-            return Err(Error::Config);
-        }
-        if url.scheme() == "http"
-            && !url
-                .host_str()
-                .unwrap_or("")
-                .trim_matches(['[', ']'])
-                .parse::<IpAddr>()
-                .is_ok_and(|ip| ip.is_loopback())
-        {
-            return Err(Error::Config);
+        let url = host_endpoint(endpoint)?;
+        if let Some(pacing) = &limits.request_pacing {
+            pacing.check_endpoint(&url)?;
         }
         let mut authorization =
             HeaderValue::from_str(&format!("Bearer {token}")).map_err(|_| Error::Config)?;
         authorization.set_sensitive(true);
         Ok(Self {
+            factory_rooms: None,
+            as_guard: None,
+            provisioning: None,
             enrollment: None,
             approval: false,
             endpoint: url,
@@ -185,6 +173,20 @@ impl HostConfig {
     pub fn engagement_id(&self) -> &str {
         &self.identity.transport.engagement_id
     }
+    /// Explicit private account-stage capability for the unfinished inline
+    /// factory. Never a physical-completion or route observation setter.
+    pub fn with_token_account_provisioning(
+        mut self,
+        host: crate::TokenProvisioningHost,
+    ) -> Result<Self, Error> {
+        if self.provisioning.is_some() {
+            return Err(Error::Config);
+        }
+        host.bind(&self)?;
+        self.factory_rooms = host.room_coordinator();
+        self.provisioning = Some(std::sync::Arc::new(host));
+        Ok(self)
+    }
     /// Set the pre-project reception room. It is not a `rooms` member (those
     /// carry a project/owner/fleet that do not exist before admission) but is
     /// observed alongside them, never published. Setting it twice is refused.
@@ -207,7 +209,14 @@ impl HostConfig {
     pub(crate) fn binding(&self) -> Result<String, Error> {
         // Neither access token nor changing transport/room observation generation is SDK identity.
         let identity = canonical::transport_digest(&serde_json::json!({"origin":self.endpoint.as_str(),"registration":self.identity.registration_fingerprint,"registration_generation":self.identity.transport.registration_generation,"engagement":self.identity.transport.engagement_id,"server":self.identity.server_name,"account":self.identity.transport.sender_mxid,"device":self.identity.transport.device_id,"rooms":self.rooms.iter().map(|r|&r.room_id).collect::<BTreeSet<_>>()})).map_err(|_|Error::Config)?;
-        if self.approval {
+        if let Some(guard) = &self.as_guard {
+            canonical::transport_digest(&serde_json::json!([
+                "appservice-private-device-v1",
+                identity,
+                guard.binding()
+            ]))
+            .map_err(|_| Error::Config)
+        } else if self.approval {
             canonical::transport_digest(&serde_json::json!(["approval-reader-v1", identity]))
                 .map_err(|_| Error::Config)
         } else {
@@ -230,4 +239,35 @@ impl HostConfig {
         )?);
         Ok(self)
     }
+}
+
+/// Shared Host-only origin grammar. This changes no existing collector policy.
+pub(crate) fn host_endpoint(endpoint: &str) -> Result<Url, Error> {
+    let url = Url::parse(endpoint).map_err(|_| Error::Config)?;
+    if endpoint.len() > 2048
+        || endpoint.bytes().any(|b| b <= 32 || b == b'\\')
+        || endpoint.contains(['@', '%'])
+        || url.as_str() != endpoint
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.query().is_some()
+        || url.fragment().is_some()
+        || url.path() != "/"
+        || url.port() == Some(0)
+        || url.host_str().is_none()
+        || !matches!(url.scheme(), "https" | "http")
+    {
+        return Err(Error::Config);
+    }
+    if url.scheme() == "http"
+        && !url
+            .host_str()
+            .unwrap_or("")
+            .trim_matches(['[', ']'])
+            .parse::<IpAddr>()
+            .is_ok_and(|ip| ip.is_loopback())
+    {
+        return Err(Error::Config);
+    }
+    Ok(url)
 }

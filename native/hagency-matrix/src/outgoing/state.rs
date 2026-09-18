@@ -81,12 +81,32 @@ pub(crate) struct Attempt {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub file: Option<crate::sdk::file_publication::Binding>,
 }
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub(crate) struct Receipt {
     pub kind: Kind,
     pub id: String,
     pub fence: u64,
     pub attempt_digest: String,
+}
+impl Receipt {
+    pub(crate) fn validate(&self) -> Result<(), Error> {
+        if self.id.is_empty()
+            || self.id.len() > 128
+            || self.fence == 0
+            || self.fence > hagency_core::JSON_SAFE_MAX
+            || !digest(&self.attempt_digest)
+        {
+            return Err(Error::Storage);
+        }
+        Ok(())
+    }
+}
+pub(crate) fn receipt_key(id: &str, fence: u64) -> Result<String, Error> {
+    if id.is_empty() || id.len() > 128 || fence == 0 || fence > hagency_core::JSON_SAFE_MAX {
+        return Err(Error::Config);
+    }
+    canonical::transport_digest(&serde_json::json!(["settled_outgoing_receipt", id, fence]))
+        .map_err(|_| Error::Storage)
 }
 impl Attempt {
     pub fn validate(&self, identity: &str, user: &str, device: &str) -> Result<(), Error> {
@@ -345,6 +365,7 @@ pub(crate) fn encode(value: &Value, max: usize) -> Result<String, Error> {
 }
 pub(crate) enum Command {
     Read,
+    Lookup { id: String, fence: u64 },
     Start(Box<Attempt>),
     StartFile(Box<crate::sdk::file_publication::Start>),
     Begun,

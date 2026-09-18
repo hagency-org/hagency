@@ -70,6 +70,47 @@ pub(super) async fn open_crypto(config: &crate::HostConfig) -> (OlmMachine, Cryp
     (machine, CryptoInspection { store })
 }
 
+#[tokio::test]
+async fn native_matrix_enrollment_restore_keeps_original_sessions_after_verified_inbound() {
+    let mut f = Fixture::new().await;
+    f.run().await.unwrap();
+    let inbound = f
+        .peer
+        .inbound_room_key(room_id!("!direct:example.test"))
+        .await;
+    {
+        let owner = f.collector.inner.owner.lock().await;
+        owner.as_ref().unwrap().sync(inbound).await.unwrap();
+    }
+    stop_sdk(&f.collector).await;
+    let record = read_ledger(&f.collector.inner.config).await;
+    assert_eq!(record.sessions.len(), 1);
+    assert_eq!(record.sessions[0].ids.len(), 1);
+    let (machine, store) = open_crypto(&f.collector.inner.config).await;
+    let actual = store
+        .get_sessions(&record.sessions[0].curve)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        actual.len(),
+        2,
+        "real inbound session added beside the original claim"
+    );
+    assert!(
+        actual
+            .iter()
+            .any(|session| session.session_id() == record.sessions[0].ids[0])
+    );
+    drop(machine);
+    store.close().await.unwrap();
+    drop(store);
+    assert!(matches!(sdk_status(&f.collector).await, Ok(View::Complete)));
+    assert_eq!(f.peer.claims, 1);
+    assert_eq!(f.peer.writes.len(), 5);
+    f.close().await;
+}
+
 pub async fn decrypt_from_original_sessions(f: &mut Fixture) {
     stop_sdk(&f.collector).await;
     let (machine, store) = open_crypto(&f.collector.inner.config).await;

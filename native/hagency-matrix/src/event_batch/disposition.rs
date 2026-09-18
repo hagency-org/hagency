@@ -22,7 +22,7 @@ fn valid_digest(value: &str) -> bool {
             .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase())
 }
 impl Source {
-    pub(super) fn new(room: &str, raw: &Value) -> Result<Self, Error> {
+    pub(crate) fn new(room: &str, raw: &Value) -> Result<Self, Error> {
         let mut immutable = raw.clone();
         // unsigned age/bundled presentation can change between sync responses.
         // The complete original raw fingerprint still binds this batch's coverage.
@@ -50,6 +50,13 @@ impl Source {
                 _ => false,
             }
     }
+    pub(crate) fn archive_key(&self) -> Result<String, Error> {
+        digest(&json!([
+            "terminal_source",
+            self.room,
+            self.event.as_ref().unwrap_or(&self.raw)
+        ]))
+    }
     fn validate(&self) -> Result<(), Error> {
         if !valid_digest(&self.room)
             || !valid_digest(&self.raw)
@@ -64,6 +71,7 @@ impl Source {
 #[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum Rejection {
+    StaleSession,
     Malformed,
     Unsupported,
     CryptoIneligible,
@@ -93,9 +101,16 @@ impl Disposition {
         })
     }
     pub(super) fn prior(source: &Source, history: &[Receipt]) -> Option<Decision> {
+        Self::prior_values(
+            source,
+            history.iter().flat_map(|r| r.dispositions.iter().flatten()),
+        )
+    }
+    pub(crate) fn prior_values<'a>(
+        source: &Source,
+        mut history: impl Iterator<Item = &'a Self>,
+    ) -> Option<Decision> {
         history
-            .iter()
-            .flat_map(|r| r.dispositions.iter().flatten())
             .find(|r| {
                 r.source.matches_key(source) && !matches!(r.decision, Decision::Candidate { .. })
             })
@@ -108,6 +123,19 @@ impl Disposition {
                     r.decision.clone()
                 }
             })
+    }
+    pub(crate) fn archive_key(&self) -> Result<String, Error> {
+        self.source.archive_key()
+    }
+    pub(crate) fn terminal(&self) -> bool {
+        !matches!(self.decision, Decision::Candidate { .. })
+    }
+    pub(crate) fn validate_archive(&self) -> Result<(), Error> {
+        self.source.validate()?;
+        if !self.terminal() || !valid_digest(&self.sdk_observation) {
+            return Err(Error::Storage);
+        }
+        Ok(())
     }
     pub(super) fn matches(&self, room: &str, raw: &Value) -> Result<bool, Error> {
         let source = Source::new(room, raw)?;
@@ -154,7 +182,7 @@ pub(super) fn rejected(values: Option<&[Disposition]>) -> usize {
 
 /// Every raw joined timeline entry must be represented exactly once. Room/order
 /// comes from the authenticated sync; no malformed event needs a fabricated ID.
-pub(super) fn raw_events(raw: &Value) -> Result<Vec<(String, Value)>, Error> {
+pub(crate) fn raw_events(raw: &Value) -> Result<Vec<(String, Value)>, Error> {
     let mut all = vec![];
     if let Some(joined) = raw.pointer("/rooms/join") {
         let mut rooms = joined

@@ -121,84 +121,104 @@ impl Inner {
                     state: OutgoingState::Uncertain,
                     replayed: true,
                 }),
-                None => self.resume_settled_file_publication(&view.receipts).await,
+                None => self.resume_settled_file_publication(owner).await,
             };
         }
         if view.attempt.is_some() {
             return Err(Error::OutcomeUnknown);
         }
-        let (kind, id, fence, domain_digest, route, transaction_id, body) =
-            match &source {
-                Source::Final(claim) => {
-                    if view.receipts.iter().any(|r| {
-                        r.kind == Kind::Final && r.id == claim.id && r.fence == claim.fence
-                    }) {
-                        return Ok(OutgoingSummary {
-                            id: Some(claim.id.clone()),
-                            state: OutgoingState::Delivered,
-                            replayed: true,
-                        });
+        let (kind, id, fence, domain_digest, route, transaction_id, body) = match &source {
+            Source::Final(claim) => {
+                let historical = owner
+                    .outgoing(Command::Lookup {
+                        id: claim.id.clone(),
+                        fence: claim.fence,
+                    })
+                    .await?;
+                if let Some(receipt) = historical.receipts.first() {
+                    if receipt.kind != Kind::Final {
+                        return Err(Error::Conflict);
                     }
-                    observe!(OutgoingPreview);
-                    let send = self.domain.preview_final_reply(claim.clone()).await?;
-                    (
-                        Kind::Final,
-                        send.id,
-                        claim.fence,
-                        send.digest,
-                        send.route,
-                        send.transaction_id,
-                        send.body,
-                    )
-                }
-                Source::Notice(claim) => {
-                    observe!(OutgoingPreview);
-                    let receipt = self
+                    if self
                         .domain
-                        .verified_notice_receipt(claim.claim.notice.id.clone())
-                        .await?;
-                    if view.receipts.iter().any(|r| {
-                        r.kind == Kind::Notice && r.id == receipt.id && r.fence == receipt.fence
-                    }) {
-                        return Ok(OutgoingSummary {
-                            id: Some(receipt.id),
-                            state: OutgoingState::Delivered,
-                            replayed: true,
-                        });
+                        .final_reply_history_conflicts(claim.id.clone(), claim.fence)
+                        .await?
+                    {
+                        return Err(Error::Conflict);
                     }
-                    if receipt.state != "claimed" {
-                        return Err(Error::Domain);
+                    return Ok(OutgoingSummary {
+                        id: Some(claim.id.clone()),
+                        state: OutgoingState::Delivered,
+                        replayed: true,
+                    });
+                }
+                observe!(OutgoingPreview);
+                let send = self.domain.preview_final_reply(claim.clone()).await?;
+                (
+                    Kind::Final,
+                    send.id,
+                    claim.fence,
+                    send.digest,
+                    send.route,
+                    send.transaction_id,
+                    send.body,
+                )
+            }
+            Source::Notice(claim) => {
+                observe!(OutgoingPreview);
+                let receipt = self
+                    .domain
+                    .verified_notice_receipt(claim.claim.notice.id.clone())
+                    .await?;
+                let historical = owner
+                    .outgoing(Command::Lookup {
+                        id: receipt.id.clone(),
+                        fence: receipt.fence,
+                    })
+                    .await?;
+                if let Some(original) = historical.receipts.first() {
+                    if original.kind != Kind::Notice {
+                        return Err(Error::Conflict);
                     }
-                    (
-                        Kind::Notice,
-                        claim.claim.notice.id.clone(),
-                        receipt.fence,
-                        claim.digest.clone(),
-                        claim.route.clone(),
-                        claim.claim.notice.transaction_id.clone(),
-                        claim.claim.notice.body.clone(),
-                    )
+                    if receipt.state != "delivered" {
+                        return Err(Error::Conflict);
+                    }
+                    return Ok(OutgoingSummary {
+                        id: Some(receipt.id),
+                        state: OutgoingState::Delivered,
+                        replayed: true,
+                    });
                 }
-                Source::File(file) => {
-                    let l = &file.locator;
-                    self.domain
-                        .validate_file_publication(file.cap.clone(), file.claim.clone())
-                        .await?;
-                    (
-                        Kind::File,
-                        l.delivery_id.clone(),
-                        l.fence,
-                        l.content_digest.clone(),
-                        l.route.clone(),
-                        l.transaction_id.clone(),
-                        String::new(),
-                    )
+                if receipt.state != "claimed" {
+                    return Err(Error::Domain);
                 }
-                Source::Resume => unreachable!(),
-            };
-        if view.receipts.len() >= state::MAX_RECEIPTS {
-            return Err(Error::Capacity);
-        }
+                (
+                    Kind::Notice,
+                    claim.claim.notice.id.clone(),
+                    receipt.fence,
+                    claim.digest.clone(),
+                    claim.route.clone(),
+                    claim.claim.notice.transaction_id.clone(),
+                    claim.claim.notice.body.clone(),
+                )
+            }
+            Source::File(file) => {
+                let l = &file.locator;
+                self.domain
+                    .validate_file_publication(file.cap.clone(), file.claim.clone())
+                    .await?;
+                (
+                    Kind::File,
+                    l.delivery_id.clone(),
+                    l.fence,
+                    l.content_digest.clone(),
+                    l.route.clone(),
+                    l.transaction_id.clone(),
+                    String::new(),
+                )
+            }
+            Source::Resume => unreachable!(),
+        };
         let joined = self.outgoing_preflight(&route, cancel).await?;
         let draft = if let Source::File(file) = &mut source {
             let mut start = file.start.take().ok_or(Error::Conflict)?;
@@ -470,12 +490,11 @@ impl Inner {
             .config
             .rooms
             .iter()
-            .find(|r| {
-                r.room_id == route.room_id
-                    && r.generation == route.room_generation
-                    && r.privacy == route.privacy
-            })
+            .find(|r| r.room_id == route.room_id && r.privacy == route.privacy)
             .ok_or(Error::Generation)?;
+        if self.observed_room_generation(target).await? != route.room_generation {
+            return Err(Error::Generation);
+        }
         let expected = self.expected_transport().await?;
         observe!(Whoami);
         if let Err(error) = self.whoami(cancel).await {
@@ -484,6 +503,9 @@ impl Inner {
             return self.fence_observation(expected, error).await;
         }
         let observation = self.collect_room_observation(target, cancel).await?;
+        if observation.generation != route.room_generation {
+            return Err(Error::Generation);
+        }
         if observation.encrypted != route.encrypted
             || observation.joined.len() > 16
             || (matches!(route.privacy, RoomPrivacy::Direct { .. }) && !route.encrypted)

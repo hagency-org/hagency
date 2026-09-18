@@ -59,6 +59,165 @@ async fn preflight(fake: &mut common::Fake) {
     assert!(r.target.ends_with("/state"));
     r.json(200, state());
 }
+
+#[tokio::test]
+async fn native_fleet_approval_service_turn() {
+    use std::future::Future;
+    let f = common::Fixture::new();
+    let config = HostApprovalConfig::new(
+        config(&f, "https://127.0.0.1:1/"),
+        vec![f.identity.transport.engagement_id.clone()],
+    )
+    .unwrap();
+    let collector = ApprovalCollector::new(config, f.store.clone()).unwrap();
+    let cancel = CancellationToken::new();
+    let original = collector.service_turn(&cancel).await.unwrap();
+    let waiting_cancel = CancellationToken::new();
+    let mut waiting = Vec::new();
+    for _ in 0..15 {
+        let mut future = Box::pin(collector.service_turn(&waiting_cancel));
+        assert!(
+            std::future::poll_fn(|cx| std::task::Poll::Ready(
+                future.as_mut().poll(cx).is_pending()
+            ))
+            .await
+        );
+        waiting.push(future);
+    }
+    assert!(matches!(
+        collector.service_turn(&cancel).await,
+        Err(Error::Busy)
+    ));
+    // Dropping a queued waiter frees only its own scheduling slot. The
+    // original active turn still blocks every other service caller.
+    drop(waiting.remove(0));
+    let mut replacement = Box::pin(collector.service_turn(&cancel));
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(
+            replacement.as_mut().poll(cx).is_pending()
+        ))
+        .await
+    );
+    waiting_cancel.cancel();
+    for future in waiting {
+        assert!(matches!(future.await, Err(Error::Cancelled)));
+    }
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(
+            replacement.as_mut().poll(cx).is_pending()
+        ))
+        .await
+    );
+    drop(original);
+    let replacement = replacement.await.unwrap();
+    assert!(
+        collector.inner.owner.lock().await.is_none(),
+        "scheduling never creates an SDK"
+    );
+    let mut next = Box::pin(collector.service_turn(&cancel));
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(next.as_mut().poll(cx).is_pending()))
+            .await
+    );
+    drop(replacement);
+    drop(next.await.unwrap());
+    assert!(matches!(
+        collector.service_turn(&waiting_cancel).await,
+        Err(Error::Cancelled)
+    ));
+    common::shutdown_domain(&f.store, "approval service turns").await;
+}
+
+#[tokio::test]
+async fn native_fleet_approval_service_turn_timeout() {
+    use std::future::Future;
+    let f = common::Fixture::new();
+    let config = HostApprovalConfig::new(
+        config(&f, "https://127.0.0.1:1/"),
+        vec![f.identity.transport.engagement_id.clone()],
+    )
+    .unwrap();
+    let collector = ApprovalCollector::new(config, f.store.clone()).unwrap();
+    let cancel = CancellationToken::new();
+    let original = collector.service_turn(&cancel).await.unwrap();
+    // Virtual time covers only scheduling, not filesystem or SDK qualification.
+    // Keep the original configured deadline; do not substitute a larger one.
+    tokio::time::pause();
+    let mut wait = Box::pin(collector.service_turn(&cancel));
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(wait.as_mut().poll(cx).is_pending()))
+            .await
+    );
+    tokio::time::advance(collector.inner.config.limits.sdk - Duration::from_millis(1)).await;
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(wait.as_mut().poll(cx).is_pending()))
+            .await
+    );
+    tokio::time::advance(Duration::from_millis(1)).await;
+    assert!(matches!(wait.await, Err(Error::Timeout)));
+    assert_eq!(collector.service_slots.available_permits(), 15);
+    assert_eq!(
+        collector.service.available_permits(),
+        0,
+        "timeout cannot release the original turn"
+    );
+    assert!(collector.inner.owner.lock().await.is_none());
+    drop(original);
+    drop(collector.service_turn(&cancel).await.unwrap());
+    assert_eq!(collector.service_slots.available_permits(), 16);
+    tokio::time::resume();
+    common::shutdown_domain(&f.store, "approval service timeout").await;
+}
+
+#[tokio::test]
+async fn native_fleet_approval_service_turn_lost_observer() {
+    use std::future::Future;
+    let f = common::Fixture::new();
+    let mut fake = common::Fake::start(true).await;
+    let config = HostApprovalConfig::new(
+        config(&f, &fake.endpoint),
+        vec![f.identity.transport.engagement_id.clone()],
+    )
+    .unwrap();
+    let collector = ApprovalCollector::new(config, f.store.clone()).unwrap();
+    let cancel = CancellationToken::new();
+    let mut caller = Box::pin(async {
+        let _turn = collector.service_turn(&cancel).await?;
+        collector.observe(&cancel).await
+    });
+    assert!(
+        std::future::poll_fn(|cx| std::task::Poll::Ready(caller.as_mut().poll(cx).is_pending()))
+            .await
+    );
+    let original = fake.next().await;
+    assert!(original.target.ends_with("/whoami"));
+    drop(caller);
+    // The dropped service caller loses only its scheduling turn. The actual
+    // original observer still holds the SDK/domain busy permit over held TLS.
+    let turn = collector.service_turn(&cancel).await.unwrap();
+    assert!(matches!(collector.observe(&cancel).await, Err(Error::Busy)));
+    assert_eq!(collector.inner.busy.available_permits(), 0);
+    original.json(200, who());
+    let state_request = fake.next().await;
+    assert!(state_request.target.ends_with("/state"));
+    state_request.json(200, state());
+    tokio::time::timeout(Duration::from_secs(1), async {
+        while collector.inner.busy.available_permits() == 0 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
+    // Only observed completion of that original owner allows another observe.
+    let (result, ()) = common::scripted(collector.observe(&cancel), preflight(&mut fake)).await;
+    result.unwrap();
+    drop(turn);
+    assert!(
+        collector.inner.owner.lock().await.is_none(),
+        "room observation did not replace an SDK"
+    );
+    common::shutdown_domain(&f.store, "approval lost service observer").await;
+}
 async fn ready() -> (
     common::Fixture,
     common::Fake,
@@ -761,6 +920,108 @@ async fn native_matrix_approval_bounds_same_ciphertext_cannot_acquire_new_target
         "pending"
     );
     assert_eq!(c.custody_status().await.unwrap().terminal_sources, 1);
+    shutdown(f, fake, c).await;
+}
+
+#[tokio::test]
+async fn native_matrix_approval_same_cursor_distinct_responses() {
+    let (f, mut fake, c, cap) = ready().await;
+    let target = request(&f, &cap, 1).await;
+    let (query, mut verdict_sync) = packet(&c, vec![verdict(&target, "approve_once")]).await;
+    let mut idle = verdict_sync.clone();
+    idle["rooms"]["join"]["!private:example.test"]["timeline"]["events"] = json!([]);
+    idle["to_device"]["events"] = json!([]);
+    let cancel = CancellationToken::new();
+    for count in [1, 2] {
+        idle["device_one_time_keys_count"] = json!({"signed_curve25519":count});
+        let (result, ()) = common::scripted(
+            c.intake(plan(&target), &cancel),
+            wire_batch(&mut fake, &query, &idle, 0),
+        )
+        .await;
+        assert_eq!(result.unwrap().accepted, 0);
+        assert_eq!(c.custody_status().await.unwrap().completed_batches, count);
+    }
+    c.inner
+        .owner
+        .lock()
+        .await
+        .take()
+        .unwrap()
+        .close()
+        .await
+        .unwrap();
+    assert_eq!(c.custody_status().await.unwrap().completed_batches, 2);
+    // The identical response does not become a new batch or acquire new targets.
+    let (result, ()) = common::scripted(
+        c.intake(plan(&target), &cancel),
+        wire_batch(&mut fake, &query, &idle, 0),
+    )
+    .await;
+    assert_eq!(result.unwrap().accepted, 0);
+    assert_eq!(c.custody_status().await.unwrap().completed_batches, 2);
+    verdict_sync["next_batch"] = json!("owner_verdict");
+    let (result, ()) = common::scripted(
+        c.intake(plan(&target), &cancel),
+        wire_batch(&mut fake, &query, &verdict_sync, 1),
+    )
+    .await;
+    assert_eq!(result.unwrap().accepted, 1);
+    assert_eq!(
+        f.store
+            .approval_summary(target.request_id)
+            .await
+            .unwrap()
+            .state,
+        "decided"
+    );
+    let (result, ()) = common::scripted(
+        c.intake(HostApprovalPlan::new(vec![]).unwrap(), &cancel),
+        wire_batch(&mut fake, &query, &verdict_sync, 0),
+    )
+    .await;
+    assert_eq!(result.unwrap().accepted, 0);
+    assert_eq!(c.custody_status().await.unwrap().completed_batches, 3);
+    shutdown(f, fake, c).await;
+}
+
+#[tokio::test]
+async fn native_matrix_approval_same_cursor_changed_source_refuses() {
+    let (f, mut fake, c, cap) = ready().await;
+    let target = request(&f, &cap, 1).await;
+    let (query, mut sync) = packet(&c, vec![]).await;
+    sync["rooms"]["join"]["!private:example.test"]["timeline"]["events"] = json!([
+        {"event_id":"$ordinary","sender":"@owner:example.test","origin_server_ts":now(),
+         "type":"m.room.message","content":{"msgtype":"m.text","body":"ordinary"}}
+    ]);
+    let cancel = CancellationToken::new();
+    let (result, ()) = common::scripted(
+        c.intake(plan(&target), &cancel),
+        wire_batch(&mut fake, &query, &sync, 0),
+    )
+    .await;
+    assert_eq!(result.unwrap().rejected, 1);
+    sync["rooms"]["join"]["!private:example.test"]["timeline"]["events"][0]["content"] =
+        verdict(&target, "approve_once");
+    let (result, ()) = common::scripted(
+        c.intake(plan(&target), &cancel),
+        wire_batch(&mut fake, &query, &sync, 0),
+    )
+    .await;
+    // The SDK's unchanged-cursor short circuit is not proof of the altered event.
+    assert_eq!(result, Err(Error::Unsupported));
+    let status = c.custody_status().await.unwrap();
+    assert_eq!(status.stage, ApprovalCustodyStage::Quarantined);
+    assert_eq!(status.terminal_sources, 1);
+    assert!(status.retained_response_bytes > 0);
+    assert_eq!(
+        f.store
+            .approval_summary(target.request_id)
+            .await
+            .unwrap()
+            .state,
+        "pending"
+    );
     shutdown(f, fake, c).await;
 }
 #[tokio::test]
