@@ -73,6 +73,35 @@ jobs:
         if: needs.changes.outputs.code == 'true'
         run: npm run audit:baseline
 
+  native-controls:
+    needs: changes
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        if: needs.changes.outputs.code == 'true'
+      - uses: actions/setup-node@v4
+        if: needs.changes.outputs.code == 'true'
+        with:
+          node-version: 22.22.0
+      - run: npm ci
+        if: needs.changes.outputs.code == 'true'
+      - name: Verify native control and recovery fixtures on both Mac architectures
+        if: needs.changes.outputs.code == 'true'
+        run: >-
+          npx vitest run
+          tests/inner-native-control-evidence.test.js
+          tests/inner-native-control.test.js
+          tests/native-fault-attempt.test.js
+          tests/native-process-metadata.test.js
+          tests/native-stage-evidence.test.js
+          tests/native-stage-release.test.js
+          tests/skill-sync.test.js
+
   test:
     needs: changes
     runs-on: ubuntu-latest

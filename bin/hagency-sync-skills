@@ -108,7 +108,7 @@ if [ ! -f "$TEMPLATE" ]; then
   echo "Error: template not found: $TEMPLATE" >&2
   exit 1
 fi
-for resource in SKILL.md scripts/monitor.mjs; do
+for resource in SKILL.md scripts/monitor.mjs scripts/native-control-evidence.mjs scripts/native-control.mjs scripts/prepare-native-fault-attempt.mjs scripts/run-stage-release.mjs scripts/native-stage-evidence.mjs scripts/native-handle-summary.mjs native/darwin-process-metadata.c; do
   if [ ! -f "$INNER_LOOP_TEMPLATE/$resource" ]; then
     echo "Error: skill resource not found: $INNER_LOOP_TEMPLATE/$resource" >&2
     exit 1
