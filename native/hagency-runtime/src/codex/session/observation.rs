@@ -2,11 +2,11 @@
 //! event. Textual peer IDs alone cannot establish a source connection.
 use super::{ItemPhase, Outcome, Update};
 use serde_json::Value;
-use std::collections::BTreeMap;
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
 };
+use std::{collections::BTreeMap, path::Path};
 
 #[derive(Clone)]
 pub struct ObservationSource {
@@ -55,6 +55,26 @@ pub struct ToolEvidence {
     kind: ToolKind,
     phase: ItemPhase,
     result: ToolResult,
+    command: Option<CommandEvidence>,
+}
+#[derive(Clone, PartialEq, Eq)]
+struct CommandEvidence {
+    command: String,
+    cwd: String,
+}
+fn command_evidence(item: &Value) -> Option<CommandEvidence> {
+    let command = item.get("command")?.as_str()?;
+    let cwd = item.get("cwd")?.as_str()?;
+    if !crate::codex::text(command, 8192)
+        || !crate::codex::text(cwd, 8192)
+        || !Path::new(cwd).is_absolute()
+    {
+        return None;
+    }
+    Some(CommandEvidence {
+        command: command.into(),
+        cwd: cwd.into(),
+    })
 }
 impl ToolEvidence {
     pub fn id(&self) -> &str {
@@ -68,6 +88,13 @@ impl ToolEvidence {
     }
     pub fn result(&self) -> ToolResult {
         self.result
+    }
+    /// Exact factual equality only. Neither private content nor authority is
+    /// returned, and a missing/malformed peer field cannot match host intent.
+    pub fn matches_command(&self, command: &str, cwd: &Path) -> bool {
+        self.command.as_ref().is_some_and(|original| {
+            original.command == command && Some(original.cwd.as_str()) == cwd.to_str()
+        })
     }
 }
 #[derive(Clone, PartialEq, Eq)]
@@ -91,6 +118,13 @@ impl EvidenceTracker {
         let observation = project(update, params, outcome);
         if let ObservationKind::Tool(tool) = &observation {
             // The session's item bound and exact item lifecycle precede this.
+            if self
+                .0
+                .get(&tool.id)
+                .is_some_and(|previous| previous.command != tool.command)
+            {
+                return ObservationKind::Invalidated;
+            }
             self.0.insert(tool.id.clone(), tool.clone());
         }
         if matches!(observation, ObservationKind::TurnEnded(_)) {
@@ -98,6 +132,12 @@ impl EvidenceTracker {
                 let Some(previous) = item["id"].as_str().and_then(|id| self.0.get(id)) else {
                     continue;
                 };
+                if previous.kind == ToolKind::Command
+                    && (item.get("command").is_some() || item.get("cwd").is_some())
+                    && command_evidence(item) != previous.command
+                {
+                    return ObservationKind::Invalidated;
+                }
                 if previous.kind != ToolKind::Unsupported
                     && (item.get("status").is_some() || item.get("exitCode").is_some())
                     && evidence(previous.kind, ItemPhase::Complete, item) != previous.result
@@ -155,6 +195,11 @@ pub(super) fn project(
                 kind: category,
                 phase: *phase,
                 result,
+                command: if category == ToolKind::Command {
+                    command_evidence(&params["item"])
+                } else {
+                    None
+                },
             })
         }
         Update::TurnEnded => ObservationKind::TurnEnded(match outcome {

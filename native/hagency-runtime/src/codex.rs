@@ -1,7 +1,7 @@
 //! Codex 0.153.4 App Server JSONL. Protocol observations are untrusted data.
 pub mod approval;
 mod connection;
-mod json;
+use crate::json;
 pub mod session;
 pub mod transport;
 mod wire;
@@ -11,7 +11,7 @@ pub use wire::{Decoder, Message, RequestId, RpcError, encode};
 
 /// Includes every byte preceding LF (including CR for CRLF input).
 pub const MAX_FRAME_BYTES: usize = 1_048_576;
-pub const MAX_DEPTH: usize = 64;
+pub const MAX_DEPTH: usize = crate::json::MAX_DEPTH;
 pub const MAX_PENDING: usize = 32;
 pub const MAX_SERVER_IDS: usize = 1024;
 pub const PARTIAL_FRAME_MS: u64 = 10_000;
@@ -41,4 +41,13 @@ pub enum Error {
 
 fn text(value: &str, max: usize) -> bool {
     !value.is_empty() && value.len() <= max && !value.chars().any(char::is_control)
+}
+
+impl From<crate::json::Error> for Error {
+    fn from(error: crate::json::Error) -> Self {
+        match error {
+            crate::json::Error::Envelope => Self::Envelope,
+            crate::json::Error::Capacity => Self::Capacity,
+        }
+    }
 }

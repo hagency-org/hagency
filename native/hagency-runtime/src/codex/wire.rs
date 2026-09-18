@@ -51,6 +51,9 @@ pub enum Message {
         method: String,
         #[serde(skip_serializing_if = "Option::is_none")]
         params: Option<Value>,
+        /// Upstream diagnostic time only; never a host clock or authority.
+        #[serde(rename = "emittedAtMs", skip_serializing_if = "Option::is_none")]
+        emitted_at_ms: Option<i64>,
     },
     Response {
         id: RequestId,
@@ -93,7 +96,15 @@ impl Message {
                     trace,
                 }
             } else {
-                Self::Notification { method, params }
+                let emitted_at_ms = fields
+                    .remove("emittedAtMs")
+                    .map(|value| value.as_i64().ok_or(Error::Envelope))
+                    .transpose()?;
+                Self::Notification {
+                    method,
+                    params,
+                    emitted_at_ms,
+                }
             }
         } else {
             let id = id.ok_or(Error::Envelope)?;
@@ -233,7 +244,9 @@ impl Decoder {
         let Some(end) = end else {
             return Ok((length, None));
         };
-        let message = json::parse(&self.bytes).and_then(Message::parse);
+        let message = json::parse(&self.bytes)
+            .map_err(Error::from)
+            .and_then(Message::parse);
         self.bytes.clear();
         self.since = None;
         match message {

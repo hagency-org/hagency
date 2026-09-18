@@ -147,7 +147,13 @@ impl State {
             .ok_or(Error::Capacity)?;
         scope(method, params, self.thread.as_deref(), self.turn.as_deref())?;
         match method {
-            "warning" | "configWarning" => Ok(Update::Notice),
+            "warning"
+            | "configWarning"
+            | "remoteControl/status/changed"
+            | "mcpServer/startupStatus/updated"
+            | "account/rateLimits/updated"
+            | "hook/started"
+            | "hook/completed" => Ok(Update::Notice),
             "thread/started" => Ok(Update::ThreadStatus),
             "thread/status/changed" => {
                 if !matches!(
@@ -201,6 +207,7 @@ impl State {
             }
             "item/plan/delta"
             | "item/commandExecution/outputDelta"
+            | "item/commandExecution/terminalInteraction"
             | "item/fileChange/outputDelta"
             | "item/mcpToolCall/progress"
             | "item/reasoning/summaryTextDelta"
@@ -214,6 +221,15 @@ impl State {
                 let kind = method.split('/').nth(1).ok_or(Error::Malformed)?;
                 if item.kind != kind {
                     return Err(Error::Scope);
+                }
+                if method == "item/commandExecution/terminalInteraction" {
+                    // Pinned terminal polling/input is progress for this exact
+                    // active command. It grants no permission or completion;
+                    // stdin stays private and is not retained in observations.
+                    id(params, "processId")?;
+                    if string(params, "stdin")?.len() > MAX_TEXT_BYTES {
+                        return Err(Error::Capacity);
+                    }
                 }
                 Ok(Update::Progress)
             }
@@ -229,7 +245,13 @@ impl State {
             .ok_or(Error::Capacity)?;
         scope(method, params, self.thread.as_deref(), self.turn.as_deref())?;
         match method {
-            "warning" | "configWarning" | "serverRequest/resolved" => Ok(()),
+            "warning"
+            | "configWarning"
+            | "remoteControl/status/changed"
+            | "mcpServer/startupStatus/updated"
+            | "account/rateLimits/updated"
+            | "serverRequest/resolved"
+            | "hook/completed" => Ok(()),
             "thread/status/changed" if string(object(params, "status")?, "type")? == "idle" => {
                 Ok(())
             }
@@ -442,7 +464,85 @@ pub(super) fn scope(
     if !params.is_object() {
         return Err(Error::Malformed);
     }
-    if matches!(method, "warning" | "configWarning") {
+    if matches!(method, "hook/started" | "hook/completed") {
+        let observed = id(params, "threadId")?;
+        if thread.is_some_and(|expected| expected != observed) {
+            return Err(Error::Scope);
+        }
+        if params.get("turnId").is_some_and(|value| !value.is_null())
+            && turn.is_some_and(|expected| params["turnId"].as_str() != Some(expected))
+        {
+            return Err(Error::Scope);
+        }
+        if params.get("turnId").is_some_and(|value| !value.is_null()) {
+            id(params, "turnId")?;
+        }
+        return super::hooks::validate(method, params);
+    }
+    if method == "mcpServer/startupStatus/updated" {
+        // Startup is app/thread-scoped, not turn-scoped. Readiness is only a
+        // diagnostic; it never substitutes for canonical tool evidence.
+        let name = string(params, "name")?;
+        if name.is_empty() || name.len() > 256 || name.chars().any(char::is_control) {
+            return Err(Error::Malformed);
+        }
+        let status = string(params, "status")?;
+        if !matches!(status, "starting" | "ready" | "failed" | "cancelled")
+            || params.get("error").is_some_and(|value| {
+                !value.is_null() && value.as_str().is_none_or(|value| value.len() > 4096)
+            })
+            || params.get("failureReason").is_some_and(|value| {
+                !value.is_null() && value.as_str() != Some("reauthenticationRequired")
+            })
+        {
+            return Err(Error::Malformed);
+        }
+        if params.get("threadId").is_some_and(|value| !value.is_null()) {
+            let observed = id(params, "threadId")?;
+            if thread.is_some_and(|expected| expected != observed) {
+                return Err(Error::Scope);
+            }
+        }
+        if params.get("turnId").is_some_and(|value| !value.is_null())
+            && turn != Some(id(params, "turnId")?)
+        {
+            return Err(Error::Scope);
+        }
+        if name == "hagency_task_writer" && matches!(status, "failed" | "cancelled") {
+            return Err(Error::TaskWriterStartup);
+        }
+        return Ok(());
+    }
+    if matches!(
+        method,
+        "warning" | "configWarning" | "remoteControl/status/changed" | "account/rateLimits/updated"
+    ) {
+        if method == "account/rateLimits/updated" {
+            // Account rolling-window metadata is not per-turn usage evidence.
+            object(params, "rateLimits")?;
+        }
+        if method == "remoteControl/status/changed" {
+            for key in ["installationId", "serverName"] {
+                let value = string(params, key)?;
+                if value.len() > 256 || value.chars().any(char::is_control) {
+                    return Err(Error::Malformed);
+                }
+            }
+            if !matches!(
+                string(params, "status")?,
+                "disabled" | "connecting" | "connected" | "errored"
+            ) {
+                return Err(Error::Malformed);
+            }
+            if params.get("environmentId").is_some_and(|value| {
+                !value.is_null()
+                    && value.as_str().is_none_or(|value| {
+                        value.len() > 256 || value.chars().any(char::is_control)
+                    })
+            }) {
+                return Err(Error::Malformed);
+            }
+        }
         for (key, expected) in [("threadId", thread), ("turnId", turn)] {
             if let Some(value) = params.get(key).filter(|v| !v.is_null()) {
                 let observed = value.as_str().ok_or(Error::Malformed)?;

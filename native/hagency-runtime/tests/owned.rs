@@ -86,7 +86,7 @@ fn cleanup(runner: &OwnedSession) {
             assert!(report.scope.leader_exited);
             assert_eq!(
                 report.scope.whole_tree_stopped,
-                cfg!(any(target_os = "linux", windows))
+                cfg!(any(target_os = "linux", target_os = "macos", windows))
             );
         }
         other => panic!("fixture cleanup must be observed: {other:?}"),
@@ -308,7 +308,7 @@ fn native_owned_runner_custody_stream_close_does_not_stop_child() {
     assert!(report.scope.leader_exited);
     assert_eq!(
         report.scope.whole_tree_stopped,
-        cfg!(any(target_os = "linux", windows))
+        cfg!(any(target_os = "linux", target_os = "macos", windows))
     );
     stopped(&marker);
 }
@@ -338,7 +338,7 @@ fn native_owned_runner_custody_gated_progress() {
     assert!(report.scope.leader_exited);
     assert_eq!(
         report.scope.whole_tree_stopped,
-        cfg!(any(target_os = "linux", windows))
+        cfg!(any(target_os = "linux", target_os = "macos", windows))
     );
     stopped(&marker);
 }

@@ -91,6 +91,37 @@ impl OwnedSession {
     pub fn phase(&self) -> Phase {
         self.session.phase()
     }
+    pub fn bind_task_mcp(&mut self, helper: session::TaskMcp) -> Result<(), session::Error> {
+        self.session.bind_task_mcp(helper)
+    }
+    pub fn reserve_warm_idle(&mut self) -> Result<(), session::Error> {
+        self.session.reserve_warm_idle()
+    }
+    pub fn enter_warm_idle(&mut self, until: tokio::time::Instant) -> Result<(), session::Error> {
+        self.session.enter_warm_idle(until)
+    }
+    /// Physical owner observation only, on this original worker. It cannot
+    /// establish effective settings/model readiness or any domain authority.
+    pub fn qualify_ready_owner(&mut self, timeout: Duration) -> Result<(), session::Error> {
+        if self.phase() != Phase::Ready {
+            return Err(session::Error::State);
+        }
+        let operation = Operation::new(self)?;
+        let result = match operation.runner.owner.observe_leader(timeout) {
+            Ok(true) => Ok(()),
+            Ok(false) | Err(_) => Err(session::Error::State),
+        };
+        operation.finish(result)
+    }
+    pub fn consume_warm_idle(
+        &mut self,
+        limits: transport::Limits,
+        response_timeout_ms: u64,
+        until: tokio::time::Instant,
+    ) -> Result<(), session::Error> {
+        self.session
+            .consume_warm_idle(limits, response_timeout_ms, until)
+    }
     pub fn observation_source(&self) -> Result<session::ObservationSource, session::Error> {
         self.session.observation_source()
     }
@@ -105,6 +136,12 @@ impl OwnedSession {
     }
     pub fn transport_termination(&self) -> Option<&transport::Termination> {
         self.session.transport_termination()
+    }
+    pub fn last_server_request(&self) -> Option<&'static str> {
+        self.session.last_server_request()
+    }
+    pub fn refused_notification(&self) -> Option<&'static str> {
+        self.session.refused_notification()
     }
     /// Whether the connection still holds this prepared server request. False
     /// once `serverRequest/resolved` was parsed: the one-shot frame's transmit

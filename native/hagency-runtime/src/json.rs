@@ -1,8 +1,14 @@
-use super::{Error, MAX_DEPTH};
 use serde::de::{MapAccess, SeqAccess, Visitor};
 use serde::{Deserialize, Deserializer};
 use serde_json::{Map, Value};
 use std::fmt;
+
+pub(crate) const MAX_DEPTH: usize = 64;
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum Error {
+    Envelope,
+    Capacity,
+}
 
 // Value's default parser overwrites duplicate keys. Reject them at every depth,
 // including inside identity and permission parameters, before anyone observes it.
@@ -60,7 +66,7 @@ impl<'de> Deserialize<'de> for Unique {
     }
 }
 
-pub(super) fn depth(value: &Value, level: usize) -> Result<(), Error> {
+pub(crate) fn depth(value: &Value, level: usize) -> Result<(), Error> {
     if level > MAX_DEPTH {
         return Err(Error::Capacity);
     }
@@ -80,7 +86,7 @@ pub(super) fn depth(value: &Value, level: usize) -> Result<(), Error> {
     Ok(())
 }
 
-pub(super) fn parse(bytes: &[u8]) -> Result<Value, Error> {
+pub(crate) fn parse(bytes: &[u8]) -> Result<Value, Error> {
     // Serde's default 128-level parser bound remains enabled too.
     let Unique(value) = serde_json::from_slice(bytes).map_err(|_| Error::Envelope)?;
     depth(&value, 0)?;

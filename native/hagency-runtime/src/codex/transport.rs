@@ -149,6 +149,13 @@ struct Writing {
     offset: usize,
     flushed: bool,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum WarmState {
+    Normal,
+    Preparing,
+    Idle,
+    Consumed,
+}
 
 /// A single owner drives all IO. No channels, spawned tasks or external handles
 /// are created; stream and process ownership must be established by the host.
@@ -157,6 +164,7 @@ pub struct Driver<R, W, E> {
     connection: Connection,
     origin: Instant,
     lifetime: Instant,
+    warm_state: WarmState,
     limits: Limits,
     input: [u8; READ_BYTES],
     input_start: usize,
@@ -254,6 +262,7 @@ impl<R, W, E> Driver<R, W, E> {
             connection: Connection::default(),
             origin,
             lifetime,
+            warm_state: WarmState::Normal,
             limits,
             input: [0; READ_BYTES],
             input_start: 0,
@@ -270,6 +279,60 @@ impl<R, W, E> Driver<R, W, E> {
 
     pub fn phase(&self) -> Phase {
         self.connection.phase()
+    }
+    pub(in crate::codex) fn reserve_warm_idle(&mut self) -> Result<(), Error> {
+        if self.warm_state != WarmState::Normal
+            || self.termination.is_some()
+            || self.writing.is_some()
+            || self.connection.pending_count() != 0
+            || self.connection.pending_server_count() != 0
+            || Instant::now() >= self.lifetime
+        {
+            return Err(Error::Configuration);
+        }
+        self.warm_state = WarmState::Preparing;
+        Ok(())
+    }
+    pub(super) fn is_warm_idle(&self) -> bool {
+        self.warm_state == WarmState::Idle
+    }
+    pub(in crate::codex) fn enter_warm_idle(&mut self, until: Instant) -> Result<(), Error> {
+        if self.warm_state != WarmState::Preparing
+            || self.termination.is_some()
+            || self.writing.is_some()
+            || self.connection.pending_count() != 0
+            || self.connection.pending_server_count() != 0
+            || Instant::now() >= self.lifetime
+            || until <= Instant::now()
+            || until > Instant::now() + Duration::from_millis(MAX_REQUEST_MS)
+        {
+            return Err(Error::Configuration);
+        }
+        self.warm_state = WarmState::Idle;
+        self.lifetime = until;
+        Ok(())
+    }
+    pub(in crate::codex) fn consume_warm_idle(
+        &mut self,
+        limits: Limits,
+        until: Instant,
+    ) -> Result<(), Error> {
+        limits.validate()?;
+        if self.warm_state != WarmState::Idle
+            || self.termination.is_some()
+            || self.writing.is_some()
+            || self.connection.pending_count() != 0
+            || self.connection.pending_server_count() != 0
+            || Instant::now() >= self.lifetime
+            || until <= Instant::now()
+            || until > Instant::now() + Duration::from_millis(limits.lifetime_ms)
+        {
+            return Err(Error::Configuration);
+        }
+        self.warm_state = WarmState::Consumed;
+        self.limits = limits;
+        self.lifetime = until;
+        Ok(())
     }
     pub fn termination(&self) -> Option<&Termination> {
         self.termination.as_ref()
@@ -375,6 +438,9 @@ impl<R, W, E> Operation<'_, R, W, E> {
 
 impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> Driver<R, W, E> {
     pub async fn send(&mut self, command: Command) -> Result<TransportWrite, Error> {
+        if self.warm_state == WarmState::Idle {
+            return Err(Error::Configuration);
+        }
         if self.termination.is_some() {
             return Err(Error::Closed);
         }

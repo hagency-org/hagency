@@ -33,6 +33,9 @@ pub struct SessionDriver<R, W, E> {
     observation_sequence: u64,
     observation_kind: super::ObservationKind,
     observation_evidence: super::observation::EvidenceTracker,
+    last_server_request: Option<&'static str>,
+    refused_notification: Option<&'static str>,
+    mcp: crate::codex::approval::McpTracker,
 }
 
 impl<R, W, E> SessionDriver<R, W, E> {
@@ -61,10 +64,57 @@ impl<R, W, E> SessionDriver<R, W, E> {
             observation_sequence: 0,
             observation_kind: super::ObservationKind::Ignored,
             observation_evidence: super::observation::EvidenceTracker::default(),
+            last_server_request: None,
+            refused_notification: None,
+            mcp: crate::codex::approval::McpTracker::default(),
         })
     }
     pub fn settings(&self) -> &Settings {
         &self.settings
+    }
+    /// One fixed Host helper after initialize, never general reconfiguration.
+    pub fn bind_task_mcp(&mut self, helper: super::TaskMcp) -> Result<(), Error> {
+        if self.phase() != Phase::Ready
+            || self.settings.task_mcp.is_some()
+            || self.wire.is_warm_idle()
+        {
+            return Err(Error::State);
+        }
+        self.settings.task_mcp = Some(helper);
+        Ok(())
+    }
+    /// Opt in only before initialize. Ordinary/active sessions cannot extend IO.
+    pub fn reserve_warm_idle(&mut self) -> Result<(), Error> {
+        if self.phase() != Phase::New || self.settings.task_mcp.is_some() {
+            return Err(Error::State);
+        }
+        self.wire.reserve_warm_idle().map_err(Error::Transport)
+    }
+    pub fn enter_warm_idle(&mut self, until: Instant) -> Result<(), Error> {
+        if self.phase() != Phase::Ready || self.settings.task_mcp.is_some() {
+            return Err(Error::State);
+        }
+        self.wire.enter_warm_idle(until).map_err(Error::Transport)
+    }
+    pub fn consume_warm_idle(
+        &mut self,
+        limits: transport::Limits,
+        response_timeout_ms: u64,
+        until: Instant,
+    ) -> Result<(), Error> {
+        if self.phase() != Phase::Ready
+            || self.settings.task_mcp.is_some()
+            || response_timeout_ms == 0
+            || response_timeout_ms > MAX_REQUEST_MS
+            || response_timeout_ms > limits.lifetime_ms
+        {
+            return Err(Error::State);
+        }
+        self.wire
+            .consume_warm_idle(limits, until)
+            .map_err(Error::Transport)?;
+        self.response_timeout_ms = response_timeout_ms;
+        Ok(())
     }
     /// Attach once the exact turn is Running, before consuming any updates.
     pub fn observation_source(&self) -> Result<super::ObservationSource, Error> {
@@ -117,6 +167,14 @@ impl<R, W, E> SessionDriver<R, W, E> {
     pub fn transport_termination(&self) -> Option<&transport::Termination> {
         self.wire.termination()
     }
+    /// Fixed shape label only; no callback params, IDs or runtime text.
+    pub fn last_server_request(&self) -> Option<&'static str> {
+        self.last_server_request
+    }
+    /// Fixed category of the refused notification, never a peer method/ID/text.
+    pub fn refused_notification(&self) -> Option<&'static str> {
+        self.refused_notification
+    }
     /// Whether the connection still holds this prepared server request. False
     /// once `serverRequest/resolved` was parsed: the one-shot frame's transmit
     /// path is gone, so it must never be re-sent.
@@ -162,8 +220,22 @@ impl<R, W, E> SessionDriver<R, W, E> {
         if self.state.phase == Phase::OpeningThread
             && !matches!(
                 method.as_str(),
-                "thread/started" | "thread/status/changed" | "warning" | "configWarning"
+                "thread/started"
+                    | "thread/status/changed"
+                    | "warning"
+                    | "configWarning"
+                    | "remoteControl/status/changed"
+                    | "mcpServer/startupStatus/updated"
+                    | "account/rateLimits/updated"
+                    | "hook/started"
+                    | "hook/completed"
             )
+        {
+            return Err(Error::Scope);
+        }
+        if self.state.phase == Phase::OpeningThread
+            && matches!(method.as_str(), "hook/started" | "hook/completed")
+            && params.get("turnId").is_some_and(|v| !v.is_null())
         {
             return Err(Error::Scope);
         }
@@ -273,7 +345,14 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
                 Event::Notification {
                     method,
                     params: Some(params),
-                } if matches!(method.as_str(), "warning" | "configWarning") => {
+                } if matches!(
+                    method.as_str(),
+                    "warning"
+                        | "configWarning"
+                        | "remoteControl/status/changed"
+                        | "account/rateLimits/updated"
+                ) =>
+                {
                     self.state.notification(&method, &params)?;
                 }
                 _ => return Err(Error::Scope),
@@ -296,7 +375,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
         self.open_thread(Some(id)).await
     }
     async fn open_thread(&mut self, resume: Option<ResumeThreadId>) -> Result<String, Error> {
-        if self.phase() != Phase::Ready {
+        if self.phase() != Phase::Ready || self.wire.is_warm_idle() {
             return Err(Error::State);
         }
         let operation = Operation {
@@ -411,6 +490,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
         }
         if self.thread_id() != Some(response.request.thread_id())
             || self.turn_id() != Some(response.request.turn_id())
+            || response
+                .request
+                .mcp_item()
+                .is_some_and(|id| !self.mcp.active(id))
         {
             return Err(Error::Scope);
         }
@@ -468,7 +551,30 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
                 method,
                 params: Some(params),
             } if self.approvals_enabled => {
-                let request = crate::codex::approval::ApprovalRequest::parse(id, method, params)?;
+                self.last_server_request = Some(server_request_shape(&method));
+                let elicitation = method == "mcpServer/elicitation/request";
+                let original = id.clone();
+                let parsed = if params.get("threadId").and_then(Value::as_str) != self.thread_id()
+                    || params.get("turnId").and_then(Value::as_str) != self.turn_id()
+                {
+                    Err(Error::Scope)
+                } else if elicitation {
+                    self.mcp.request(id, params)
+                } else {
+                    crate::codex::approval::ApprovalRequest::parse(id, method, params)
+                };
+                let request = match parsed {
+                    Ok(request) => request,
+                    Err(error) => {
+                        if elicitation {
+                            self.wire
+                                .send(transport::Command::RejectServerRequest { id: original })
+                                .await
+                                .map_err(Error::Transport)?;
+                        }
+                        return Err(error);
+                    }
+                };
                 if self.thread_id() != Some(request.thread_id())
                     || self.turn_id() != Some(request.turn_id())
                 {
@@ -490,7 +596,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
         else {
             return Err(Error::Scope);
         };
-        let mut update = self.state.notification(&method, &params)?;
+        let mut update = self.state.notification(&method, &params).inspect_err(|_| {
+            self.refused_notification = Some(notification_shape(&method, &params));
+        })?;
+        self.mcp.observe(&method, &params)?;
         if self.approvals_enabled && method == "serverRequest/resolved" {
             let id =
                 serde_json::from_value(params.get("requestId").ok_or(Error::Malformed)?.clone())
@@ -612,6 +721,9 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
     }
     async fn receive(&mut self) -> Result<Event, Error> {
         let event = self.wire.next_event().await.map_err(Error::Transport)?;
+        if let Event::ServerRequest { method, .. } = &event {
+            self.last_server_request = Some(server_request_shape(method));
+        }
         if !self.approvals_enabled
             && let Event::ServerRequest { id, .. } = event
         {
@@ -625,5 +737,63 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
             .await
             .map_err(Error::Transport)?;
         Err(Error::UnsupportedRequest)
+    }
+}
+
+fn server_request_shape(method: &str) -> &'static str {
+    match method {
+        "item/commandExecution/requestApproval" => "command_approval",
+        "item/fileChange/requestApproval" => "file_approval",
+        "item/permissions/requestApproval" => "permissions_approval",
+        "item/tool/requestUserInput" => "tool_user_input",
+        "mcpServer/elicitation/request" => "mcp_elicitation",
+        "item/tool/call" => "dynamic_tool_call",
+        "account/chatgptAuthTokens/refresh" => "auth_refresh",
+        "attestation/generate" => "attestation",
+        "execCommandApproval" | "applyPatchApproval" => "legacy_approval",
+        _ => "unknown",
+    }
+}
+
+fn notification_shape(method: &str, params: &Value) -> &'static str {
+    match method {
+        "item/started" | "item/completed" => match params["item"]["type"].as_str() {
+            Some("commandExecution") => "command_item",
+            Some("fileChange") => "file_item",
+            Some("userMessage") => "user_item",
+            Some("agentMessage") => "agent_item",
+            Some("reasoning") => "reasoning_item",
+            Some("mcpToolCall") => "mcp_item",
+            _ => "other_item",
+        },
+        "thread/status/changed" => "thread_status",
+        "turn/started" => "turn_started",
+        "turn/completed" => "turn_completed",
+        "mcpServer/startupStatus/updated" => "mcp_startup",
+        "remoteControl/status/changed" => "remote_control",
+        "account/rateLimits/updated" => "account_limits",
+        "thread/tokenUsage/updated" => "turn_usage",
+        "item/commandExecution/terminalInteraction" => "terminal_interaction",
+        "item/fileChange/patchUpdated" => "patch_updated",
+        // Fixed diagnostic labels only. Recognition here does not admit these
+        // notifications, widen scope, or expose private upstream payloads.
+        "thread/settings/updated" => "thread_settings",
+        "thread/name/updated" => "thread_name",
+        "thread/goal/updated" | "thread/goal/cleared" => "thread_goal",
+        "thread/queue/changed" => "thread_queue",
+        "thread/environment/connected" | "thread/environment/disconnected" => "thread_environment",
+        "hook/started" | "hook/completed" => "hook",
+        "model/rerouted" => "model_rerouted",
+        "model/verification" => "model_verification",
+        "model/safetyBuffering/updated" => "model_safety_buffering",
+        "modelProvider/authRecoveryStarted" | "modelProvider/authRecoveryCompleted" => {
+            "model_auth_recovery"
+        }
+        "skills/changed" => "skills_changed",
+        "app/list/updated" => "apps_changed",
+        "guardianWarning" => "guardian_warning",
+        "deprecationNotice" => "deprecation_notice",
+        "error" => "error",
+        _ => "unknown",
     }
 }

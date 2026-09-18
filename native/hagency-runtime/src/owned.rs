@@ -1,10 +1,12 @@
-//! Host-only bridge from retained process custody to one bounded Codex session.
+//! Host-only bridges from retained process custody to bounded runner sessions.
 //! No server route constructs this type; sandbox/dispatch qualification is open.
 use hagency_platform::SupervisedReport;
 use std::io;
 
 mod session;
 pub use session::OwnedSession;
+mod claude;
+pub use claude::OwnedClaudeSession;
 
 /// Exact platform observations, deliberately distinct from upstream completion.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,5 +1,7 @@
-//! Pinned Codex 0.153.4 request shapes. Parsed data is never owner authority.
+//! Pinned Codex 0.153.4/0.154.0 request shapes. Parsed data is never owner authority.
+mod mcp;
 use super::{RequestId, session::Error, text};
+pub(crate) use mcp::McpTracker;
 use serde::Deserialize;
 use serde_json::{Value, json};
 
@@ -18,6 +20,7 @@ enum Kind {
     Command,
     File,
     Permissions(Value),
+    Mcp(Box<mcp::Call>),
 }
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -25,7 +28,6 @@ struct Common {
     thread_id: String,
     turn_id: String,
     item_id: String,
-    started_at_ms: u64,
 }
 
 // Do not expose a generic result Value or Deserialize constructor. The host
@@ -55,6 +57,21 @@ impl ApprovalRequest {
         &self.common.item_id
     }
 
+    /// Content-bound host projection, separate from the unchanged native wire
+    /// parameters. Elicitation has no item ID; only the observed tool supplies it.
+    pub fn host_params(&self) -> Value {
+        match &self.kind {
+            Kind::Mcp(call) => json!({"threadId":self.thread_id(),"turnId":self.turn_id(),
+                "itemId":self.item_id(),"nativeRequest":self.params,
+                "correlatedToolCall":{"id":self.item_id(),"serverName":call.server,
+                    "toolName":call.tool,"arguments":call.arguments}}),
+            _ => self.params.clone(),
+        }
+    }
+    pub(crate) fn mcp_item(&self) -> Option<&str> {
+        matches!(self.kind, Kind::Mcp(_)).then(|| self.item_id())
+    }
+
     pub(super) fn parse(id: RequestId, method: String, params: Value) -> Result<Self, Error> {
         if !id.valid()
             || serde_json::to_vec(&params)
@@ -69,7 +86,10 @@ impl ApprovalRequest {
         if [&common.thread_id, &common.turn_id, &common.item_id]
             .iter()
             .any(|v| !text(v, 255))
-            || common.started_at_ms > 9_007_199_254_740_991
+            || params
+                .get("startedAtMs")
+                .and_then(Value::as_u64)
+                .is_none_or(|v| v > 9_007_199_254_740_991)
         {
             return Err(Error::Malformed);
         }
@@ -180,6 +200,9 @@ impl ApprovalRequest {
             }
             Kind::Permissions(profile) => {
                 json!({"permissions": if allow { profile.clone() } else { json!({}) }, "scope":"turn"})
+            }
+            Kind::Mcp(_) => {
+                json!({"action":if allow {"accept"} else {"decline"},"content":null,"_meta":null})
             }
         };
         ApprovalResponse {
@@ -399,6 +422,7 @@ mod tests {
         let resolved = encode(Message::Notification {
             method: "serverRequest/resolved".into(),
             params: Some(json!({"threadId":"thread","requestId":7})),
+            emitted_at_ms: None,
         })
         .unwrap();
         assert!(c.receive(&resolved, 7).unwrap().1.is_some());
@@ -428,6 +452,7 @@ mod tests {
         let resolved = encode(Message::Notification {
             method: "serverRequest/resolved".into(),
             params: Some(json!({"threadId":"wrong","requestId":7})),
+            emitted_at_ms: None,
         })
         .unwrap();
         assert!(c.receive(&resolved, 7).is_err());

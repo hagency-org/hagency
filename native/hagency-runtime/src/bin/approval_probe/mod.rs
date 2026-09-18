@@ -104,6 +104,9 @@ pub(super) fn timeout_read(duration: Duration) -> io::Result<String> {
         .map_err(|_| io::ErrorKind::TimedOut.into())
 }
 pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::Result<bool> {
+    if mode == "owned-approval-mcp" {
+        return mcp(reader, marker);
+    }
     callback("approval-1")?;
     if mode == "owned-approval-eof" {
         // EOF is this mode's cancellation subject, but it must never overtake
@@ -322,5 +325,41 @@ pub(super) fn run(mode: &str, reader: &mut impl BufRead, marker: &Path) -> io::R
         marker.with_extension("approval-continued"),
         b"actual responses received",
     )?;
+    Ok(true)
+}
+
+fn mcp(reader: &mut impl BufRead, marker: &Path) -> io::Result<bool> {
+    let args = json!({"call_id":"file-1","path":"report.txt"});
+    let mut item = json!({"type":"mcpToolCall","id":"file-item","server":"hagency_task_writer",
+        "tool":"send_file","arguments":args,"status":"inProgress"});
+    note(
+        "item/started",
+        json!({"threadId":"owned-thread","turnId":"owned-turn","startedAtMs":1,"item":item}),
+    )?;
+    send(
+        json!({"id":"approval-1","method":"mcpServer/elicitation/request","params":{
+        "threadId":"owned-thread","turnId":"owned-turn","serverName":"hagency_task_writer",
+        "mode":"form","message":"Send the selected file?","requestedSchema":{"type":"object","properties":{}},
+        "_meta":{"codex_approval_kind":"mcp_tool_call","tool_params":args}}}),
+    )?;
+    let response = read(reader, marker)?;
+    if response["id"] != "approval-1"
+        || !matches!(
+            response["result"]["action"].as_str(),
+            Some("accept" | "decline")
+        )
+        || response["result"]["content"] != Value::Null
+        || response["result"]["_meta"] != Value::Null
+    {
+        return Err(io::Error::other("MCP response mismatch"));
+    }
+    append_bytes(marker, &response)?;
+    resolved("approval-1")?;
+    item["status"] = json!("completed");
+    note(
+        "item/completed",
+        json!({"threadId":"owned-thread","turnId":"owned-turn","completedAtMs":2,"item":item}),
+    )?;
+    announce(marker, "approval-continued")?;
     Ok(true)
 }

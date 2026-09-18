@@ -1,6 +1,7 @@
 //! Offline native fixture, never a model or a public runtime-launch endpoint.
 #[path = "approval_probe/mod.rs"]
 mod approval_probe;
+mod claude_probe;
 use serde_json::{Value, json};
 use std::{
     fs::{self, OpenOptions},
@@ -364,7 +365,7 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         &request,
         json!({ "turn": { "id": "owned-turn", "status": "inProgress", "items": [] } }),
     )?;
-    if matches!(mode, "quiet-turn" | "quiet-open") {
+    if matches!(mode, "quiet-turn" | "quiet-open" | "quiet-long-turn") {
         fs::write(marker.with_extension("quiet"), b"turn-start-acknowledged")?;
         if mode == "quiet-open" {
             drop(stdin);
@@ -372,7 +373,12 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
         }
         // A real acknowledged turn can run a tool without another app-server
         // event during the shorter RPC response interval.
-        std::thread::sleep(harness_wait());
+        std::thread::sleep(if mode == "quiet-long-turn" {
+            // Offline regression must physically outlive the old 30 s ceiling.
+            Duration::from_secs(31)
+        } else {
+            harness_wait()
+        });
     }
     if mode.starts_with("owned-approval")
         && !approval_probe::run(mode, stdin.as_mut().unwrap(), marker)?
@@ -503,12 +509,41 @@ fn main() -> io::Result<()> {
                     )?,
                 )?;
             }
-            fake(if mode == "account" { "normal" } else { &mode }, &marker)
+            if mode == "local-account" {
+                let home = std::env::var_os("HOME").ok_or(io::ErrorKind::InvalidInput)?;
+                let codex = std::env::var_os("CODEX_HOME").ok_or(io::ErrorKind::InvalidInput)?;
+                let selected =
+                    fs::read_to_string(Path::new(&codex).join("fixture-account-marker"))?;
+                let ambient = ["OPENAI_API_KEY", "CODEX_API_KEY", "HAGENCY_DASHBOARD_TOKEN"]
+                    .iter()
+                    .any(|key| std::env::var_os(key).is_some());
+                if home == codex || selected != "selected-local" || ambient {
+                    return Err(io::ErrorKind::InvalidInput.into());
+                }
+                fs::write(
+                    "local-account-observed.json",
+                    serde_json::to_vec(
+                        &json!({"selected":true,"same_home":false,"ambient_key":false}),
+                    )?,
+                )?;
+            }
+            fake(
+                if matches!(mode.as_str(), "account" | "local-account") {
+                    "normal"
+                } else {
+                    &mode
+                },
+                &marker,
+            )
         }
         #[cfg(windows)]
         [mode, marker] if mode == "owner-crash" => owner_crash(Path::new(marker)),
         [mode, marker] if mode == "pulse" => pulse(Path::new(marker)),
         [command, mode, marker] if command == "fake-server" => fake(
+            mode.to_str().ok_or(io::ErrorKind::InvalidInput)?,
+            Path::new(marker),
+        ),
+        [command, mode, marker] if command == "fake-claude" => claude_probe::run(
             mode.to_str().ok_or(io::ErrorKind::InvalidInput)?,
             Path::new(marker),
         ),

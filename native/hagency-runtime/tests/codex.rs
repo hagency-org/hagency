@@ -183,6 +183,7 @@ fn native_codex_frames_reject_ambiguous_and_oversized_data() {
     let too_big = Message::Notification {
         method: "n".into(),
         params: Some(Value::String("x".repeat(MAX_FRAME_BYTES))),
+        emitted_at_ms: None,
     };
     assert_eq!(encode(too_big).err(), Some(Error::Capacity));
     let mut nested = Value::Null;
@@ -192,13 +193,74 @@ fn native_codex_frames_reject_ambiguous_and_oversized_data() {
     assert_eq!(
         encode(Message::Notification {
             method: "n".into(),
-            params: Some(nested)
+            params: Some(nested),
+            emitted_at_ms: None,
         })
         .err(),
         Some(Error::Capacity)
     );
     // Trace and primitive/null params are accepted by the generated envelope schema.
     assert!(Decoder::default().feed(b"{\"id\":\"a\",\"method\":\"n\",\"params\":null,\"trace\":{\"traceparent\":null}}\n", 0).is_ok());
+}
+
+#[test]
+fn native_codex_frames_notification_emitted_time_is_bounded_metadata() {
+    let fixture: Value =
+        serde_json::from_str(include_str!("fixtures/codex-notifications-0.154.0.json")).unwrap();
+    assert_eq!(fixture["codexVersion"], "0.154.0");
+    assert_eq!(
+        fixture["schemas"]["ServerNotification.json"]["emittedAtMs"],
+        json!({"type":"integer","format":"int64"})
+    );
+    for value in fixture["messages"].as_array().unwrap() {
+        let (_, message) = Decoder::default().feed(&line(value.clone()), 0).unwrap();
+        let encoded: Value = serde_json::from_slice(&encode(message.unwrap()).unwrap()).unwrap();
+        assert_eq!(&encoded, value);
+    }
+    for timestamp in [i64::MIN, 0, 1789543727000, i64::MAX] {
+        let value = json!({"method":"configWarning","params":{},"emittedAtMs":timestamp});
+        let (_, message) = Decoder::default().feed(&line(value.clone()), 0).unwrap();
+        let encoded: Value = serde_json::from_slice(&encode(message.unwrap()).unwrap()).unwrap();
+        assert_eq!(encoded, value);
+    }
+    for timestamp in [
+        Value::Null,
+        json!(1.5),
+        json!("1789543727000"),
+        json!(true),
+        json!(u64::MAX),
+    ] {
+        let input = line(json!({"method":"configWarning","params":{},"emittedAtMs":timestamp}));
+        let mut decoder = Decoder::default();
+        assert_eq!(decoder.feed(&input, 0).err(), Some(Error::Envelope));
+        assert_eq!(
+            decoder
+                .feed(&line(json!({"method":"configWarning","params":{}})), 1)
+                .err(),
+            Some(Error::Closed)
+        );
+    }
+    for value in [
+        json!({"id":0,"result":{},"emittedAtMs":1}),
+        json!({"id":0,"method":"approve","params":{},"emittedAtMs":1}),
+        json!({"method":"configWarning","params":{},"emittedAtMs":1,"grant":true}),
+    ] {
+        assert_eq!(
+            Decoder::default().feed(&line(value), 0).err(),
+            Some(Error::Envelope)
+        );
+    }
+    let mut connection = ready();
+    connection.request("model/list", json!({}), 3, 100).unwrap();
+    assert!(matches!(
+        accept(
+            &mut connection,
+            json!({"method":"configWarning","params":{},"emittedAtMs":i64::MAX}),
+            4
+        ),
+        Ok(Event::Notification { .. })
+    ));
+    assert_eq!(connection.tick(103).err(), Some(Error::Timeout));
 }
 
 #[test]

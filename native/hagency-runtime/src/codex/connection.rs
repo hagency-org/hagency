@@ -241,6 +241,7 @@ impl Connection {
         let bytes = encode(Message::Notification {
             method: "initialized".into(),
             params: Some(object()),
+            emitted_at_ms: None,
         })?;
         self.phase = Phase::Ready;
         Ok(bytes)
@@ -307,14 +308,28 @@ impl Connection {
         {
             return Err(Error::Identity);
         }
-        let bytes = encode(Message::Error {
-            id: id.clone(),
-            error: RpcError {
-                code: -32601,
-                message: "Native runner request handler is unavailable".into(),
-                data: None,
-            },
-        })?;
+        // Cancel a recognized MCP elicitation without granting tool authority.
+        // Other unsupported RPC families retain their protocol error response.
+        let response = if self
+            .server_pending
+            .get(id)
+            .is_some_and(|p| p.method == "mcpServer/elicitation/request")
+        {
+            Message::Response {
+                id: id.clone(),
+                result: json!({"action":"cancel","content":null,"_meta":null}),
+            }
+        } else {
+            Message::Error {
+                id: id.clone(),
+                error: RpcError {
+                    code: -32601,
+                    message: "Native runner request handler is unavailable".into(),
+                    data: None,
+                },
+            }
+        };
+        let bytes = encode(response)?;
         self.server_pending.remove(id);
         Ok(bytes)
     }
@@ -366,7 +381,7 @@ impl Connection {
         match message {
             Message::Response { id, result } => self.response(id, Ok(result)),
             Message::Error { id, error } => self.response(id, Err(error)),
-            Message::Notification { method, params } => {
+            Message::Notification { method, params, .. } => {
                 if !matches!(
                     self.phase,
                     Phase::Initializing | Phase::AwaitingInitialized | Phase::Ready
@@ -417,6 +432,7 @@ impl Connection {
                     "item/commandExecution/requestApproval"
                         | "item/fileChange/requestApproval"
                         | "item/permissions/requestApproval"
+                        | "mcpServer/elicitation/request"
                 );
                 let response_params = if approval
                     && serde_json::to_vec(&params)

@@ -1,5 +1,6 @@
 //! Typed upstream observations for one host-owned turn, never domain authority.
 mod driver;
+mod hooks;
 mod observation;
 mod state;
 mod task_mcp;
@@ -43,6 +44,8 @@ pub enum Error {
     UnsupportedRequest,
     #[error("native Codex notification is unsupported")]
     UnsupportedEvent,
+    #[error("native Codex canonical task writer startup failed")]
+    TaskWriterStartup,
     #[error("native Codex session operation was cancelled")]
     Cancelled,
     #[error("native Codex session transport failed: {0}")]
@@ -189,6 +192,14 @@ impl Settings {
             params["config"] = helper.config(&self.cwd);
             params["developerInstructions"] = helper.guidance().into();
         }
+        // Thread mode alone inherits operator workspace-write configuration.
+        // Pin the same boundaries as turn/start before validating its echo;
+        // provider-owned login remains untouched and no arbitrary map is public.
+        if params.get("config").is_none() {
+            params["config"] = json!({});
+        }
+        params["config"]["sandbox_workspace_write.network_access"] = false.into();
+        params["config"]["sandbox_workspace_write.writable_roots"] = json!([]);
         if let Some(id) = resume {
             params["threadId"] = id.into();
             params["excludeTurns"] = true.into();

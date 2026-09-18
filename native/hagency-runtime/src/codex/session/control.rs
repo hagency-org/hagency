@@ -35,6 +35,7 @@ pub struct PreparedApproval {
     id: RequestId,
     frame: transport::PreparedFrame,
     response_deadline: Instant,
+    mcp_item: Option<String>,
 }
 impl PreparedApproval {
     /// Fixed original bound for response admission plus write completion. It
@@ -171,6 +172,10 @@ impl<R, W, E> SessionDriver<R, W, E> {
     fn prepare_inner(&mut self, response: ApprovalResponse) -> Result<PreparedApproval, Error> {
         if self.thread_id() != Some(response.request.thread_id())
             || self.turn_id() != Some(response.request.turn_id())
+            || response
+                .request
+                .mcp_item()
+                .is_some_and(|id| !self.mcp.active(id))
         {
             return Err(Error::Scope);
         }
@@ -184,6 +189,7 @@ impl<R, W, E> SessionDriver<R, W, E> {
             return Err(Error::Transport(transport::Error::Timeout));
         }
         let response_deadline = callback.response_deadline;
+        let mcp_item = response.request.mcp_item().map(str::to_owned);
         let frame = self
             .wire
             .prepare_approval(response, callback.response_deadline)
@@ -194,6 +200,7 @@ impl<R, W, E> SessionDriver<R, W, E> {
             .ok_or(Error::Scope)?
             .stage = CallbackStage::Prepared;
         Ok(PreparedApproval {
+            mcp_item,
             response_deadline,
             source: self.observation_live.clone(),
             id,
@@ -288,6 +295,13 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
         prepared: &mut PreparedApproval,
     ) -> Result<PreparedUpdate, Error> {
         if !Arc::ptr_eq(&self.observation_live, &prepared.source) {
+            return Err(Error::Scope);
+        }
+        if prepared
+            .mcp_item
+            .as_deref()
+            .is_some_and(|id| !self.mcp.active(id))
+        {
             return Err(Error::Scope);
         }
         self.control.deadline(&self.wire)?;
