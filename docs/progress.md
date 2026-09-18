@@ -11433,3 +11433,48 @@ platforms, and the hosted job on that platform still resolves it. macOS failed
 `deadline`, one `peer_unavailable`, both with `whole_tree_stopped`). These
 fixtures had never run hosted and pass locally 6/6; unresolved, matching the
 intermittency ADR178 already records. Windows is paused.
+
+
+2026-09-18 (Claude) hosted failures of d3b7d940 explained, and the offline
+regression test ADR178 owed.
+
+Hosted fleet fixtures (`native_configured_fleet_{executable,media}_two_agents`,
+`..._project_mentions`): not a product defect. The fixture gave the warm runtime
+a 10 s idle budget, agents are provisioned one after another and no task is
+posted until all are ready. On the hosted runner the first agent's device was
+created at :45.8, the second's at :51.4, and the first handoff was refused with
+`deadline` at :58.8, ten seconds after its warm runtime began idling; the
+`peer_unavailable` five seconds later is only the test's own teardown at its
+20 s limit. A 2 s budget reproduces the same signature locally. The fixture
+budget is now 120 s; `warm_runtime` still covers idle expiry.
+
+Hosted approval round trips (`native_private_approval_roundtrip_*`): the fixture
+left the owner wait at its 1 s default, and on the hosted runner sending the
+encrypted card alone took about 1.4 s, so the approval had expired before it
+landed (`server_request: command_approval`, transport `timeout`). The fixture
+now sets a 10 s wait inside a 20 s operation budget; an 8 s wait inside the old
+10 s budget is refused at admission because wait plus the 2 s reserve must fit in
+what remains at turn start. `native_claude_owned_permission_roundtrip` (Ubuntu) is
+Claude and was left alone by operator direction.
+
+Regression test: `native_configured_fleet_earlier_agent_survives_later_join`. The
+unaided fixtures never reached the superseded-plan order because the fake answers
+in microseconds, while live request pacing makes intake a second wide. The fake
+now holds the later agent's join until the earlier agent's timeline sync is in
+hand, holds that sync until the project generation has advanced, then releases
+it. Fails with the driver change removed, passes with it; configured-fleet 7/7
+on three runs.
+
+Correction to c994c520: its platform rule keyed on bare `macos`/`linux`/`windows`
+tags, and thirteen existing specs use `linux` or `windows` as topic tags, so they
+were silently deferred off their platform (Rust selectors fell 1135 -> 1080). The
+scope is now an explicit `only-macos` / `only-linux` / `only-windows` tag, pinned
+by a test; 1136 selectors bind with none missing.
+
+Live Codex on 2026-09-18: `gpt-5.6-sol` refused until 09-24 and `gpt-5.6-luna`
+until 09-20 03:26; the id with quota is `gpt-reserve`. lib/role-capacity.json
+admits only `gpt-5.6-sol` for codex, so a `gpt-reserve` resource fails adoption
+with StateAt("admission"). The operator authorized a private policy overlay for
+qualification; the session's permission layer refused to run it, so no live task
+has completed yet. Instance local-native-palpo-e2e-20260918T203925Z holds its
+accounts and rooms with no engagement and no service.
