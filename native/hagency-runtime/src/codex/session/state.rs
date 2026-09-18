@@ -156,11 +156,16 @@ impl State {
             | "hook/completed" => Ok(Update::Notice),
             "thread/started" => Ok(Update::ThreadStatus),
             "thread/status/changed" => {
-                if !matches!(
-                    string(object(params, "status")?, "type")?,
-                    "idle" | "active"
-                ) {
-                    return Err(Error::UnsupportedEvent);
+                // `systemError` is a defined 0.154.0 status, observed live when
+                // the provider refuses a turn (usage limit). It carries no
+                // cause and decides nothing: the `error` notice or failed
+                // `turn/completed` that follows it ends the turn. Outside a
+                // running turn it has no such successor and stays refused, as
+                // does `notLoaded`, which no qualified flow has produced.
+                match string(object(params, "status")?, "type")? {
+                    "idle" | "active" => {}
+                    "systemError" if self.phase == Phase::Running => {}
+                    _ => return Err(Error::UnsupportedEvent),
                 }
                 Ok(Update::ThreadStatus)
             }

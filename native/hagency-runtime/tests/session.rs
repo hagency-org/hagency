@@ -1051,6 +1051,70 @@ async fn native_codex_session_settings_schema_defaulted_sandbox_echo_is_accepted
     }
 }
 
+/// The exact 0.154.0 order captured when the provider refused a turn for an
+/// exhausted usage limit: status first, cause second, failed turn last.
+#[tokio::test]
+async fn native_codex_session_outcomes_system_error_precedes_its_cause() {
+    let system_error = || {
+        note(
+            "thread/status/changed",
+            json!({ "threadId": "thread-one", "status": { "type": "systemError" } }),
+        )
+    };
+    let (mut session, mut peer) = running().await;
+    assert!(matches!(
+        update(&mut session, &mut peer, system_error()).await,
+        Ok(Update::ThreadStatus)
+    ));
+    assert!(
+        session.outcome().is_none(),
+        "a status alone decides nothing"
+    );
+    let cause = note(
+        "error",
+        json!({ "threadId": "thread-one", "turnId": "turn-one", "willRetry": false,
+            "error": { "message": "usage limit reached", "codexErrorInfo": "usageLimitExceeded" } }),
+    );
+    assert!(matches!(
+        update(&mut session, &mut peer, cause).await,
+        Ok(Update::TurnEnded)
+    ));
+    assert!(matches!(session.outcome(), Some(Outcome::Failed)));
+
+    // The failed turn alone is also a defined ending after the status.
+    let (mut session, mut peer) = running().await;
+    update(&mut session, &mut peer, system_error())
+        .await
+        .unwrap();
+    let mut failed = end("failed");
+    failed["params"]["turn"]["error"] = json!({ "message": "usage limit reached" });
+    update(&mut session, &mut peer, failed).await.unwrap();
+    assert!(matches!(session.outcome(), Some(Outcome::Failed)));
+
+    // Before a turn runs no update is admissible at all, and the unobserved
+    // `notLoaded` status stays refused even while one runs.
+    let (mut session, mut peer) = fixture(false);
+    initialize(&mut session, &mut peer).await;
+    let (opened, _) = tokio::join!(
+        session.start_thread(),
+        exchange(&mut peer, thread_result(false), vec![])
+    );
+    opened.unwrap();
+    assert_eq!(
+        update(&mut session, &mut peer, system_error()).await.err(),
+        Some(Error::State)
+    );
+    let (mut session, mut peer) = running().await;
+    let not_loaded = note(
+        "thread/status/changed",
+        json!({ "threadId": "thread-one", "status": { "type": "notLoaded" } }),
+    );
+    assert_eq!(
+        update(&mut session, &mut peer, not_loaded).await.err(),
+        Some(Error::UnsupportedEvent)
+    );
+}
+
 fn idle() -> Value {
     note(
         "thread/status/changed",

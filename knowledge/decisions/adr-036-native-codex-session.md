@@ -245,3 +245,23 @@ arrive after owner expiry but before the fixed response bound; no caller-derived
 new timestamp is substituted. Unprepared callbacks never acquire this margin.
 The boxed opaque Observation in either update variant is the same receipt object,
 not a new provenance source or sequence. A host unwraps it once for usage capture.
+
+## systemError thread status amendment (2026-09-18)
+
+The pinned 0.154.0 protocol defines four thread statuses: notLoaded, idle,
+systemError and active. The session accepted idle and active and refused the
+rest as UnsupportedEvent. A live two-agent run met the third: the provider
+refused the turn because the operator account's usage limit was exhausted, and
+the app server sent, in this captured order, `thread/status/changed` with
+`systemError`, then `error` with `codexErrorInfo: usageLimitExceeded` and
+`willRetry: false`, then `turn/completed` with status `failed`. The session died
+on the first, so the dispatch was recorded as an unsupported protocol event
+(`refused_notification: thread_status`) and the two notices that carry the cause
+were never read.
+
+`systemError` is now accepted while a turn is running, as a status observation
+only. It carries no cause and decides nothing; the existing `error` and failed
+`turn/completed` arms still end the turn as Failed. Before a turn runs no update
+is admissible at all, and `notLoaded`, which no qualified flow has produced,
+stays refused. `native_codex_session_outcomes_system_error_precedes_its_cause`
+replays the captured order. No retry, budget or verdict authority changes.

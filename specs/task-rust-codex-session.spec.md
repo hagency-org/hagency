@@ -66,6 +66,13 @@ Scenario: Item and final text bookkeeping stays finite and explicit
   Then stale data and overflow fail visibly without silent truncation
   And observed completed failed and interrupted states do not mutate canonical task state
 
+Scenario: A provider refusal reaches the session as a failed turn, not an unsupported event
+  Test: native_codex_session_outcomes_system_error_precedes_its_cause
+  Given a running turn and the captured 0.154.0 order for an exhausted usage limit
+  When the systemError thread status arrives before its error notice or failed turn
+  Then the status decides nothing and the turn ends as Failed
+  And the status before a turn, and notLoaded during one, stay refused
+
 Scenario: Unsupported permissions and lost transport never become success
   Test: native_codex_session_outcomes
   Given a server request cancellation RPC rejection or closed transport
