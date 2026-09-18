@@ -58,3 +58,30 @@ Domain. The subsequent isolated and complete runs passed. These failures are
 retained as unresolved intermittency, not a proven fix. Synthetic-only failure
 diagnostics now include each peer's protocol method names and receipt stages.
 No production deadline or assertion was weakened to obtain the passing run.
+
+## Superseded plan within one poll (2026-09-18)
+
+Live two-agent fleets lost every agent but the last to join the shared project.
+A poll resolves its inbox plan, then runs intake, then selects each inbox. When
+that same intake observes another agent's join, ADR153 advances the project's
+generation and retires the session the plan named a moment earlier. Selection
+then returns RunnerAuthority, which the driver mapped, like every selection
+error and without a log line, to OutcomeUnknown; the continuous worker ended
+with no diagnostic. Two retained instances show it: the earlier agent's
+`project_<engagement>_1_2` session retired, no `_1_3` session ever created for
+it, and the agent stopped within a minute of the later agent's join.
+
+On RunnerAuthority from a factory agent's selection the driver now resolves the
+inboxes once more. If the fresh resolution no longer names that session, the plan
+was superseded rather than refused: the poll ends without work and the next poll
+schedules the current generation, as this decision intended. A session the fresh
+resolution still names remains a failure, as does any refusal for an ordinary
+host, whose static plan has no newer generation. Nothing is retried, replayed or
+revived.
+
+Validation is live only. On a fresh isolated two-agent instance the driver
+logged the superseded `_1_2` plan as the second agent joined, the first agent
+resolved `project_<engagement>_1_3` as a current route and stayed receiving. The
+hagency library, bootstrap, configured-fleet, inline-factory and warm-runtime
+targets pass unchanged (46, 20, 6, 17, 8). The configured two-agent fixtures do
+not reach this interleaving, so a deterministic offline regression test is owed.

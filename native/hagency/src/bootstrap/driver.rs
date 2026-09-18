@@ -356,6 +356,25 @@ async fn run_continuous(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failu
     }
 }
 
+/// Whether a factory agent's fresh inbox resolution has moved past `plan`.
+/// Only the original factory re-resolves inboxes; an ordinary host's static
+/// plan has no newer generation to move to, so its refusal stays a failure.
+async fn superseded(
+    owner: &RuntimeOwner,
+    profile: &OwnedClaimProfile,
+    plan: &hagency_core::agent_inbox::AgentInboxPlan,
+) -> bool {
+    let RuntimeOwner::Factory(agent) = owner else {
+        return false;
+    };
+    match agent.inboxes(profile.clone()).await {
+        Ok((_, current)) => !current
+            .iter()
+            .any(|inbox| inbox.session_id == plan.session_id),
+        Err(_) => false,
+    }
+}
+
 async fn wait_for_resolution(
     domain: &DomainStore,
     capability: &hagency_core::tasks::RunnerCapability,
@@ -486,10 +505,24 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
     if !agent_inboxes.is_empty() {
         status.phase("scheduling");
         for plan in agent_inboxes {
-            domain
-                .select_agent_inbox(plan)
-                .await
-                .map_err(|_| Failure::OutcomeUnknown)?;
+            match domain.select_agent_inbox(plan.clone()).await {
+                Ok(_) => {}
+                // This poll's own intake can observe a membership change that
+                // advances a shared project's generation (ADR153) and retires
+                // the session this plan was resolved from a moment earlier.
+                // When a fresh resolution no longer names that session the plan
+                // was superseded, not refused: end the poll without work and let
+                // the next one schedule the current generation (ADR178). A
+                // session the fresh resolution still names stays a failure.
+                Err(hagency_store::Error::RunnerAuthority)
+                    if superseded(owner, &profile, &plan).await =>
+                {
+                    tracing::info!(session_id = %plan.session_id, "factory inbox plan superseded by a newer room generation");
+                    status.phase("no_work");
+                    return Ok(None);
+                }
+                Err(_) => return Err(Failure::OutcomeUnknown),
+            }
         }
     }
     if let Some(files) = files {
