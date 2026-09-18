@@ -664,3 +664,16 @@ Offline reproduction and regression tests pass; see docs/progress.md. Next for
 Codex end to end: repeat the two-agent project-room run on a fresh isolated
 instance built from this change, then groups/DMs, uncertain-media recovery,
 outside-workspace sandbox qualification and the sustained soak.
+
+### Live two-agent runs after the tracker change (2026-09-18)
+
+The tracker change holds live: a warm runtime survived ten idle minutes under
+load and its project-room task reached `running`. Two further defects surfaced
+and are fixed: a factory inbox plan superseded inside one poll ended the earlier
+agent (ADR178 amendment, validated live), and the `systemError` thread status
+hid a provider refusal as an unsupported event (ADR036 amendment). The blocker
+for a completed live Codex task is now external: the operator's provider usage
+limit is exhausted until 2026-09-24. Still open for Codex end to end once it is
+lifted: a completed two-agent project-room reply, groups/DMs, uncertain-media
+recovery, outside-workspace sandbox qualification and the sustained soak; and the
+shared Palpo rate-limit bucket, which ended one coordinator with a Matrix timeout.

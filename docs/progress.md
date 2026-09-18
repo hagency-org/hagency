@@ -11379,3 +11379,57 @@ and pass 3/3 with the change; the whole hagency-platform package passes 34 and
 strict clippy is clean. No live service, account or retained owner was touched;
 root8 was read only through a copy of its domain store. The live two-agent
 project-room run on Palpo/Robrix has not been repeated with this change.
+
+
+2026-09-18 (Claude) live two-agent runs with the ADR029 group-evidence tracker,
+fresh isolated instances on the existing Palpo, local provider-owned Codex.
+
+Instance groupfix (port 19438, binary from cde89a0c). The second agent idled ten
+minutes beside concurrent cargo builds and kept its warm runtime; its addressed
+project-room task was claimed and reached `running`, which root8 never did. The
+tracker change holds live, and the later stop proved `whole_tree_stopped`.
+
+Correction to the earlier entry: root8's FIRST agent (generic OutcomeUnknown
+before any task) was not the guardian. It is a second defect, reproduced here at
+the same moment: when the second agent joins the shared project, ADR153 advances
+the room generation, the first agent's already-resolved `project_<id>_1_2` plan
+is retired by its own intake, selection returns RunnerAuthority, and the driver
+mapped that silently to OutcomeUnknown. Only the last agent to join a shared
+project survived. Fixed in the driver (ADR178 amendment): a plan the fresh
+resolution no longer names is superseded, not refused.
+
+Instance inboxfix (port 19439, with that change): the driver logged the
+superseded `_1_2` plan as the second agent's account joined, the first agent
+resolved `project_<id>_1_3` as a current route and stayed receiving. Validated
+live only; a deterministic offline regression test is owed. The coordinator then
+ended with `refresh`/`timeout` on Matrix intake while provisioning the second
+agent, which stayed `reserved`. Adoption needed five attempts (`Error: Matrix`).
+Palpo's limiter keys on the connecting IP, and every client behind the Caddy
+proxy shares the Docker gateway address, so one bucket serves Robrix, every
+retained service and the operator scripts. `rc_registration` and `rc_message`
+are config, and `per_second = 0` disables one (hoops.rs); not changed here.
+
+The groupfix task itself failed as `protocol` / `unsupported_event` /
+`refused_notification: thread_status`. Cause: the operator's Codex account has
+exhausted its usage limit (provider message: try again 2026-09-24 09:40). The
+captured 0.154.0 order is `thread/status/changed{systemError}`, then
+`error{usageLimitExceeded, willRetry:false}`, then `turn/completed{failed}`; the
+session died on the first and never read the cause. ADR036 amendment: accept
+`systemError` during a running turn as a status only, so the existing arms end
+the turn as Failed. New selector
+`native_codex_session_outcomes_system_error_precedes_its_cause`.
+
+No live Codex task can complete until the provider limit is lifted. Both
+instances were closed cleanly with SIGTERM after their evidence was copied; no
+earlier retained owner was touched.
+
+Hosted run for cde89a0c: Ubuntu failed the Rust bindings check because
+task-rust-macos-descendant-parity binds macOS-only selectors (three original,
+three new) that no Linux inventory contains; this spec had never been pushed.
+The checker now defers a spec tagged `macos`, `linux` or `windows` on other
+platforms, and the hosted job on that platform still resolves it. macOS failed
+`native_configured_fleet_media_two_agents` and `..._executable_two_agents`
+("timed out during both original native helpers are in flight": one handoff
+`deadline`, one `peer_unavailable`, both with `whole_tree_stopped`). These
+fixtures had never run hosted and pass locally 6/6; unresolved, matching the
+intermittency ADR178 already records. Windows is paused.
