@@ -196,6 +196,8 @@
         "install.sh",
         "install/bootstrap.sh",
         "install/install-macos.sh",
+        "install/install-native.sh",
+        "deploy/io.hagency.native.plist",
         "remote/install-remote.sh",
         "scripts/hagency-dev-autodeploy.sh",
         "scripts/hagency-remote-autodeploy.sh",

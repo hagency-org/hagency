@@ -3,7 +3,7 @@ import { renderDashboard } from './helpers/dashboard-render.js';
 import { selection, validateEngagements, validateReport } from '../mockup/lib/native-api.js';
 
 const counts = { input: 4, output: 1, cacheWrite: 0, cacheRead: 1 };
-const report = { engagement_id: 'created_after_build', at_ms: 2000, summary: { sources: 1, latest_counts: counts, known_high_water_lower_bound: { ...counts, input: 7 }, latest_incomplete_sources: 0, historically_incomplete_sources: 1, regression_observations: 1, evidence: 'host_attributed_untrusted_usage' }, daily: null, monthly: null };
+const report = { engagement_id: 'created_after_build', at_ms: 2000, summary: { sources: 1, latest_counts: counts, known_high_water_lower_bound: { ...counts, input: 7 }, latest_incomplete_sources: 0, historically_incomplete_sources: 1, regression_observations: 1, evidence: 'host_attributed_untrusted_usage' }, daily: null, monthly: null, ceiling: { tokens_drawn: 0, tokens_used: null, remaining_tokens: null } };
 describe('retained usage native mode', () => {
   test('native observations preserve nulls lower bounds and evidence', async () => {
     expect(validateReport(report, 'created_after_build')).toBe(report);

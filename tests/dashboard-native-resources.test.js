@@ -2,9 +2,9 @@ import { describe, expect, test, vi } from 'vitest';
 import { renderDashboard } from './helpers/dashboard-render.js';
 import { validateResources, validateBudget, selection, resourceView, publishResource, logoutNative } from '../mockup/lib/native-api.js';
 const resource = { id: 'new_resource', framework: 'codex', model: 'gpt-5.6-sol', provider: null, reasoning: 'medium', ceiling: null, published: true, roles: [], revision: 'a'.repeat(64) };
-const roles = ['Architect','Builder','Reviewer','Tester','Writer','Researcher'].map((role) => ({ role, explicitPublication: null, available: false, crossFamily: false, defaultTier: 'medium' }));
+const roles = ['Architect','Builder','Reviewer','Tester','Writer','Researcher'].map((role) => ({ role, explicitPublication: null, available: false, crossFamily: false, defaultTier: 'medium', families: [], fillable: 0, overTier: 0 }));
 const rows = { resources: [resource], roles, next_after: null, permissions: { publishResource: false, configureResource: false } };
-const budget = { scope: 'resource', pool: { ceiling: null, period: null, committed: 0, remaining: null }, seat: { quota: null, period: null, committed: 0, remaining: null, status: 'undeclared' }, reserved: 0, remainingTokens: null };
+const budget = { scope: 'resource', pool: { ceiling: null, period: null, committed: 0, remaining: null }, seat: { quota: null, period: null, committed: 0, remaining: null, status: 'undeclared' }, remainingTokens: null, draw: { committed: 0, measured: null, consumed: null, drawn: 0, ceilingTokens: null, period: 'monthly', binding: null, remainingBeforeCeiling: null } };
 describe('native resource publication controls', () => {
   test('closed native resource and budget observations retain missing values', () => {
     expect(validateResources(rows)).toBe(rows); expect(validateBudget(budget)).toBe(budget);

@@ -48,7 +48,9 @@ const bridgeSha256 = sha(bridgeSource);
 const routeSha256 = sha(routeSource);
 
 // ── bridge-matrix.js: lift the constants and three function bodies ─────────
-const bridgeLines = bridgeSource.split('\n');
+// The source hash already normalises checkout line endings. Parse the same
+// normalised text so the literal closing-brace anchors work on Windows too.
+const bridgeLines = bridgeSource.replaceAll('\r\n', '\n').split('\n');
 const lineIndex = (prefix, label) => {
   const index = bridgeLines.findIndex((line) => line.startsWith(prefix));
   if (index < 0) throw new Error(`${label}: anchor not found: ${prefix}`);

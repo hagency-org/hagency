@@ -207,8 +207,7 @@ export function extractCalls(body) {
 }
 
 function listRustFiles() {
-  const out = execFileSync('git', ['-C', repoRoot, 'ls-files', 'native'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return out.split('\n').filter((f) => f.endsWith('.rs') && !isStripped(f));
+  return listRustFilesAt(repoRoot);
 }
 
 export function buildGraph(files, read) {
@@ -630,9 +629,8 @@ export function checkProductionCallers({ root = repoRoot, read, files: givenFile
 }
 
 function listRustFilesAt(root) {
-  if (root === repoRoot) return listRustFiles();
-  const out = execFileSync('git', ['-C', root, 'ls-files', 'native'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
-  return out.split('\n').filter((f) => f.endsWith('.rs') && !isStripped(f));
+  const out = execFileSync('git', ['-C', root, 'ls-files', '--cached', '--others', '--exclude-standard', '-z', '--', 'native'], { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 });
+  return [...new Set(out.split('\0'))].filter((f) => f.endsWith('.rs') && !isStripped(f) && existsSync(path.join(root, f))).sort();
 }
 
 // `--explain crate::path[::Type]::fn`: print, for the target definition, the

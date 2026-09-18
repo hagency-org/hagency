@@ -106,7 +106,7 @@ export const GET = handler; export const POST = handler;`]]));
   it('native_inventory_reproduces_current_sources', () => {
     const actual = buildInventory(repositorySources(root), policy);
     expect(() => checkInventory(actual, fixture)).not.toThrow();
-    expect(actual.entries).toHaveLength(138);
+    expect(actual.entries).toHaveLength(140);
     expect(actual.http_registrations.filter(item => item.kind === 'route')).toHaveLength(199);
     expect(actual.http_registrations.filter(item => item.kind === 'middleware')).toHaveLength(3);
     expect(actual.custom_dispatch.reduce((count, dispatcher) => count + dispatcher.branches.length, 0)).toBe(12);

@@ -1646,6 +1646,28 @@
       "literal_path_mentions": []
     },
     {
+      "path": "deploy/io.hagency.native.plist",
+      "sha256": "ff194b1ac94db31cc9c5ce042b98f34ed9eeb09d71651412c39ea65f0eb980c3",
+      "role": "install",
+      "migration": {
+        "owner": "native-packaging",
+        "phase": "M8",
+        "disposition": "replace-native",
+        "validation_gate": "Produce and validate platform-native installation, service registration and upgrade/uninstall artifacts.",
+        "native_status": "parity-unverified"
+      },
+      "entry": {
+        "line": 1,
+        "interpreter": null
+      },
+      "literal_path_mentions": [
+        {
+          "source": "install/install-native.sh",
+          "line": 82
+        }
+      ]
+    },
+    {
       "path": "hagency-backend.service",
       "sha256": "aca39cd4ef8de02c31ae19246e2fc19d7129072d0142287c0c05aa7658941f1b",
       "role": "operator",
@@ -1919,6 +1941,23 @@
       "entry": {
         "line": 1,
         "interpreter": "#!/usr/bin/env bash"
+      },
+      "literal_path_mentions": []
+    },
+    {
+      "path": "install/install-native.sh",
+      "sha256": "880d683db0ca0abdad3abf65929049bda056e82a71e962aad0cc6afd3be816cb",
+      "role": "install",
+      "migration": {
+        "owner": "native-packaging",
+        "phase": "M8",
+        "disposition": "replace-native",
+        "validation_gate": "Produce and validate platform-native installation, service registration and upgrade/uninstall artifacts.",
+        "native_status": "parity-unverified"
+      },
+      "entry": {
+        "line": 1,
+        "interpreter": "#!/bin/sh"
       },
       "literal_path_mentions": []
     },

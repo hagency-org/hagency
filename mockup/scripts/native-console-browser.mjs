@@ -85,8 +85,8 @@ if (config.lifecycle) {
   // The lifecycle lane (ADR-130 browser scenario): the roster renders NO
   // enabled control under a read-only ticket, then the SAME walk under a
   // fresh agent-lifecycle ticket (the harness mints and hands it over
-  // stdin; the browser mints nothing) renders the controls enabled — and
-  // no external request leaves the page in either phase.
+  // stdin; the browser mints nothing) renders only the implemented stop
+  // control — and no external request leaves the page in either phase.
   try {
     const context = await browser.newContext({ serviceWorkers: 'block' });
     const page = await context.newPage();
@@ -104,9 +104,44 @@ if (config.lifecycle) {
     const lifecycleUrl = (await fixture('LIFECYCLE_TICKET')).url;
     await page.goto(lifecycleUrl);
     await page.locator('[data-native-state="ready"]').waitFor();
-    assert((await page.locator('[data-lifecycle-action="start"]').count()) >= 3, 'the scoped roster renders the start control per row');
     assert((await page.locator('[data-lifecycle-action="stop"]').count()) >= 3, 'the scoped roster renders the stop control per row');
-    assert((await page.locator('[data-lifecycle-action="preset"]').count()) >= 3, 'the scoped roster renders the preset control per row');
+    assert((await page.locator('[data-lifecycle-action="start"]').count()) === 0, 'the roster does not advertise the unavailable start transition');
+    assert((await page.locator('[data-lifecycle-action="preset"]').count()) === 0, 'the roster does not advertise the unavailable preset transition');
+    await page.locator(`[data-engagement-id="${config.engagement}"] [data-lifecycle-action="review"]`).click();
+    await page.locator('[data-recovery-inspect="resolution_dispatch"]').click();
+    await page.locator('[data-recovery-inspection]').waitFor();
+    assert.match(await page.locator('[data-recovery-inspection]').innerText(), /result\.txt/);
+    assert.equal(await page.locator('[data-recovery-action]').count(), 3);
+    await page.locator('[data-recovery-note]').fill('Reviewed the original offline fixture inventory. Keep this task blocked.');
+    let requests = 0, frozen = null;
+    await page.route('**/resolve-stopped-dispatch', async (route) => {
+      const body = route.request().postData(); requests++;
+      if (requests === 1) {
+        frozen = body;
+        const headers = await route.request().allHeaders();
+        assert.equal(headers.origin, config.base);
+        // Chromium adds Fetch Metadata after interception; route.fetch uses
+        // Playwright's HTTP client. Preserve the browser's same-origin context
+        // explicitly for this local response-loss fixture, with its own cookie.
+        const response = await route.fetch({ headers: { ...headers, 'sec-fetch-site': 'same-origin' }, maxRedirects: 0, maxRetries: 0 });
+        assert.equal(response.status(), 200);
+        await route.abort('failed'); // Native commit exists; browser loses its ACK.
+      } else {
+        assert.equal(body, frozen, 'unknown decision replay is byte-identical');
+        await route.continue();
+      }
+    });
+    await page.locator('[data-recovery-action="keep_blocked"]').click();
+    await page.locator('[data-recovery-retry]').waitFor();
+    assert.equal(requests, 1, 'response loss does not automatically retry');
+    assert(await page.locator('[data-recovery-action="continue"]').isDisabled());
+    const secret = JSON.parse(frozen).inspectionToken;
+    assert(!(await page.locator('main').innerText()).includes(secret));
+    assert(!(await page.evaluate(() => JSON.stringify([localStorage, sessionStorage]))).includes(secret));
+    await page.locator('[data-recovery-retry]').click();
+    await page.locator('[data-recovery-result]').waitFor();
+    assert.match(await page.locator('[data-recovery-result]').innerText(), /blocked/);
+    assert.equal(requests, 2);
     assert(urls.every((url) => !url.includes('access=')), 'no ticket value in a request URL');
     assert(!/private_|operator\.token/.test(await page.locator('main').innerText()), 'no credential value on screen');
     assert.deepEqual(failures, []);

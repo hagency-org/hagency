@@ -59,7 +59,8 @@ export function validateEngagements(v) {
       || typeof e.role !== 'string' || e.role.length > 128 || !number(e.requestedTokens) || !STATES.includes(e.state) || !CLEANUP.includes(e.cleanup))) throw new Error('invalid_native_response');
   return v;
 }
-async function request(path, options = {}) {
+const RECOVERY_ERRORS = { agent_lifecycle_scope_required: 403, resolution_conflict: 409, dispatch_not_resolvable: 409, invalid_console_request: 400 };
+async function request(path, options = {}, responseLimit = 64 * 1024) {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), 5000);
   try {
@@ -70,7 +71,7 @@ async function request(path, options = {}) {
     for (;;) {
       const { done, value } = await reader.read(); if (done) break;
       size += value.length;
-      if (size > 64 * 1024) { await reader.cancel(); throw new Error('invalid_native_response'); }
+      if (size > responseLimit) { await reader.cancel(); throw new Error('invalid_native_response'); }
       chunks.push(value);
     }
     const bytes = new Uint8Array(size); let offset = 0;
@@ -79,17 +80,18 @@ async function request(path, options = {}) {
     if (!response.ok) {
       if (value?.code === 'console_busy' && response.status === 429) throw new Error('busy');
       const known = { busy: 503, outcome_unknown: 504, resource_revision_conflict: 409, resource_publication_scope_required: 403, resource_configuration_scope_required: 403, resource_in_use: 409, invalid_resource_command: 400, account_scope_required: 403, account_state_conflict: 409, account_revision_conflict: 409, invalid_account_command: 400 };
-      if (known[value?.code] === response.status) throw new Error(value.code);
+      if (known[value?.code] === response.status || RECOVERY_ERRORS[value?.code] === response.status) throw new Error(value.code);
       throw new Error(response.status === 401 ? 'console_access_required' : (response.status === 404 ? 'not_found' : 'native_unavailable'));
     }
     return value;
   } catch (error) {
-    if (['console_access_required', 'not_found', 'invalid_native_response', 'invalid_selection', 'busy', 'outcome_unknown', 'resource_revision_conflict', 'resource_publication_scope_required', 'resource_configuration_scope_required', 'resource_in_use', 'invalid_resource_command', 'account_scope_required', 'account_state_conflict', 'account_revision_conflict', 'invalid_account_command'].includes(error.message)) throw error;
+    if (['console_access_required', 'not_found', 'invalid_native_response', 'invalid_selection', 'busy', 'outcome_unknown', 'resource_revision_conflict', 'resource_publication_scope_required', 'resource_configuration_scope_required', 'resource_in_use', 'invalid_resource_command', 'account_scope_required', 'account_state_conflict', 'account_revision_conflict', 'invalid_account_command', ...Object.keys(RECOVERY_ERRORS)].includes(error.message)) throw error;
     if (options.method === 'DELETE') throw new Error('logout_unknown');
-    if (['POST', 'PATCH'].includes(options.method) && (path.startsWith('/api/resources') || path.startsWith('/api/accounts'))) throw new Error('outcome_unknown');
+    if (['POST', 'PATCH'].includes(options.method) && (path.startsWith('/api/resources') || path.startsWith('/api/accounts') || path.startsWith('/api/agents/'))) throw new Error('outcome_unknown');
     throw new Error('native_unavailable');
   } finally { clearTimeout(timer); }
 }
+export { request as nativeRequest };
 /* ADR-145: the readiness payload consumed as-is — exact key set and count
  * only, no state-word enumeration in the client (one vocabulary, the
  * server's; unknown state words render as text, never error). Same-origin
@@ -209,19 +211,12 @@ export async function fetchAgents() {
 }
 export function agentsView(location) { return /^\/console\/agents\/?$/.test(location.pathname); }
 
-/* CL-S2 (ADR-130): the three lifecycle acts ride the SAME bounded request
- * path as publication/configuration — no new transport. Start is a no-body
- * POST; stop fences and serves the five-key wire object; preset-apply sends
- * the already-published preset id and refuses unknown/unpublished ids and a
- * second pending apply with named codes. */
-export async function startAgent(id) {
-  return request(`/api/agents/${id}/start`, { method: 'POST' });
-}
+/* CL-S2 (ADR-130): expose only the lifecycle mutation that has a durable
+ * domain effect. Start and preset rebinding fail closed at the server until
+ * their complete state transitions exist; the browser must not offer buttons
+ * that can only refuse. */
 export async function stopAgent(id) {
   return request(`/api/agents/${id}/stop`, { method: 'POST' });
-}
-export async function applyPreset(id, presetId) {
-  return request(`/api/agents/${id}/preset`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ presetId }) });
 }
 
 /* The project-sides read (ADR-132): one row per fleet registration — the

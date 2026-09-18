@@ -1,8 +1,9 @@
 // Tests for check-production-callers.mjs (ADR-146). Fixture trees, no repo
 // dependency: checkProductionCallers accepts { root, read, files }.
-import { test } from 'node:test';
+import { test as nodeTest } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -14,6 +15,14 @@ import {
   parseAdrGaps,
   checkProductionCallers,
 } from './check-production-callers.mjs';
+
+// This file is executed directly by Node in Native Rust CI and is also part of
+// the Vitest catalog used by the Node spec-binding gate. Register with the
+// active harness so `vitest list --json` stays valid JSON instead of receiving
+// an unrelated TAP stream from node:test.
+const test = process.env.VITEST
+  ? (await import('vitest')).test
+  : nodeTest;
 
 test('stripTestItems removes cfg(test) modules and test fns, keeps production fns', () => {
   const src = [
@@ -107,6 +116,35 @@ function makeFixture({ rust, specs, adr }) {
 }
 
 const MAIN = 'native/hagency/src/main.rs';
+
+test('native_production_callers_current_worktree: new sources count and deleted or ignored sources do not', () => {
+  const { root } = makeFixture({
+    rust: {
+      [MAIN]: 'fn main() { new_module::run(); }\n',
+      'native/hagency/src/deleted.rs': 'pub fn run() {}\n',
+    },
+    specs: '  Production caller: hagency::new_module::run\n',
+    adr: '',
+  });
+  try {
+    execFileSync('git', ['init', '--quiet', root]);
+    execFileSync('git', ['-C', root, 'add', 'native']);
+    rmSync(path.join(root, 'native/hagency/src/deleted.rs'));
+    writeFileSync(path.join(root, 'native/hagency/src/new_module.rs'), 'pub fn run() {}\n');
+    writeFileSync(path.join(root, '.gitignore'), 'native/hagency/src/ignored.rs\n');
+    writeFileSync(path.join(root, 'native/hagency/src/ignored.rs'), 'pub fn run() {}\n');
+    const result = checkProductionCallers({ root });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.equal(result.result.wired, 1);
+    // Staging the new file must not duplicate its definition.
+    execFileSync('git', ['-C', root, 'add', 'native/hagency/src/new_module.rs']);
+    assert.deepEqual(checkProductionCallers({ root }), result);
+    rmSync(path.join(root, 'native/hagency/src/new_module.rs'));
+    const missing = checkProductionCallers({ root });
+    assert.equal(missing.ok, false);
+    assert.equal(missing.result.unresolved.length, 1);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 test('native_production_callers_wired: a full-path caller reached by an unambiguous chain is wired', () => {
   const { root, read, files } = makeFixture({
