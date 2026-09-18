@@ -2,7 +2,7 @@ spec: task
 name: "Port the working TS descendant-stop path to native macOS"
 inherits: project
 satisfies: [REQ-RUST-MIGRATION-EXECUTION, REQ-LOCAL-THREE-RUNNER-QUALIFICATION, REQ-THREE-LAYER-COMPLETION]
-tags: [active, rust, platform, macos]
+tags: [active, rust, platform, only-macos]
 ---
 
 ## Intent

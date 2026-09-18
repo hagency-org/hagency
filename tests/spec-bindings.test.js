@@ -36,5 +36,11 @@ test('a platform-tagged spec binds only on its own platform', async () => {
   }
   // An untagged native spec still has to resolve everywhere.
   expect(on('linux').missing.some(row => row.selector === 'custody_survives_restart')).toBe(true);
+  // A plain topic tag is not a platform scope: these specs bind portable tests.
+  for (const platform of ['darwin', 'linux', 'win32']) {
+    expect(on(platform).deferred).not.toContain('task-rust-linux-crash-custody.spec.md');
+    expect(on(platform).deferred).not.toContain('task-rust-windows-media-directory-sync.spec.md');
+    expect(on(platform).missing.some(row => row.selector === 'native_cgroup_admission_vectors')).toBe(true);
+  }
   expect(() => checkSpecBindings([], { runtime: 'rust', platform: 'typo' })).toThrow('Unknown spec platform');
 });

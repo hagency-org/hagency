@@ -523,7 +523,7 @@
     },
     {
       "path": "scripts/check-spec-bindings.js",
-      "sha256": "ee74ecde4d59b360c49e88b1546f9ddce34258d2201260802fd7f155f38eeda2"
+      "sha256": "8fa204b08454e56b39bf0adb101b0f5039dafc1ed1b25bfcb2dfadec7e686bb5"
     },
     {
       "path": "scripts/eslint-globals.js",
@@ -3118,7 +3118,7 @@
     },
     {
       "path": "scripts/check-spec-bindings.js",
-      "sha256": "ee74ecde4d59b360c49e88b1546f9ddce34258d2201260802fd7f155f38eeda2",
+      "sha256": "8fa204b08454e56b39bf0adb101b0f5039dafc1ed1b25bfcb2dfadec7e686bb5",
       "role": "build-or-test",
       "migration": {
         "owner": "build-verification",

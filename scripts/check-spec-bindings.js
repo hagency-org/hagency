@@ -5,10 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-// A spec tagged with one of these names binds selectors that are compiled on that
+// A spec carrying one of these tags binds selectors that are compiled on that
 // platform only. It is deferred elsewhere, and the hosted job on its own platform
-// still resolves every selector. An untagged spec must resolve everywhere.
-const PLATFORM_TAGS = { macos: 'darwin', linux: 'linux', windows: 'win32' };
+// still resolves every selector. Every other spec must resolve everywhere,
+// including the many that use plain `linux` or `windows` as a topic tag.
+const PLATFORM_TAGS = { 'only-macos': 'darwin', 'only-linux': 'linux', 'only-windows': 'win32' };
 
 export function checkSpecBindings(inventory, { runtime = 'node', directory = path.join(root, 'specs'), platform = process.platform } = {}) {
   if (!['node', 'rust'].includes(runtime)) throw new Error('Unknown spec runtime');
