@@ -62,6 +62,16 @@ fn fresh_approval(f: &Fixture, anchor: String) {
     let mut config: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     config["executable"] = json!(probe);
     config["executable_sha256"] = json!(digest);
+    // Without this the owner wait is the 1 s default, and the owner's verdict
+    // has to cross the approval bot's encrypted send and sync round trip inside
+    // it. On a small hosted runner the card send alone took about 1.4 s: the
+    // approval had expired before it landed, the command approval stayed pending
+    // and the transport timed out. These fixtures test the round trip, not wait
+    // expiry. The wait plus its 2 s response reserve must fit in the operation
+    // budget that remains at turn start, so both are raised together, as the
+    // configured-fleet approval fixtures already do.
+    config["operation_ms"] = json!(20_000);
+    config["approval_owner_wait_ms"] = json!(10_000);
     config["approval"] = json!({
         "origin":f.fake.endpoint,"server_name":"example.test","registration_fingerprint":"a".repeat(64),
         "engagement_id":config["matrix"]["engagement_id"],"registration_generation":1,"transport_generation":1,
