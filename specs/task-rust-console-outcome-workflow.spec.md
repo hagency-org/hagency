@@ -40,10 +40,15 @@ native console, with bounded discovery of stopped dispatches per engagement.
 - mockup/scripts/native-console-browser.mjs
 - tests/dashboard-native-recovery.test.js
 - specs/task-rust-console-outcome-workflow.spec.md
+- specs/task-console-outcome-protocol.spec.md
 - knowledge/decisions/adr-170-console-outcome-workflow.md
 - docs/**
 
 ## Scenarios
+
+The browser-side decision protocol is a JavaScript module with a Vitest
+selector, so its scenario lives in `task-console-outcome-protocol.spec.md`,
+which the Node bindings check resolves. This spec binds Rust selectors only.
 
 Scenario: Stopped-work discovery remains private and bounded
   Test: native_console_stopped_dispatch_list
@@ -51,13 +56,6 @@ Scenario: Stopped-work discovery remains private and bounded
   When an operator pages the selected engagement
   Then only sixteen bounded rows and an exact cursor are returned
   And read-only sessions, malformed queries and foreign inspection are refused
-
-Scenario: Browser decisions remain bound and preserve uncertain requests
-  Test: native recovery protocol binds decisions and results
-  Given an inspected stopped dispatch
-  When the browser constructs and submits an operator decision
-  Then the request and result bind the original task and response loss is unknown
-  And no credential is rendered or persisted
 
 Scenario: Lifecycle operators can review and resolve through the native browser
   Test: native_console_agent_lifecycle_browser
