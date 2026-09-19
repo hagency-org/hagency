@@ -252,51 +252,73 @@ async fn native_approval_response_clock() {
     assert_eq!(grant[0].deadline(), saved);
 
     for expiry in ["deadline", "lease"] {
-        let root = tempfile::tempdir().unwrap();
-        let (mut db, cap, id) = setup(root.path());
-        let grant = db
-            .authorize_approval_response(&cap, &id, writer_time().unwrap())
-            .unwrap();
-        let at = writer_time().unwrap();
-        if expiry == "lease" {
-            db.renew_dispatch(&cap, at, 1000).unwrap();
+        // The request has to start inside the last 60 ms before a 1 s expiry, so
+        // that SQLite's 100 ms busy window carries it across the expiry. A loaded
+        // runner can oversleep that window (hosted macOS did). Such an attempt
+        // measured nothing about the product, so it is discarded and repeated
+        // with a fresh store. Every product assertion stays unconditional for an
+        // attempt whose window held, and one must hold.
+        let mut measured = false;
+        for _attempt in 0..8 {
+            let root = tempfile::tempdir().unwrap();
+            let (mut db, cap, id) = setup(root.path());
+            let grant = db
+                .authorize_approval_response(&cap, &id, writer_time().unwrap())
+                .unwrap();
+            let at = writer_time().unwrap();
+            if expiry == "lease" {
+                db.renew_dispatch(&cap, at, 1000).unwrap();
+            }
+            let mut sql =
+                rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+            let store = DomainStore::start(db, 16).unwrap();
+            // Finish setup, then use only the final 60 ms of the unchanged 100 ms
+            // SQLite busy window. No authority row is changed by this inspector.
+            let expiry_at = at + 1000;
+            tokio::time::sleep(Duration::from_millis(
+                expiry_at
+                    .saturating_sub(writer_time().unwrap())
+                    .saturating_sub(60),
+            ))
+            .await;
+            let lock = sql
+                .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+                .unwrap();
+            let mut batch = [grant];
+            let until = if expiry == "deadline" {
+                Instant::now() + Duration::from_millis(40)
+            } else {
+                Instant::now() + Duration::from_secs(1)
+            };
+            let mut request =
+                Box::pin(store.begin_approval_responses(cap.clone(), &mut batch, until));
+            assert!(
+                tokio::time::timeout(Duration::from_millis(5), &mut request)
+                    .await
+                    .is_err()
+            );
+            if writer_time().unwrap() >= expiry_at {
+                drop(request);
+                drop(lock);
+                store.shutdown().await.unwrap();
+                continue;
+            }
+            tokio::time::sleep(Duration::from_millis(
+                expiry_at.saturating_sub(writer_time().unwrap()) + 5,
+            ))
+            .await;
+            lock.commit().unwrap();
+            assert!(matches!(request.await, Err(Error::RunnerAuthority)));
+            assert!(!batch[0].is_admitted());
+            assert_eq!(state(&sql), "parked");
+            store.shutdown().await.unwrap();
+            measured = true;
+            break;
         }
-        let mut sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
-        let store = DomainStore::start(db, 16).unwrap();
-        // Finish setup, then use only the final 60 ms of the unchanged 100 ms
-        // SQLite busy window. No authority row is changed by this inspector.
-        let expiry_at = at + 1000;
-        tokio::time::sleep(Duration::from_millis(
-            expiry_at
-                .saturating_sub(writer_time().unwrap())
-                .saturating_sub(60),
-        ))
-        .await;
-        let lock = sql
-            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
-            .unwrap();
-        let mut batch = [grant];
-        let until = if expiry == "deadline" {
-            Instant::now() + Duration::from_millis(40)
-        } else {
-            Instant::now() + Duration::from_secs(1)
-        };
-        let mut request = Box::pin(store.begin_approval_responses(cap.clone(), &mut batch, until));
         assert!(
-            tokio::time::timeout(Duration::from_millis(5), &mut request)
-                .await
-                .is_err()
+            measured,
+            "the {expiry} expiry window was overslept in every attempt"
         );
-        assert!(writer_time().unwrap() < expiry_at);
-        tokio::time::sleep(Duration::from_millis(
-            expiry_at.saturating_sub(writer_time().unwrap()) + 5,
-        ))
-        .await;
-        lock.commit().unwrap();
-        assert!(matches!(request.await, Err(Error::RunnerAuthority)));
-        assert!(!batch[0].is_admitted());
-        assert_eq!(state(&sql), "parked");
-        store.shutdown().await.unwrap();
     }
 }
 
