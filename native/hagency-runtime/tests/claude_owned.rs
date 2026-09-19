@@ -278,14 +278,34 @@ async fn native_claude_owned_permission_roundtrip() {
             stopped(&marker);
             continue;
         }
-        assert!(
-            matches!(runner.send_prepared_approval(&mut prepared).await.unwrap(),PreparedUpdate::WriteAccepted(progress) if progress.flushed)
-        );
-        for expected in [EventKind::Assistant, EventKind::Result] {
+        // The peer answers the instant it has read the response, so on a fast
+        // runner its next event can be observed before this host observes its own
+        // flush (hosted Ubuntu: three runs of four). The send is re-entrant for
+        // exactly that: it hands back what arrived and resumes the same frame.
+        // Both orders are one exchange, so keep sending until the write is
+        // acknowledged and keep what arrived first, in order.
+        let mut early = std::collections::VecDeque::new();
+        loop {
+            match runner.send_prepared_approval(&mut prepared).await.unwrap() {
+                PreparedUpdate::WriteAccepted(progress) => {
+                    assert!(progress.flushed);
+                    break;
+                }
+                PreparedUpdate::Message(message) => early.push_back(message),
+            }
             assert!(
-                matches!(runner.next_message().await.unwrap(),Message::Event {kind,..} if kind==expected)
+                early.len() <= 2,
+                "only the two answer events may precede the receipt"
             );
         }
+        for expected in [EventKind::Assistant, EventKind::Result] {
+            let message = match early.pop_front() {
+                Some(message) => message,
+                None => runner.next_message().await.unwrap(),
+            };
+            assert!(matches!(message,Message::Event {kind,..} if kind==expected));
+        }
+        assert!(early.is_empty());
         let received: serde_json::Value =
             serde_json::from_slice(&fs::read(marker.with_extension("response")).unwrap()).unwrap();
         assert_eq!(received["response"]["request_id"], "owned-permission");
