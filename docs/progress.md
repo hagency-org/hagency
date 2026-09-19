@@ -11579,3 +11579,44 @@ accept the answer arriving before the receipt, which is the API's documented
 re-entrancy. The remaining race is in the Claude runtime's prepared-send path and
 is deferred with the Claude work by operator direction. Until it is fixed, hosted
 Ubuntu can still go red on that one selector.
+
+
+## 2026-09-19 — Codex functional tests and soak
+
+Functional, on isolated two-agent instances (private qualification model overlay,
+never committed): encrypted DM task through Robrix, outside-workspace sandbox
+refusal, `send_file` with a real owner approval and with a denial, DM isolation
+from the plaintext project room, a second agent's task during a long one, and a
+seven-step task that ran 470 s under an explicit fifteen-minute budget -- all
+pass. A plain restart still ends at Startup (fenced generation; only explicit
+fresh-generation provisioning is qualified).
+
+FIXED (c02724bf): cross-agent context bleed. An agent woken by its own mention
+carried out an older request addressed to the other agent that rode along in its
+frozen inbox; the instruction never explained `wake`. ADR178 amendment, store test
+`native_agent_inbox_names_the_waking_entry_as_the_request`, spec scenario. Gates:
+fmt, strict clippy, store suite, bindings 1137 selectors 0 missing, inventory 3/3,
+whole workspace 147 suites 1225 passed 0 failed. Hosted: CI green; Native Rust
+green on macOS and the browser job, Ubuntu red only on the deferred Claude
+`native_claude_owned_permission_roundtrip` race; the previous head had also shown
+`approval::native_private_approval_delivery_is_wired` missing its fixture watchdog
+once on Ubuntu -- a hosted-budget flake, still open.
+
+OPEN, product, each confirmed live: coordination tools are unreachable by a Codex
+agent (four-tool `enabled_tools` profile; it answered that `delegate_task` is
+unavailable); a refused command approval ends the agent; one connection-level
+failure ends a worker for good, and the homeserver endpoint produces them (a
+private diagnostic build printed `ConnectError(tcp connect error, TimedOut)`, and
+an independent probe saw the same port unreachable while the same host's other
+ports answered); both Codex peers once reached end-of-file together, cause not
+established, after which the service would not shut down over two defunct
+children. Probable, not traced: provisioning needs the owner's join inside 60 s.
+
+SOAK, as fresh-fleet cycles: 11 fleets, 50 rounds, 100 tasks, no wrong result
+(60 rounds and 120 tasks with the fleet before it); 5 fleets clean, 4 ended by the
+endpoint, 2 by the product failures above. Detail and the operator decisions this
+leaves -- ADR174 for connection-phase failures and connection reuse, or a
+resumable fence; a capability gate for coordination tools; declining rather than
+closing on a refused approval -- are in docs/design/native-execution-parity.md.
+Seven further fleets were lost to a test-rig defect (an unfiltered owner sync that
+outgrew its own bounds) and are excluded.

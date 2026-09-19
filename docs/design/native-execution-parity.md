@@ -36,7 +36,7 @@ Source presence is not a claim that the complete path passes.
 | `router/src/runner.ts::runCodexDispatch`; `tests/router-runner.test.js`, `tests/router-codex-mcp-approval.test.js` | runtime `codex`, execution `Operation` | Real local 0.154.0 command/readback and message completion pass through Palpo/Robrix. File delivery exposed missing MCP elicitation handling; ADR160 ports exact active-item/arguments correlation and Once/Deny to the existing owner coordinator. ADR166 fixes reused approval sync cursors; Robrix accepts exact native 40-hex approval IDs. ADR167 admits Palpo nullable blurhash upload metadata. A fresh isolated live file task now passes approval, encrypted delivery, canonical Done and final Robrix reply. Previous unknown attempts remain preserved. Outside-workspace qualification remains unproven. |
 | `router/src/runner.ts::runClaudeDispatch`; `tests/router-runner.test.js` | runtime `OwnedClaudeSession`, `claude::SessionDriver` | Actual CLI initialize/task-helper binding work. Execution Prepared/spawn/drive/report and approval coordination remain Codex-specific. Join the existing path with original domain ownership. |
 | `lib/runtime/acp.js`, `lib/frameworks/octos.json`; `tests/acp-runtime.test.js`, `tests/acp-permission-requests.test.js` | No native Octos adapter yet | Port initialize/session/new/session/prompt and streamed updates. Verify installed OctosCode protocol mode, actual Octos backend and config-MCP behavior; do not infer them from mocks or a newer source checkout. |
-| `router/src/runner.ts::buildPrompt`, `mcp-server.js`, `lib/mcp-server-core.js`; `tests/ephemeral-session-tools.test.js` | runtime `task_mcp`, native `mcp/task_client/runner` | Actual helper reads/heartbeats the assigned task. The four-tool owned profile is NOT full TS coordination parity: task comments and paged room discussion still need mapping/porting. |
+| `router/src/runner.ts::buildPrompt`, `mcp-server.js`, `lib/mcp-server-core.js`; `tests/ephemeral-session-tools.test.js` | runtime `task_mcp`, native `mcp/task_client/runner` | Actual helper reads/heartbeats the assigned task. The four-tool owned profile is NOT full TS coordination parity: task comments and paged room discussion still need mapping/porting. Confirmed live 2026-09-19: asked to delegate, a Codex agent answered that `delegate_task` is unavailable. The helper declares comment, accept, heartbeat, delegation, conversation, peer-message and graph tools, but Codex `enabled_tools` admits only `TASK_MCP_TOOLS` plus the capability-gated file tools (ADR101/105 show the gating pattern; coordination has no gate yet). |
 | `backend-v2.js::requestThreadSessionOwnerApproval`, `lib/runtime-approval-client.js`; `tests/bridge-matrix-approval.test.js` | execution `approval`, Matrix `approval_delivery/approval_intake` | Codex MCP file approvals now join the same coordinator (ADR160), without widening the four task-tool exceptions. Startup owner wait is explicitly configurable within the original operation budget. Actual private Robrix Approve once now reaches an authenticated verdict and write-accepted native response; the subsequent send_file succeeds. The pinned provider still supplies no separate application acknowledgement. Claude has one-shot wire replies but no joined durable owner-grant path. |
 | `lib/session-file.js`, `router/src/files.ts`, `lib/matrix-file.js`; `tests/matrix-file-bridge.test.js` | native runner `files/received`, Matrix `upload/publication.rs`, file/media-store crates | Local Codex send_file now delivers a 34-byte encrypted attachment and final reply rendered in actual Robrix. Independent authenticated media download verifies exact plaintext bytes. Robrix native Save dialog blocks the headless harness, so its save-to-disk workflow remains unqualified. Encrypted native receive-file now passes exact bytes, owner approval, Done and rendered reply; native attachment-picker UI and other runner families remain open. |
 | TS runner result/settleAndRelease, task transitions and final replies | execution `operation.rs`, store `owned_dispatch/replies`, bootstrap `finish_attempt` | Two local successes meet distinct Done/stop/delivery checks. File failure retains an unsettled `owned_runner_failure` stop row despite observed whole-tree stop; generic orphan recovery correctly refuses it. ADR164 now joins an existing ADR162 receipt to explicit continuation through the shared stop-settlement kernel. This cannot retrofit the missing proof in the historical failure. Do not clear custody manually or erase the failure. Historical gen11 remains failed. |
@@ -45,7 +45,7 @@ Source presence is not a claim that the complete path passes.
 | `router/src/runner-guardian.ts`, `router/src/owned-process-tree.ts`; `tests/runner-guardian-process-tree.test.js` | platform `supervisor/unix.rs`, `supervisor/unix/macos{.rs,/native.rs,/tracking.rs}` | Ported native suspended launch, retained ancestry and identity-checked stop. Actual detached/reparented/early-leader cases stop while a foreign process survives; observation loss stays unknown. Sampled ancestry is not adversarial/crash containment; existing unsupported fast-double-fork cases remain unsupported. |
 | `router/src/runner-activity.ts`, `lib/metering`; `tests/router-activity.test.js`, `tests/runner-metering.test.js` | progress-runtime, metering, execution `usage` | Claude usage capture exists but production Host cannot reach it. Match actual dispatch activity and durable attribution, not only normalization fixtures. |
 | TS final reply routing / Matrix delivery journal; `tests/bridge-appservice-send.test.js`, `tests/matrix-delivery-journal.test.js` | bootstrap `finish_attempt`, Matrix `outgoing::send_final` | Send path exists. Confirm correct room/thread/privacy in Robrix and no duplicate delivery after interruption. |
-| `router/src/runner.ts` executionTimeoutMs / approvalTimeoutMs | execution `Limits`, bootstrap claim, store owned approval context | ADR161 allows explicit execution up to the retained twenty-minute allowance and owner waits within the durable ten-minute ceiling. Capability lifetime covers configuration; leases still renew for only five seconds and cannot outlive capability expiry. Existing configured defaults and RPC/write bounds stay unchanged. Live long-task acceptance remains open. |
+| `router/src/runner.ts` executionTimeoutMs / approvalTimeoutMs | execution `Limits`, bootstrap claim, store owned approval context | ADR161 allows explicit execution up to the retained twenty-minute allowance and owner waits within the durable ten-minute ceiling. Capability lifetime covers configuration; leases still renew for only five seconds and cannot outlive capability expiry. Existing configured defaults and RPC/write bounds stay unchanged. Live long-task acceptance PASSES (2026-09-19): a seven-step task under an explicit fifteen-minute operation budget ran 470 s post to reply, past the five-minute default, with exact output, canonical Done and no leases, while the other agent completed a DM task. |
 
 ## Work order
 
@@ -689,3 +689,81 @@ general limiters disabled, and no shared request pacing, which starves inline
 provisioning of a second agent while the first is alive. Remaining for Codex end
 to end: a sustained multi-round soak on this setup, groups/DMs beyond this case,
 uncertain-media recovery, and outside-workspace sandbox qualification.
+
+### Codex functional tests before the soak (2026-09-19)
+
+Run on isolated two-agent instances against the existing homeserver, with the
+private qualification model overlay; details in docs/progress.md.
+
+Passing: encrypted DM task through Robrix; outside-workspace sandbox refusal,
+including the other agent's workdir; `send_file` with a real owner Approve once and
+with Deny; DM isolation from the plaintext project room; a second agent's DM task
+during the first agent's long task; the long task itself (above). Receive-file was
+qualified on 2026-09-17; only the headless attachment picker is unavailable.
+
+Fixed: cross-agent context bleed. A request addressed to another participant rode
+along in the frozen inbox as unlabelled context and was carried out instead of the
+waking request (ADR178 amendment; store test plus a live rerun of the same inbox
+shape).
+
+Open, product: (1) coordination tools are unreachable by a live Codex agent (row
+above). (2) Restart and recovery: a plain restart ends at Startup because the
+generation is fenced; only explicit fresh-generation provisioning is qualified
+(2026-09-17, single adopted engagement). (3) Fleet lifetime against a real homeserver endpoint. Three fleets ended after
+6, 10 and 16 minutes: one connection-level failure ends its worker for good
+(ADR174 retries only a complete 429), and in one fleet a single worker's Transport
+failure took the other two with Generation within 240 ms. Cause of the Transport
+failures, from a private diagnostic build that prints what the product discards:
+`ConnectError("tcp connect error", TimedOut)` -- the 5 s connect budget elapsing
+with no TCP handshake. An independent once-a-second probe caught the same instant:
+the homeserver port timed out while the same host answered on two other ports and
+an unrelated host answered too. So it is port-level reachability of that one
+endpoint: not the client machine, not the product's requests, and -- the server's
+kernel counted no listen-queue overflow -- not the listener's accept queue.
+Earlier, a probe of 7,500 fresh connections saw 8 such connect timeouts in two
+bursts, one stalling three parallel loops for at least 16 s. Which device or rule
+in front of the port loses the SYNs is NOT established (it needs root on the rig),
+and one fleet's failure had no matching probe event, so a second, per-connection
+mode is not excluded. The TypeScript product retried with backoff; whether to
+extend ADR174 to connection-phase failures of idempotent reads, or to qualify a
+resumable fence, is an operator decision. Until then a sustained run is bounded by
+the endpoint, not by the task machinery, and the soak runs as fresh-fleet cycles.
+
+### Codex soak as fresh-fleet cycles (2026-09-19)
+
+Because a fleet's lifetime is bounded by the endpoint (above), the soak ran as
+fresh two-agent fleets of eight rounds each -- both agents addressed at once in
+the shared project room, every round verified for exact files, delivered replies
+visible on the homeserver, canonical Done and zero leases -- on a build carrying
+the ADR178 inbox instruction, the private qualification model overlay and a
+private transport diagnostic (neither committed).
+
+Result: 11 fleets, 50 rounds, 100 tasks passed with no wrong result; round time
+24-48 s, mean 38 s. With the ten-round fleet run before it, 60 rounds and 120
+tasks. From the second round on, each agent's frozen inbox carried the other
+agent's previous request as context; none was carried out.
+
+It was not a clean soak. Five fleets completed and closed cleanly. Four were ended
+by the endpoint: `Error(Connect, TimedOut)` each time, a single failed connect
+ending its worker (agent once, coordinator three times). Two were ended by the
+product:
+
+- A refused command approval ends the agent. Codex asked for
+  `item/commandExecution/requestApproval` during a plain file task; the adapter
+  answered `Policy`, the host closed the session (`host_closed`, whole tree
+  stopped) and the dispatch became outcome-unknown with its owner retained. The
+  TypeScript product denied and carried on. One occurrence in 100 tasks; which
+  validation refused it is not recorded by the product.
+- Both agents' Codex peers reached end-of-file within 6 ms (`peer_eof`, stage
+  update, cleanup unknown). Cause NOT established: the provider answered a ping,
+  no crash report, nothing in the system log, one occurrence. The service then
+  refused SIGTERM ("shutdown incomplete; original owner retained") although its
+  only children were two defunct processes it had not reaped.
+
+Also seen while bringing fleets up, and recorded as a probable concern rather than
+a traced defect: inline provisioning requires the owner to have joined the new
+agent's DM (`enrollment/provisioning.rs`) inside the 60 s SDK budget. When the
+test rig's owner-join helper failed, provisioning timed out and the coordinator
+was fenced for good -- a human owner would routinely take longer than that. (Seven
+fleets were lost to that helper, a rig defect: its unfiltered owner sync had grown
+past its own bounds. Those fleets are excluded from the soak counts.)
