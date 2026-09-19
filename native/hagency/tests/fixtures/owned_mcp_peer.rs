@@ -257,7 +257,12 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
             "fleet-ready",
             json!({"task_id":task,"pid":std::process::id()}),
         )?;
-        let until = Instant::now() + Duration::from_secs(5);
+        // The release comes only after the OTHER agent's helper is in flight too.
+        // On a small hosted runner that took longer than the 5 s this gate used
+        // to allow: the first helper gave up, the host saw peer_eof, and "both
+        // in flight" could then never become true. The host's operation budget
+        // is the real bound on this peer; stay under it, not under a guess.
+        let until = Instant::now() + Duration::from_secs(20);
         while !Path::new("owned-mcp.fleet-release").is_file() {
             if Instant::now() >= until {
                 return Err(invalid());
@@ -290,7 +295,9 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         let id = admitted["structuredContent"]["delivery_id"]
             .as_str()
             .ok_or_else(invalid)?;
-        let until = Instant::now() + Duration::from_secs(2);
+        // 128 polls at 100 ms: a loaded runner needs more than the 0.6 s that
+        // 128 polls at 5 ms allowed for the refusal to be recorded.
+        let until = Instant::now() + Duration::from_secs(12);
         let mut next = 12;
         loop {
             let inspected = rpc(
@@ -317,7 +324,7 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
                 return Err(invalid());
             }
             next += 1;
-            std::thread::sleep(Duration::from_millis(5));
+            std::thread::sleep(Duration::from_millis(100));
         }
     }
     if fleet_media {
@@ -403,7 +410,9 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         let id = admission["structuredContent"]["delivery_id"]
             .as_str()
             .ok_or_else(invalid)?;
-        let until = Instant::now() + Duration::from_secs(5);
+        // Encrypt, upload and publish under two concurrent agents outran 5 s on a
+        // hosted runner; the helper gave up and the round died as peer_eof.
+        let until = Instant::now() + Duration::from_secs(15);
         let mut next = 21;
         loop {
             let status = rpc(
@@ -440,7 +449,7 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
                 return Err(invalid());
             }
             next += 1;
-            std::thread::sleep(Duration::from_millis(50));
+            std::thread::sleep(Duration::from_millis(150));
         }
     }
     let done = mode == "done";
