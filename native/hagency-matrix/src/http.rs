@@ -44,9 +44,52 @@ impl reqwest::dns::Resolve for Resolver {
 }
 
 pub(crate) struct Http {
+    /// Writes, uploads and downloads: a fresh connection each, closed after use.
     client: Client,
+    /// JSON GETs only: keep-alive reuse (ADR174 amendment). A write never rides
+    /// a reused connection, so a stale one cannot make a write uncertain.
+    reader: Client,
     base: Url,
     limits: Limits,
+}
+/// First wait before redialling a GET whose connection never existed; doubled
+/// per attempt inside the original request deadline.
+const CONNECT_RETRY: std::time::Duration = std::time::Duration::from_millis(100);
+/// How one attempt ended, for the only caller allowed to repeat it.
+enum Failed {
+    /// The dial failed before a connection existed: no request byte left.
+    Connect,
+    Other(Error),
+}
+impl From<Error> for Failed {
+    fn from(error: Error) -> Self {
+        Self::Other(error)
+    }
+}
+impl From<Failed> for Error {
+    fn from(failed: Failed) -> Self {
+        match failed {
+            Failed::Connect => Self::Transport,
+            Failed::Other(error) => error,
+        }
+    }
+}
+/// reqwest also calls a TLS failure "connect", but an endpoint that fails
+/// verification is refused, never redialled. tokio-rustls reports those as an
+/// InvalidData io::Error, wrapped again by the connector; io::Error::source()
+/// skips a wrapped error, so descend through get_ref() as well. Timeouts,
+/// refusals, resets and resolution failures remain.
+fn connect_phase(error: &reqwest::Error) -> bool {
+    fn verification(error: &(dyn std::error::Error + 'static)) -> bool {
+        if let Some(io) = error.downcast_ref::<std::io::Error>()
+            && (io.kind() == std::io::ErrorKind::InvalidData
+                || io.get_ref().is_some_and(|inner| verification(inner)))
+        {
+            return true;
+        }
+        error.source().is_some_and(verification)
+    }
+    error.is_connect() && !verification(error)
 }
 /// Host-owned shared cadence, independent of credentials and Matrix authority.
 /// Keep one Arc across the fleet; no process-global endpoint registry or timers.
@@ -406,25 +449,36 @@ impl Http {
             header::ACCEPT_ENCODING,
             HeaderValue::from_static("identity"),
         );
-        headers.insert(header::CONNECTION, HeaderValue::from_static("close"));
-        let mut builder = Client::builder()
-            .no_proxy()
-            .redirect(reqwest::redirect::Policy::none())
-            .retry(reqwest::retry::never())
-            .referer(false)
-            .http1_only()
-            .pool_max_idle_per_host(0)
-            .connect_timeout(limits.connect)
-            .default_headers(headers)
-            .dns_resolver(Arc::new(Resolver {
-                host: endpoint.host_str().ok_or(Error::Config)?.into(),
-                permits: Arc::new(Semaphore::new(3)),
-            }));
-        for root in roots {
-            builder = builder.add_root_certificate(root.clone());
-        }
+        let host: String = endpoint.host_str().ok_or(Error::Config)?.into();
+        let build = |reuse: bool| {
+            let mut headers = headers.clone();
+            if !reuse {
+                headers.insert(header::CONNECTION, HeaderValue::from_static("close"));
+            }
+            let mut builder = Client::builder()
+                .no_proxy()
+                .redirect(reqwest::redirect::Policy::none())
+                .retry(reqwest::retry::never())
+                .referer(false)
+                .http1_only()
+                .pool_max_idle_per_host(if reuse { 2 } else { 0 })
+                // Far below any server's idle close, so a reused connection
+                // is one the peer still holds open.
+                .pool_idle_timeout(std::time::Duration::from_secs(10))
+                .connect_timeout(limits.connect)
+                .default_headers(headers)
+                .dns_resolver(Arc::new(Resolver {
+                    host: host.clone(),
+                    permits: Arc::new(Semaphore::new(3)),
+                }));
+            for root in roots {
+                builder = builder.add_root_certificate(root.clone());
+            }
+            builder.build().map_err(|_| Error::Config)
+        };
         Ok(Self {
-            client: builder.build().map_err(|_| Error::Config)?,
+            client: build(false)?,
+            reader: build(true)?,
             base: endpoint.clone(),
             limits: limits.clone(),
         })
@@ -438,8 +492,10 @@ impl Http {
     ) -> Result<Response, Error> {
         let deadline = Instant::now() + self.limits.request;
         for attempt in 0..4 {
-            let response = self
-                .perform(
+            // One budget of four attempts, whether the last one ended in a
+            // complete 429 or never reached the peer at all.
+            let outcome = match self
+                .perform_once(
                     reqwest::Method::GET,
                     segments,
                     query,
@@ -447,25 +503,28 @@ impl Http {
                     cancel,
                     deadline,
                 )
-                .await?;
-            if response.status != 429 || attempt == 3 {
-                return Ok(response);
-            }
-            let Some(delay) = response
-                .retry_delay
-                .and_then(|delay| delay.checked_mul(1 << attempt))
-            else {
-                return Ok(response);
+                .await
+            {
+                Ok(response) if response.status != 429 => return Ok(response),
+                Ok(response) => Ok(response),
+                Err(Failed::Connect) => Err(Error::Transport),
+                Err(Failed::Other(error)) => return Err(error),
             };
-            let Some(next) = Instant::now()
-                .checked_add(delay)
-                .filter(|next| *next < deadline)
-            else {
-                return Ok(response);
+            let delay = match &outcome {
+                Ok(response) => response.retry_delay,
+                Err(_) => Some(CONNECT_RETRY),
+            }
+            .and_then(|delay| delay.checked_mul(1 << attempt));
+            let next = delay
+                .filter(|_| attempt < 3)
+                .and_then(|delay| Instant::now().checked_add(delay))
+                .filter(|next| *next < deadline);
+            let Some(next) = next else {
+                return outcome;
             };
             wait(cancel, deadline, tokio::time::sleep_until(next)).await?;
         }
-        unreachable!("finite GET loop always returns its last response")
+        unreachable!("finite GET loop always returns its last outcome")
     }
     pub(crate) async fn post(
         &self,
@@ -499,6 +558,7 @@ impl Http {
         )
         .await
     }
+    /// Single attempt, as every write stays: a connect failure is Transport.
     async fn perform(
         &self,
         method: reqwest::Method,
@@ -508,8 +568,21 @@ impl Http {
         cancel: &CancellationToken,
         deadline: Instant,
     ) -> Result<Response, Error> {
+        Ok(self
+            .perform_once(method, segments, query, body, cancel, deadline)
+            .await?)
+    }
+    async fn perform_once(
+        &self,
+        method: reqwest::Method,
+        segments: &[&str],
+        query: Option<&[(&str, &str)]>,
+        body: Option<String>,
+        cancel: &CancellationToken,
+        deadline: Instant,
+    ) -> Result<Response, Failed> {
         if cancel.is_cancelled() {
-            return Err(Error::Cancelled);
+            return Err(Error::Cancelled.into());
         }
         let mut url = self.base.clone();
         url.path_segments_mut()
@@ -519,10 +592,15 @@ impl Http {
         if let Some(query) = query {
             url.query_pairs_mut().extend_pairs(query.iter().copied());
         }
-        let mut request = self.client.request(method, url);
+        let client = if method == reqwest::Method::GET {
+            &self.reader
+        } else {
+            &self.client
+        };
+        let mut request = client.request(method, url);
         if let Some(body) = body {
             if body.len() > self.limits.bytes {
-                return Err(Error::BodyTooLarge);
+                return Err(Error::BodyTooLarge.into());
             }
             request = request
                 .header(header::CONTENT_TYPE, "application/json")
@@ -535,7 +613,13 @@ impl Http {
             request.send(),
         )
         .await?
-        .map_err(|_| Error::Transport)?;
+        .map_err(|error| {
+            if connect_phase(&error) {
+                Failed::Connect
+            } else {
+                Failed::Other(Error::Transport)
+            }
+        })?;
         let status = response.status().as_u16();
         // Hyper 1.11's HTTP/1 parser itself has a 417792-byte header buffer cap.
         // The accepted header projection here is stricter, 16 KiB / 64 fields.
@@ -552,10 +636,10 @@ impl Http {
                 .any(|v| v != "identity")
             || headers.get_all(header::CONTENT_TYPE).iter().count() > 1
         {
-            return Err(Error::Headers);
+            return Err(Error::Headers.into());
         }
         if (300..400).contains(&status) {
-            return Err(Error::Redirect);
+            return Err(Error::Redirect.into());
         }
         let json_type = headers
             .get(header::CONTENT_TYPE)
@@ -563,7 +647,7 @@ impl Http {
             .and_then(|v| v.split(';').next())
             .is_some_and(|v| v.trim() == "application/json");
         if status == 200 && !json_type {
-            return Err(Error::Headers);
+            return Err(Error::Headers.into());
         }
         let retry_header = if status == 429 {
             Some(
@@ -578,7 +662,7 @@ impl Http {
         };
         let cap = self.limits.bytes;
         if response.content_length().is_some_and(|n| n > cap as u64) {
-            return Err(Error::BodyTooLarge);
+            return Err(Error::BodyTooLarge.into());
         }
         let mut bytes = Vec::new();
         loop {
@@ -593,14 +677,14 @@ impl Http {
                 break;
             };
             if chunk.len() > cap.saturating_sub(bytes.len()) {
-                return Err(Error::BodyTooLarge);
+                return Err(Error::BodyTooLarge.into());
             }
             bytes.extend_from_slice(&chunk);
         }
         let value = if json_type {
             match wire::json(&bytes) {
                 Ok(v) => Some(v),
-                Err(error) if status == 200 => return Err(error),
+                Err(error) if status == 200 => return Err(error.into()),
                 Err(_) => None,
             }
         } else {
@@ -671,3 +755,7 @@ mod rate_limit_tests;
 #[cfg(test)]
 #[path = "http/pacing_tests.rs"]
 mod pacing_tests;
+
+#[cfg(test)]
+#[path = "http/connect_retry_tests.rs"]
+mod connect_retry_tests;

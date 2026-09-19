@@ -38,3 +38,56 @@ isolated services with their original SDK stores; root3 then passes actual
 two-agent/two-round private-DM execution in Robrix. Earlier429 failures remain
 recorded. This is recovery after the fix, not a controlled live429 injection or
 a claim that every server quota can fit the bounded retry interval.
+
+## Amendment (2026-09-19): connect-phase redial and GET connection reuse
+
+Operator decision after the two-agent soak. "No transport error ... retries" above
+is narrowed for one case; everything else in this decision stands.
+
+Evidence. Live fleets against the existing homeserver ended after 6, 10 and 16
+minutes, and 4 of 11 soak fleets the same way: one failed dial ended its worker for
+good, and once took the other two workers with Generation within 240 ms. A private
+diagnostic build printed what the client discards: `ConnectError("tcp connect
+error", TimedOut)` -- the connect budget elapsing with no TCP handshake. An
+independent probe saw the same port unreachable in the same second while the same
+host answered on other ports; separately, the product's dial failed while the
+probe's own dials succeeded, a per-connection loss a fresh source port avoids. The
+client dialled a fresh connection for every request (`Connection: close`, no idle
+pool) -- thousands per fleet per ten minutes, each one a chance to meet this. No
+recorded decision explains that setting; it arrived with the first transport
+commit beside "implicit HTTP retries ... disabled" (ADR047). The TypeScript bridge,
+with keep-alive and backoff, has run for days on the same endpoint.
+
+Decision.
+
+1. A JSON GET whose failure is connect-phase -- the dial failed before a
+   connection existed, so no request byte left -- is redialled. It shares the four
+   attempts and the one original deadline with the 429 rule; waits start at 100 ms
+   and double, are cancellable, pass the pacing gate like any attempt, and a wait
+   that cannot fit the deadline is not started. When attempts run out the failure
+   is the same Transport word and the collector fences exactly as before. This is
+   stronger ground than a 429: there the peer answered; here it never heard.
+2. A TLS verification failure is "connect" to reqwest too, but it is a refusal and
+   is never redialled. tokio-rustls reports it as an InvalidData io::Error wrapped
+   by the connector; `io::Error::source()` skips a wrapped error, so the classifier
+   descends through `get_ref()`.
+3. JSON GETs use their own client with keep-alive reuse (two idle connections, ten
+   seconds idle). Every POST, PUT, upload and download keeps the original client:
+   a fresh connection, `Connection: close`, one attempt. The write paths commit
+   their "possible" marker before dialling and say so ("even connect errors ... are
+   uncertain. A stable transaction ID alone is not retry authority"); a stale
+   reused connection failing mid-write would add uncertain outcomes, so writes do
+   not ride reused connections and are not redialled.
+
+Not decided here, deliberately. A lost GET response -- including one lost on a
+reused connection the peer has just closed -- is still not retried; the short idle
+bound is the mitigation, and the spec scenario "a lost GET response ... exactly one
+request" stands. A fenced worker still does not resume, so restart and recovery are
+unchanged. Which device in front of the endpoint drops the dials is not
+established. The second Matrix client in the `provision` command is untouched.
+
+Verification: five offline tests in `http/connect_retry_tests.rs` (late peer,
+bounds and cancellation, single-attempt writes, the TLS exclusion, reuse versus
+fresh write connections); the Matrix crate's 235 tests pass. Live evidence is
+recorded in docs/progress.md once a single fleet has run past the earlier
+lifetimes.

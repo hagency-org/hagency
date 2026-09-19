@@ -9,12 +9,22 @@ tags: [active, rust, matrix, recovery]
 
 An explicit Matrix429 on an observational GET should wait and re-read within
 its original request budget before the collector applies existing failure fencing.
+So should a GET whose connection never existed: nothing was sent, so nothing can
+be repeated. GETs reuse connections so that far fewer dials are needed at all.
 
 ## Constraints
 
-- Only JSON GET requests may repeat after an actual complete429 response.
-- At most four total attempts, one original absolute request deadline, cancellable
-  waits and existing response/body bounds. Never retry failed/unknown transport.
+- Only JSON GET requests may repeat, and only after an actual complete429 response
+  or a connect-phase failure: the dial failed before any connection existed, so no
+  request byte left. A TLS verification failure is a refusal, not a connect-phase
+  failure, and is never redialled.
+- At most four total attempts across both causes, one original absolute request
+  deadline, cancellable waits and existing response/body bounds. A connect-phase
+  wait starts at100ms and doubles; one that cannot fit the deadline is not started.
+  Never retry any other failed or unknown transport, including a lost response.
+- JSON GETs may reuse keep-alive connections of their own client, idle at most10s.
+  Every POST/PUT/upload/download dials a fresh connection and closes it, so a stale
+  reused connection can never make a write uncertain.
 - Honor integer Retry-After seconds and Matrix retry_after_ms using the larger
   delay. Invalid hints refuse; absent hints use bounded exponential1s backoff.
 - POST/PUT/upload/download remain single-attempt with original custody semantics.
@@ -50,3 +60,35 @@ Scenario: Mutations and uncertain transport never repeat
   Given POST/PUT429 or a lost GET response
   When the original HTTP call finishes
   Then exactly one request was emitted
+
+Scenario: A GET whose connection never existed is redialled and sent once
+  Test: native_matrix_get_connect_retry_reaches_a_late_peer
+  Given a loopback port that refuses connections until a peer starts listening
+  When a JSON GET runs across that moment
+  Then the call is still waiting to redial after the refusal
+  And the peer receives exactly one request and the response is actual200
+
+Scenario: Connect-phase redials share the budget and never grant a fresh deadline
+  Test: native_matrix_get_connect_retry_bounds
+  Given a port that never accepts, a deadline too short for the next wait, or cancellation
+  When a GET runs
+  Then four dials and three growing waits end in the original Transport failure
+  And a wait that cannot fit is not started and a wait in progress is cancellable
+
+Scenario: A write whose dial is refused stays a single attempt
+  Test: native_matrix_write_connect_failure_stays_single_attempt
+  Given a port that refuses connections
+  When POST and PUT run
+  Then each fails with Transport without running the redial schedule
+
+Scenario: A TLS verification failure is refused rather than redialled
+  Test: native_matrix_connect_phase_excludes_tls_verification
+  Given a refused dial and an endpoint whose certificate is not trusted
+  When each failure is classified and the untrusted GET runs
+  Then only the refused dial is connect-phase and the untrusted GET fails without the schedule
+
+Scenario: GETs reuse a connection and writes never do
+  Test: native_matrix_get_reuses_connections_and_writes_do_not
+  Given a keep-alive peer that counts accepted connections
+  When three GETs then a PUT and a POST run
+  Then the GETs share one connection and each write dials its own and asks for it to be closed
