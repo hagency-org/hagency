@@ -28,6 +28,7 @@ pub struct WarmHostPlan {
     approvals: ApprovalHost,
     limits: WarmLimits,
     files: Option<(usize, bool, bool)>,
+    coordination: bool,
     local_codex: Option<Arc<crate::LocalCodex>>,
 }
 /// The fixed native task helper, loopback origin and retained private context
@@ -107,6 +108,7 @@ impl WarmHostPlan {
             approvals,
             limits,
             files: None,
+            coordination: false,
             local_codex: None,
         })
     }
@@ -139,6 +141,11 @@ impl WarmHostPlan {
         self.files = Some((limit, send, receive));
         Ok(self)
     }
+    /// Presentation only (ADR180): every agent host may call coordination tools.
+    pub fn with_coordination_tools(mut self) -> Self {
+        self.coordination = true;
+        self
+    }
     pub async fn start(
         &self,
         domain: DomainStore,
@@ -168,6 +175,7 @@ impl WarmHostPlan {
         let approvals = self.approvals.clone();
         let limits = self.limits;
         let files = self.files;
+        let coordination = self.coordination;
         let local_codex = self.local_codex.clone();
         // A lost caller does not discard a possible owner on an HTTP worker:
         // this retained blocking task owns the returned WarmRuntime until handoff.
@@ -221,6 +229,9 @@ impl WarmHostPlan {
                 if receive {
                     host = host.with_receive_tools()?;
                 }
+            }
+            if coordination {
+                host = host.with_coordination_tools()?;
             }
             if let Some(account) = account {
                 host = host.with_managed_account(account)?;

@@ -17,7 +17,7 @@ and verify real helper task maintenance separately from upstream and cleanup out
 - Derive task identity and capability from the exact owned dispatch scope and claim.
 - Keep capability values only in private inherited launch environment, never config or prompt bytes.
 - Preserve fixed on-request workspace-write network-disabled policy and deny unsupported approvals.
-- Port ADR-021's exact per-tool confirmation settings for the four authenticated current-task tools, including complete_task_with_reply. Never set a server-wide approval mode or exempt optional file tools, shell commands, other servers or actual emitted elicitations.
+- Port ADR-021's exact per-tool confirmation settings for the four authenticated current-task tools, including complete_task_with_reply, and for comment_task only when the host opts into the ADR180 coordination group. Never set a server-wide approval mode or exempt optional file tools, coordination tools that reach other sessions, shell commands, other servers or actual emitted elicitations.
 - Keep canonical Done and its epoch increment separate from upstream completion or lease release.
 - Require actual helper response readback and exit for the heartbeat fixture; record Done acknowledgement and exit as observed or unknown.
 - Keep the exact existing fingerprint and negative historical fence after task epoch changes.

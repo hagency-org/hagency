@@ -27,6 +27,9 @@ struct Config {
     send_file: bool,
     #[serde(default)]
     receive_file: bool,
+    /// ADR180: let owned Codex dispatches call the coordination tools.
+    #[serde(default)]
+    coordination_tools: bool,
     #[serde(default)]
     receive_inbox: Option<hagency_core::received_files::ReceiveInboxPlan>,
     /// Existing verified Matrix session IDs whose timelines the continuous
@@ -559,6 +562,11 @@ impl Prepared {
                 .map_err(|_| Failure::Config)?;
             host = host.with_receive_tools().map_err(|_| Failure::Config)?;
         }
+        if config.coordination_tools {
+            host = host
+                .with_coordination_tools()
+                .map_err(|_| Failure::Config)?;
+        }
         let namespace = hagency_core::canonical::digest(&serde_json::json!([
             "native_file_storage_v1",
             config.matrix.origin,
@@ -821,6 +829,13 @@ impl Prepared {
             )
             .and_then(|plan| {
                 plan.with_file_access(config.file_limit, config.send_file, config.receive_file)
+            })
+            .map(|plan| {
+                if config.coordination_tools {
+                    plan.with_coordination_tools()
+                } else {
+                    plan
+                }
             })
             .map_err(|_| Failure::Config)?;
             if uses_local_codex {

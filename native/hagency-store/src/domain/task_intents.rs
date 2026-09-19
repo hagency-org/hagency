@@ -438,9 +438,21 @@ impl DomainRepository {
         let root = if let Some(root) = input.root_sequence {
             root
         } else if let Some(id) = &d.task_id {
-            binding(&tx, id)?
-                .map(|(_, seq)| seq)
-                .ok_or(Error::RunnerAuthority)?
+            match binding(&tx, id)? {
+                Some((_, seq)) => seq,
+                // A task minted from a verified agent inbox has no intent, so
+                // its canonical source is the waking entry: selection binds it
+                // last to this dispatch. Without it every delegation from a
+                // Matrix request was refused. A task with no bound input still
+                // has no source; the visibility check below applies either way.
+                None => tx
+                    .query_row(
+                        "SELECT MAX(message_sequence) FROM dispatch_inputs WHERE dispatch_id=?1",
+                        [&cap.dispatch_id],
+                        |r| r.get::<_, Option<u64>>(0),
+                    )?
+                    .ok_or(Error::RunnerAuthority)?,
+            }
         } else {
             tx.query_row("SELECT m.sequence FROM admitted_messages m JOIN session_inputs si ON si.message_sequence=m.sequence WHERE si.session_id=?1 AND (si.processed_at IS NOT NULL OR si.dispatch_id=?2) AND json_extract(m.config,'$.thread_root') IS NULL ORDER BY m.sequence DESC LIMIT 1",params![d.session_id,cap.dispatch_id],|r|r.get(0)).optional()?.ok_or(Error::RunnerAuthority)?
         };

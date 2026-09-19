@@ -854,6 +854,98 @@ fn native_agent_inbox_names_the_waking_entry_as_the_request() {
     }
 }
 
+/// Live, an owner-approved delegate_task from a Matrix request was refused with
+/// 403: an inbox-minted task has no intent, so an omitted root found no source.
+/// Its source is the waking entry that selection bound last to the dispatch.
+#[test]
+fn native_agent_inbox_task_delegates_from_its_waking_entry() {
+    use hagency_core::task_intents::{Delegation, TaskDefinition};
+    let mut f = Fixture::new(1);
+    // The fixture's own dispatch holds s0 and its workspace; use a second,
+    // room-level session like a live project room: a delegated task gets its own
+    // thread rooted at the source message, so that message cannot be in a thread.
+    f.db.resolve_verified_matrix_session(
+        &SessionBinding {
+            id: "s9".into(),
+            engagement_id: f.engagement.clone(),
+            room_id: "!project:example.test".into(),
+            thread_root: None,
+        },
+        2990,
+    )
+    .unwrap();
+    f.db.register_workspace("work9").unwrap();
+    let mut admit = |event_id: &str, mention: &str, origin_ts: u64| {
+        let observation = MatrixEventObservation {
+            scope: f.db.matrix_ingress_scope("s9").unwrap(),
+            event: InboundMessage {
+                server_name: "example.test".into(),
+                room_id: "!project:example.test".into(),
+                event_id: event_id.into(),
+                sender_mxid: "@owner:example.test".into(),
+                thread_root: None,
+                body: format!("{mention} hand the report to a colleague"),
+                kind: "m.text".into(),
+                origin_ts,
+            },
+            mentions: BTreeSet::from([mention.to_owned()]),
+            encrypted: true,
+        };
+        f.db.admit_matrix_event(&observation, origin_ts + 1)
+            .unwrap()
+    };
+    let context = admit("$for_other", "@other:example.test", 3000);
+    let wake = admit("$for_worker", "@worker:example.test", 3002);
+    assert!(!context.wake && wake.wake);
+    let plan = AgentInboxPlan {
+        session_id: "s9".into(),
+        workspace_id: "work9".into(),
+    };
+    let AgentInboxSelection::Selected {
+        task_id,
+        dispatch_id,
+        ..
+    } = f.db.select_agent_inbox(&plan, 3004).unwrap()
+    else {
+        panic!("verified wake did not create an agent dispatch")
+    };
+    let cap =
+        f.db.claim_dispatch("runner_s9", 3005, 60_000, 120_000, 8)
+            .unwrap()
+            .unwrap();
+    assert_eq!(cap.dispatch_id, dispatch_id);
+    f.db.start_dispatch(&cap, 3006).unwrap();
+    let engagement = f.engagement.clone();
+    let delegation = |call: &str, root: Option<u64>| Delegation {
+        call_id: call.into(),
+        assignee_engagement: engagement.clone(),
+        root_sequence: root,
+        input_sequences: vec![],
+        definition: TaskDefinition {
+            title: "delegated report".into(),
+            ..TaskDefinition::default()
+        },
+    };
+    let created =
+        f.db.delegate_task(&cap, &delegation("call-1", None), 3007)
+            .unwrap();
+    assert_ne!(created.task_id, task_id);
+    let root: u64 = f
+        .sql()
+        .query_row(
+            "SELECT root_sequence FROM task_intents WHERE task_id=?1",
+            [&created.task_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(root, wake.sequence);
+    // An input this dispatch cannot see is still refused as a root.
+    assert!(matches!(
+        f.db.delegate_task(&cap, &delegation("call-2", Some(wake.sequence + 100)), 3008),
+        Err(Error::RunnerAuthority)
+    ));
+}
+
 fn verify_schema_upgrade() {
     let f = Fixture::new(1);
     let sql = f.sql();

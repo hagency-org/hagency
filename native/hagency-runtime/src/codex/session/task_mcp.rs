@@ -1,6 +1,6 @@
 //! Codex projection of the shared host-only task-helper descriptor.
 use super::{Error, Settings};
-pub use crate::task_mcp::{TASK_MCP_ENV, TASK_MCP_TOOLS};
+pub use crate::task_mcp::{COORDINATION_TOOLS, TASK_MCP_ENV, TASK_MCP_TOOLS};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 pub struct TaskMcp {
@@ -26,6 +26,10 @@ impl TaskMcp {
         self.profile = self.profile.with_receive_tools();
         self
     }
+    pub fn with_coordination_tools(mut self) -> Self {
+        self.profile = self.profile.with_coordination_tools();
+        self
+    }
     pub(super) fn config(&self, cwd: &str) -> Value {
         let mut environment = TASK_MCP_ENV.to_vec();
         let mut tools = TASK_MCP_TOOLS.to_vec();
@@ -36,6 +40,9 @@ impl TaskMcp {
         if self.profile.receive_tools {
             environment.push(Self::RECEIVE_TOOLS_ENV);
             tools.extend(["list_received_files", "receive_file"]);
+        }
+        if self.profile.coordination_tools {
+            tools.extend(COORDINATION_TOOLS);
         }
         let mut config = json!({
             "mcp_servers.hagency_task_writer": {
@@ -53,6 +60,12 @@ impl TaskMcp {
         // each call. Never use a server-wide mode or approve optional tools.
         for tool in TASK_MCP_TOOLS {
             config["mcp_servers.hagency_task_writer"]["tools"][tool] =
+                json!({"approval_mode":"approve"});
+        }
+        // ADR-021 names comment_task among its task-maintenance tools. The other
+        // coordination tools reach other sessions: optional, never pre-approved.
+        if self.profile.coordination_tools {
+            config["mcp_servers.hagency_task_writer"]["tools"]["comment_task"] =
                 json!({"approval_mode":"approve"});
         }
         if let Some(root) = &self.profile.system_root {
@@ -140,6 +153,61 @@ mod tests {
                 assert!(guidance.contains("Receiving a file does not mark the task Done"));
             }
         }
+    }
+    /// ADR180: the coordination group is an explicit host opt-in. Only
+    /// comment_task (ADR-021 task maintenance) is pre-approved; every tool that
+    /// reaches another session stays an owner-approved optional tool.
+    #[test]
+    fn native_task_mcp_coordination_configuration() {
+        let root = std::env::temp_dir();
+        let helper = |coordination: bool| {
+            let helper =
+                TaskMcp::new(root.join("native-helper"), "task_assigned".into(), None).unwrap();
+            let helper = if coordination {
+                helper.with_coordination_tools()
+            } else {
+                helper
+            };
+            Settings::new(root.clone(), "offline".into(), "medium".into())
+                .unwrap()
+                .with_task_mcp(helper)
+                .thread_request(None)
+        };
+        let off = helper(false);
+        let mcp = &off["config"]["mcp_servers.hagency_task_writer"];
+        assert_eq!(mcp["enabled_tools"], json!(TASK_MCP_TOOLS));
+        assert!(
+            !off["developerInstructions"]
+                .as_str()
+                .unwrap()
+                .contains("delegate_task")
+        );
+
+        let on = helper(true);
+        let mcp = &on["config"]["mcp_servers.hagency_task_writer"];
+        let mut tools = TASK_MCP_TOOLS.to_vec();
+        tools.extend(COORDINATION_TOOLS);
+        assert_eq!(mcp["enabled_tools"], json!(tools));
+        // No marker and no new environment: the helper already serves these.
+        assert_eq!(mcp["env_vars"], json!(TASK_MCP_ENV));
+        assert_eq!(mcp["args"], json!(["mcp"]));
+        assert!(mcp.get("default_tools_approval_mode").is_none());
+        let approved = mcp["tools"].as_object().unwrap();
+        assert_eq!(approved.len(), TASK_MCP_TOOLS.len() + 1);
+        assert_eq!(approved["comment_task"], json!({"approval_mode":"approve"}));
+        for tool in COORDINATION_TOOLS.iter().filter(|t| **t != "comment_task") {
+            assert!(
+                !approved.contains_key(*tool),
+                "{tool} must stay owner-approved"
+            );
+        }
+        // Graph tools stay out of the profile.
+        for tool in ["create_graph", "get_graph", "list_graphs", "cancel_graph"] {
+            assert!(!tools.contains(&tool));
+        }
+        let guidance = on["developerInstructions"].as_str().unwrap();
+        assert!(guidance.contains("delegate_task") && guidance.contains("comment_task"));
+        assert_eq!(on["approvalPolicy"], "on-request");
     }
     #[test]
     fn native_task_mcp_host_configuration() {

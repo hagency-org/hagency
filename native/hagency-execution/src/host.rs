@@ -65,6 +65,7 @@ pub struct Host {
     pub(crate) task_context: Option<Arc<hagency_store::task_context::RetainedTaskContext>>,
     file_tools: bool,
     receive_tools: bool,
+    coordination_tools: bool,
     #[cfg(test)]
     pub(crate) discard_start_reply: bool,
     #[cfg(test)]
@@ -148,6 +149,7 @@ impl Host {
             task_context: None,
             file_tools: false,
             receive_tools: false,
+            coordination_tools: false,
             #[cfg(test)]
             discard_start_reply: false,
             #[cfg(test)]
@@ -270,6 +272,16 @@ impl Host {
     pub fn with_guardian_prepare_stall(mut self) -> Self {
         self.guardian_prepare_stall = true;
         self
+    }
+    /// Presentation only (ADR180): lets the owned runtime call the coordination
+    /// tools its helper already serves. Project and fleet authority stay in the
+    /// service behind the runner capability.
+    pub fn with_coordination_tools(mut self) -> Result<Self, super::Failure> {
+        if self.task_helper.is_none() {
+            return Err(super::Failure::Admission);
+        }
+        self.coordination_tools = true;
+        Ok(self)
     }
     /// Presentation only, after configuring the original native task helper.
     pub fn with_receive_tools(mut self) -> Result<Self, super::Failure> {
@@ -431,6 +443,9 @@ impl Host {
             if self.receive_tools {
                 environment.insert(TaskMcp::RECEIVE_TOOLS_ENV.into(), "1".into());
                 helper = helper.with_receive_tools();
+            }
+            if self.coordination_tools {
+                helper = helper.with_coordination_tools();
             }
             if task_context.is_some() {
                 late_helper = Some(helper);
