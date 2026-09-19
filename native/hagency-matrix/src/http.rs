@@ -47,13 +47,14 @@ pub(crate) struct Http {
     /// Writes, uploads and downloads: a fresh connection each, closed after use.
     client: Client,
     /// JSON GETs only: keep-alive reuse (ADR174 amendment). A write never rides
-    /// a reused connection, so a stale one cannot make a write uncertain.
+    /// a reused connection, so a stale one cannot make a write uncertain; a
+    /// write whose dial never connected is redialled, never re-sent.
     reader: Client,
     base: Url,
     limits: Limits,
 }
-/// First wait before redialling a GET whose connection never existed; doubled
-/// per attempt inside the original request deadline.
+/// First wait before redialling a JSON request whose connection never existed;
+/// doubled per attempt inside the original request deadline.
 const CONNECT_RETRY: std::time::Duration = std::time::Duration::from_millis(100);
 /// How one attempt ended, for the only caller allowed to repeat it.
 enum Failed {
@@ -558,7 +559,9 @@ impl Http {
         )
         .await
     }
-    /// Single attempt, as every write stays: a connect failure is Transport.
+    /// A JSON write is sent at most once. Only a dial that failed before any
+    /// connection existed is repeated: no byte of the request left, so there is
+    /// nothing to send twice. Any other failure, and a complete 429, ends it.
     async fn perform(
         &self,
         method: reqwest::Method,
@@ -568,9 +571,32 @@ impl Http {
         cancel: &CancellationToken,
         deadline: Instant,
     ) -> Result<Response, Error> {
-        Ok(self
-            .perform_once(method, segments, query, body, cancel, deadline)
-            .await?)
+        for attempt in 0..4 {
+            match self
+                .perform_once(
+                    method.clone(),
+                    segments,
+                    query,
+                    body.clone(),
+                    cancel,
+                    deadline,
+                )
+                .await
+            {
+                Err(Failed::Connect) => {}
+                outcome => return Ok(outcome?),
+            }
+            let next = CONNECT_RETRY
+                .checked_mul(1 << attempt)
+                .filter(|_| attempt < 3)
+                .and_then(|delay| Instant::now().checked_add(delay))
+                .filter(|next| *next < deadline);
+            let Some(next) = next else {
+                return Err(Error::Transport);
+            };
+            wait(cancel, deadline, tokio::time::sleep_until(next)).await?;
+        }
+        unreachable!("finite write loop always returns its last outcome")
     }
     async fn perform_once(
         &self,

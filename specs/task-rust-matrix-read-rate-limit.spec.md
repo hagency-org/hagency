@@ -9,15 +9,17 @@ tags: [active, rust, matrix, recovery]
 
 An explicit Matrix429 on an observational GET should wait and re-read within
 its original request budget before the collector applies existing failure fencing.
-So should a GET whose connection never existed: nothing was sent, so nothing can
-be repeated. GETs reuse connections so that far fewer dials are needed at all.
+So should any JSON request whose connection never existed: nothing was sent, so a
+new dial repeats nothing. GETs reuse connections so far fewer dials are needed.
 
 ## Constraints
 
-- Only JSON GET requests may repeat, and only after an actual complete429 response
-  or a connect-phase failure: the dial failed before any connection existed, so no
-  request byte left. A TLS verification failure is a refusal, not a connect-phase
-  failure, and is never redialled.
+- Only a JSON GET may repeat a request, and only after an actual complete429 response.
+- Any JSON request -- GET, POST or PUT -- whose failure is connect-phase is redialled:
+  the dial failed before any connection existed, so no request byte left and a new
+  dial repeats nothing. A write is therefore still sent at most once. A TLS
+  verification failure is a refusal, not a connect-phase failure, and is never
+  redialled.
 - At most four total attempts across both causes, one original absolute request
   deadline, cancellable waits and existing response/body bounds. A connect-phase
   wait starts at100ms and doubles; one that cannot fit the deadline is not started.
@@ -27,7 +29,8 @@ be repeated. GETs reuse connections so that far fewer dials are needed at all.
   reused connection can never make a write uncertain.
 - Honor integer Retry-After seconds and Matrix retry_after_ms using the larger
   delay. Invalid hints refuse; absent hints use bounded exponential1s backoff.
-- POST/PUT/upload/download remain single-attempt with original custody semantics.
+- A POST/PUT429 and every upload/download remain single-attempt, and a write that
+  ends in Transport keeps its original custody semantics: the outcome is unknown.
 - No response is positive authority until the ordinary fresh validation passes.
 - No automatic revival of retired routes or replay of old live requests.
 
@@ -75,11 +78,12 @@ Scenario: Connect-phase redials share the budget and never grant a fresh deadlin
   Then four dials and three growing waits end in the original Transport failure
   And a wait that cannot fit is not started and a wait in progress is cancellable
 
-Scenario: A write whose dial is refused stays a single attempt
-  Test: native_matrix_write_connect_failure_stays_single_attempt
-  Given a port that refuses connections
-  When POST and PUT run
-  Then each fails with Transport without running the redial schedule
+Scenario: A write whose dial is refused is redialled and sent exactly once
+  Test: native_matrix_write_connect_failure_is_redialled_and_sent_once
+  Given a port that refuses connections until a peer starts listening, and one that never accepts
+  When POST and PUT run across that moment
+  Then each is still waiting to redial after the refusal and the peer receives it once on its own closed connection
+  And against the port that never accepts the schedule ends in the original Transport failure
 
 Scenario: A TLS verification failure is refused rather than redialled
   Test: native_matrix_connect_phase_excludes_tls_verification

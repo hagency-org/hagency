@@ -60,24 +60,34 @@ with keep-alive and backoff, has run for days on the same endpoint.
 
 Decision.
 
-1. A JSON GET whose failure is connect-phase -- the dial failed before a
-   connection existed, so no request byte left -- is redialled. It shares the four
-   attempts and the one original deadline with the 429 rule; waits start at 100 ms
-   and double, are cancellable, pass the pacing gate like any attempt, and a wait
-   that cannot fit the deadline is not started. When attempts run out the failure
-   is the same Transport word and the collector fences exactly as before. This is
-   stronger ground than a 429: there the peer answered; here it never heard.
+1. A JSON request -- GET, POST or PUT -- whose failure is connect-phase (the dial
+   failed before a connection existed, so no request byte left) is redialled. That
+   repeats a dial, never a request: a write is still sent at most once. It shares
+   the four attempts and the one original deadline with the 429 rule; waits start
+   at 100 ms and double, are cancellable, pass the pacing gate like any attempt, and
+   a wait that cannot fit the deadline is not started. When attempts run out the
+   failure is the same Transport word: the collector fences exactly as before, and
+   a write's caller still treats its outcome as unknown. This is stronger ground
+   than a 429: there the peer answered; here it never heard.
 2. A TLS verification failure is "connect" to reqwest too, but it is a refusal and
    is never redialled. tokio-rustls reports it as an InvalidData io::Error wrapped
    by the connector; `io::Error::source()` skips a wrapped error, so the classifier
    descends through `get_ref()`.
 3. JSON GETs use their own client with keep-alive reuse (two idle connections, ten
    seconds idle). Every POST, PUT, upload and download keeps the original client:
-   a fresh connection, `Connection: close`, one attempt. The write paths commit
-   their "possible" marker before dialling and say so ("even connect errors ... are
-   uncertain. A stable transaction ID alone is not retry authority"); a stale
-   reused connection failing mid-write would add uncertain outcomes, so writes do
-   not ride reused connections and are not redialled.
+   a fresh connection and `Connection: close`, so a stale reused connection can
+   never make a write uncertain. A POST/PUT 429 is still not retried, and uploads
+   and downloads stay single-attempt: their bodies are streams and their custody
+   marks "possible" for the whole transfer.
+
+   First written as GET-only, because the write paths commit their "possible"
+   marker before dialling and say "even connect errors ... are uncertain". That
+   statement is about what a caller can conclude from the word Transport, and it
+   still holds. It does not bear on a redial made where the failure is still known
+   to be connect-phase. The same day, live: `POST keys/query` -- a read the Matrix
+   API spells as a POST -- failed one dial in the approval intake; as a single
+   attempt it stopped the approval pump and ended the coordinator and an agent
+   with OutcomeUnknown. Hence all JSON methods.
 
 Not decided here, deliberately. A lost GET response -- including one lost on a
 reused connection the peer has just closed -- is still not retried; the short idle
@@ -86,8 +96,9 @@ request" stands. A fenced worker still does not resume, so restart and recovery 
 unchanged. Which device in front of the endpoint drops the dials is not
 established. The second Matrix client in the `provision` command is untouched.
 
-Verification: five offline tests in `http/connect_retry_tests.rs` (late peer,
-bounds and cancellation, single-attempt writes, the TLS exclusion, reuse versus
-fresh write connections); the Matrix crate's 235 tests pass. Live evidence is
+Verification: five offline tests in `http/connect_retry_tests.rs` (a late peer for
+a GET, bounds and cancellation, a late peer for POST and PUT with exactly one
+request received, the TLS exclusion, reuse versus fresh write connections); the
+Matrix crate's 235 tests pass. Live evidence is
 recorded in docs/progress.md once a single fleet has run past the earlier
 lifetimes.

@@ -1,6 +1,6 @@
-//! ADR174 amendment: a GET whose connection never existed is redialled inside
-//! the original deadline and GETs reuse connections; every write stays a single
-//! attempt on a fresh connection.
+//! ADR174 amendment: a JSON request whose connection never existed is redialled
+//! inside the original deadline, and only GETs reuse connections. A write is
+//! never sent twice and always dials a fresh connection.
 use super::*;
 use crate::collector::fixtures as common;
 use std::sync::Mutex;
@@ -137,22 +137,49 @@ async fn native_matrix_get_connect_retry_bounds() {
 }
 
 #[tokio::test]
-async fn native_matrix_write_connect_failure_stays_single_attempt() {
-    // The same refusal costs a GET its whole schedule (seven waits' worth, as
-    // the bounds test pins). Both writes together must not come near it.
+async fn native_matrix_write_connect_failure_is_redialled_and_sent_once() {
+    // Live, one refused dial of POST keys/query stopped the approval pump and
+    // took two workers with it. Nothing had been sent, so the dial is repeated;
+    // the write itself still leaves exactly once, on its own connection.
+    for put in [false, true] {
+        let (socket, port) = reserved();
+        let seen = Arc::new(Seen::default());
+        let (_fixture, http) = client(port, Duration::from_secs(3));
+        let cancel = CancellationToken::new();
+        let write = async {
+            if put {
+                http.put(&PATH, "{\"once\":true}".into(), &cancel).await
+            } else {
+                http.post(&PATH, "{\"once\":true}".into(), &cancel).await
+            }
+        };
+        tokio::pin!(write);
+        assert!(
+            tokio::time::timeout(CONNECT_RETRY / 2, &mut write)
+                .await
+                .is_err()
+        );
+        let peer = tokio::spawn(serve(socket.listen(16).unwrap(), seen.clone()));
+        assert_eq!(write.await.unwrap().status, 200);
+        let heads = seen.heads.lock().unwrap();
+        assert_eq!(heads.len(), 1);
+        assert!(heads[0].starts_with(if put { "put " } else { "post " }));
+        assert!(heads[0].contains("connection: close"));
+        assert_eq!(seen.accepted.load(Ordering::SeqCst), 1);
+        peer.abort();
+    }
+
+    // A port that never accepts: the same schedule, then the same Transport
+    // word, so the caller's custody still treats the outcome as unknown.
     let (_socket, port) = reserved();
     let (_fixture, http) = client(port, Duration::from_secs(3));
-    let cancel = CancellationToken::new();
     let started = std::time::Instant::now();
     assert!(matches!(
-        http.post(&PATH, "{}".into(), &cancel).await,
+        http.post(&PATH, "{}".into(), &CancellationToken::new())
+            .await,
         Err(Error::Transport)
     ));
-    assert!(matches!(
-        http.put(&PATH, "{}".into(), &cancel).await,
-        Err(Error::Transport)
-    ));
-    assert!(started.elapsed() < CONNECT_RETRY * 7);
+    assert!(started.elapsed() >= CONNECT_RETRY * 7);
 }
 
 #[tokio::test]
