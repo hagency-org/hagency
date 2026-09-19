@@ -36,7 +36,7 @@ Source presence is not a claim that the complete path passes.
 | `router/src/runner.ts::runCodexDispatch`; `tests/router-runner.test.js`, `tests/router-codex-mcp-approval.test.js` | runtime `codex`, execution `Operation` | Real local 0.154.0 command/readback and message completion pass through Palpo/Robrix. File delivery exposed missing MCP elicitation handling; ADR160 ports exact active-item/arguments correlation and Once/Deny to the existing owner coordinator. ADR166 fixes reused approval sync cursors; Robrix accepts exact native 40-hex approval IDs. ADR167 admits Palpo nullable blurhash upload metadata. A fresh isolated live file task now passes approval, encrypted delivery, canonical Done and final Robrix reply. Previous unknown attempts remain preserved. Outside-workspace qualification remains unproven. |
 | `router/src/runner.ts::runClaudeDispatch`; `tests/router-runner.test.js` | runtime `OwnedClaudeSession`, `claude::SessionDriver` | Actual CLI initialize/task-helper binding work. Execution Prepared/spawn/drive/report and approval coordination remain Codex-specific. Join the existing path with original domain ownership. |
 | `lib/runtime/acp.js`, `lib/frameworks/octos.json`; `tests/acp-runtime.test.js`, `tests/acp-permission-requests.test.js` | No native Octos adapter yet | Port initialize/session/new/session/prompt and streamed updates. Verify installed OctosCode protocol mode, actual Octos backend and config-MCP behavior; do not infer them from mocks or a newer source checkout. |
-| `router/src/runner.ts::buildPrompt`, `mcp-server.js`, `lib/mcp-server-core.js`; `tests/ephemeral-session-tools.test.js` | runtime `task_mcp`, native `mcp/task_client/runner` | Actual helper reads/heartbeats the assigned task. The four-tool owned profile is NOT full TS coordination parity: task comments and paged room discussion still need mapping/porting. Confirmed live 2026-09-19: asked to delegate, a Codex agent answered that `delegate_task` is unavailable. The helper declares comment, accept, heartbeat, delegation, conversation, peer-message and graph tools, but Codex `enabled_tools` admits only `TASK_MCP_TOOLS` plus the capability-gated file tools (ADR101/105 show the gating pattern; coordination has no gate yet). |
+| `router/src/runner.ts::buildPrompt`, `mcp-server.js`, `lib/mcp-server-core.js`; `tests/ephemeral-session-tools.test.js` | runtime `task_mcp`, native `mcp/task_client/runner` | Actual helper reads/heartbeats the assigned task. The four-tool owned profile is NOT full TS coordination parity: task comments and paged room discussion still need mapping/porting. Confirmed live 2026-09-19: asked to delegate, a Codex agent answered that `delegate_task` is unavailable. The helper declares comment, accept, heartbeat, delegation, conversation, peer-message and graph tools, but Codex `enabled_tools` admits only `TASK_MCP_TOOLS` plus the capability-gated file tools (ADR101/105 show the gating pattern). ADR180 now adds an opt-in gate for delegation, task comments and the conversation and peer-message tools, owner-approved per call except comment_task; live, a delegation was approved by the owner and accepted by the store, and was then never delivered because the task-notice lane has no production caller in the fleet service. |
 | `backend-v2.js::requestThreadSessionOwnerApproval`, `lib/runtime-approval-client.js`; `tests/bridge-matrix-approval.test.js` | execution `approval`, Matrix `approval_delivery/approval_intake` | Codex MCP file approvals now join the same coordinator (ADR160), without widening the four task-tool exceptions. Startup owner wait is explicitly configurable within the original operation budget. Actual private Robrix Approve once now reaches an authenticated verdict and write-accepted native response; the subsequent send_file succeeds. The pinned provider still supplies no separate application acknowledgement. Claude has one-shot wire replies but no joined durable owner-grant path. |
 | `lib/session-file.js`, `router/src/files.ts`, `lib/matrix-file.js`; `tests/matrix-file-bridge.test.js` | native runner `files/received`, Matrix `upload/publication.rs`, file/media-store crates | Local Codex send_file now delivers a 34-byte encrypted attachment and final reply rendered in actual Robrix. Independent authenticated media download verifies exact plaintext bytes. Robrix native Save dialog blocks the headless harness, so its save-to-disk workflow remains unqualified. Encrypted native receive-file now passes exact bytes, owner approval, Done and rendered reply; native attachment-picker UI and other runner families remain open. |
 | TS runner result/settleAndRelease, task transitions and final replies | execution `operation.rs`, store `owned_dispatch/replies`, bootstrap `finish_attempt` | Two local successes meet distinct Done/stop/delivery checks. File failure retains an unsettled `owned_runner_failure` stop row despite observed whole-tree stop; generic orphan recovery correctly refuses it. ADR164 now joins an existing ADR162 receipt to explicit continuation through the shared stop-settlement kernel. This cannot retrofit the missing proof in the historical failure. Do not clear custody manually or erase the failure. Historical gen11 remains failed. |
@@ -701,10 +701,14 @@ with Deny; DM isolation from the plaintext project room; a second agent's DM tas
 during the first agent's long task; the long task itself (above). Receive-file was
 qualified on 2026-09-17; only the headless attachment picker is unavailable.
 
-Fixed: cross-agent context bleed. A request addressed to another participant rode
-along in the frozen inbox as unlabelled context and was carried out instead of the
-waking request (ADR178 amendment; store test plus a live rerun of the same inbox
-shape).
+Mitigated, NOT fixed: cross-agent context bleed. A request addressed to another
+participant rode along in the frozen inbox as unlabelled context and was carried
+out instead of the waking request. The ADR178 instruction names the waking entry
+as the request; it held through a live rerun and about fifty soak rounds, and then
+failed once on the identical inbox shape with the new instruction present. An
+instruction is not a control. The TypeScript product never put a message addressed
+to another participant into this agent's task at all; that structural rule is
+still owed here.
 
 Open, product: (1) coordination tools are unreachable by a live Codex agent (row
 above). (2) Restart and recovery: a plain restart ends at Startup because the
@@ -767,3 +771,43 @@ test rig's owner-join helper failed, provisioning timed out and the coordinator
 was fenced for good -- a human owner would routinely take longer than that. (Seven
 fleets were lost to that helper, a rig defect: its unfiltered owner sync had grown
 past its own bounds. Those fleets are excluded from the soak counts.)
+
+### After the operator decisions (2026-09-19)
+
+Three decisions were taken and implemented; each has offline tests, and the whole
+workspace passes (147 suites, 1233 tests).
+
+1. Connection failures (ADR174 amendment). A JSON request whose dial failed before
+   any connection existed is redialled inside its original deadline, and JSON GETs
+   reuse connections; every write still dials a fresh connection and is sent at
+   most once; uploads, downloads and a lost response are unchanged, and a TLS
+   verification failure is never redialled. It landed GET-only and was widened the
+   same day: live, one failed dial of `POST keys/query` stopped the approval pump
+   and ended the coordinator and an agent. Live since then: one fleet ran sixteen
+   rounds in twelve minutes with no transport failure and no redial needed, so the
+   redial itself has not yet been observed live.
+2. Coordination tools (ADR180), above.
+3. A Codex approval request the adapter refuses by policy is declined instead of
+   ending the turn (ADR046 amendment). Not observed live again: the request is
+   model-initiated and was seen once.
+
+What now ends a live fleet, in the order met:
+
+- Both agents' guardians exit together. Third occurrence: both owned attempts fail
+  within 2 ms (`peer_eof`, cleanup unknown); the service's two children are defunct
+  with exit code 1, which the unix guardian returns only after a stop whose
+  whole-tree cleanup is unproven. The guardian's stderr is discarded, so its stop
+  cause is lost. The macOS whole-system census is the one cause two independent
+  guardians share; that is a reading of the evidence, not a proof. The service then
+  refuses to shut down over the two unreaped children.
+- An owner approval that is not answered ends the agent when the owner wait
+  expires (outcome-unknown, owner retained). Seen three times while qualifying
+  coordination.
+- The context bleed, above.
+
+Also open: delegated work is never delivered (no task-notice pump in the fleet
+service); no tool tells an agent a peer's engagement ID; a refused argument shape
+returns only "invalid native command or runner context"; peer messages have no
+production wake lane; restart and recovery are unchanged. The official model is
+unavailable until 2026-09-24, so every live run here used the private qualification
+overlay and nothing has been qualified on the unmodified binary.

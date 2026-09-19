@@ -11620,3 +11620,33 @@ resumable fence; a capability gate for coordination tools; declining rather than
 closing on a refused approval -- are in docs/design/native-execution-parity.md.
 Seven further fleets were lost to a test-rig defect (an unfiltered owner sync that
 outgrew its own bounds) and are excluded.
+
+
+## 2026-09-19 (later) — three operator decisions, and what they exposed
+
+Decisions: redial connect-phase failures and reuse GET connections; gate
+coordination tools into the Codex profile; decline rather than close on a refused
+command approval; wait for the official model rather than add the reserve model.
+
+Landed: fc6288bc (ADR046 amendment: policy refusal declines, its resolution never
+reaches the coordinator, no-decline and malformed requests still end the session,
+eight declines end the turn); edf287b1 then 50b0079a (ADR174 amendment: redial for
+every JSON method, reuse for GETs only, TLS verification never redialled -- first
+GET-only, widened after a live `POST keys/query` dial failure stopped the approval
+pump); 7682983c (ADR180: `coordination_tools` option, eight tools, only
+comment_task pre-approved; store fix so a Matrix request can delegate from its
+waking entry, which was HTTP 403 live). Gates: fmt, strict clippy, whole workspace
+147 suites 1233 passed 0 failed, inventory 3/3, Rust bindings (see below).
+
+Live, with the option on: delegation called, approved by the owner in Robrix,
+accepted by the store, delegator replied with the new task's ID. The delegated task
+was never delivered: no task-notice pump runs in the fleet service.
+
+CORRECTION to the entry above: the context bleed is mitigated, not fixed. On a
+build carrying the ADR178 instruction, the identical inbox shape failed again: the
+agent carried out the other agent's older request and overwrote its own file.
+
+Still ending live fleets: both guardians exiting together (third occurrence, exit
+code 1 on both children, cause lost to a discarded stderr); an unanswered owner
+approval ending the agent at expiry. Detail in
+docs/design/native-execution-parity.md.
