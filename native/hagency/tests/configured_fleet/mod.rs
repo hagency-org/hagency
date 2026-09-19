@@ -60,6 +60,16 @@ impl Drop for Running {
         let _ = self.0.wait();
     }
 }
+/// One fleet at a time. Each fixture runs a real service process, three
+/// encrypted Matrix clients, per-agent guardians and scripted helpers. Cargo
+/// runs this binary's tests in parallel, and four of them on a hosted runner's
+/// three or four cores starved one another: a 5 s header deadline expired
+/// against the LOCAL fake, handoffs lost their warm owner, helpers ran out of
+/// patience. A fleet is qualified against its own budgets, not against three
+/// other fleets competing for the same cores.
+static ONE_FLEET: std::sync::LazyLock<std::sync::Arc<tokio::sync::Mutex<()>>> =
+    std::sync::LazyLock::new(Default::default);
+
 pub struct Fixture {
     root: tempfile::TempDir,
     state: PathBuf,
@@ -67,6 +77,9 @@ pub struct Fixture {
     pub fake: matrix::Fake,
     pub peer: Peer,
     child: Running,
+    // Fields drop in declaration order, so this goes last: the next fleet starts
+    // only after this one's service, fake and temporary state are gone.
+    _one_fleet: tokio::sync::OwnedMutexGuard<()>,
 }
 impl Fixture {
     pub async fn new(application_service: bool, media: bool) -> Self {
@@ -85,6 +98,7 @@ impl Fixture {
         paced_startup: bool,
         sdk_ms: Option<u64>,
     ) -> Self {
+        let one_fleet = ONE_FLEET.clone().lock_owned().await;
         let root = tempfile::tempdir().unwrap();
         let base = root.path().canonicalize().unwrap();
         let state = base.join("state");
@@ -280,6 +294,7 @@ impl Fixture {
             fake,
             peer,
             child,
+            _one_fleet: one_fleet,
         }
     }
     pub fn work(&self, index: usize) -> PathBuf {
