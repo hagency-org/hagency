@@ -29,6 +29,22 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
         binary.is_file(),
         "build the original execution probe before the owned selector"
     );
+    // The first exec of a freshly linked binary is slow: macOS evaluates it on
+    // first launch (measured 320 to 410 ms here, against 7 to 14 ms afterwards).
+    // These scenarios spawn the probe as their peer inside sub-second windows,
+    // so whichever ran first after a rebuild lost its window to that one delay:
+    // 4 of 6 first runs after a relink failed, none of 17 with a probe that had
+    // already run once. Pay it once, before any scenario's clock starts. The
+    // probe exits at once without a mode; its verdict is irrelevant.
+    static WARM: std::sync::Once = std::sync::Once::new();
+    WARM.call_once(|| {
+        let _ = std::process::Command::new(&binary)
+            .env_clear()
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    });
     let mut environment = BTreeMap::from([
         ("PATH".into(), "".into()),
         ("HAGENCY_OFFLINE_MODE".into(), mode.into()),
