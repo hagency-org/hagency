@@ -11542,3 +11542,40 @@ completed; 14 canonical tasks, 14 done; 14 final replies delivered. No retry, no
 restart, no operator recovery action. This is a short soak (about six minutes of
 work), not the sustained qualification the plan asks for. The instance was left
 running for operator inspection in Robrix.
+
+
+2026-09-18/19 (Claude) hosted CI is green with this work: 4e21f197, both workflows.
+
+General CI: success. Native Rust: success, with console-browser, Ubuntu and macOS
+all green for the first time since the 2026-09-15..17 work was committed (Windows
+is paused and non-blocking). Ubuntu and macOS native jobs took 28 and 29 minutes.
+
+Root cause of the hosted fleet failures: the scripted helper `owned_mcp_peer` has
+a WHOLE-LIFE 15 s watchdog (exit 74). A warm peer lives from its agent's
+provisioning, through the wait for every other agent, to the end of its own task,
+which exceeds 15 s on a hosted runner. When it fired while the first agent idled,
+the guardian reported the leader gone and the handoff was refused as
+`lost_authority`; mid-task the host saw `peer_eof`. Found with a temporary hosted
+probe branch that printed file:line at all 36 lost-authority sites (hosted macOS:
+warm.rs qualify_ready_owner, observe_leader Ok(false)); reproduced locally by
+delaying the mentions 12 s inside the serving loop. Watchdog now 240 s; the file
+and approval helpers' identical watchdogs 90 s. Earlier partial findings were
+also real and stay: fixture warm idle 10 s -> 120 s, helper release gate and
+delivery polls, harness stage patience 20 s -> 60 s, one fleet at a time.
+
+Other hosted flakes closed in the same pass: the two approval clock tests repeat
+an attempt whose own 60 ms window was overslept (product assertions unchanged);
+the platform stdio descriptor tests wait for end-of-file at all four sites, as one
+already did (concurrent fork holds close-on-exec copies; local Linux 2/20 failures
+before, 40/40 after); approval-loss scenarios warm the probe's first exec;
+master's stage-release cases get a 90 s timeout on the Intel runner.
+
+OPEN, and not a flake: `native_claude_owned_permission_roundtrip` failed four of
+five hosted Ubuntu runs (it passed in the green one). The scripted Claude peer
+answers the instant it reads the response and can END THE TURN before the host
+observes its own flush; `send_prepared_approval` then returns Err(State) and the
+write receipt is unreachable through that call. The test was changed only to
+accept the answer arriving before the receipt, which is the API's documented
+re-entrancy. The remaining race is in the Claude runtime's prepared-send path and
+is deferred with the Claude work by operator direction. Until it is fixed, hosted
+Ubuntu can still go red on that one selector.
