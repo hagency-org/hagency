@@ -13,6 +13,8 @@ import { useData, Provenance } from '@/components/Data';
 import { revokeEngagement, send } from '@/lib/api';
 import CredentialForm from '@/components/CredentialForm';
 import { allocationValue, approvalVerdict, projectLabel } from '@/lib/console-workflow';
+import { NATIVE_MODE } from '@/lib/native-api';
+import NativeEngagements from '@/components/NativeEngagements';
 
 /*
  * ④ 接洽 — what replaces dispatch.
@@ -450,6 +452,11 @@ function SideActions({ side, live, onDone }) {
 }
 
 export default function EngagementsPage() {
+  const data = useData();
+  return data.nativeConsole ? <NativeEngagements /> : <LegacyEngagements />;
+}
+
+function LegacyEngagements() {
   const t = useT();
   const {
     pendingEngagements, activeEngagements, endedEngagements, whitelist,

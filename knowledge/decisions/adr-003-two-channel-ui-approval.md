@@ -55,3 +55,18 @@ and Robrix2, plus a healthy encrypted DM channel.
 - Approve by typing text in DM: rejected because free-form text is ambiguous and replayable.
 - Put approval buttons in the public room: rejected because visibility would imply an unsafe control surface.
 - Let Robrix2 decide authorization locally: rejected because clients are presentation surfaces, not server authority.
+
+### Amendment 2026-09-13 — the public status notice is named, and what it is not
+
+The native approval path adds a **public status notice**: a one-way status
+word posted to the project room when an approval is pending — `agent`,
+`project`, `waiting_for_owner`, a short body — and nothing else (ADR-137;
+the private-card plan v6's PC-C1). Naming it here closes the same gap the
+2026-08-11 amendment closed for the test room: read alone, "the encrypted DM
+is the approval channel" would misdescribe a second artefact leaving the
+approval path. What this notice is **not**: it is not the request, it is not
+actionable, and it carries none of the request's material — no input
+preview, no tool name, no scope, no request id. Its validator
+(`PublicFrozen`) enforces content-freedom by construction, and reading it
+confers no grant and no authority. The encrypted DM remains the only channel
+that carries request content; the notice is a lamp, not a channel.

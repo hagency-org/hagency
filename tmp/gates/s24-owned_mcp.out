@@ -1,0 +1,49 @@
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.17s
+     Running tests/owned_mcp.rs (target/debug/deps/owned_mcp-ab6bd9dc1b5a2209)
+
+running 5 tests
+test native_owned_mcp_configuration_admission ... FAILED
+test native_owned_completion_mcp_scope_replay ... FAILED
+test native_owned_mcp_real_done_epoch ... FAILED
+test native_owned_mcp_real_heartbeat ... FAILED
+test native_owned_mcp_real_finish ... FAILED
+
+failures:
+
+---- native_owned_mcp_configuration_admission stdout ----
+
+thread 'native_owned_mcp_configuration_admission' (94108259) panicked at native/hagency/tests/owned_mcp.rs:53:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- native_owned_completion_mcp_scope_replay stdout ----
+
+thread 'native_owned_completion_mcp_scope_replay' (94108258) panicked at native/hagency/tests/owned_mcp.rs:53:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_mcp_real_done_epoch stdout ----
+
+thread 'native_owned_mcp_real_done_epoch' (94108260) panicked at native/hagency/tests/owned_mcp.rs:53:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_mcp_real_heartbeat stdout ----
+
+thread 'native_owned_mcp_real_heartbeat' (94108262) panicked at native/hagency/tests/owned_mcp.rs:53:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_owned_mcp_real_finish stdout ----
+
+thread 'native_owned_mcp_real_finish' (94108261) panicked at native/hagency/tests/owned_mcp.rs:53:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    native_owned_completion_mcp_scope_replay
+    native_owned_mcp_configuration_admission
+    native_owned_mcp_real_done_epoch
+    native_owned_mcp_real_finish
+    native_owned_mcp_real_heartbeat
+
+test result: FAILED. 0 passed; 5 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.52s
+
+error: test failed, to rerun pass `-p hagency --test owned_mcp`

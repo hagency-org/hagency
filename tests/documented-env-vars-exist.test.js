@@ -23,7 +23,8 @@
  * which also makes the list the place where a reader learns the distinction exists.
  */
 import { describe, expect, test } from 'vitest';
-import { readFileSync, readdirSync, statSync } from 'fs';
+import { readFileSync, readdirSync, statSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'fs';
+import { tmpdir } from 'os';
 import path from 'path';
 
 const DOC = path.resolve('docs/architecture/system-components.md');
@@ -59,7 +60,9 @@ function documentedVars(markdown) {
 /** Everything this repository could read an env var from, source and shell alike. */
 function sourceFiles(dir = process.cwd(), acc = [], depth = 0) {
   if (depth > 4) return acc;
-  const skip = new Set(['node_modules', '.git', 'docs', 'knowledge', 'coverage', '.next', 'data']);
+  // Cargo binaries have no extension on Unix; reading target/debug as source can
+  // exceed V8's maximum string length and falsely attribute generated code to us.
+  const skip = new Set(['node_modules', '.git', 'docs', 'knowledge', 'coverage', '.next', 'data', 'target']);
   for (const entry of readdirSync(dir)) {
     if (skip.has(entry) || entry.startsWith('.')) continue;
     const full = path.join(dir, entry);
@@ -70,6 +73,21 @@ function sourceFiles(dir = process.cwd(), acc = [], depth = 0) {
   }
   return acc;
 }
+
+test('documentation scans exclude Cargo artifacts and retain extensionless scripts', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'hagency-source-scan-'));
+  try {
+    mkdirSync(path.join(root, 'target', 'debug'), { recursive: true });
+    mkdirSync(path.join(root, 'bin'));
+    mkdirSync(path.join(root, 'lib'));
+    writeFileSync(path.join(root, 'target', 'debug', 'hagency'), 'env.GENERATED_ONLY');
+    writeFileSync(path.join(root, 'bin', 'hagency-task'), 'echo "$HAGENCY_TOKEN"');
+    writeFileSync(path.join(root, 'lib', 'runtime.js'), 'env.MATRIX_HOMESERVER');
+    expect(sourceFiles(root).map(file => path.relative(root, file)).sort()).toEqual([
+      path.join('bin', 'hagency-task'), path.join('lib', 'runtime.js'),
+    ]);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
 
 describe('the env vars the architecture reference names', () => {
   const markdown = readFileSync(DOC, 'utf8');

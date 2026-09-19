@@ -1,0 +1,26 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime/src/bin/hagency-runtime-probe.rs:71:
+ 
+ /// Pulse for evidence while waiting; the budget (plus half again) is the
+ /// outer ceiling, and expiry names what was being waited for.
+[31m-fn hold(marker: &Path, budget_ms: u64, host_closed: std::sync::mpsc::Receiver<()>) -> io::Result<()> {
+(B[m[32m+fn hold(
+(B[m[32m+    marker: &Path,
+(B[m[32m+    budget_ms: u64,
+(B[m[32m+    host_closed: std::sync::mpsc::Receiver<()>,
+(B[m[32m+) -> io::Result<()> {
+(B[m     let mut file = OpenOptions::new()
+         .create(true)
+         .append(true)
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime/src/bin/hagency-runtime-probe.rs:489:
+     /// so this test discriminates the mechanism, not the constants.
+     #[test]
+     fn native_probe_hold_ends_when_the_stream_closes() {
+[31m-        let marker = std::env::temp_dir().join(format!(
+(B[m[31m-            "hagency-probe-hold-{}-close",
+(B[m[31m-            std::process::id()
+(B[m[31m-        ));
+(B[m[32m+        let marker =
+(B[m[32m+            std::env::temp_dir().join(format!("hagency-probe-hold-{}-close", std::process::id()));
+(B[m         let started = Instant::now();
+         // An empty reader IS a closed stream: its write end is gone.
+         let closed_stream: &[u8] = &[];

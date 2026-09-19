@@ -1,0 +1,397 @@
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/src/lib.rs:2:
+ //! attribution, provider authenticity, quota availability or task completion.
+ 
+ pub mod attribution;
+[31m-pub mod reader;
+(B[m mod json;
+ pub mod observation;
+[32m+pub mod reader;
+(B[m pub mod runtime_usage;
+ 
+ use serde::Serialize;
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/src/reader.rs:26:
+ use serde::{Deserialize, Serialize};
+ use serde_json::Value;
+ 
+[32m+use crate::TokenCounts;
+(B[m use crate::attribution::{
+     AgentRow, FleetSummary, ScanBounds, SessionText, TranscriptSearch, agent_transcript_workspace,
+     meter_agent, summarize_fleet, transcript_search,
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/src/reader.rs:32:
+ };
+[31m-use crate::TokenCounts;
+(B[m 
+ /// Default window: 30 days.
+ pub const WINDOW_MS: u64 = 30 * 24 * 60 * 60 * 1000;
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/src/reader.rs:505:
+         })
+         .collect();
+     triples.sort_by(|a, b| a[0].cmp(&b[0]));
+[31m-    format!("{home_dir}|{}", serde_json::to_string(&triples).unwrap_or_default())
+(B[m[32m+    format!(
+(B[m[32m+        "{home_dir}|{}",
+(B[m[32m+        serde_json::to_string(&triples).unwrap_or_default()
+(B[m[32m+    )
+(B[m }
+ 
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:139:
+         // denial, the environment differs and comparison is skipped.
+         if let Some(recorded_denied) = vector["denied"].as_bool() {
+             let denied_dir = home.join(".codex/sessions/2026/09/01/锁");
+[31m-            let _ = fs::set_permissions(
+(B[m[31m-                &denied_dir,
+(B[m[31m-                fs::Permissions::from_mode(0o000),
+(B[m[31m-            );
+(B[m[32m+            let _ = fs::set_permissions(&denied_dir, fs::Permissions::from_mode(0o000));
+(B[m             let denied = fs::read_dir(&denied_dir).is_err();
+[31m-            let _ = fs::set_permissions(
+(B[m[31m-                &denied_dir,
+(B[m[31m-                fs::Permissions::from_mode(0o755),
+(B[m[31m-            );
+(B[m[32m+            let _ = fs::set_permissions(&denied_dir, fs::Permissions::from_mode(0o755));
+(B[m             if denied != recorded_denied {
+                 eprintln!("skipping {name}: directory denial differs in this environment");
+                 continue;
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:154:
+             }
+             // Rebuild the mask for the actual read below.
+[31m-            let _ = fs::set_permissions(
+(B[m[31m-                &denied_dir,
+(B[m[31m-                fs::Permissions::from_mode(0o000),
+(B[m[31m-            );
+(B[m[32m+            let _ = fs::set_permissions(&denied_dir, fs::Permissions::from_mode(0o000));
+(B[m             let result = run_read(vector, &home, now);
+[31m-            let _ = fs::set_permissions(
+(B[m[31m-                &denied_dir,
+(B[m[31m-                fs::Permissions::from_mode(0o755),
+(B[m[31m-            );
+(B[m[32m+            let _ = fs::set_permissions(&denied_dir, fs::Permissions::from_mode(0o755));
+(B[m             assert_read_matches(vector, &result, &home, name);
+             continue;
+         }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:191:
+         let home = temp_home(name);
+         build_tree(&home, vector["tree"].as_array().expect("tree"), now);
+         let mut cache = FleetCache::new();
+[31m-        for (index, step) in vector["steps"].as_array().expect("steps").iter().enumerate() {
+(B[m[32m+        for (index, step) in vector["steps"]
+(B[m[32m+            .as_array()
+(B[m[32m+            .expect("steps")
+(B[m[32m+            .iter()
+(B[m[32m+            .enumerate()
+(B[m[32m+        {
+(B[m             let agents = step["agents"].as_array().expect("agents").clone();
+             let now_step = step["now"].as_u64().expect("step clock");
+             let force = step["force"].as_bool().unwrap_or(false);
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:207:
+             );
+             let mut projected = serde_json::to_value(&value).unwrap();
+             for agent in projected["agents"].as_array_mut().expect("agents") {
+[31m-            if let Some(Value::Array(files)) = agent.get_mut("files") {
+(B[m[31m-                for file in files {
+(B[m[31m-                    if let Some(text) = file["file"].as_str() {
+(B[m[31m-                        file["file"] = Value::String(relativize(text, &home));
+(B[m[32m+                if let Some(Value::Array(files)) = agent.get_mut("files") {
+(B[m[32m+                    for file in files {
+(B[m[32m+                        if let Some(text) = file["file"].as_str() {
+(B[m[32m+                            file["file"] = Value::String(relativize(text, &home));
+(B[m[32m+                        }
+(B[m                     }
+                 }
+             }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:217:
+[31m-            }
+(B[m             assert_eq!(
+                 projected, step["expected"],
+                 "fleet vector {name} step {index}"
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:243:
+     )
+ }
+ 
+[31m-fn assert_read_matches(vector: &Value, result: &(Vec<(String, String)>, Bounds), home: &Path, name: &str) {
+(B[m[32m+fn assert_read_matches(
+(B[m[32m+    vector: &Value,
+(B[m[32m+    result: &(Vec<(String, String)>, Bounds),
+(B[m[32m+    home: &Path,
+(B[m[32m+    name: &str,
+(B[m[32m+) {
+(B[m     let (files, bounds) = result;
+     let expected_bounds: Bounds =
+         serde_json::from_value(vector["expected"]["bounds"].clone()).expect("bounds decode");
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:251:
+     let expected_files = vector["expected"]["files"].as_array().expect("files");
+     assert_eq!(files.len(), expected_files.len(), "file count for {name}");
+     for (actual, expected) in files.iter().zip(expected_files) {
+[31m-        assert_eq!(actual.0, actualize(expected["file"].as_str().unwrap(), home), "file for {name}");
+(B[m[31m-        assert_eq!(actual.1, expected["text"].as_str().unwrap(), "text for {name}");
+(B[m[32m+        assert_eq!(
+(B[m[32m+            actual.0,
+(B[m[32m+            actualize(expected["file"].as_str().unwrap(), home),
+(B[m[32m+            "file for {name}"
+(B[m[32m+        );
+(B[m[32m+        assert_eq!(
+(B[m[32m+            actual.1,
+(B[m[32m+            expected["text"].as_str().unwrap(),
+(B[m[32m+            "text for {name}"
+(B[m[32m+        );
+(B[m     }
+ }
+ 
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:292:
+     assert_eq!(bounds.unread_outside_window, 0);
+     assert_eq!(
+         bounds_report(&bounds).as_deref(),
+[31m-        Some("scan was bounded and this figure understates consumption: 1 transcript(s) older than the window")
+(B[m[32m+        Some(
+(B[m[32m+            "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window"
+(B[m[32m+        )
+(B[m     );
+ 
+     // Non-narrowed (codex) search: the same drop reads as unknown ownership,
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:309:
+     assert_eq!(bounds.unread_outside_window, 1);
+     assert_eq!(
+         bounds_report(&bounds).as_deref(),
+[31m-        Some("scan was bounded: 1 candidate transcript(s) fell outside the window in a search that could not be narrowed to one workspace, so whether any belong to this agent was never read")
+(B[m[32m+        Some(
+(B[m[32m+            "scan was bounded: 1 candidate transcript(s) fell outside the window in a search that could not be narrowed to one workspace, so whether any belong to this agent was never read"
+(B[m[32m+        )
+(B[m     );
+ 
+     // A complete scan reports nothing at all.
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:343:
+     let home = temp_home("layout");
+     // Codex files by date: a nested YYYY/MM/DD tree must be discovered, and
+     // the flat list that missed it for years is the bug this pins.
+[31m-    for (i, (date, age_ms)) in
+(B[m[31m-        [("2026/09/01", 3u64), ("2026/09/02", 2), ("2026/08/31", 1)].iter().enumerate()
+(B[m[32m+    for (i, (date, age_ms)) in [("2026/09/01", 3u64), ("2026/09/02", 2), ("2026/08/31", 1)]
+(B[m[32m+        .iter()
+(B[m[32m+        .enumerate()
+(B[m     {
+         let dir = home.join(format!(".codex/sessions/{date}"));
+         fs::create_dir_all(&dir).unwrap();
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:363:
+         .unwrap();
+         set_mtime(&path, now as i64 - *age_ms as i64 * 3_600_000);
+     }
+[31m-    let search = transcript_search("codex", "/Users/fixture/work", &home.display().to_string()).unwrap();
+(B[m[32m+    let search =
+(B[m[32m+        transcript_search("codex", "/Users/fixture/work", &home.display().to_string()).unwrap();
+(B[m     assert!(search.recursive);
+     assert!(!search.narrowed);
+     let (files, bounds) = SessionReader::new(ReaderLimits::default(), &|| now).read(&search);
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:370:
+     assert_eq!(files.len(), 3, "nested date tree discovered");
+[31m-    assert_eq!(bounds.entries_walked, 9, "year, month, day directories and files");
+(B[m[31m-    assert!(files[0].file.ends_with("2026/08/31/rollout-2.jsonl"), "newest first");
+(B[m[31m-    assert!(files[2].file.ends_with("2026/09/01/rollout-0.jsonl"), "oldest last");
+(B[m[32m+    assert_eq!(
+(B[m[32m+        bounds.entries_walked, 9,
+(B[m[32m+        "year, month, day directories and files"
+(B[m[32m+    );
+(B[m[32m+    assert!(
+(B[m[32m+        files[0].file.ends_with("2026/08/31/rollout-2.jsonl"),
+(B[m[32m+        "newest first"
+(B[m[32m+    );
+(B[m[32m+    assert!(
+(B[m[32m+        files[2].file.ends_with("2026/09/01/rollout-0.jsonl"),
+(B[m[32m+        "oldest last"
+(B[m[32m+    );
+(B[m 
+     // Claude stays flat: a transcript below the project directory is not
+     // found, so a sibling workspace's files are never opened on its budget.
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:383:
+     let nested = project.join("nested/deeper.jsonl");
+     fs::write(&nested, "{}\n").unwrap();
+     set_mtime(&nested, now as i64 - 30_000);
+[31m-    let search =
+(B[m[31m-        transcript_search("claude", "/Users/fixture/work", &claude_home.display().to_string()).unwrap();
+(B[m[32m+    let search = transcript_search(
+(B[m[32m+        "claude",
+(B[m[32m+        "/Users/fixture/work",
+(B[m[32m+        &claude_home.display().to_string(),
+(B[m[32m+    )
+(B[m[32m+    .unwrap();
+(B[m     assert!(!search.recursive);
+     assert!(search.narrowed);
+     let (files, bounds) = SessionReader::new(ReaderLimits::default(), &|| now).read(&search);
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:391:
+     assert_eq!(files.len(), 1, "flat project directory only");
+     assert!(files[0].file.ends_with("session.jsonl"));
+[31m-    assert_eq!(bounds.entries_walked, 2, "session.jsonl and the nested directory");
+(B[m[32m+    assert_eq!(
+(B[m[32m+        bounds.entries_walked, 2,
+(B[m[32m+        "session.jsonl and the nested directory"
+(B[m[32m+    );
+(B[m }
+ 
+ #[test]
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:423:
+ 
+     let mut cache = FleetCache::new();
+     // First computation: fresh, stamped at the clock, not cached.
+[31m-    let first = meter_fleet(&agents, &home_str, "/", ReaderLimits::default(), 60_000, now, true, &mut cache);
+(B[m[32m+    let first = meter_fleet(
+(B[m[32m+        &agents,
+(B[m[32m+        &home_str,
+(B[m[32m+        "/",
+(B[m[32m+        ReaderLimits::default(),
+(B[m[32m+        60_000,
+(B[m[32m+        now,
+(B[m[32m+        true,
+(B[m[32m+        &mut cache,
+(B[m[32m+    );
+(B[m     assert!(!first.cached);
+     assert_eq!(first.computed_at, now);
+     assert_eq!(first.attributed, 1);
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:430:
+ 
+     // Inside the TTL the same fleet is an object lookup with the original
+     // stamp — a page refresh, not a rescan.
+[31m-    let hit = meter_fleet(&agents, &home_str, "/", ReaderLimits::default(), 60_000, now + 30_000, false, &mut cache);
+(B[m[32m+    let hit = meter_fleet(
+(B[m[32m+        &agents,
+(B[m[32m+        &home_str,
+(B[m[32m+        "/",
+(B[m[32m+        ReaderLimits::default(),
+(B[m[32m+        60_000,
+(B[m[32m+        now + 30_000,
+(B[m[32m+        false,
+(B[m[32m+        &mut cache,
+(B[m[32m+    );
+(B[m     assert!(hit.cached);
+     assert_eq!(hit.computed_at, now);
+ 
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:437:
+     // At exactly the TTL the entry is stale.
+[31m-    let stale = meter_fleet(&agents, &home_str, "/", ReaderLimits::default(), 60_000, now + 60_000, false, &mut cache);
+(B[m[32m+    let stale = meter_fleet(
+(B[m[32m+        &agents,
+(B[m[32m+        &home_str,
+(B[m[32m+        "/",
+(B[m[32m+        ReaderLimits::default(),
+(B[m[32m+        60_000,
+(B[m[32m+        now + 60_000,
+(B[m[32m+        false,
+(B[m[32m+        &mut cache,
+(B[m[32m+    );
+(B[m     assert!(!stale.cached);
+     assert_eq!(stale.computed_at, now + 60_000);
+ 
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:442:
+     // A changed fleet never reads the old answer even well inside the TTL.
+[31m-    let other = meter_fleet(&changed, &home_str, "/", ReaderLimits::default(), 60_000, now + 60_001, false, &mut cache);
+(B[m[32m+    let other = meter_fleet(
+(B[m[32m+        &changed,
+(B[m[32m+        &home_str,
+(B[m[32m+        "/",
+(B[m[32m+        ReaderLimits::default(),
+(B[m[32m+        60_000,
+(B[m[32m+        now + 60_001,
+(B[m[32m+        false,
+(B[m[32m+        &mut cache,
+(B[m[32m+    );
+(B[m     assert!(!other.cached);
+     assert_eq!(other.agents[0].agent.as_deref(), Some("a2"));
+ 
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:447:
+     // Force recomputes and restamps even on a cache hit path.
+[31m-    let forced = meter_fleet(&agents, &home_str, "/", ReaderLimits::default(), 60_000, now + 60_002, true, &mut cache);
+(B[m[32m+    let forced = meter_fleet(
+(B[m[32m+        &agents,
+(B[m[32m+        &home_str,
+(B[m[32m+        "/",
+(B[m[32m+        ReaderLimits::default(),
+(B[m[32m+        60_000,
+(B[m[32m+        now + 60_002,
+(B[m[32m+        true,
+(B[m[32m+        &mut cache,
+(B[m[32m+    );
+(B[m     assert!(!forced.cached);
+     assert_eq!(forced.computed_at, now + 60_002);
+ 
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:452:
+     // Reset drops the cache entirely.
+     cache.reset();
+[31m-    let after_reset = meter_fleet(&agents, &home_str, "/", ReaderLimits::default(), 60_000, now + 60_003, false, &mut cache);
+(B[m[32m+    let after_reset = meter_fleet(
+(B[m[32m+        &agents,
+(B[m[32m+        &home_str,
+(B[m[32m+        "/",
+(B[m[32m+        ReaderLimits::default(),
+(B[m[32m+        60_000,
+(B[m[32m+        now + 60_003,
+(B[m[32m+        false,
+(B[m[32m+        &mut cache,
+(B[m[32m+    );
+(B[m     assert!(!after_reset.cached);
+     assert_eq!(after_reset.computed_at, now + 60_003);
+ }
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:466:
+     assert_eq!(defaults.max_bytes, 8 * 1024 * 1024);
+     assert_eq!(defaults.max_entries, 20_000);
+ 
+[31m-    let parsed = ReaderLimits::from_env(
+(B[m[31m-        Some("1000"),
+(B[m[31m-        Some("5"),
+(B[m[31m-        Some("4096"),
+(B[m[31m-        Some("10"),
+(B[m[32m+    let parsed = ReaderLimits::from_env(Some("1000"), Some("5"), Some("4096"), Some("10"));
+(B[m[32m+    assert_eq!(
+(B[m[32m+        parsed,
+(B[m[32m+        ReaderLimits {
+(B[m[32m+            window_ms: 1000,
+(B[m[32m+            max_files: 5,
+(B[m[32m+            max_bytes: 4096,
+(B[m[32m+            max_entries: 10,
+(B[m[32m+        }
+(B[m     );
+[31m-    assert_eq!(parsed, ReaderLimits {
+(B[m[31m-        window_ms: 1000, max_files: 5, max_bytes: 4096, max_entries: 10,
+(B[m[31m-    });
+(B[m 
+     // The JavaScript rule: a positive integer wins, anything else keeps the
+     // default. parseInt tolerates leading whitespace and trailing garbage.
+Diff in /Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering/tests/reader.rs:481:
+[31m-    assert_eq!(ReaderLimits::from_env(Some("  2000abc"), None, None, None).window_ms, 2000);
+(B[m[31m-    assert_eq!(ReaderLimits::from_env(Some("+300"), None, None, None).window_ms, 300);
+(B[m[31m-    assert_eq!(ReaderLimits::from_env(Some("0"), None, None, None).window_ms, defaults.window_ms, "zero is not positive");
+(B[m[31m-    assert_eq!(ReaderLimits::from_env(Some("-5"), None, None, None).window_ms, defaults.window_ms, "negative is not positive");
+(B[m[31m-    assert_eq!(ReaderLimits::from_env(Some(""), None, None, None).window_ms, defaults.window_ms);
+(B[m[31m-    assert_eq!(ReaderLimits::from_env(Some("abc"), None, None, None).window_ms, defaults.window_ms);
+(B[m[31m-    assert_eq!(ReaderLimits::from_env(Some("2.9"), None, None, None).window_ms, 2, "parseInt stops at the dot");
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some("  2000abc"), None, None, None).window_ms,
+(B[m[32m+        2000
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some("+300"), None, None, None).window_ms,
+(B[m[32m+        300
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some("0"), None, None, None).window_ms,
+(B[m[32m+        defaults.window_ms,
+(B[m[32m+        "zero is not positive"
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some("-5"), None, None, None).window_ms,
+(B[m[32m+        defaults.window_ms,
+(B[m[32m+        "negative is not positive"
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some(""), None, None, None).window_ms,
+(B[m[32m+        defaults.window_ms
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some("abc"), None, None, None).window_ms,
+(B[m[32m+        defaults.window_ms
+(B[m[32m+    );
+(B[m[32m+    assert_eq!(
+(B[m[32m+        ReaderLimits::from_env(Some("2.9"), None, None, None).window_ms,
+(B[m[32m+        2,
+(B[m[32m+        "parseInt stops at the dot"
+(B[m[32m+    );
+(B[m     assert_eq!(
+         ReaderLimits::from_env(None, None, None, None),
+         defaults,

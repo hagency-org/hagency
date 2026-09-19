@@ -1,0 +1,247 @@
+   Compiling serde_core v1.0.229
+   Compiling zerofrom v0.1.8
+   Compiling yoke v0.8.3
+   Compiling zerovec v0.11.8
+   Compiling tinystr v0.8.4
+   Compiling icu_locale_core v2.3.0
+   Compiling serde v1.0.229
+   Compiling thiserror v2.0.20
+   Compiling rustix v1.1.4
+   Compiling zerotrie v0.2.5
+   Compiling potential_utf v0.1.6
+   Compiling icu_collections v2.3.0
+   Compiling icu_provider v2.3.1
+   Compiling icu_normalizer_data v2.3.0
+   Compiling icu_properties_data v2.3.0
+   Compiling toml_datetime v1.1.1+spec-1.1.0
+   Compiling digest v0.10.7
+   Compiling icu_properties v2.3.0
+   Compiling icu_normalizer v2.3.0
+   Compiling io-lifetimes v3.0.1
+   Compiling serde_json v1.0.151
+   Compiling io-lifetimes v2.0.4
+   Compiling toml_edit v0.25.13+spec-1.1.0
+   Compiling fs-set-times v0.20.3
+   Compiling idna_adapter v1.2.2
+   Compiling io-extras v0.19.0
+   Compiling serde_spanned v1.1.1
+   Compiling cpufeatures v0.2.17
+   Compiling cap-primitives v4.0.3
+   Compiling sha2 v0.10.9
+   Compiling ruma-identifiers-validation v0.12.1
+   Compiling toml v1.1.5+spec-1.1.0
+   Compiling idna v1.1.0
+   Compiling proc-macro-crate v3.5.0
+   Compiling indexmap v2.14.2
+   Compiling js_int v0.2.2
+   Compiling ruma-macros v0.19.0
+   Compiling tracing v0.1.44
+   Compiling serde_html_form v0.4.1
+   Compiling url v2.5.8
+   Compiling cap-std v4.0.3
+   Compiling tokio v1.53.1
+   Compiling ruma-common v0.19.0
+   Compiling libsqlite3-sys v0.35.0
+   Compiling cap-fs-ext v4.0.3
+   Compiling hagency-platform v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-platform)
+   Compiling rusqlite v0.37.0
+   Compiling hagency-core v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-core)
+   Compiling getrandom v0.3.4
+   Compiling hagency-metering v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering)
+   Compiling hmac v0.12.1
+   Compiling hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+   Compiling hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+   Compiling hagency-files v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-files)
+   Compiling tempfile v3.27.0
+   Compiling hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 12.79s
+     Running unittests src/lib.rs (target/debug/deps/hagency_execution-2498075185bbf466)
+
+running 33 tests
+test approval::control::send_failure_tests::native_partial_write_keeps_protocol_and_uncertainty ... ok
+test approval::control::send_failure_tests::native_never_transmitted_frame_is_peer_unavailable ... ok
+test approval::state::trace_tests::native_approval_trace_labels_every_phase ... ok
+test host::tests::native_file_tools_host_profile ... ok
+test operation::tests::native_settlement_cause_keeps_the_first_marker ... ok
+test operation::tests::native_settlement_cause_markers_are_distinct ... ok
+test host::tests::native_receive_tools_host_profile ... ok
+test approval_loss::native_owned_approval_acceptance_reconcile_unrecorded ... FAILED
+test approval_loss::native_owned_approval_resolution_before_admission_cancels ... FAILED
+test approval_loss::native_owned_approval_no_second_frame_after_resolution ... FAILED
+test approval_loss::native_owned_approval_usage_successful_control ... FAILED
+test reply_loss::native_workspace_registration_gate_expired_ready_ack ... ok
+test approval_loss::native_owned_approval_receipt_before_resolution ... FAILED
+test approval_loss::native_owned_approval_usage_unknown_slot ... FAILED
+test reply_loss::native_owned_dispatch_lost_receipt_never_spawns ... FAILED
+test approval_loss::native_owned_approval_resolved_before_first_byte ... FAILED
+test workspace::approval_path::tests::native_owned_approval_workspace_projection ... ok
+test approval_loss::native_owned_approval_caller_loss ... FAILED
+test approval_loss::native_owned_approval_peer_gone_before_first_byte ... FAILED
+test approval_loss::native_owned_approval_barriers_pending_receipt ... FAILED
+test reply_loss::native_bootstrap_unknown_start ... FAILED
+test approval_loss::native_owned_approval_acceptance_reconcile_accepted ... FAILED
+test approval_loss::native_owned_approval_turn_end_untransmitted ... FAILED
+test approval_loss::native_owned_approval_turn_end_midwrite_uncertain ... FAILED
+test approval_loss::native_owned_approval_in_flight_resolution_completes_write ... FAILED
+test reply_loss::native_owned_usage_lost_binding_never_spawns ... FAILED
+test reply_loss::native_workspace_binding_lost_start ... FAILED
+test usage::tests::native_owned_usage_normalization_refusal_retains_evidence ... FAILED
+test reply_loss::native_workspace_binding_retirement_unwind ... FAILED
+test usage::tests::native_owned_usage_pending_retry ... FAILED
+test usage::tests::native_owned_usage_source_guards ... FAILED
+test workspace::approval_path::tests::native_owned_approval_workspace_scope ... FAILED
+test usage::tests::native_owned_usage_restart_and_capacity ... FAILED
+
+failures:
+
+---- approval_loss::native_owned_approval_acceptance_reconcile_unrecorded stdout ----
+
+thread 'approval_loss::native_owned_approval_acceptance_reconcile_unrecorded' (91555557) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- approval_loss::native_owned_approval_resolution_before_admission_cancels stdout ----
+
+thread 'approval_loss::native_owned_approval_resolution_before_admission_cancels' (91555564) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_no_second_frame_after_resolution stdout ----
+
+thread 'approval_loss::native_owned_approval_no_second_frame_after_resolution' (91555561) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_usage_successful_control stdout ----
+
+thread 'approval_loss::native_owned_approval_usage_successful_control' (91555568) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_receipt_before_resolution stdout ----
+
+thread 'approval_loss::native_owned_approval_receipt_before_resolution' (91555563) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_usage_unknown_slot stdout ----
+
+thread 'approval_loss::native_owned_approval_usage_unknown_slot' (91555569) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- reply_loss::native_owned_dispatch_lost_receipt_never_spawns stdout ----
+
+thread 'reply_loss::native_owned_dispatch_lost_receipt_never_spawns' (91555575) panicked at native/hagency-execution/src/../tests/support/reply_loss.rs:61:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_resolved_before_first_byte stdout ----
+
+thread 'approval_loss::native_owned_approval_resolved_before_first_byte' (91555565) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_caller_loss stdout ----
+
+thread 'approval_loss::native_owned_approval_caller_loss' (91555559) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_peer_gone_before_first_byte stdout ----
+
+thread 'approval_loss::native_owned_approval_peer_gone_before_first_byte' (91555562) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_barriers_pending_receipt stdout ----
+
+thread 'approval_loss::native_owned_approval_barriers_pending_receipt' (91555558) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- reply_loss::native_bootstrap_unknown_start stdout ----
+
+thread 'reply_loss::native_bootstrap_unknown_start' (91555574) panicked at native/hagency-execution/src/../tests/support/reply_loss.rs:61:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_acceptance_reconcile_accepted stdout ----
+
+thread 'approval_loss::native_owned_approval_acceptance_reconcile_accepted' (91555556) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_turn_end_untransmitted stdout ----
+
+thread 'approval_loss::native_owned_approval_turn_end_untransmitted' (91555567) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_turn_end_midwrite_uncertain stdout ----
+
+thread 'approval_loss::native_owned_approval_turn_end_midwrite_uncertain' (91555566) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- approval_loss::native_owned_approval_in_flight_resolution_completes_write stdout ----
+
+thread 'approval_loss::native_owned_approval_in_flight_resolution_completes_write' (91555560) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- reply_loss::native_owned_usage_lost_binding_never_spawns stdout ----
+
+thread 'reply_loss::native_owned_usage_lost_binding_never_spawns' (91555724) panicked at native/hagency-execution/src/../tests/support/reply_loss.rs:61:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- reply_loss::native_workspace_binding_lost_start stdout ----
+
+thread 'reply_loss::native_workspace_binding_lost_start' (91555725) panicked at native/hagency-execution/src/../tests/support/reply_loss.rs:61:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::tests::native_owned_usage_normalization_refusal_retains_evidence stdout ----
+
+thread 'usage::tests::native_owned_usage_normalization_refusal_retains_evidence' (91555728) panicked at native/hagency-execution/src/../tests/support/usage.rs:27:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- reply_loss::native_workspace_binding_retirement_unwind stdout ----
+
+thread 'reply_loss::native_workspace_binding_retirement_unwind' (91555726) panicked at native/hagency-execution/src/../tests/support/reply_loss.rs:61:69:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::tests::native_owned_usage_pending_retry stdout ----
+
+thread 'usage::tests::native_owned_usage_pending_retry' (91555729) panicked at native/hagency-execution/src/../tests/support/usage.rs:27:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::tests::native_owned_usage_source_guards stdout ----
+
+thread 'usage::tests::native_owned_usage_source_guards' (91555731) panicked at native/hagency-execution/src/../tests/support/usage.rs:27:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- workspace::approval_path::tests::native_owned_approval_workspace_scope stdout ----
+
+thread 'workspace::approval_path::tests::native_owned_approval_workspace_scope' (91555733) panicked at native/hagency-execution/src/../tests/support/approval_loss.rs:57:62:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- usage::tests::native_owned_usage_restart_and_capacity stdout ----
+
+thread 'usage::tests::native_owned_usage_restart_and_capacity' (91555730) panicked at native/hagency-execution/src/../tests/support/usage.rs:27:73:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    approval_loss::native_owned_approval_acceptance_reconcile_accepted
+    approval_loss::native_owned_approval_acceptance_reconcile_unrecorded
+    approval_loss::native_owned_approval_barriers_pending_receipt
+    approval_loss::native_owned_approval_caller_loss
+    approval_loss::native_owned_approval_in_flight_resolution_completes_write
+    approval_loss::native_owned_approval_no_second_frame_after_resolution
+    approval_loss::native_owned_approval_peer_gone_before_first_byte
+    approval_loss::native_owned_approval_receipt_before_resolution
+    approval_loss::native_owned_approval_resolution_before_admission_cancels
+    approval_loss::native_owned_approval_resolved_before_first_byte
+    approval_loss::native_owned_approval_turn_end_midwrite_uncertain
+    approval_loss::native_owned_approval_turn_end_untransmitted
+    approval_loss::native_owned_approval_usage_successful_control
+    approval_loss::native_owned_approval_usage_unknown_slot
+    reply_loss::native_bootstrap_unknown_start
+    reply_loss::native_owned_dispatch_lost_receipt_never_spawns
+    reply_loss::native_owned_usage_lost_binding_never_spawns
+    reply_loss::native_workspace_binding_lost_start
+    reply_loss::native_workspace_binding_retirement_unwind
+    usage::tests::native_owned_usage_normalization_refusal_retains_evidence
+    usage::tests::native_owned_usage_pending_retry
+    usage::tests::native_owned_usage_restart_and_capacity
+    usage::tests::native_owned_usage_source_guards
+    workspace::approval_path::tests::native_owned_approval_workspace_scope
+
+test result: FAILED. 9 passed; 24 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.75s
+
+error: test failed, to rerun pass `-p hagency-execution --lib`

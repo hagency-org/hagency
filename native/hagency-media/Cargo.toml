@@ -1,0 +1,23 @@
+[package]
+name = "hagency-media"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+hagency-files = { path = "../hagency-files" }
+matrix-sdk-crypto = "=0.18.0"
+base64 = "=0.22.1"
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+cap-std = "=4.0.3"
+tempfile.workspace = true
+
+[lints]
+workspace = true

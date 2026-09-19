@@ -1,0 +1,454 @@
+{
+  "source": "mockup/app/api/hagency/[...path]/route.js + backend-v2.js",
+  "routeFile": "mockup/app/api/hagency/[...path]/route.js",
+  "backendFile": "backend-v2.js",
+  "routeSha256": "884d00c3bd084a13e61c1c856752bd834bd2ededb62fe5652033299fef3c5ccc",
+  "backendSha256": "c1baf3c3c0ec556422c86e6671112298d76008184ee7a18055cb951f79997c53",
+  "semantics": "default-deny allowlist; canonical-before-match; sec-fetch-site wins over origin; one-origin CORS; loopback bind is the caller control",
+  "routeReadEntries": 28,
+  "routeWriteEntries": 33,
+  "allowedOrigin": "https://hagency.example.com",
+  "loopbackIps": [
+    "127.0.0.1",
+    "::1",
+    "::ffff:127.0.0.1"
+  ],
+  "sameOrigin": [
+    {
+      "name": "sec-fetch-same-origin",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": "same-origin",
+      "origin": null,
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "sec-fetch-cross-site",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": "cross-site",
+      "origin": null,
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "sec-fetch-none",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": "none",
+      "origin": null,
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "sec-fetch-same-site",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": "same-site",
+      "origin": null,
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "origin-same-host",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": null,
+      "origin": "http://127.0.0.1:3100",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "origin-foreign-host",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": null,
+      "origin": "https://evil.example.com",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "origin-malformed",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": null,
+      "origin": "not a url",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "no-browser-headers",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": null,
+      "origin": null,
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "sec-fetch-cross-site-with-same-origin",
+      "method": "POST",
+      "url": "http://127.0.0.1:3100/api/hagency/engagements/eng_1/verdict",
+      "secFetchSite": "cross-site",
+      "origin": "http://127.0.0.1:3100",
+      "expected": {
+        "allowed": false
+      }
+    }
+  ],
+  "allowlist": [
+    {
+      "name": "read-agents",
+      "method": "GET",
+      "target": "agents",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "read-alerts",
+      "method": "GET",
+      "target": "alerts",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "read-engagements",
+      "method": "GET",
+      "target": "engagements",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "read-usage",
+      "method": "GET",
+      "target": "usage",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "read-whitelist",
+      "method": "GET",
+      "target": "whitelist",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "write-verdict",
+      "method": "POST",
+      "target": "engagements/eng_1/verdict",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "write-revoke",
+      "method": "POST",
+      "target": "engagements/eng_1/revoke",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "write-alert-transition",
+      "method": "POST",
+      "target": "alerts/a1/transition",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "write-whitelist-add",
+      "method": "POST",
+      "target": "whitelist",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "write-whitelist-remove",
+      "method": "DELETE",
+      "target": "whitelist/!aXbY7pQ2:hq.example",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "refuse-approval-bindings",
+      "method": "GET",
+      "target": "approval-bindings",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "refuse-inbound-credentials",
+      "method": "GET",
+      "target": "project-sides/inbound-credentials",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "refuse-agent-delete-via-read-entry",
+      "method": "PUT",
+      "target": "agents",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "refuse-unknown-path",
+      "method": "GET",
+      "target": "definitely-not-a-route",
+      "expected": {
+        "allowed": false
+      }
+    }
+  ],
+  "canonicalisation": [
+    {
+      "name": "plain-segments",
+      "segments": [
+        "whitelist",
+        "agents"
+      ],
+      "expected": {
+        "canonical": [
+          "whitelist",
+          "agents"
+        ]
+      }
+    },
+    {
+      "name": "double-encoded-traversal",
+      "segments": [
+        "whitelist",
+        "%252e%252e",
+        "agents"
+      ],
+      "expected": {
+        "canonical": null
+      }
+    },
+    {
+      "name": "single-encoded-traversal",
+      "segments": [
+        "whitelist",
+        "%2e%2e",
+        "agents"
+      ],
+      "expected": {
+        "canonical": null
+      }
+    },
+    {
+      "name": "dot-segment",
+      "segments": [
+        "whitelist",
+        "."
+      ],
+      "expected": {
+        "canonical": null
+      }
+    },
+    {
+      "name": "dotdot-segment",
+      "segments": [
+        "whitelist",
+        ".."
+      ],
+      "expected": {
+        "canonical": null
+      }
+    },
+    {
+      "name": "matrix-room-id",
+      "segments": [
+        "whitelist",
+        "!aXbY7pQ2:hq.example"
+      ],
+      "expected": {
+        "canonical": [
+          "whitelist",
+          "!aXbY7pQ2:hq.example"
+        ]
+      }
+    },
+    {
+      "name": "slash-in-segment",
+      "segments": [
+        "whitelist",
+        "a/b"
+      ],
+      "expected": {
+        "canonical": null
+      }
+    },
+    {
+      "name": "empty-list",
+      "segments": [],
+      "expected": {
+        "canonical": null
+      }
+    },
+    {
+      "name": "too-many-segments",
+      "segments": [
+        "a",
+        "b",
+        "c",
+        "d",
+        "e",
+        "f",
+        "g"
+      ],
+      "expected": {
+        "canonical": null
+      }
+    }
+  ],
+  "cors": [
+    {
+      "name": "allowed-origin",
+      "origin": "https://hagency.example.com",
+      "method": "GET",
+      "expected": {
+        "accessControlAllowOrigin": "https://hagency.example.com",
+        "vary": "Origin",
+        "allowMethods": "GET,POST,PATCH,DELETE,OPTIONS",
+        "allowHeaders": "Authorization,Content-Type",
+        "answered204": false,
+        "passedThrough": true
+      }
+    },
+    {
+      "name": "foreign-origin",
+      "origin": "https://evil.example.com",
+      "method": "GET",
+      "expected": {
+        "accessControlAllowOrigin": null,
+        "vary": null,
+        "allowMethods": "GET,POST,PATCH,DELETE,OPTIONS",
+        "allowHeaders": "Authorization,Content-Type",
+        "answered204": false,
+        "passedThrough": true
+      }
+    },
+    {
+      "name": "absent-origin",
+      "origin": null,
+      "method": "GET",
+      "expected": {
+        "accessControlAllowOrigin": null,
+        "vary": null,
+        "allowMethods": "GET,POST,PATCH,DELETE,OPTIONS",
+        "allowHeaders": "Authorization,Content-Type",
+        "answered204": false,
+        "passedThrough": true
+      }
+    },
+    {
+      "name": "preflight-from-foreign-origin",
+      "origin": "https://evil.example.com",
+      "method": "OPTIONS",
+      "expected": {
+        "accessControlAllowOrigin": null,
+        "vary": null,
+        "allowMethods": "GET,POST,PATCH,DELETE,OPTIONS",
+        "allowHeaders": "Authorization,Content-Type",
+        "answered204": true,
+        "passedThrough": false
+      }
+    }
+  ],
+  "caller": [
+    {
+      "name": "token-set-correct",
+      "consoleTokenConfigured": true,
+      "forwardedFor": null,
+      "authorization": "Bearer oracle-console-token",
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "token-set-absent",
+      "consoleTokenConfigured": true,
+      "forwardedFor": null,
+      "authorization": null,
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "token-set-wrong",
+      "consoleTokenConfigured": true,
+      "forwardedFor": null,
+      "authorization": "Bearer wrong",
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "token-unset-loopback-xff",
+      "consoleTokenConfigured": false,
+      "forwardedFor": "127.0.0.1",
+      "authorization": null,
+      "expected": {
+        "allowed": true
+      }
+    },
+    {
+      "name": "token-unset-foreign-xff",
+      "consoleTokenConfigured": false,
+      "forwardedFor": "10.0.0.9",
+      "authorization": null,
+      "expected": {
+        "allowed": false
+      }
+    },
+    {
+      "name": "token-unset-no-xff",
+      "consoleTokenConfigured": false,
+      "forwardedFor": null,
+      "authorization": null,
+      "expected": {
+        "allowed": true
+      }
+    }
+  ],
+  "divergences": [
+    {
+      "rule": "host-header",
+      "retained": "Never checks Host; a Host check was rejected as theatre and replaced by the loopback bind (route.js:321-325).",
+      "native": "Requires exactly one host header equal to the bound authority; refuses forwarded/x-forwarded-* and any authorization header.",
+      "citation": "native/hagency/src/console.rs:98-109 (common_authority)"
+    },
+    {
+      "rule": "sec-fetch-site-scope",
+      "retained": "Checked only for mutations (route.js:423) and `none` is accepted beside `same-origin` (route.js:381).",
+      "native": "Required exactly once and equal to `same-origin` on every console request, reads included.",
+      "citation": "native/hagency/src/console.rs:110-123 (same_origin)"
+    },
+    {
+      "rule": "origin-absent",
+      "retained": "A mutation with neither sec-fetch-site nor origin is ALLOWED — \"not from a browser\" (route.js:374-383).",
+      "native": "A mutation must carry origin equal to `http://<authority>`; absence is refused.",
+      "citation": "native/hagency/src/console.rs:119-122"
+    }
+  ]
+}

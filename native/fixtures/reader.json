@@ -1,0 +1,1449 @@
+{
+  "source": "lib/metering/reader.js",
+  "sourceSha256": "687acbf5e152e82afebee3b425e1819424f16e85fa4e90ebadeee0893e0683cc",
+  "now": 1800000000000,
+  "vectors": {
+    "reads": [
+      {
+        "name": "codex-nested-date-tree-discovered",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-a.jsonl",
+            "mtimeOffsetMs": -10800000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1100,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":1200}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/02/rollout-b.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2300,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":2400}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/08/31/rollout-c.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":3500,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":3600}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.codex/sessions/2026/08/31/rollout-c.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":3500,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":3600}}}}\n"
+            },
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/02/rollout-b.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2300,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":2400}}}}\n"
+            },
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-a.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1100,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":1200}}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 3,
+            "filesRead": 3,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 9,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "codex-newest-first",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-old.jsonl",
+            "mtimeOffsetMs": -32400000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":0,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":100}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-new.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":200}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-mid.jsonl",
+            "mtimeOffsetMs": -18000000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":200,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":300}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-new.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":200}}}}\n"
+            },
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-mid.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":200,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":300}}}}\n"
+            },
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-old.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":0,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":100}}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 3,
+            "filesRead": 3,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 6,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "claude-flat-and-non-recursive",
+        "framework": "claude",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [
+          {
+            "path": ".claude/projects/-Users-fixture-work/session.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-2\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":12,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          },
+          {
+            "path": ".claude/projects/-Users-fixture-work/nested/deeper.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-2\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":12,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          },
+          {
+            "path": ".claude/projects/-Users-fixture-work/notes.txt",
+            "mtimeOffsetMs": -3600000,
+            "content": "ignored\n"
+          }
+        ],
+        "searchNarrowed": true,
+        "searchRecursive": false,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.claude/projects/-Users-fixture-work/session.jsonl",
+              "text": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-2\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":12,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 1,
+            "filesRead": 1,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 3,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "claude-narrowed-age-drop-understates",
+        "framework": "claude",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [
+          {
+            "path": ".claude/projects/-Users-fixture-work/current.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          },
+          {
+            "path": ".claude/projects/-Users-fixture-work/old.jsonl",
+            "mtimeOffsetMs": -3456000000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          }
+        ],
+        "searchNarrowed": true,
+        "searchRecursive": false,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.claude/projects/-Users-fixture-work/current.jsonl",
+              "text": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 2,
+            "filesRead": 1,
+            "droppedByCount": 0,
+            "droppedByAge": 1,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 2,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "codex-outside-window-never-read",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/01/02/rollout-old.jsonl",
+            "mtimeOffsetMs": -3456000000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":400,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":500}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [],
+          "bounds": {
+            "filesSeen": 1,
+            "filesRead": 0,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 1,
+            "entriesWalked": 4,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "file-ceiling-drops-oldest",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {
+          "maxFiles": 2
+        },
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-0.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":0,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":100}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/02/rollout-1.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":200}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/03/rollout-2.jsonl",
+            "mtimeOffsetMs": -10800000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":200,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":300}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-0.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":0,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":100}}}}\n"
+            },
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/02/rollout-1.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":100,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":200}}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 3,
+            "filesRead": 2,
+            "droppedByCount": 1,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 8,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "byte-ceiling-truncates-at-line-boundary",
+        "framework": "claude",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {
+          "maxBytes": 140
+        },
+        "tree": [
+          {
+            "path": ".claude/projects/-Users-fixture-work/fat.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-2\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":12,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-3\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":13,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-4\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":14,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-5\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":15,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          }
+        ],
+        "searchNarrowed": true,
+        "searchRecursive": false,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.claude/projects/-Users-fixture-work/fat.jsonl",
+              "text": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-2\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":12,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-3\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":13,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-4\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":14,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-5\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":15,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 1,
+            "filesRead": 1,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 1,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 1,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "traversal-ceiling-reports-unwalked",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {
+          "maxEntries": 4
+        },
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/10/rollout-0.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":0,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":100}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/11/rollout-1.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":101}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/12/rollout-2.jsonl",
+            "mtimeOffsetMs": -10800000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":2,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":102}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/13/rollout-3.jsonl",
+            "mtimeOffsetMs": -14400000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":3,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":103}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/14/rollout-4.jsonl",
+            "mtimeOffsetMs": -18000000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":104}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [],
+          "bounds": {
+            "filesSeen": 0,
+            "filesRead": 0,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 4,
+            "entriesUnwalked": 5
+          }
+        }
+      },
+      {
+        "name": "missing-root-is-empty-not-an-error",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [],
+          "bounds": {
+            "filesSeen": 0,
+            "filesRead": 0,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 0,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "unicode-names-survive",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-😀-工程.jsonl",
+            "mtimeOffsetMs": -14400000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":600,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":700}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-😀-工程.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":600,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":700}}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 1,
+            "filesRead": 1,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 4,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "window-narrowing-by-limits",
+        "framework": "claude",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {
+          "windowMs": 7200001
+        },
+        "tree": [
+          {
+            "path": ".claude/projects/-Users-fixture-work/edge-in.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          },
+          {
+            "path": ".claude/projects/-Users-fixture-work/edge-out.jsonl",
+            "mtimeOffsetMs": -10800000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          }
+        ],
+        "searchNarrowed": true,
+        "searchRecursive": false,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.claude/projects/-Users-fixture-work/edge-in.jsonl",
+              "text": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 2,
+            "filesRead": 1,
+            "droppedByCount": 0,
+            "droppedByAge": 1,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 2,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "mixed-old-fresh-and-oversize",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {
+          "maxBytes": 200
+        },
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-fresh.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":800,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":900}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-fat.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":-90,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":10}}}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":1,\"cached_input_tokens\":0,\"output_tokens\":1,\"reasoning_output_tokens\":0,\"total_tokens\":2}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2025/01/01/rollout-ancient.jsonl",
+            "mtimeOffsetMs": -25920000000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":899,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":999}}}}\n"
+          }
+        ],
+        "searchNarrowed": false,
+        "searchRecursive": true,
+        "expected": {
+          "files": [
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-fat.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}"
+            },
+            {
+              "file": "<HOME>/.codex/sessions/2026/09/01/rollout-fresh.jsonl",
+              "text": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}"
+            }
+          ],
+          "bounds": {
+            "filesSeen": 3,
+            "filesRead": 2,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 2,
+            "unreadOutsideWindow": 1,
+            "entriesWalked": 9,
+            "entriesUnwalked": 0
+          }
+        }
+      },
+      {
+        "name": "unreadable-directory-skipped",
+        "framework": "codex",
+        "workspacePath": "/Users/fixture/work",
+        "limits": {},
+        "denied": true,
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/锁/rollout-hidden.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":300,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":400}}}}\n"
+          }
+        ],
+        "expected": {
+          "files": [],
+          "bounds": {
+            "filesSeen": 0,
+            "filesRead": 0,
+            "droppedByCount": 0,
+            "droppedByAge": 0,
+            "truncated": 0,
+            "unreadOutsideWindow": 0,
+            "entriesWalked": 4,
+            "entriesUnwalked": 0
+          }
+        }
+      }
+    ],
+    "reports": [
+      {
+        "name": "null-when-complete",
+        "bounds": {
+          "filesSeen": 3,
+          "filesRead": 3,
+          "droppedByCount": 0,
+          "droppedByAge": 0,
+          "truncated": 0,
+          "unreadOutsideWindow": 0,
+          "entriesWalked": 9,
+          "entriesUnwalked": 0
+        },
+        "expected": null
+      },
+      {
+        "name": "understates-only",
+        "bounds": {
+          "filesSeen": 2,
+          "filesRead": 1,
+          "droppedByCount": 1,
+          "droppedByAge": 0,
+          "truncated": 0,
+          "unreadOutsideWindow": 0,
+          "entriesWalked": 4,
+          "entriesUnwalked": 0
+        },
+        "expected": "scan was bounded and this figure understates consumption: 1 transcript(s) beyond the file limit"
+      },
+      {
+        "name": "unknown-only",
+        "bounds": {
+          "filesSeen": 1,
+          "filesRead": 1,
+          "droppedByCount": 0,
+          "droppedByAge": 0,
+          "truncated": 0,
+          "unreadOutsideWindow": 3,
+          "entriesWalked": 6,
+          "entriesUnwalked": 0
+        },
+        "expected": "scan was bounded: 3 candidate transcript(s) fell outside the window in a search that could not be narrowed to one workspace, so whether any belong to this agent was never read"
+      },
+      {
+        "name": "both-claims-composed",
+        "bounds": {
+          "filesSeen": 5,
+          "filesRead": 2,
+          "droppedByCount": 2,
+          "droppedByAge": 1,
+          "truncated": 0,
+          "unreadOutsideWindow": 4,
+          "entriesWalked": 12,
+          "entriesUnwalked": 0
+        },
+        "expected": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window; 2 transcript(s) beyond the file limit. Separately, 4 candidate transcript(s) fell outside the window in a search that could not be narrowed to one workspace, so whether any belong to this agent was never read"
+      },
+      {
+        "name": "truncation-and-traversal-named",
+        "bounds": {
+          "filesSeen": 2,
+          "filesRead": 2,
+          "droppedByCount": 0,
+          "droppedByAge": 0,
+          "truncated": 1,
+          "unreadOutsideWindow": 0,
+          "entriesWalked": 7,
+          "entriesUnwalked": 9
+        },
+        "expected": "scan was bounded and this figure understates consumption: 1 transcript(s) truncated at the byte limit; 9 directory entr(ies) beyond the traversal limit"
+      }
+    ],
+    "fleets": [
+      {
+        "name": "cache-ttl-force-and-stamp",
+        "tree": [
+          {
+            "path": ".claude/projects/-Users-fixture-work/session-a.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-2\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":12,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-3\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":13,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-x.jsonl",
+            "mtimeOffsetMs": -10800000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4313868,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":4313968}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-y.jsonl",
+            "mtimeOffsetMs": -14400000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":4900,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":5000}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/02/rollout-z.jsonl",
+            "mtimeOffsetMs": -18000000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":5900,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":6000}}}}\n"
+          },
+          {
+            "path": ".claude/projects/-Users-fixture-work/old.jsonl",
+            "mtimeOffsetMs": -3456000000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          }
+        ],
+        "steps": [
+          {
+            "agents": [
+              {
+                "name": "BigLittle",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work",
+                "workspacePath": null
+              },
+              {
+                "name": "ClaudeA",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": true,
+            "now": 1800000000000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "BigLittle",
+                  "available": false,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 3,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-x.jsonl",
+                      "totals": {
+                        "input": 4313858,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-y.jsonl",
+                      "totals": {
+                        "input": 4890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/02/rollout-z.jsonl",
+                      "totals": {
+                        "input": 5890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with ClaudeA; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "ClaudeA",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/session-a.jsonl",
+                      "totals": {
+                        "input": 46,
+                        "output": 80,
+                        "cacheWrite": 12,
+                        "cacheRead": 160
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with BigLittle; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 5,
+                "filesRead": 4,
+                "droppedByCount": 0,
+                "droppedByAge": 1,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 9,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window",
+              "cached": false,
+              "computedAt": 1800000000000
+            }
+          },
+          {
+            "agents": [
+              {
+                "name": "BigLittle",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work",
+                "workspacePath": null
+              },
+              {
+                "name": "ClaudeA",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": false,
+            "now": 1800000030000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "BigLittle",
+                  "available": false,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 3,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-x.jsonl",
+                      "totals": {
+                        "input": 4313858,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-y.jsonl",
+                      "totals": {
+                        "input": 4890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/02/rollout-z.jsonl",
+                      "totals": {
+                        "input": 5890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with ClaudeA; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "ClaudeA",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/session-a.jsonl",
+                      "totals": {
+                        "input": 46,
+                        "output": 80,
+                        "cacheWrite": 12,
+                        "cacheRead": 160
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with BigLittle; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 5,
+                "filesRead": 4,
+                "droppedByCount": 0,
+                "droppedByAge": 1,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 9,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window",
+              "cached": true,
+              "computedAt": 1800000000000
+            }
+          },
+          {
+            "agents": [
+              {
+                "name": "BigLittle",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work",
+                "workspacePath": null
+              },
+              {
+                "name": "ClaudeA",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": false,
+            "now": 1800000059999,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "BigLittle",
+                  "available": false,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 3,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-x.jsonl",
+                      "totals": {
+                        "input": 4313858,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-y.jsonl",
+                      "totals": {
+                        "input": 4890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/02/rollout-z.jsonl",
+                      "totals": {
+                        "input": 5890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with ClaudeA; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "ClaudeA",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/session-a.jsonl",
+                      "totals": {
+                        "input": 46,
+                        "output": 80,
+                        "cacheWrite": 12,
+                        "cacheRead": 160
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with BigLittle; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 5,
+                "filesRead": 4,
+                "droppedByCount": 0,
+                "droppedByAge": 1,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 9,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window",
+              "cached": true,
+              "computedAt": 1800000000000
+            }
+          },
+          {
+            "agents": [
+              {
+                "name": "BigLittle",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work",
+                "workspacePath": null
+              },
+              {
+                "name": "ClaudeA",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": false,
+            "now": 1800000060000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "BigLittle",
+                  "available": false,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 3,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-x.jsonl",
+                      "totals": {
+                        "input": 4313858,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-y.jsonl",
+                      "totals": {
+                        "input": 4890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/02/rollout-z.jsonl",
+                      "totals": {
+                        "input": 5890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with ClaudeA; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "ClaudeA",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/session-a.jsonl",
+                      "totals": {
+                        "input": 46,
+                        "output": 80,
+                        "cacheWrite": 12,
+                        "cacheRead": 160
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with BigLittle; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 5,
+                "filesRead": 4,
+                "droppedByCount": 0,
+                "droppedByAge": 1,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 9,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window",
+              "cached": false,
+              "computedAt": 1800000060000
+            }
+          },
+          {
+            "agents": [
+              {
+                "name": "BigLittle",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work",
+                "workspacePath": null
+              },
+              {
+                "name": "ClaudeA",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": true,
+            "now": 1800000061000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "BigLittle",
+                  "available": false,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 3,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-x.jsonl",
+                      "totals": {
+                        "input": 4313858,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-y.jsonl",
+                      "totals": {
+                        "input": 4890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/02/rollout-z.jsonl",
+                      "totals": {
+                        "input": 5890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with ClaudeA; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "ClaudeA",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/session-a.jsonl",
+                      "totals": {
+                        "input": 46,
+                        "output": 80,
+                        "cacheWrite": 12,
+                        "cacheRead": 160
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with BigLittle; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 5,
+                "filesRead": 4,
+                "droppedByCount": 0,
+                "droppedByAge": 1,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 9,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window",
+              "cached": false,
+              "computedAt": 1800000061000
+            }
+          },
+          {
+            "agents": [
+              {
+                "name": "Newcomer",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/fresh"
+              }
+            ],
+            "force": false,
+            "now": 1800000062000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "Newcomer",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/fresh",
+                  "reason": "no transcripts found for this workspace yet"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 1,
+              "reason": "1 of 1 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 0,
+                "filesRead": 0,
+                "droppedByCount": 0,
+                "droppedByAge": 0,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 0,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": null,
+              "cached": false,
+              "computedAt": 1800000062000
+            }
+          },
+          {
+            "agents": [
+              {
+                "name": "BigLittle",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work",
+                "workspacePath": null
+              },
+              {
+                "name": "ClaudeA",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": false,
+            "now": 1800000063000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "BigLittle",
+                  "available": false,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 3,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-x.jsonl",
+                      "totals": {
+                        "input": 4313858,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-y.jsonl",
+                      "totals": {
+                        "input": 4890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    },
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/02/rollout-z.jsonl",
+                      "totals": {
+                        "input": 5890,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with ClaudeA; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "ClaudeA",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/session-a.jsonl",
+                      "totals": {
+                        "input": 46,
+                        "output": 80,
+                        "cacheWrite": 12,
+                        "cacheRead": 160
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with BigLittle; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 5,
+                "filesRead": 4,
+                "droppedByCount": 0,
+                "droppedByAge": 1,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 9,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded and this figure understates consumption: 1 transcript(s) older than the window",
+              "cached": false,
+              "computedAt": 1800000063000
+            }
+          }
+        ]
+      },
+      {
+        "name": "fleet-rows-and-scan-caveats",
+        "tree": [
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-mine.jsonl",
+            "mtimeOffsetMs": -10800000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":677,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":777}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/09/01/rollout-theirs.jsonl",
+            "mtimeOffsetMs": -7200000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/other\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":11,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":111}}}}\n"
+          },
+          {
+            "path": ".codex/sessions/2026/01/01/rollout-ancient.jsonl",
+            "mtimeOffsetMs": -8640000000,
+            "content": "{\"type\":\"session_meta\",\"payload\":{\"cwd\":\"/Users/fixture/work\"}}\n{\"payload\":{\"cwd\":\"/Users/fixture/work\",\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":899,\"cached_input_tokens\":10,\"output_tokens\":100,\"reasoning_output_tokens\":50,\"total_tokens\":999}}}}\n"
+          }
+        ],
+        "steps": [
+          {
+            "agents": [
+              {
+                "name": "Mine",
+                "type": "codex",
+                "lastWorkspacePath": "/Users/fixture/work"
+              },
+              {
+                "name": "NoWs",
+                "type": "codex"
+              },
+              {
+                "name": "Octo",
+                "type": "octos"
+              }
+            ],
+            "force": true,
+            "now": 1800000005000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "Mine",
+                  "available": true,
+                  "framework": "codex",
+                  "workspace": "/Users/fixture/work",
+                  "totals": {
+                    "input": 667,
+                    "output": 100,
+                    "cacheWrite": 0,
+                    "cacheRead": 10
+                  },
+                  "total": 777,
+                  "sessions": 1,
+                  "skipped": 1,
+                  "files": [
+                    {
+                      "file": "<HOME>/.codex/sessions/2026/09/01/rollout-mine.jsonl",
+                      "totals": {
+                        "input": 667,
+                        "cacheRead": 10,
+                        "cacheWrite": 0,
+                        "output": 100
+                      }
+                    }
+                  ]
+                },
+                {
+                  "agent": "NoWs",
+                  "available": false,
+                  "framework": "codex",
+                  "reason": "no workspace recorded for this agent, so its transcripts cannot be located; a running agent reports one and a stopped one may never have"
+                },
+                {
+                  "agent": "Octo",
+                  "available": false,
+                  "framework": "octos",
+                  "reason": "octos session files record no usage object and no cwd, so consumption can be neither counted nor attributed from them"
+                }
+              ],
+              "totals": {
+                "input": 667,
+                "output": 100,
+                "cacheWrite": 0,
+                "cacheRead": 10
+              },
+              "total": 777,
+              "attributed": 1,
+              "unattributed": 2,
+              "reason": "2 of 3 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 3,
+                "filesRead": 2,
+                "droppedByCount": 0,
+                "droppedByAge": 0,
+                "truncated": 0,
+                "unreadOutsideWindow": 1,
+                "entriesWalked": 8,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": "scan was bounded: 1 candidate transcript(s) fell outside the window in a search that could not be narrowed to one workspace, so whether any belong to this agent was never read",
+              "cached": false,
+              "computedAt": 1800000005000
+            }
+          }
+        ]
+      },
+      {
+        "name": "shared-workspace-ambiguous",
+        "tree": [
+          {
+            "path": ".claude/projects/-Users-fixture-work/shared.jsonl",
+            "mtimeOffsetMs": -3600000,
+            "content": "{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-0\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":10,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n{\"cwd\":\"/Users/fixture/work\",\"uuid\":\"c-1\",\"message\":{\"model\":\"model-fixture\",\"usage\":{\"input_tokens\":11,\"output_tokens\":20,\"cache_creation_input_tokens\":3,\"cache_read_input_tokens\":40}}}\n"
+          }
+        ],
+        "steps": [
+          {
+            "agents": [
+              {
+                "name": "a1",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              },
+              {
+                "name": "a2",
+                "type": "claude",
+                "workspacePath": "/Users/fixture/work"
+              }
+            ],
+            "force": true,
+            "now": 1800000006000,
+            "expected": {
+              "agents": [
+                {
+                  "agent": "a1",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/shared.jsonl",
+                      "totals": {
+                        "input": 21,
+                        "output": 40,
+                        "cacheWrite": 6,
+                        "cacheRead": 80
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with a2; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                },
+                {
+                  "agent": "a2",
+                  "available": false,
+                  "framework": "claude",
+                  "workspace": "/Users/fixture/work",
+                  "sessions": 1,
+                  "skipped": 0,
+                  "files": [
+                    {
+                      "file": "<HOME>/.claude/projects/-Users-fixture-work/shared.jsonl",
+                      "totals": {
+                        "input": 21,
+                        "output": 40,
+                        "cacheWrite": 6,
+                        "cacheRead": 80
+                      }
+                    }
+                  ],
+                  "reason": "workspace is shared with a1; transcripts record the directory, not which agent ran there, so consumption cannot be attributed"
+                }
+              ],
+              "totals": null,
+              "total": null,
+              "attributed": 0,
+              "unattributed": 2,
+              "reason": "2 of 2 agents could not be attributed",
+              "scanned": {
+                "filesSeen": 2,
+                "filesRead": 2,
+                "droppedByCount": 0,
+                "droppedByAge": 0,
+                "truncated": 0,
+                "unreadOutsideWindow": 0,
+                "entriesWalked": 2,
+                "entriesUnwalked": 0
+              },
+              "boundsReason": null,
+              "cached": false,
+              "computedAt": 1800000006000
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

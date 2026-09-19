@@ -1,0 +1,126 @@
+//! A single SQLite owner on a dedicated bounded worker; no IO in async handlers.
+pub use domain::resource_configuration::{
+    CeilingChange, ProfileChange, ResourceConfigurationAccess, ResourceConfigurationCommand,
+    ResourceConfigurationResult,
+};
+pub mod agent_home;
+mod database;
+mod domain;
+mod domain_worker;
+pub mod private;
+pub mod task_context;
+pub use domain::PrivateApprovalCard;
+pub use domain::PublishedCatalog;
+pub use domain::StaleMatrixSessionReceipt;
+pub use domain::resource_publication::{
+    ResourcePublicationAccess, ResourcePublicationCommand, ResourcePublicationResult,
+    ResourcePublicationRetirement, resource_publication_revision,
+};
+pub use domain::uploads::UploadSettlement;
+pub use domain::{
+    ALERT_STATUSES, AgentRosterRow, AlertTransition, AttachmentTicket, CeilingAlert, CeilingReport,
+    CorpusSweepOutcome, DomainRepository, ENDED_LIMIT, EXECUTION_RETENTION_BATCH,
+    EXECUTION_RETENTION_DISPATCHES, EXECUTION_RETENTION_ROWS, Effect, EffectOutcome, EffectState,
+    EngagementPruneOutcome, EngagementRetentionStatus, ExecutionPruneOutcome, KnownTokens,
+    MAX_ENGAGEMENT_USAGE_PERIODS, MAX_ENGAGEMENT_USAGE_SOURCES, MAX_OPEN_CEILING_ALERTS,
+    MAX_SOURCE_USAGE_RECEIPTS, MAX_USAGE_PERIODS, MAX_USAGE_RECEIPTS, MAX_USAGE_SOURCES,
+    MESSAGE_RETENTION_FLOOR, OwnedClaimProfile, OwnedClaimRoom, OwnedCompletion,
+    OwnedDispatchScope, OwnedFailure, OwnedObservation, OwnedProvisionScope, PEER_RECEIPT_CEILING,
+    PEER_RETENTION_CEILING, PEER_RETENTION_FLOOR, PeerRetentionStatus, PeerSweepOutcome,
+    ProjectSide, RetentionStatus, SideProject, SourceUsage, SweepOutcome, UploadAdmission,
+    UploadClaim, UploadIdentity, UploadPreparation, UploadSend, UsageCeiling, UsageEvidence,
+    UsagePeriod, UsagePeriodKind, UsageReceipt, UsageReport, UsageSource, UsageSummary,
+    allowed_transitions,
+};
+pub use domain::{OutcomeAction, OutcomeResolution};
+pub use domain_worker::DomainStore;
+pub mod outbound;
+mod repository;
+mod shutdown;
+mod worker;
+pub use repository::Repository;
+pub use shutdown::{
+    NativeWriterObservation, NativeWriterUnavailable, ShutdownOutcome, ShutdownSnapshot,
+};
+pub use worker::Store;
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+    #[error("local management session is expired or retired")]
+    LocalAuthority,
+    #[error("runner capability is missing, stale or outside the task scope")]
+    RunnerAuthority,
+    #[error("approval was already consumed")]
+    AlreadyConsumed,
+    #[error("approval is not consumable in its settled state")]
+    NotConsumable,
+    #[error("room snapshot is unsafe and was refused: {0}")]
+    UnsafeSnapshot(String),
+    #[error("session or resource requires inspected recovery")]
+    Quarantined,
+    #[error("invalid input: {0}")]
+    Invalid(#[from] hagency_core::InvalidInput),
+    #[error("request identifier was reused with different content")]
+    Conflict,
+    #[error("registration generation differs from its durable binding")]
+    Generation,
+    #[error("domain object does not exist")]
+    NotFound,
+    #[error("selected resource is withdrawn or does not qualify")]
+    Unqualified,
+    #[error("selected resource or declared shared seat has insufficient capacity")]
+    InsufficientCapacity,
+    #[error("cannot allocate against an agent with no declared ceiling")]
+    NoCeiling,
+    #[error("{message}")]
+    OverCommit { message: String },
+    #[error("domain operation is not valid in its current state")]
+    State,
+    #[error("state is owned by another process")]
+    Locked,
+    #[error("state format is corrupt or newer than this binary")]
+    Schema,
+    #[error("state must be an owner-private directory containing regular files")]
+    Private,
+    #[error("private state on this platform has not passed the native permission gate")]
+    PlatformUnavailable,
+    #[error("durable store capacity is exhausted; pending records were retained")]
+    Capacity,
+    #[error("worker queue is full; retry the same request identifier")]
+    Busy,
+    #[error("worker stopped; inspect or retry the same request identifier")]
+    Unavailable,
+    #[error("processing outcome is unknown; reconcile the original command before retrying")]
+    OutcomeUnknown,
+    #[error("storage error")]
+    Sqlite(#[from] rusqlite::Error),
+    #[error("filesystem error")]
+    Io(#[from] std::io::Error),
+    #[error("serialization error")]
+    Json(#[from] serde_json::Error),
+}
+
+// Separate file-event custody; no Matrix acknowledgement proof constructor.
+pub use domain::file_delivery::{
+    FileDeliveryAdmission, FileDeliveryIdentity, FileDeliverySettlement, FilePublicationClaim,
+    FilePublicationSend,
+};
+
+// Original local cache association; none of these values is SDK/file proof.
+pub use domain::received_files::{
+    ReceiveAdmission, ReceiveIdentity, ReceiveReservation, ReceiveWrite,
+};
+
+// Original one-shot router response authority; no native application proof.
+pub use domain::{
+    ApprovalResponseGrant, ApprovalResponseObservation, ApprovalResponseState,
+    ApprovalResponseSummary,
+};
+
+pub use domain::{OwnedApprovalScope, OwnedApprovalStatus};
+
+pub use domain::accounts::{
+    ACCOUNT_PROFILE, AccountChoice, AccountEnrollmentAccess, AccountEnrollmentCommand,
+    AccountReadiness, AccountReadinessMode, AccountState, DEFAULT_READINESS_TTL, LoginAttempt,
+    LoginOutcome, LoginVerdict, LogoutObservation, LogoutReadiness, ManagedAccount, ManagedLaunch,
+};

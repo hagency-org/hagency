@@ -1,0 +1,36 @@
+   Compiling hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.14s
+     Running tests/owned_matrix.rs (target/debug/deps/owned_matrix-676abf887d23a70e)
+
+running 3 tests
+test native_matrix_owned_complete_workflow ... FAILED
+test native_matrix_owned_private_plaintext_refused ... FAILED
+test native_matrix_owned_notice_failure ... FAILED
+
+failures:
+
+---- native_matrix_owned_complete_workflow stdout ----
+
+thread 'native_matrix_owned_complete_workflow' (88125480) panicked at native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:42:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- native_matrix_owned_private_plaintext_refused stdout ----
+
+thread 'native_matrix_owned_private_plaintext_refused' (88125482) panicked at native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:42:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- native_matrix_owned_notice_failure stdout ----
+
+thread 'native_matrix_owned_notice_failure' (88125481) panicked at native/hagency/tests/owned_matrix/../../../hagency-matrix/tests/common/mod.rs:42:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    native_matrix_owned_complete_workflow
+    native_matrix_owned_notice_failure
+    native_matrix_owned_private_plaintext_refused
+
+test result: FAILED. 0 passed; 3 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.34s
+
+error: test failed, to rerun pass `-p hagency --test owned_matrix`

@@ -484,3 +484,19 @@ rather than discovered.
   one bot serve rooms hosted elsewhere, and a second bot identity would mean a second crypto
   store, a second device, and a second E2EE state machine — the ADR-008 surface doubled for no
   gain.
+
+## Amendment 2026-09-14 — the engagement-derived MXID and device (ADR-147)
+
+The provisioning intake derives the newly effective engagement's Matrix identity
+from the engagement id: the sender localpart **`@{engagement_id}`** and the device
+**`DEVICE_{engagement_id}`**. This adopts the retained product's behaviour of
+deriving a new agent's identity deterministically from the engagement — the
+retained agent name is `mx_{sideId…}_{role}_{sha256(id)[:12]}` and its localpart
+`{agentPrefix}{agentName}` (`backend-v2.js:14756`, `:14791`) — but deviates in the
+key: the native rule binds the localpart and device directly to the engagement id
+rather than to an intermediate agent name, because the native store has no
+separate agent-name surface and its `UNIQUE(server_name, sender_mxid)` constraint
+forbids reusing the host's own sender. Deriving both from the engagement id gives
+each newly effective engagement a distinct, stable, restart-safe sender and device
+that satisfy that constraint. The rationale and evidence are recorded in ADR-147
+(d).

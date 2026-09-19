@@ -6,6 +6,12 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const modulePath = path.resolve('skills/hagency-inner-loop/scripts/run-stage-release.mjs');
+// Each case drives the real stage-release script through a dozen child processes.
+// On the hosted macos-15-intel runner they measured 13 s to 29.8 s, and two missed
+// the suite's 30 s default by under 100 ms (30 037 ms and 30 055 ms), so the job
+// failed or passed by runner mood. Same reasoning as vitest.config.js: a slow
+// machine should make this file slower, not wrong.
+vi.setConfig({ testTimeout: 90_000 });
 const publicationFault = vi.hoisted(() => ({ target: null, delayed: 0 }));
 vi.mock('../skills/hagency-inner-loop/scripts/native-control-evidence.mjs', async importOriginal => {
   const actual = await importOriginal();

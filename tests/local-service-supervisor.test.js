@@ -12,6 +12,7 @@ import {
   readServiceStatus,
 } from '../src/local-service-supervisor.mjs';
 import { getProcessStartIdentity } from '../src/process-identity.mjs';
+import { startupEvidence, withReservedServicePorts } from './fixtures/local-service-fixture.mjs';
 
 const repoRoot = path.resolve('.');
 const fixtureScript = 'tests/fixtures/service-child.mjs';
@@ -31,9 +32,18 @@ async function freePort() {
   });
 }
 
+async function bindOnce(port) {
+  return new Promise((resolve, reject) => {
+    const server = net.createServer();
+    server.once('error', reject);
+    server.listen(port, '127.0.0.1', () => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  });
+}
+
 async function fixtureContext() {
-  const backendPort = await freePort();
-  const dashboardPort = await freePort();
+  const [backendPort, dashboardPort] = await withReservedServicePorts((ports) => ports);
   const runtimeRoot = mkdtempSync(path.join(os.tmpdir(), 'hagency-services-runtime-'));
   runtimes.push(runtimeRoot);
   const eventLog = path.join(runtimeRoot, 'events.jsonl');
@@ -83,6 +93,20 @@ async function waitFor(predicate, timeoutMs = 3000) {
   throw new Error(`condition not met within ${timeoutMs}ms`);
 }
 
+async function waitForStartupEvents(supervisor, eventLog, timeoutMs = 3000) {
+  let rows = [];
+  try {
+    return await waitFor(() => {
+      rows = readFileSync(eventLog, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
+      return rows.length === 4 ? rows : null;
+    }, timeoutMs);
+  } catch (error) {
+    const reason = error.message === `condition not met within ${timeoutMs}ms`
+      ? error.message : 'event log could not be read or parsed';
+    throw new Error(`${reason}; startup evidence: ${JSON.stringify(startupEvidence(supervisor, rows))}`);
+  }
+}
+
 afterEach(async () => {
   for (const supervisor of supervisors.splice(0).reverse()) {
     await supervisor.stop().catch(() => {});
@@ -95,6 +119,31 @@ afterEach(async () => {
 });
 
 describe('LocalServiceSupervisor', () => {
+  test('reserves two distinct service ports until the reservation scope ends', async () => {
+    const ports = await withReservedServicePorts(async (reserved) => {
+      expect(new Set(reserved).size).toBe(2);
+      for (const port of reserved) {
+        await expect(bindOnce(port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+      }
+      return reserved;
+    });
+    for (const port of ports) await bindOnce(port);
+  });
+
+  test('releases both service port reservations when fixture construction fails', async () => {
+    let ports;
+    const failure = new Error('controlled fixture construction failure');
+    await expect(withReservedServicePorts(async (reserved) => {
+      ports = reserved;
+      for (const port of ports) {
+        await expect(bindOnce(port)).rejects.toMatchObject({ code: 'EADDRINUSE' });
+      }
+      throw failure;
+    })).rejects.toBe(failure);
+    expect(ports).toHaveLength(2);
+    for (const port of ports) await bindOnce(port);
+  });
+
   test('starts all four services in dependency order and reports healthy', async () => {
     const { supervisor, eventLog } = await fixtureContext();
     await supervisor.start();
@@ -106,17 +155,64 @@ describe('LocalServiceSupervisor', () => {
     ]);
     expect(status.services.every((service) => service.healthy && service.pid > 0)).toBe(true);
 
-    const events = await waitFor(() => {
-      const rows = readFileSync(eventLog, 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse);
-      return rows.length === 4 ? rows : null;
-    });
-    // backend is the only real ordering constraint: dashboard, bridge and relay
-    // all depend on backend alone, so they start CONCURRENTLY and the order in
-    // which they report ready is a race. Asserting a fixed order passed on an
-    // idle machine and failed under CI load.
+    const events = await waitForStartupEvents(supervisor, eventLog);
+    // Startup awaits each configured probe, but process probes can observe a
+    // wrapper before its fixture child writes ready. Backend readiness must
+    // precede dependants; bridge/relay fixture readiness can still race.
     expect(events[0]).toMatchObject({ name: 'backend', event: 'ready' });
     expect(events.slice(1).map((event) => event.name).sort())
       .toEqual(['bridge', 'dashboard', 'relay']);
+  });
+
+  test('preserves extra stopped events and restart evidence in startup failures', async () => {
+    const { supervisor, eventLog } = await fixtureContext();
+    await supervisor.start();
+    await waitForStartupEvents(supervisor, eventLog);
+    await supervisor.stopService('relay', { restart: false });
+
+    // A fifth real event remains a failure; do not filter stopped/restarted
+    // children or change the normal startup deadline to hide that evidence.
+    const failure = await waitForStartupEvents(supervisor, eventLog, 100)
+      .then(() => null, (error) => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain('condition not met within 100ms');
+    const evidence = JSON.parse(failure.message.split('; startup evidence: ')[1]);
+    expect(evidence.events.total).toBe(5);
+    expect(evidence.events.sample).toContainEqual(expect.objectContaining({
+      name: 'relay', event: 'stopped',
+    }));
+    expect(evidence.services.find((service) => service.name === 'relay'))
+      .toMatchObject({ restarts: 0, pid: null });
+  });
+
+  test('bounds startup diagnostics without exposing arbitrary event or log fields', () => {
+    const runtimeRoot = mkdtempSync(path.join(os.tmpdir(), 'hagency-services-evidence-'));
+    runtimes.push(runtimeRoot);
+    const secret = 'must-not-appear-in-diagnostic';
+    writeFileSync(path.join(runtimeRoot, 'dashboard.log'), `${secret}: EADDRINUSE\n${'x'.repeat(4096)}ENOENT`);
+    const evidence = startupEvidence({
+      logDir: runtimeRoot,
+      records: new Map([['dashboard', {
+        pid: 12, restarts: 6, lastExit: { code: 1 }, env: { API_TOKEN: secret },
+      }]]),
+    }, Array.from({ length: 100 }, () => ({
+      name: 'dashboard', event: 'ready', pid: 11, body: secret, workspace: runtimeRoot,
+    })));
+    expect(evidence.events).toMatchObject({ total: 100, omitted: 84 });
+    expect(evidence.events.sample).toHaveLength(16);
+    expect(evidence.services).toHaveLength(4);
+    expect(evidence.services.find((service) => service.name === 'dashboard'))
+      .toMatchObject({ restarts: 6, exitCode: 1, childErrorCodes: ['EADDRINUSE'] });
+    const text = JSON.stringify(evidence);
+    expect(text.length).toBeLessThan(2048);
+    expect(text).not.toContain(secret);
+    expect(text).not.toContain(runtimeRoot);
+    expect(startupEvidence({ logDir: runtimeRoot, records: new Map() }, [null, {
+      name: secret, event: secret, pid: secret,
+    }]).events.sample).toEqual([
+      { name: 'unknown', event: 'unknown', pid: null },
+      { name: 'unknown', event: 'unknown', pid: null },
+    ]);
   });
 
   test('automatically restarts a crashed relay exactly once', async () => {

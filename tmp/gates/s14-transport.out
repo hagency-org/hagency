@@ -1,0 +1,16 @@
+   Compiling hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 1.05s
+     Running tests/transport.rs (target/debug/deps/transport-277d8e8b467e8edc)
+
+running 8 tests
+test native_codex_transport_failures_partial_write_timeout_and_cancelled_future ... ok
+test native_codex_transport_failures_flush_broken_stream_and_eof ... ok
+test native_codex_transport_deadlines_silence_partial_and_lifetime ... ok
+test native_codex_transport_deadlines_flood_and_cancellation_fairness ... ok
+test native_codex_transport_pressure_stderr_tail_during_blocked_write ... ok
+test native_codex_transport_write_complete_and_early_rpc_response ... ok
+test native_codex_transport_deadlines_real_timer ... ok
+test native_codex_transport_pressure_event_count_and_bytes ... ok
+
+test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.23s
+

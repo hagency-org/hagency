@@ -1,0 +1,38 @@
+{
+  "codexVersion": "0.154.0",
+  "schemas": {
+    "v2/HookStartedNotification.json": {
+      "sha256": "913ca61da2ab299d5f3318f6ea4d842d22708fc9308a9b10cdfad5e757098f2f",
+      "required": ["run", "threadId"]
+    },
+    "v2/HookCompletedNotification.json": {
+      "sha256": "1f146d70303cea6e59752191179e36a273650d63a74d4f9338f9a399da6597d2",
+      "required": ["run", "threadId"]
+    },
+    "ServerNotification.json": {
+      "sha256": "2a52bea56cd6bd994a9d014e2af60d631446d810bd78181714e4b05375a9a222",
+      "emittedAtMs": {"type": "integer", "format": "int64"}
+    },
+    "v2/RemoteControlStatusChangedNotification.json": {
+      "sha256": "56aa1d58294238557cd8b16199909c2c157a7542b9259ef2deddf40fe4c02c91",
+      "required": ["installationId", "serverName", "status"],
+      "status": ["disabled", "connecting", "connected", "errored"]
+    },
+    "v2/McpServerStatusUpdatedNotification.json": {
+      "sha256": "d6f4cb120b2363d321247592f03b9afbbf2762ad6d8af31b88c1b1bf39c4c7aa",
+      "required": ["name", "status"],
+      "status": ["starting", "ready", "failed", "cancelled"]
+    },
+    "v2/AccountRateLimitsUpdatedNotification.json": {
+      "sha256": "8252ed2af807bebce56e9c042b6848300c7c52ba7a8162dc50d320709fa3b078",
+      "required": ["rateLimits"]
+    }
+  },
+  "messages": [
+    {"method":"configWarning","params":{"summary":"qualification notice"},"emittedAtMs":1789543727000},
+    {"method":"remoteControl/status/changed","params":{"installationId":"qualification-installation","serverName":"qualification-server","environmentId":null,"status":"disabled"},"emittedAtMs":1789543727001},
+    {"method":"mcpServer/startupStatus/updated","params":{"threadId":"thread-one","name":"hagency_task_writer","status":"ready","error":null,"failureReason":null}},
+    {"method":"account/rateLimits/updated","params":{"rateLimits":{"limitId":"qualification-limit","primary":{"usedPercent":1.0,"windowDurationMins":300,"resetsAt":1789550000}}}}
+  ],
+  "unproven": ["effective sandbox", "model execution", "full runtime version qualification"]
+}

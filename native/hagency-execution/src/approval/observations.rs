@@ -1,0 +1,281 @@
+use super::state::Callbacks;
+use crate::{Failure, RuntimeObservation, RuntimeStage, SettlementCause, usage::UsageRun};
+use hagency_core::tasks::{RunnerCapability, TaskState};
+use hagency_runtime::{
+    codex::session::{ControlUpdate, Observation, Update},
+    owned::OwnedSession,
+};
+use hagency_store::DomainStore;
+use std::{future::Future, sync::atomic::AtomicBool};
+use tokio::time::Instant;
+
+pub(crate) struct Drive<'a> {
+    pub domain: &'a DomainStore,
+    pub cap: &'a RunnerCapability,
+    pub cancel: &'a AtomicBool,
+    pub until: Instant,
+    pub status: &'a mut Option<TaskState>,
+    pub usage: &'a mut UsageRun,
+    pub observation: &'a mut Option<RuntimeObservation>,
+    /// Diagnostic cause for a `Failure::SettlementUnknown` raised during this
+    /// drive. Mirrors `status`: the `Report` is owned by `operation.rs` and is
+    /// not reachable from the approval control loop. Diagnostic only — it grants
+    /// no retry, reply, lease or completion authority.
+    pub settlement_cause: &'a mut Option<SettlementCause>,
+}
+pub(super) struct Pumped<T> {
+    pub output: T,
+    pub terminal: Result<bool, Failure>,
+}
+impl Drive<'_> {
+    pub(super) async fn update(
+        &mut self,
+        callbacks: &mut Callbacks,
+        runner: &mut OwnedSession,
+        update: Update,
+        observation: Observation,
+    ) -> Result<bool, Failure> {
+        // Retain callback/resolution facts in the original owner BEFORE any
+        // usage or request receipt can await or unwind.
+        let (request, terminal) = match update {
+            Update::Approval(request) => (
+                Some(callbacks.retain(runner, request, self.until, &self.cap.dispatch_id)?),
+                Ok(false),
+            ),
+            Update::ApprovalResolved { id } => {
+                let entry = callbacks.entries.get_mut(&id).ok_or(Failure::Protocol)?;
+                let terminal = entry.resolution_arrives();
+                #[cfg(any(test, feature = "test-diagnostics"))]
+                if terminal.is_err() {
+                    super::diagnostics::cancellation(
+                        &self.cap.dispatch_id,
+                        "resolved-before-write",
+                        &format!("{:?}", entry.request.id()),
+                        entry.trace.as_slice(),
+                    );
+                }
+                (None, terminal)
+            }
+            Update::TurnEnded => {
+                #[cfg(any(test, feature = "test-diagnostics"))]
+                for entry in callbacks.entries.values_mut() {
+                    if entry.write.is_some() {
+                        if entry.resolved {
+                            // Arm label (field-independent half of e3dd70c3): a
+                            // written entry whose frame the peer resolved is
+                            // retired by its receipt path, not by the turn end.
+                            // The `in_flight`-dependent arms stay on the
+                            // product branch — upstream has no such field.
+                            entry.mark("turn-ended-ignored-written");
+                            continue;
+                        }
+                        // A written entry the peer never resolved: the frame is
+                        // on the wire but the peer's receipt is UNKNOWN — the
+                        // turn end must name that fate, never complete
+                        // silently over it (the midwrite scenario's subject:
+                        // `pending_server_requests: 1` at the close).
+                        entry.mark("turn-ended-unwritten");
+                        entry.mark("turn-ended-in-flight-uncertain");
+                        continue;
+                    }
+                    // Two labels: the arrival label is stamped on every
+                    // unwritten entry; the arm label names the rule that
+                    // fired for THIS entry, and only the cancelling arm
+                    // reaches the cancellation slot (`cancelled[]` stays the
+                    // record of what cancelled, not what arrived).
+                    let cancels = !entry.in_flight;
+                    entry.mark("turn-ended-unwritten");
+                    if cancels {
+                        entry.mark("turn-ended-cancels");
+                    } else if entry.resolved {
+                        // The quiet drop: the resolution already removed this
+                        // frame's transmit path before any byte, so its fate
+                        // is KNOWN (never sent) and the turn end is ignored.
+                        entry.mark("turn-ended-ignored-in-flight");
+                    } else {
+                        // The final verdict's rule: an in-flight frame with
+                        // no receipt has an UNKNOWN fate — the turn end must
+                        // name it, never complete silently. The transport's
+                        // write custody decides which named failure.
+                        let accepted = runner
+                            .write_progress()
+                            .map_or(0, |(accepted, _total)| accepted);
+                        entry.mark(if accepted > 0 {
+                            "turn-ended-in-flight-uncertain"
+                        } else {
+                            "turn-ended-in-flight-untransmitted"
+                        });
+                    }
+                    if cancels {
+                        super::diagnostics::cancellation(
+                            &self.cap.dispatch_id,
+                            "turn-ended-unwritten",
+                            &format!("{:?}", entry.request.id()),
+                            entry.trace.as_slice(),
+                        );
+                    }
+                }
+                (
+                    None,
+                    // A turn end invalidates transmission: an admitted entry
+                    // whose frame was never sent (not in flight) is still a
+                    // cancellation. `!admitted` deliberately appears only in
+                    // the resolution arm, where a resolution — unlike a turn
+                    // end — must not cancel a prepared-but-unsent frame the
+                    // send path still owns.
+                    if callbacks
+                        .entries
+                        .values()
+                        .any(|e| e.write.is_none() && !e.in_flight)
+                    {
+                        Err(Failure::ApprovalCancelled)
+                    } else if callbacks.entries.values().any(|e| {
+                        // Receipt-unknown and NOT resolved-away: the frame's
+                        // fate is unknown (the quiet drop's resolved entries
+                        // are exempt — their fate is known: never sent). A
+                        // WRITTEN but never-resolved entry has the same
+                        // unknown fate at the peer (the midwrite scenario:
+                        // the frame is on the wire, the probe exits with it
+                        // unread, `pending_server_requests: 1` at the close).
+                        // The turn end must not end the operation silently
+                        // over that unresolved acceptance.
+                        (e.in_flight || e.write.is_some()) && !e.resolved
+                    }) {
+                        // Decide from the transport's TERMINATION SNAPSHOT —
+                        // `stop()` erases `writing`, so `write_progress()`
+                        // reads zero after the host's close and must not be
+                        // used here. Cause first (ADR-046's
+                        // who-closed-first): the host closing its own pipe on
+                        // the peer's turn end is a HOST-side termination.
+                        // With accepted bytes — on the wire (`write`) or in
+                        // the snapshot's unconfirmed custody — the fate is
+                        // unknown: `SettlementUnknown` whoever closed; with
+                        // none sent the host-side cause is the quiet family
+                        // (the turn completed without the approval), never
+                        // `PeerUnavailable` — that name stays reserved for
+                        // `Io("stdin write")` against a gone reader and
+                        // `PeerEof`. A peer-side cause with an OBSERVED
+                        // zero-byte snapshot keeps the named refusal.
+                        let termination = runner.transport_termination();
+                        let host_side = termination.is_some_and(|t| {
+                            matches!(
+                                t.cause,
+                                hagency_runtime::codex::transport::Error::HostClosed
+                                    | hagency_runtime::codex::transport::Error::Closed
+                            )
+                        });
+                        let accepted = termination
+                            .and_then(|t| t.unconfirmed_write.as_ref())
+                            .map_or(0, |write| write.accepted_bytes);
+                        let transmitted =
+                            accepted > 0 || callbacks.entries.values().any(|e| e.write.is_some());
+                        if transmitted {
+                            Err(Failure::SettlementUnknown)
+                        } else if host_side {
+                            // Quiet: host's own close, nothing sent. The
+                            // in-flight frame is retired with the turn, the
+                            // trace already names it, and the drive
+                            // completes.
+                            Ok(true)
+                        } else {
+                            Err(Failure::PeerUnavailable)
+                        }
+                    } else {
+                        Ok(true)
+                    },
+                )
+            }
+            _ => (None, Ok(false)),
+        };
+        if self.usage.observe(&observation) {
+            let receipt = self.usage.record_pending().await;
+            // Observe only the actual original writer result. This test seam
+            // cannot manufacture a failure, positive receipt or extra read.
+            #[cfg(test)]
+            if receipt.is_err()
+                && let Some(observer) = &callbacks.receipt_observer
+            {
+                observer
+                    .usage_failed
+                    .store(true, std::sync::atomic::Ordering::Release);
+            }
+            receipt.map_err(|_| Failure::SettlementUnknown)?;
+        }
+        if let Some(key) = request {
+            let input = callbacks
+                .entries
+                .get(&key)
+                .ok_or(Failure::Protocol)?
+                .input
+                .clone();
+            let summary = self
+                .domain
+                .request_owner_approval(self.cap.clone(), input)
+                .await
+                .map_err(|_| Failure::LostAuthority)?;
+            #[cfg(test)]
+            if callbacks.fault == Some(super::Fault::RequestAck) {
+                return Err(Failure::LostAuthority);
+            }
+            callbacks.acknowledged(&key, summary)?;
+        }
+        terminal
+    }
+    pub(super) async fn pump<F: Future>(
+        &mut self,
+        callbacks: &mut Callbacks,
+        runner: &mut OwnedSession,
+        future: F,
+    ) -> Pumped<F::Output> {
+        tokio::pin!(future);
+        loop {
+            // Keep both the database future and the current original native
+            // read alive across ticks. Only a terminal failure drops that read.
+            let step = crate::operation::bounded(
+                runner.next_observed_or_control(future.as_mut()),
+                self.cancel,
+                self.until,
+            )
+            .await;
+            let terminal = match step {
+                Ok(Ok(ControlUpdate::Control(output))) => {
+                    return Pumped {
+                        output,
+                        terminal: Ok(false),
+                    };
+                }
+                Ok(Ok(ControlUpdate::Update(update, observation))) => {
+                    self.update(callbacks, runner, update, *observation).await
+                }
+                Ok(Err(error)) => {
+                    // H3 totality: the pump sees a dead peer through the same
+                    // classifier as the send path, so the verdict does not
+                    // depend on which observer touched the transport first.
+                    // The armed fact (Q3) comes from the coordinator's entry
+                    // state — a frame is armed when an entry holds its
+                    // prepared frame or is in flight — never from the absence
+                    // of a write observation.
+                    let armed = callbacks.entries.values().any(|entry| {
+                        entry.prepared.is_some() || entry.in_flight || entry.write.is_some()
+                    });
+                    Err(super::control::send_failure_with_termination(
+                        runner, armed, error,
+                    ))
+                }
+                Err(failure) => Err(failure),
+            };
+            if !matches!(terminal, Ok(false)) {
+                self.observation.get_or_insert_with(|| {
+                    RuntimeObservation::capture(RuntimeStage::Update, runner)
+                });
+                runner.stop();
+                // Stopping cannot cancel a commit. Finish the SAME bounded
+                // writer receipt and return its actual value for retention.
+                return Pumped {
+                    output: future.await,
+                    terminal,
+                };
+            }
+        }
+    }
+}
