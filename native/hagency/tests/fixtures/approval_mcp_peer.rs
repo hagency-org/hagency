@@ -141,7 +141,11 @@ fn main() -> io::Result<()> {
     }
     let (release, wait) = std::sync::mpsc::sync_channel::<()>(1);
     let watchdog = std::thread::spawn(move || {
-        if wait.recv_timeout(Duration::from_secs(15)).is_err() {
+        // A last resort against a hung fixture, so it must outlast the longest
+        // operation budget a fixture gives this peer (20 s). At 15 s it was
+        // shorter than that, and on a slow runner it would end a healthy peer;
+        // owned_mcp_peer did exactly that in the hosted fleet fixtures.
+        if wait.recv_timeout(Duration::from_secs(90)).is_err() {
             std::process::exit(74);
         }
     });
