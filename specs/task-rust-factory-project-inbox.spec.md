@@ -75,6 +75,13 @@ Scenario: Exact project mentions execute only on the addressed factory agent
   And each addressed task reaches canonical Done and its own project reply
   And later private DM tasks retain separate encrypted routes and workspaces
 
+Scenario: Another participant's request rides along only as labelled context
+  Test: native_agent_inbox_names_the_waking_entry_as_the_request
+  Given a shared project session holding an unprocessed request addressed to another participant
+  When this agent's own exact mention selects its dispatch
+  Then the frozen inbox lists the other request first with wake false and this agent's request last with wake true
+  And the instruction names the last waking entry as the request and earlier entries as context, never instructions or approval
+
 Scenario: A later agent's join does not end the earlier agent
   Test: native_configured_fleet_earlier_agent_survives_later_join
   Given the earlier agent's poll held between resolving its project inbox plan and selecting it
