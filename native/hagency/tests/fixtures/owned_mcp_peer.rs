@@ -715,9 +715,18 @@ fn main() -> io::Result<()> {
     }
     // Disposable peer-wide bound: even a broken synchronous pipe cannot hang a
     // fixture forever. No detached daemon cleanup and no successful exit claim.
+    //
+    // It bounds the WHOLE peer, and a warm peer lives from its agent's
+    // provisioning, through the wait for every other agent, to the end of its own
+    // task. At 15 s that was shorter than a two-agent fleet needs on a hosted
+    // runner: the first agent's peer exited 74 while idle, the guardian reported
+    // the leader gone, and the handoff was refused as lost_authority; when it
+    // fired mid-task the host saw peer_eof instead. It must outlast what a
+    // fixture may legitimately ask of it (120 s warm idle plus a 60 s operation);
+    // the host's own budgets stop a peer long before this does.
     let (release, wait) = mpsc::sync_channel::<()>(1);
     let watchdog = std::thread::spawn(move || {
-        if wait.recv_timeout(Duration::from_secs(15)).is_err() {
+        if wait.recv_timeout(Duration::from_secs(240)).is_err() {
             std::process::exit(74);
         }
     });
