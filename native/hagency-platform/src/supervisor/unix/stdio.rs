@@ -235,6 +235,26 @@ fn receive_bounded(socket: &UnixStream, capacity: usize) -> io::Result<ChildPipe
     })
 }
 
+/// Waits for end-of-file on a pipe whose every writer this process has closed.
+/// Tests share one process: a concurrent test can fork while the descriptors
+/// exist, and its child holds close-on-exec copies until it execs, so the read
+/// can be WouldBlock for a moment. A copy leaked in THIS process never reaches
+/// end-of-file and still fails when the wait runs out.
+#[cfg(test)]
+fn assert_end_of_file(reader: &impl AsFd, what: &str) {
+    rustix::fs::fcntl_setfl(reader, OFlags::NONBLOCK).unwrap();
+    let until = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    loop {
+        match rustix::io::read(reader, &mut [0u8; 1]) {
+            Ok(0) => return,
+            Err(rustix::io::Errno::AGAIN) if std::time::Instant::now() < until => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            result => panic!("{what}: {result:?}"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -290,19 +310,7 @@ mod tests {
             drop(writer);
             // Every delivered duplicate writer must have been closed on error;
             // otherwise this nonblocking read would remain WouldBlock, not EOF.
-            rustix::fs::fcntl_setfl(&reader, OFlags::NONBLOCK).unwrap();
-            let until = Instant::now() + Duration::from_secs(2);
-            loop {
-                // A concurrent test may briefly fork a CLOEXEC descriptor;
-                // wait for that exec boundary, without accepting a leaked fd.
-                match read(&reader, &mut [0u8; 1]) {
-                    Ok(0) => break,
-                    Err(rustix::io::Errno::AGAIN) if Instant::now() < until => {
-                        std::thread::sleep(Duration::from_millis(5))
-                    }
-                    result => panic!("leaked fd at count {count}: {result:?}"),
-                }
-            }
+            assert_end_of_file(&reader, &format!("leaked fd at count {count}"));
         }
     }
     #[test]
@@ -348,8 +356,7 @@ mod tests {
         );
         assert!(receive(&worker, Instant::now() + Duration::from_secs(1)).is_err());
         drop(writer);
-        rustix::fs::fcntl_setfl(&reader, OFlags::NONBLOCK).unwrap();
-        assert_eq!(read(&reader, &mut [0u8; 1]).unwrap(), 0);
+        assert_end_of_file(&reader, "descriptors of a refused credential survived");
     }
 }
 
@@ -423,11 +430,9 @@ mod truncated_receiver {
         };
         assert_eq!(status.code(), Some(125));
         drop(writer);
-        rustix::fs::fcntl_setfl(&reader, OFlags::NONBLOCK).unwrap();
-        assert_eq!(
-            rustix::io::read(&reader, &mut [0u8; 1]).unwrap(),
-            0,
-            "undisclosed writer descriptors survived guardian exit"
+        assert_end_of_file(
+            &reader,
+            "undisclosed writer descriptors survived guardian exit",
         );
     }
 }
@@ -455,7 +460,6 @@ mod truncated_receiver {
         );
         assert!(receive_bounded(&worker, 64).is_err());
         drop(writer);
-        rustix::fs::fcntl_setfl(&reader, OFlags::NONBLOCK).unwrap();
-        assert_eq!(rustix::io::read(&reader, &mut [0u8; 1]).unwrap(), 0);
+        assert_end_of_file(&reader, "excess descriptors survived truncation");
     }
 }
