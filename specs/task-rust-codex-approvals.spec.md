@@ -21,6 +21,7 @@ upstream provides no proof of effective permission application.
 - Consume the durable decision before sending a typed allow or deny response and never send it twice.
 - Treat upstream resolution cancellation EOF timeout and write completion as insufficient proof of effective application.
 - Keep pending data bounded and reject malformed unsupported or substituted requests without granting authority.
+- Answer a pinned approval request that adapter policy refuses with that family's own decline when it offers one, as the adapter's refusal and never an owner verdict, keep its resolution from the coordinator, and bound such declines per turn.
 - Cover real durable store admission and fake-stream protocol exchanges without live models.
 
 ### Must Not
@@ -59,6 +60,13 @@ Scenario: Default sessions refuse approval and opted sessions preserve exact sco
   Given initialized scoped sessions and fake transport streams
   When request and resolution messages arrive
   Then opt-in is explicit and stale or duplicate request responses fail closed
+
+Scenario: A request refused by adapter policy is declined and the turn goes on
+  Test: native_codex_approval_policy_refusal_declines_and_the_turn_goes_on
+  Given an opted session and pinned approval requests the adapter refuses by policy
+  When each arrives and is later resolved upstream
+  Then the family's own decline is written without any owner authority and the resolution never reaches the coordinator
+  And a following ordinary request is still retained while no-decline and malformed requests and the ninth refusal end the session
 
 Scenario: Durable authority precedes every native response byte
   Test: native_codex_approval_coordinator

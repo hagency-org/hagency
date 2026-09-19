@@ -9,7 +9,7 @@ use super::{
 };
 use crate::codex::{Event, MAX_REQUEST_MS, RequestId, TurnScope, transport};
 use serde_json::Value;
-use std::collections::VecDeque;
+use std::collections::{BTreeSet, VecDeque};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -17,6 +17,10 @@ use std::sync::{
 use std::time::Duration;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::time::{Instant, timeout_at};
+
+/// A turn that keeps asking for what the adapter refuses is ended by the
+/// refusal itself once this many requests have been declined.
+const MAX_POLICY_DECLINES: usize = 8;
 
 /// One disposable upstream turn. The host supplies already-owned streams and
 /// separately holds all process, Hagency task, approval and lease authority.
@@ -36,6 +40,10 @@ pub struct SessionDriver<R, W, E> {
     last_server_request: Option<&'static str>,
     refused_notification: Option<&'static str>,
     mcp: crate::codex::approval::McpTracker,
+    /// Requests this session declined by adapter policy. Their upstream
+    /// resolution is not an owner callback and never reaches the coordinator.
+    policy_declined: BTreeSet<RequestId>,
+    policy_declines: usize,
 }
 
 impl<R, W, E> SessionDriver<R, W, E> {
@@ -67,6 +75,8 @@ impl<R, W, E> SessionDriver<R, W, E> {
             last_server_request: None,
             refused_notification: None,
             mcp: crate::codex::approval::McpTracker::default(),
+            policy_declined: BTreeSet::new(),
+            policy_declines: 0,
         })
     }
     pub fn settings(&self) -> &Settings {
@@ -554,6 +564,7 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
                 self.last_server_request = Some(server_request_shape(&method));
                 let elicitation = method == "mcpServer/elicitation/request";
                 let original = id.clone();
+                let declinable = crate::codex::approval::policy_decline(&method, &params).is_some();
                 let parsed = if params.get("threadId").and_then(Value::as_str) != self.thread_id()
                     || params.get("turnId").and_then(Value::as_str) != self.turn_id()
                 {
@@ -571,6 +582,23 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
                                 .send(transport::Command::RejectServerRequest { id: original })
                                 .await
                                 .map_err(Error::Transport)?;
+                        } else if matches!(error, Error::Policy)
+                            && declinable
+                            && self.policy_declines < MAX_POLICY_DECLINES
+                        {
+                            // Refused by the adapter, not by the owner: answer with
+                            // the family's own decline and let the turn go on. The
+                            // host coordinator never sees this request.
+                            self.wire
+                                .send(transport::Command::DeclineServerRequest {
+                                    id: original.clone(),
+                                })
+                                .await
+                                .map_err(Error::Transport)?;
+                            self.policy_declines += 1;
+                            self.policy_declined.insert(original);
+                            self.observation_kind = super::ObservationKind::Ignored;
+                            return Ok(Update::Notice);
                         }
                         return Err(error);
                     }
@@ -604,8 +632,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> SessionD
             let id =
                 serde_json::from_value(params.get("requestId").ok_or(Error::Malformed)?.clone())
                     .map_err(|_| Error::Malformed)?;
-            self.control.resolve(&id);
-            update = Update::ApprovalResolved { id };
+            if !self.policy_declined.remove(&id) {
+                self.control.resolve(&id);
+                update = Update::ApprovalResolved { id };
+            }
         }
         if self.phase() == Phase::Ended {
             self.drain_terminal().await?;

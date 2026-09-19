@@ -334,6 +334,34 @@ impl Connection {
         Ok(bytes)
     }
 
+    /// Answer a pinned approval request the adapter refused by policy with that
+    /// family's own decline, so the turn can go on. Like a rejection, this is the
+    /// host's refusal, not an owner decision: the pending scope is dropped and a
+    /// later upstream resolution only tombstones the ID.
+    pub fn decline_server_request(
+        &mut self,
+        id: &RequestId,
+        now_ms: u64,
+    ) -> Result<Vec<u8>, Error> {
+        self.tick(now_ms)?;
+        let pending = self
+            .server_pending
+            .get(id)
+            .filter(|pending| !pending.responded)
+            .ok_or(Error::Identity)?;
+        let result = pending
+            .params
+            .as_ref()
+            .and_then(|params| super::approval::policy_decline(&pending.method, params))
+            .ok_or(Error::Identity)?;
+        let bytes = encode(Message::Response {
+            id: id.clone(),
+            result,
+        })?;
+        self.server_pending.remove(id);
+        Ok(bytes)
+    }
+
     /// Exact typed host response; ownership/decision consumption is the
     /// permissions coordinator's responsibility. Retain the pending scope until
     /// upstream resolution, which proves neither selected policy nor execution.

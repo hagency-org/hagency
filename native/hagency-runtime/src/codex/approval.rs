@@ -30,6 +30,21 @@ struct Common {
     item_id: String,
 }
 
+/// The wire's own "no" for a request `parse` refuses with `Policy`. It is not a
+/// verdict: no owner authority is consumed and no amendment applied. `None`
+/// when the request offers no decline this adapter can issue, or is not one of
+/// the pinned approval families; those keep ending the session.
+pub(super) fn policy_decline(method: &str, params: &Value) -> Option<Value> {
+    match method {
+        "item/commandExecution/requestApproval" => present(params, "availableDecisions")
+            .is_none_or(|v| v.as_array().is_some_and(|a| a.contains(&json!("decline"))))
+            .then(|| json!({"decision":"decline"})),
+        "item/fileChange/requestApproval" => Some(json!({"decision":"decline"})),
+        "item/permissions/requestApproval" => Some(json!({"permissions":{},"scope":"turn"})),
+        _ => None,
+    }
+}
+
 // Do not expose a generic result Value or Deserialize constructor. The host
 // coordinator creates this only after the repository persists Applying.
 pub struct ApprovalResponse {

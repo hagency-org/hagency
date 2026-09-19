@@ -417,3 +417,38 @@ ruling that "a turn end remains a cancellation everywhere": that ruling still
 holds on the recheck pump next to an armed frame, where the coordinator itself
 observes the turn end and cancels; the drain is the one place the runtime would
 otherwise settle the callback before the coordinator's rule can run.
+
+## Amendment (2026-09-19): policy refusal declines instead of ending the turn
+
+Operator decision after the two-agent soak: in one of 100 live tasks Codex sent
+`item/commandExecution/requestApproval` during a plain file task, the adapter
+refused its shape with `Policy`, no response was written
+(`pending_server_requests: 1`), the host closed the session and the dispatch
+ended outcome-unknown with its owner retained. One model-initiated escalation
+ended the agent. The TypeScript product denied and carried on.
+
+A request of a pinned approval family that `ApprovalRequest::parse` refuses with
+`Policy` is now answered with that family's own decline from the table above
+(`{"decision":"decline"}`; for permissions the empty profile with turn scope),
+and the turn goes on. This replaces "fail closed" for those requests only in the
+sense of ending the session; it still grants nothing.
+
+- It is the adapter's refusal, not an owner verdict. No durable decision is
+  consumed or created, no approval card is shown, and the host coordinator never
+  sees the request. Its later `serverRequest/resolved` is therefore not an owner
+  callback: the session swallows it, because the coordinator rightly treats a
+  resolution for an ID it never retained as a protocol fault.
+- A command request whose `availableDecisions` omits `decline` still ends the
+  session: there is no refusal this adapter can issue. A request lacking only
+  `accept` is declined.
+- `Malformed`, `Scope`, `Capacity` and unsupported methods are unchanged: protocol
+  faults and substitutions are never declinable. Elicitation keeps its cancel.
+- Eight declines end the turn with the original refusal, so a turn that keeps
+  asking cannot hold a dispatch open.
+- Sessions without the coordinator are unchanged (`-32601`, unsupported).
+
+`native_codex_approval_policy_refusal_declines_and_the_turn_goes_on` covers each
+refusing branch and its wire bytes, the swallowed resolution, a following ordinary
+request still reaching the coordinator, the no-decline and malformed cases, and
+the bound. Not yet observed live: the refusal is model-initiated and was seen
+once; which branch refused it was not recorded by the product.

@@ -105,6 +105,10 @@ pub enum Command {
     RejectServerRequest {
         id: RequestId,
     },
+    /// The pinned family's decline for a request refused by adapter policy.
+    DeclineServerRequest {
+        id: RequestId,
+    },
 }
 
 /// All bytes were accepted and flushed by the supplied AsyncWrite. This is
@@ -489,6 +493,10 @@ impl<R: AsyncRead + Unpin, W: AsyncWrite + Unpin, E: AsyncRead + Unpin> Driver<R
             Command::RejectServerRequest { id } => self
                 .connection
                 .reject_server_request(&id, now)
+                .map(|bytes| (None, bytes)),
+            Command::DeclineServerRequest { id } => self
+                .connection
+                .decline_server_request(&id, now)
                 .map(|bytes| (None, bytes)),
         }
         .map_err(Error::from)?;
