@@ -253,6 +253,21 @@ fn now() -> u64 {
 
 #[tokio::test]
 async fn native_private_approval_card_clock() {
+    // Both operations have to enter inside the last 60 ms before a 1 s cutoff, so
+    // that SQLite's 100 ms busy window carries them across it. A loaded runner
+    // can oversleep that (hosted Ubuntu did); such an attempt measured nothing
+    // about the product, so it is discarded and repeated with a fresh store.
+    // Every product assertion is unconditional on an attempt whose window held,
+    // and one must hold.
+    for _attempt in 0..8 {
+        if card_clock_attempt().await {
+            return;
+        }
+    }
+    panic!("the cutoff window was overslept in every attempt");
+}
+/// True when the scenario was measured; false when its own window was missed.
+async fn card_clock_attempt() -> bool {
     let mut f = Fixture::new_at(true, now().saturating_sub(20), 60000);
     let mut sql = f.sql();
     let mut input = f.input(0, 1);
@@ -282,24 +297,25 @@ async fn native_private_approval_card_clock() {
     let lock = sql
         .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
         .unwrap();
-    let first = store.private_approval_card(request.id.clone(), cutoff);
-    tokio::pin!(first);
+    let mut first = Box::pin(store.private_approval_card(request.id.clone(), cutoff));
     assert!(
         tokio::time::timeout(Duration::from_millis(5), &mut first)
             .await
             .is_err()
     );
-    let second = store.check_private_approval_card(card);
-    tokio::pin!(second);
+    let mut second = Box::pin(store.check_private_approval_card(card));
     assert!(
         tokio::time::timeout(Duration::from_millis(5), &mut second)
             .await
             .is_err()
     );
-    assert!(
-        now() < cutoff,
-        "both original operations must enter before cutoff"
-    );
+    if now() >= cutoff {
+        drop(first);
+        drop(second);
+        drop(lock);
+        store.shutdown().await.unwrap();
+        return false;
+    }
     tokio::time::sleep(Duration::from_millis(cutoff.saturating_sub(now()) + 5)).await;
     lock.commit().unwrap();
     assert!(matches!(first.await, Err(Error::RunnerAuthority)));
@@ -315,4 +331,5 @@ async fn native_private_approval_card_clock() {
         0
     );
     store.shutdown().await.unwrap();
+    true
 }
