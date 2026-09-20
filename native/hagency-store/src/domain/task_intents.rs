@@ -179,7 +179,24 @@ fn create_intent(
         room_id: root.room_id.clone(),
         thread_root: Some(root.event_id.clone()),
     };
-    let session_id = if let Some(id) = messages::find_session(tx, &binding)? {
+    // A delegation from a verified Matrix session gets a verified session for its
+    // assignee: only that has a route, and without a route the task notice can
+    // never be sent, so the intent stayed pending for good (live, 2026-09-19).
+    // `resolve` refuses an assignee with no available transport and a room the
+    // assignee does not know, so a delegation rooted in a private DM is refused
+    // here instead of becoming work nobody can start. The host-created path
+    // below is unchanged.
+    let verified = match creator {
+        Some(session) => tx.query_row(
+            "SELECT matrix_generation>0 FROM runner_sessions WHERE id=?1",
+            [session],
+            |r| r.get::<_, bool>(0),
+        )?,
+        None => false,
+    };
+    let session_id = if verified {
+        super::matrix_routes::resolve(tx, &binding, now)?.id
+    } else if let Some(id) = messages::find_session(tx, &binding)? {
         execution::admission_session(tx, &id)?;
         id
     } else {
@@ -282,7 +299,15 @@ pub(super) fn project_inputs(tx: &Transaction<'_>, task_id: &str) -> Result<(), 
     if pending + added > 2000 {
         return Err(Error::Capacity);
     }
-    tx.execute("INSERT OR IGNORE INTO session_inputs(session_id,message_sequence,wake,config) SELECT ?2,message_sequence,COALESCE(wake,1),config FROM task_inputs WHERE task_id=?1",params![task_id,session])?;
+    // `persist_intent` writes `task_inputs` with neither `wake` nor `config`
+    // (only `verified_ingress::attach` does). An unverified session never needs
+    // the copy, because its readers fall back to `admitted_messages`; a VERIFIED
+    // delegated session's readers take `session_inputs.config` alone and fail on
+    // NULL. Its copy is the admitted message `create_intent` already checked
+    // against the delegation root, and it is written here, durably, rather than
+    // derived on each read: the corpus sweep pins only unprocessed session
+    // inputs, so a read-time fallback would lose the frozen content later.
+    tx.execute("INSERT OR IGNORE INTO session_inputs(session_id,message_sequence,wake,config) SELECT ?2,ti.message_sequence,COALESCE(ti.wake,1),CASE WHEN (SELECT matrix_generation>0 FROM runner_sessions WHERE id=?2) THEN COALESCE(ti.config,m.config) ELSE ti.config END FROM task_inputs ti LEFT JOIN admitted_messages m ON m.sequence=ti.message_sequence WHERE ti.task_id=?1",params![task_id,session])?;
     super::attachments::project_task_inputs(tx, task_id, &session)?;
     Ok(())
 }

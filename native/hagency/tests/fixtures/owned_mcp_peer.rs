@@ -14,6 +14,18 @@ const ENV: [&str; 3] = [
     "HAGENCY_RUNNER_CAPABILITY",
     "HAGENCY_TASK_ID",
 ];
+/// ADR180's eight names, spelled out here rather than imported: this peer is
+/// the independent observer of what the host actually offered.
+const COORDINATION: [&str; 8] = [
+    "comment_task",
+    "delegate_task",
+    "open_conversation",
+    "get_conversation",
+    "update_conversation_members",
+    "close_conversation",
+    "send_peer_message",
+    "read_peer_inbox",
+];
 fn invalid() -> io::Error {
     io::Error::other("offline MCP fixture refused or incomplete")
 }
@@ -137,12 +149,56 @@ fn receipt(stage: &str, value: Value) -> io::Result<()> {
     fs::write(&temporary, serde_json::to_vec(&value)?)?;
     fs::rename(temporary, target)
 }
-fn helper(params: &Value, mode: &str) -> io::Result<()> {
+/// Codex's own approval gate for a tool it may not pre-approve (ADR180). The
+/// item is announced first, because the elicitation correlates to it by server
+/// and arguments alone, and only an accepted decision lets the call through.
+fn elicit(host_in: &mut impl BufRead, host_out: &mut impl Write, args: &Value) -> io::Result<()> {
+    let item = |status: &str| {
+        json!({"type":"mcpToolCall","id":"delegate-item","server":"hagency_task_writer",
+            "tool":"delegate_task","arguments":args,"status":status})
+    };
+    send(
+        host_out,
+        json!({"method":"item/started","params":{"threadId":"owned-thread","turnId":"owned-turn",
+            "startedAtMs":1,"item":item("inProgress")}}),
+    )?;
+    send(
+        host_out,
+        json!({"id":31,"method":"mcpServer/elicitation/request","params":{
+            "threadId":"owned-thread","turnId":"owned-turn","serverName":"hagency_task_writer",
+            "mode":"form","message":"Hand this work to the named colleague?",
+            "requestedSchema":{"type":"object","properties":{}},
+            "_meta":{"codex_approval_kind":"mcp_tool_call","tool_params":args}}}),
+    )?;
+    let response = read(host_in)?;
+    if response["id"] != 31
+        || response["result"] != json!({"action":"accept","content":null,"_meta":null})
+    {
+        return Err(invalid());
+    }
+    send(
+        host_out,
+        json!({"method":"serverRequest/resolved","params":{"threadId":"owned-thread","requestId":31}}),
+    )?;
+    send(
+        host_out,
+        json!({"method":"item/completed","params":{"threadId":"owned-thread","turnId":"owned-turn",
+            "completedAtMs":2,"item":item("completed")}}),
+    )
+}
+fn helper(
+    params: &Value,
+    turn: &Value,
+    mode: &str,
+    host_in: &mut impl BufRead,
+    host_out: &mut impl Write,
+) -> io::Result<()> {
     let config = &params["config"];
     let table = &config["mcp_servers.hagency_task_writer"];
     let executable = table["command"].as_str().ok_or_else(invalid)?;
     let fleet_files = Path::new("owned-mcp.fleet-files").exists();
     let fleet_media = Path::new("projects/factory_project/configured-fleet-media").is_file();
+    let coordination = Path::new("owned-mcp.coordination").exists();
     let mut environment = ENV.to_vec();
     let mut tools = vec![
         "get_task",
@@ -150,6 +206,12 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         "transition_task",
         "complete_task_with_reply",
     ];
+    let mut approved = json!({
+        "get_task":{"approval_mode":"approve"},
+        "update_task_execution":{"approval_mode":"approve"},
+        "transition_task":{"approval_mode":"approve"},
+        "complete_task_with_reply":{"approval_mode":"approve"}
+    });
     if fleet_files || fleet_media {
         environment.extend(["HAGENCY_FILE_TOOLS", "HAGENCY_RECEIVE_FILE_TOOLS"]);
         tools.extend([
@@ -159,6 +221,12 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
             "receive_file",
         ]);
     }
+    if coordination {
+        // No environment marker: the helper has always served these. Only
+        // comment_task joins the pre-approved set (ADR-021).
+        tools.extend(COORDINATION);
+        approved["comment_task"] = json!({"approval_mode":"approve"});
+    }
     if !Path::new(executable).is_absolute()
         || table["args"] != json!(["mcp"])
         || table["cwd"] != params["cwd"]
@@ -167,13 +235,7 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         || table.get("env").is_some()
         || table.get("url").is_some()
         || table.get("default_tools_approval_mode").is_some()
-        || table["tools"]
-            != json!({
-                "get_task":{"approval_mode":"approve"},
-                "update_task_execution":{"approval_mode":"approve"},
-                "transition_task":{"approval_mode":"approve"},
-                "complete_task_with_reply":{"approval_mode":"approve"}
-            })
+        || table["tools"] != approved
         || config["shell_environment_policy.inherit"] != "none"
         || config["shell_environment_policy.experimental_use_profile"] != false
     {
@@ -255,7 +317,8 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
         // service's actual Started rows before allowing either completion.
         receipt(
             "fleet-ready",
-            json!({"task_id":task,"pid":std::process::id()}),
+            json!({"task_id":task,"pid":std::process::id(),
+                "input":turn["params"]["input"][0]["text"]}),
         )?;
         // The release comes only after the OTHER agent's helper is in flight too.
         // On a small hosted runner that took longer than the 5 s this gate used
@@ -269,6 +332,25 @@ fn helper(params: &Value, mode: &str) -> io::Result<()> {
             }
             std::thread::sleep(Duration::from_millis(5));
         }
+    }
+    // No tool tells an agent a colleague's engagement ID (ADR180), so the
+    // fixture names the assignee the way it names every other scripted
+    // choice: a file in this peer's own disposable workspace.
+    if let Ok(assignee) = fs::read_to_string("owned-mcp.delegate-to") {
+        let args = json!({"call_id":"fleet_delegate","assignee_engagement":assignee.trim(),
+            "definition":{"title":"Delegated fleet report","description":"Draft the report and reply with it."}});
+        elicit(host_in, host_out, &args)?;
+        let delegated = rpc(
+            &mut input,
+            &mut output,
+            30,
+            "tools/call",
+            json!({"name":"delegate_task","arguments":args}),
+        )?;
+        if delegated["isError"] != false {
+            return Err(invalid());
+        }
+        receipt("fleet-delegated", delegated["structuredContent"].clone())?;
     }
     if fleet_files {
         let listed = rpc(
@@ -644,7 +726,7 @@ fn fake() -> io::Result<()> {
         std::thread::sleep(Duration::from_secs(8));
         return Ok(());
     }
-    helper(params, &mode)?;
+    helper(params, &turn, &mode, &mut input, &mut output)?;
     if ["heartbeat", "retained", "warm"].contains(&mode.as_str())
         && !Path::new("projects/factory_project/configured-fleet-probe").is_file()
     {

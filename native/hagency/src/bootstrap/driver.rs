@@ -1,5 +1,7 @@
 #[path = "inbox.rs"]
 mod inbox;
+#[path = "notice.rs"]
+mod notice;
 use super::{
     DriverMode, Failure, Shared, StatusHandle, config::Prepared, workspace::WorkspaceAccess,
 };
@@ -502,6 +504,16 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
             }
         })?;
     }
+    // ADR180 delegation is inline-factory only: an ordinary host owns no
+    // engagement a notice could be scoped to. The assignee posts its own notice
+    // before scheduling, because that delivery is what activates the intent.
+    let delegated = if let RuntimeOwner::Factory(agent) = &*owner {
+        let engagement = agent.session().engagement_id.clone();
+        notice::deliver(domain, collector, &engagement, cancel, status).await?;
+        Some((engagement, agent.workspace_id().to_owned()))
+    } else {
+        None
+    };
     if !agent_inboxes.is_empty() {
         status.phase("scheduling");
         for plan in agent_inboxes {
@@ -524,6 +536,9 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
                 Err(_) => return Err(Failure::OutcomeUnknown),
             }
         }
+    }
+    if let Some((engagement, workspace_id)) = &delegated {
+        notice::schedule(domain, engagement, workspace_id).await?;
     }
     if let Some(files) = files {
         files.initialize().await.map_err(|e| {

@@ -101,6 +101,28 @@ impl DomainRepository {
         now: u64,
         lease_ms: u64,
     ) -> Result<Option<VerifiedNoticeClaim>, Error> {
+        self.claim_verified_notice(None, now, lease_ms)
+    }
+    /// The same claim for one sender in a fleet. Only that engagement's own
+    /// collector can send its notice (the outgoing preflight pins the sender), so
+    /// a driver must never take another agent's row: it could not send it, and a
+    /// claim has no release. A row whose route is no longer current is skipped
+    /// here rather than refused, so it cannot block the rows behind it.
+    pub fn claim_verified_task_notice_for(
+        &mut self,
+        engagement: &str,
+        now: u64,
+        lease_ms: u64,
+    ) -> Result<Option<VerifiedNoticeClaim>, Error> {
+        hagency_core::project::identifier(engagement, 128)?;
+        self.claim_verified_notice(Some(engagement), now, lease_ms)
+    }
+    fn claim_verified_notice(
+        &mut self,
+        engagement: Option<&str>,
+        now: u64,
+        lease_ms: u64,
+    ) -> Result<Option<VerifiedNoticeClaim>, Error> {
         clock(now)?;
         if !(1..=60_000).contains(&lease_ms) || now > JSON_SAFE_MAX - lease_ms {
             return Err(hagency_core::InvalidInput("invalid verified notice lease").into());
@@ -109,7 +131,29 @@ impl DomainRepository {
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         reconcile(&tx, now, false)?;
-        let id: Option<String> = tx.query_row("SELECT id FROM task_notices WHERE verified_route IS NOT NULL AND state='pending' AND cancel_requested=0 AND not_before<=?1 ORDER BY rowid LIMIT 1",[now],|r|r.get(0)).optional()?;
+        let scoped: Vec<String> = match engagement {
+            Some(engagement) => tx
+                .prepare("SELECT id FROM task_notices WHERE verified_route IS NOT NULL AND state='pending' AND cancel_requested=0 AND not_before<=?1 AND json_extract(verified_route,'$.engagement_id')=?2 ORDER BY rowid LIMIT 128")?
+                .query_map(params![now, engagement], |r| r.get(0))?
+                .collect::<Result<_, _>>()?,
+            None => Vec::new(),
+        };
+        let mut scoped_id = None;
+        for id in scoped {
+            if current(&tx, &id)? {
+                scoped_id = Some(id);
+                break;
+            }
+        }
+        if engagement.is_some() && scoped_id.is_none() {
+            tx.commit()?;
+            return Ok(None);
+        }
+        let id: Option<String> = if scoped_id.is_some() {
+            scoped_id
+        } else {
+            tx.query_row("SELECT id FROM task_notices WHERE verified_route IS NOT NULL AND state='pending' AND cancel_requested=0 AND not_before<=?1 ORDER BY rowid LIMIT 1",[now],|r|r.get(0)).optional()?
+        };
         let Some(id) = id else {
             tx.commit()?;
             return Ok(None);

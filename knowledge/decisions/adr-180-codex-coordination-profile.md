@@ -71,3 +71,57 @@ environment, `comment_task` as the only added pre-approval and the absence of gr
 tools. `native_agent_inbox_task_delegates_from_its_waking_entry` pins the root of a
 delegation from an inbox-minted task and still refuses a root the dispatch cannot
 see; it fails with RunnerAuthority without the store change.
+
+## Delivery of a delegated task (2026-09-20)
+
+The lane named above as unported is now wired for inline factory agents. It was
+dead in five places, not one: `create_intent` resolved an unverified assignee
+session even for a verified delegator, so the notice had no verified route; the
+verified claim was global, so any agent could take any agent's notice; nothing in
+the fleet service claimed a notice at all; an activated intent had no selection
+that would mint its dispatch; and the driver never looked at delegated sessions.
+
+A delegation created from a verified dispatch now resolves a verified assignee
+session and a verified notice route. The assignee's own driver claims only
+notices whose route names its own engagement, at most four per attempt, and
+posts them with the final reply's custody: any result other than Delivered is
+unknown and ends the attempt, one claim is never sent twice, and the next
+attempt's outgoing resume settles what was journaled before any new work. The
+plan this came from let a Generation refusal skip the notice and carry on; that
+was not adopted, because the send path can return Generation after its journal
+entry exists, and carrying on would schedule new work over an unreconciled send.
+A notice whose route is no longer current is never claimed and never replayed,
+as with any group work retired by a membership change (ADR178).
+
+Matrix accepting the notice activates the intent. The driver then lists its own
+engagement's active delegated sessions, at most sixteen, and selects each: the
+selection mints the dispatch the intent's own task was waiting for and never
+creates a task. The two filters the ordinary agent inbox applies are absent, for
+different reasons. Event provenance is recorded under the engagement that
+admitted the event, which is the delegator's, so it would refuse every handed-over
+message at any clock. The route's ingress floor is the point from which the
+assignee could see the room, not a delegation clock: it usually sits below the
+handed-over message and would look harmless, until an assignee whose transport or
+room was observed after the request was sent silently lost the delegation. The
+delegation's own authority takes their place: an owner-approved, activated intent
+whose task inputs are exactly the messages `delegate_task` proved the delegator
+could see. A verified delegated session holds its own durable copy of each of
+those messages, written when they are projected into it; the first draft left
+that copy empty, which every verified reader refuses.
+
+The assignee is a first-class participant. Its delegated inbox shows those
+original messages as every participant sees them, the payload names the agent
+as it does for any inbox, and the instruction says plainly that the messages
+are addressed to the delegator and that the canonical task is the job.
+
+Still owed: follow-up messages in the delegated thread are not admitted, the
+delegator receives no completion report, and an ordinary single-agent host runs
+none of this. Because the notice is sent on the attempt's fatal path with the
+final reply's custody, a notice send that is refused or unknown ends the
+assignee's worker, not only that attempt; that is the existing fail-closed rule
+and is not softened here. `native_configured_fleet_delegated_task_delivery`
+carries one delegation through two composed agents: approval, one `m.notice`
+under the assignee's own identity threaded on the delegator's question, the
+activated intent, a single dispatch on the assignee's delegated session, and the
+delivered reply, all inside one attempt of the assignee. A live run is the
+remaining evidence.

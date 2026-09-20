@@ -1903,6 +1903,17 @@ impl DomainStore {
         })
         .await
     }
+    /// One sender's own verified notice; see the repository method.
+    pub async fn claim_verified_task_notice_for(
+        &self,
+        engagement: String,
+        lease_ms: u64,
+    ) -> Result<Option<hagency_core::ingress::VerifiedNoticeClaim>, Error> {
+        self.call(weight(&engagement)?, move |db| {
+            db.claim_verified_task_notice_for(&engagement, writer_time()?, lease_ms)
+        })
+        .await
+    }
     pub async fn begin_verified_task_notice_send(
         &self,
         id: String,
@@ -3756,6 +3767,28 @@ mod received_file_commands {
             plan.validate()?;
             self.call(weight(&plan)?, move |db| {
                 db.select_agent_inbox(&plan, writer_time()?)
+            })
+            .await
+        }
+        /// The delegated sibling of `select_agent_inbox`: it mints the dispatch
+        /// an already active `task_intents` row is waiting for and never creates
+        /// a task of its own.
+        pub async fn select_intent_inbox(
+            &self,
+            plan: hagency_core::agent_inbox::AgentInboxPlan,
+        ) -> Result<hagency_core::agent_inbox::AgentInboxSelection, Error> {
+            plan.validate()?;
+            self.call(weight(&plan)?, move |db| {
+                db.select_intent_inbox(&plan, writer_time()?)
+            })
+            .await
+        }
+        /// Bounded projection (at most 16) of this engagement's own delegated
+        /// sessions that are waiting for a dispatch.
+        pub async fn intent_inboxes(&self, engagement_id: String) -> Result<Vec<String>, Error> {
+            hagency_core::project::identifier(&engagement_id, 128)?;
+            self.call(weight(&engagement_id)?, move |db| {
+                db.intent_inboxes(&engagement_id)
             })
             .await
         }

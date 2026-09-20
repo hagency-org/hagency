@@ -201,6 +201,169 @@ async fn project_mentions(mut f: Fixture) {
     f.stop().await;
     f.fake.close().await;
 }
+/// ADR180 delivery of a delegated task. The owner asks one agent; that agent
+/// hands the work to its colleague with `delegate_task`, the owner approves the
+/// one card the call raises, and the ASSIGNEE — not the delegator — announces
+/// the delegated task in its own identity, is dispatched by its own driver and
+/// answers in the delegator's thread. Nothing is hidden from either agent: the
+/// unaddressed participant sees the question exactly as everyone else does.
+#[cfg(unix)]
+#[tokio::test]
+async fn native_configured_fleet_delegated_task_delivery() {
+    let mut f = Fixture::delegating().await;
+    f.until("both original private and project inboxes",|f|f.count("SELECT COUNT(*) FROM current_matrix_routes r JOIN runner_sessions s ON s.id=r.session_id JOIN engagements e ON e.id=s.engagement_id WHERE e.request_id LIKE 'fleet_target_%'")==4
+        && (0..2).all(|i|f.work(i).join("owned-mcp.warm-initialized").is_file())).await;
+    f.wait_for_registered_agents().await;
+    f.assert_project_scope();
+    // Two disposable fixture channels, neither one domain scope: the marker is
+    // the peer's own independent expectation of the offered tool group, and no
+    // tool tells an agent a colleague's engagement ID (ADR180), so the test
+    // names the assignee the way it names every other scripted choice.
+    for index in 0..2 {
+        fs::write(
+            f.work(index).join("owned-mcp.coordination"),
+            b"ADR180 group offered",
+        )
+        .unwrap();
+    }
+    fs::write(f.work(1).join("owned-mcp.delegate-to"), engagement(0)).unwrap();
+    f.peer.queue_delegation_request();
+    f.until("the question reached both participants and woke one",|f|f.count("SELECT COUNT(*) FROM session_inputs WHERE json_extract(config,'$.body')='PROJECT_DELEGATION'")==2
+        && f.try_receipt(1,"fleet-ready").is_some_and(|r|f.task_started(r["task_id"].as_str().unwrap()))).await;
+    let source = f.receipt(1, "fleet-ready")["task_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    assert_eq!(f.count("SELECT COUNT(*) FROM runner_dispatches"), 1);
+    assert!(
+        f.try_receipt(0, "fleet-ready").is_none(),
+        "an unaddressed participant admits the question without being woken"
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM session_inputs WHERE json_extract(config,'$.body')='PROJECT_DELEGATION' AND wake=0"),1);
+    fs::write(f.work(1).join("owned-mcp.fleet-release"), b"delegate now").unwrap();
+    f.until("the owner approved the one delegation card", |f| {
+        f.work(1).join("owned-mcp.fleet-delegated").is_file()
+    })
+    .await;
+    let created = f.receipt(1, "fleet-delegated");
+    let task = created["task_id"].as_str().unwrap().to_owned();
+    let session = created["session_id"].as_str().unwrap().to_owned();
+    assert_eq!(created["activation"], "pending");
+    assert_ne!(task, source);
+    assert_eq!(f.peer.approval.events.len(), 1);
+    assert_eq!(f.peer.verdicts, 1);
+    f.until("the assignee posted its own task notice", |f| {
+        !f.peer.agents[0].project_events.is_empty()
+    })
+    .await;
+    f.until("Matrix acceptance activated the intent", |f| {
+        f.intent_state(&task) == "active"
+    })
+    .await;
+    f.until(
+        "the assignee's own driver dispatched the delegated task",
+        |f| {
+            f.try_receipt(0, "fleet-ready")
+                .is_some_and(|r| r["task_id"].as_str() == Some(task.as_str()))
+                && f.task_started(&task)
+        },
+    )
+    .await;
+    // The assignee is told who it is and shown the request as the room saw it.
+    let input: Value =
+        serde_json::from_str(f.receipt(0, "fleet-ready")["input"].as_str().unwrap()).unwrap();
+    assert_eq!(input["agent"]["mxid"], f.peer.agents[0].user);
+    assert_eq!(input["agent"]["name"], "FleetAgent0");
+    assert_eq!(input["inbox"][0]["message"]["event_id"], DELEGATION_EVENT);
+    assert_eq!(input["inbox"][0]["message"]["body"], "PROJECT_DELEGATION");
+    assert_eq!(input["inbox"][0]["message"]["sender_mxid"], OWNER);
+    assert!(
+        input["instruction"]
+            .as_str()
+            .unwrap()
+            .contains("delegated this task to you")
+    );
+    fs::write(
+        f.work(0).join("owned-mcp.fleet-release"),
+        b"answer the delegated task",
+    )
+    .unwrap();
+    f.until("both original replies delivered", |f| {
+        f.count("SELECT COUNT(*) FROM final_replies WHERE state='delivered'") == 2
+    })
+    .await;
+    // The notice is the assignee's own post, in the delegator's thread, and it
+    // addresses nobody: the delegation, not a mention, is its authority. The
+    // fake files a project event under the agent whose access token sent it, so
+    // reading it from the assignee's log is the identity evidence.
+    let notice = &f.peer.agents[0].project_events[0];
+    assert_eq!(notice["sender"], f.peer.agents[0].user);
+    assert_eq!(notice["content"]["msgtype"], "m.notice");
+    assert_eq!(
+        notice["content"]["body"],
+        "Task created: Delegated fleet report"
+    );
+    let relation = &notice["content"]["m.relates_to"];
+    assert_eq!(relation["rel_type"], "m.thread");
+    assert_eq!(relation["event_id"], DELEGATION_EVENT);
+    assert_eq!(relation["m.in_reply_to"]["event_id"], DELEGATION_EVENT);
+    assert!(notice["content"].get("m.mentions").is_none());
+    assert_eq!(
+        f.peer
+            .agents
+            .iter()
+            .flat_map(|agent| &agent.project_events)
+            .filter(|event| event["content"]["msgtype"] == "m.notice")
+            .count(),
+        1,
+        "one claim is never sent twice"
+    );
+    assert_eq!(f.peer.agents[1].project_events.len(), 1);
+    assert_eq!(
+        f.peer.agents[1].project_events[0]["content"]["msgtype"],
+        "m.text"
+    );
+    assert_eq!(f.intent_state(&task), "active");
+    assert_eq!(f.task_status(&task), "done");
+    assert!(f.task_reply_delivered(&task));
+    // Exactly one dispatch, on the assignee's own delegated session; the
+    // delegator's project session never held work for this task.
+    assert_eq!(f.task_session(&task), session);
+    assert_eq!(f.task_dispatch_sessions(&task), vec![session.clone()]);
+    let delegator = f.task_session(&source);
+    assert!(delegator.starts_with(&format!("project_{}_1_", engagement(1))));
+    assert_ne!(delegator, session);
+    assert_eq!(f.count("SELECT COUNT(*) FROM runner_dispatches"), 2);
+    assert_eq!(f.count("SELECT COUNT(*) FROM canonical_tasks"), 2);
+    let route = f.reply_route(&task);
+    assert_eq!(route["engagement_id"], engagement(0));
+    assert_eq!(route["room_id"], PROJECT);
+    assert_eq!(route["thread_root"], DELEGATION_EVENT);
+    let reply = &f.peer.agents[0].project_events[1];
+    assert_eq!(
+        reply["content"]["body"],
+        format!("Verified factory task {task}")
+    );
+    assert_eq!(
+        reply["content"]["m.relates_to"]["event_id"],
+        DELEGATION_EVENT
+    );
+    assert!(
+        f.peer
+            .agents
+            .iter()
+            .all(|agent| agent.crypto.events.is_empty())
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
+    assert_eq!(f.count("SELECT COUNT(*) FROM runner_attempts"), 2);
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='outcome_unknown'"),
+        0
+    );
+    f.assert_ready().await;
+    f.stop().await;
+    f.fake.close().await;
+}
 #[cfg(unix)]
 #[tokio::test]
 async fn native_configured_fleet_handoff_diagnostics() {

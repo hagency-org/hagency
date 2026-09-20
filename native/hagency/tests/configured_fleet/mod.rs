@@ -12,8 +12,11 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 pub const OWNER: &str = "@owner:example.test";
-const PROJECT: &str = "!factory_project:example.test";
+pub const PROJECT: &str = "!factory_project:example.test";
 const ROOT: &str = "!bootstrap:example.test";
+const PRIVATE: &str = "!private:example.test";
+/// The owner's request in the shared project that one agent hands to the other.
+pub const DELEGATION_EVENT: &str = "$project_delegation";
 const REPRESENTATIVE_TOKEN: &str = "synthetic-separate-representative-token";
 const APPROVAL_TOKEN: &str = "synthetic-independent-approval-token";
 const HUMAN_TOKEN: &str = "synthetic-independent-owner-token";
@@ -86,10 +89,16 @@ impl Fixture {
         Self::profile(application_service, media, false).await
     }
     pub async fn profile(application_service: bool, media: bool, local: bool) -> Self {
-        Self::configured(application_service, media, local, false, None).await
+        Self::configured(application_service, media, local, false, None, false).await
     }
     pub async fn paced_startup(sdk_ms: Option<u64>) -> Self {
-        Self::configured(false, false, true, true, sdk_ms).await
+        Self::configured(false, false, true, true, sdk_ms, false).await
+    }
+    /// ADR180's coordination group on. It runs the local-Codex profile because
+    /// a delegating dispatch holds an owner approval round trip inside its own
+    /// operation budget, which the default 30 s budget has no room for.
+    pub async fn delegating() -> Self {
+        Self::configured(false, false, true, false, None, true).await
     }
     async fn configured(
         application_service: bool,
@@ -97,6 +106,7 @@ impl Fixture {
         local: bool,
         paced_startup: bool,
         sdk_ms: Option<u64>,
+        coordination: bool,
     ) -> Self {
         let one_fleet = ONE_FLEET.clone().lock_owned().await;
         let root = tempfile::tempdir().unwrap();
@@ -222,7 +232,10 @@ impl Fixture {
                     {"id":PROJECT,"generation":1,"privacy":{"kind":"group"}}],"token_provisioning":provision},
             "approval":{"origin":fake.endpoint,"server_name":"example.test","registration_fingerprint":fingerprint,"engagement_id":coordinator.id,
                 "registration_generation":1,"transport_generation":1,"sender_mxid":reg().approval_bot_mxid,"device_id":"APPROVAL_DEVICE",
-                "rooms":[{"id":"!private:example.test","generation":1,"privacy":{"kind":"direct","human_mxid":OWNER}}],"peer_masters":anchors}});
+                "rooms":[{"id":PRIVATE,"generation":1,"privacy":{"kind":"direct","human_mxid":OWNER}}],"peer_masters":anchors}});
+        if coordination {
+            config["coordination_tools"] = json!(true);
+        }
         if local {
             for name in ["provider-home", "provider-codex"] {
                 private::directory(&base.join(name)).unwrap();
@@ -347,6 +360,36 @@ impl Fixture {
         assert_eq!(route["encrypted"], false);
         assert_eq!(route["thread_root"], Value::Null);
         assert_eq!(workspace, format!("work_{}", engagement(index)));
+    }
+    pub fn intent_state(&self, task: &str) -> String {
+        self.sql()
+            .query_row(
+                "SELECT state FROM task_intents WHERE task_id=?1",
+                [task],
+                |r| r.get(0),
+            )
+            .unwrap()
+    }
+    /// Every session a dispatch for this task was ever minted on, so a claim by
+    /// the wrong agent's session is visible and not merely absent.
+    pub fn task_dispatch_sessions(&self, task: &str) -> Vec<String> {
+        let sql = self.sql();
+        let mut statement = sql
+            .prepare("SELECT session_id FROM runner_dispatches WHERE task_id=?1 ORDER BY id")
+            .unwrap();
+        let rows = statement.query_map([task], |r| r.get(0)).unwrap();
+        rows.collect::<Result<_, _>>().unwrap()
+    }
+    pub fn reply_route(&self, task: &str) -> Value {
+        let encoded: String = self
+            .sql()
+            .query_row(
+                "SELECT route FROM final_replies WHERE task_id=?1",
+                [task],
+                |r| r.get(0),
+            )
+            .unwrap();
+        serde_json::from_str(&encoded).unwrap()
     }
     pub fn task_status(&self, task: &str) -> String {
         self.sql()
@@ -804,6 +847,10 @@ pub struct Peer {
     endpoint: String,
     root_sync: u64,
     approval_sync: u64,
+    /// Cards this independent owner has already answered, and whether it has
+    /// ever handed the bot a room key of its own. One verdict per card.
+    pub verdicts: usize,
+    owner_keyed: bool,
     provision_targets: bool,
     interleave: Interleave,
 }
@@ -844,6 +891,8 @@ impl Peer {
             endpoint,
             root_sync: 0,
             approval_sync: 0,
+            verdicts: 0,
+            owner_keyed: false,
             provision_targets: true,
             interleave: Interleave::default(),
         }
@@ -950,6 +999,20 @@ impl Peer {
             );
         }
     }
+    /// One project question addressed to the later agent only. The other agent
+    /// sees it exactly as every participant does — admitted, not waking — so
+    /// the work only ever reaches it through the delegation.
+    pub fn queue_delegation_request(&mut self) {
+        let mention = self.agents[1].user.clone();
+        let event = json!({"event_id":DELEGATION_EVENT,"sender":OWNER,"type":"m.room.message","origin_server_ts":now(),
+            "content":{"msgtype":"m.text","body":"PROJECT_DELEGATION","m.mentions":{"user_ids":[mention]}}});
+        for agent in &mut self.agents {
+            assert!(agent.pending.is_none());
+            agent.pending = Some(
+                json!({"rooms":{"join":{PROJECT:{"timeline":{"events":[event],"limited":false},"state":{"events":[]}}}},"to_device":{"events":[]}}),
+            );
+        }
+    }
     fn project(&self) -> Value {
         let mut events = vec![
             member(OWNER, "join"),
@@ -1022,9 +1085,40 @@ impl Peer {
                 )
             } else if path.ends_with("/sync") {
                 self.approval_sync += 1;
+                let mut batch = json!({"next_batch":format!("approval-{}",self.approval_sync),"rooms":{"join":{PRIVATE:{"timeline":{"events":[],"limited":false},"state":{"events":[]}}}},"to_device":{"events":[]}});
+                // The card is the only place the request's own id and digest
+                // exist, so the owner's button is built from the decrypted
+                // card and echoed back once, on the next poll after it.
+                if self.verdicts < self.approval.events.len() {
+                    let detail =
+                        self.approval.events[self.verdicts]["content"]["com.agentchat.approval"]
+                            .clone();
+                    let verdict = json!({"msgtype":"com.agentchat.approval.verdict.v1","body":"Owner button action",
+                        "com.agentchat.approval":{"version":1,"kind":"verdict","agent":detail["agent"],"project":detail["project"],
+                            "project_room_id":detail["project_room_id"],"request_id":detail["request_id"],
+                            "input_digest":detail["input_digest"],"action":"approve_once"}});
+                    let room: ruma::OwnedRoomId = PRIVATE.try_into().unwrap();
+                    if !self.owner_keyed {
+                        batch["to_device"] =
+                            self.approval.inbound_room_key(&room).await["to_device"].clone();
+                        self.owner_keyed = true;
+                    }
+                    batch["rooms"]["join"][PRIVATE]["timeline"]["events"] =
+                        json!([self.approval.owner_event(&room, verdict).await]);
+                    self.verdicts += 1;
+                }
+                (200, batch)
+            } else if request.method == "PUT" && path.contains("/sendToDevice/") {
+                self.approval.share(body).await;
+                (200, json!({}))
+            } else if request.method == "PUT" && path.contains("/send/") {
+                assert!(request.target.contains("private"));
+                assert!(segments.contains(&"m.room.encrypted"));
+                let room: ruma::OwnedRoomId = PRIVATE.try_into().unwrap();
+                self.approval.decrypt(body, &room).await;
                 (
                     200,
-                    json!({"next_batch":format!("approval-{}",self.approval_sync),"rooms":{"join":{"!private:example.test":{"timeline":{"events":[],"limited":false},"state":{"events":[]}}}},"to_device":{"events":[]}}),
+                    json!({"event_id":format!("$fleet_card_{}",self.approval.events.len())}),
                 )
             } else {
                 self.approval
@@ -1225,13 +1319,20 @@ impl Peer {
             } else if request.method == "PUT" && path.contains("/send/") {
                 if request.target.contains("factory_project") {
                     assert!(segments.contains(&"m.room.message"));
-                    assert_eq!(body["msgtype"], "m.text");
-                    assert!(
-                        body["body"]
-                            .as_str()
-                            .unwrap()
-                            .starts_with("Verified factory task ")
-                    );
+                    // Two kinds of plaintext project event an agent may post in
+                    // its own identity: its final reply, and the task notice
+                    // that announces work another agent delegated to it.
+                    if body["msgtype"] == "m.notice" {
+                        assert!(body["body"].as_str().unwrap().starts_with("Task created: "));
+                    } else {
+                        assert_eq!(body["msgtype"], "m.text");
+                        assert!(
+                            body["body"]
+                                .as_str()
+                                .unwrap()
+                                .starts_with("Verified factory task ")
+                        );
+                    }
                     agent
                         .project_events
                         .push(json!({"sender":agent.user,"room_id":PROJECT,"content":body}));

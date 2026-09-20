@@ -956,6 +956,38 @@ fn native_agent_inbox_task_delegates_from_its_waking_entry() {
         )
         .unwrap();
     assert_eq!(root, wake.sequence);
+    // The assignee's session is verified, so the notice is born with a route:
+    // the legacy lane never sees it, and only its own sender may claim it.
+    let sql = f.sql();
+    let (verified, state): (bool, String) = sql
+        .query_row(
+            "SELECT verified_route IS NOT NULL,state FROM task_notices WHERE task_id=?1",
+            [&created.task_id],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
+    assert!(verified);
+    assert_eq!(state, "pending");
+    let routed: bool = sql
+        .query_row(
+            "SELECT matrix_generation>0 FROM runner_sessions WHERE id=?1",
+            [&created.session_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(routed);
+    assert!(f.db.claim_task_notice(3007, 1000).unwrap().is_none());
+    assert!(
+        f.db.claim_verified_task_notice_for("en_someone_else", 3007, 1000)
+            .unwrap()
+            .is_none()
+    );
+    let claim =
+        f.db.claim_verified_task_notice_for(&engagement, 3007, 1000)
+            .unwrap()
+            .expect("the assignee claims its own notice");
+    assert_eq!(claim.claim.notice.task_id, created.task_id);
+    assert_eq!(claim.route.engagement_id, engagement);
     // An input this dispatch cannot see is still refused as a root.
     assert!(matches!(
         f.db.delegate_task(&cap, &delegation("call-2", Some(wake.sequence + 100)), 3008),
