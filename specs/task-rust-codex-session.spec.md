@@ -69,8 +69,9 @@ Scenario: Item and final text bookkeeping stays finite and explicit
 Scenario: A provider refusal reaches the session as a failed turn, not an unsupported event
   Test: native_codex_session_outcomes_system_error_precedes_its_cause
   Given a running turn and the captured 0.154.0 order for an exhausted usage limit
-  When the systemError thread status arrives before its error notice or failed turn
-  Then the status decides nothing and the turn ends as Failed
+  When the systemError thread status arrives before its error notice and the failed turn that follows it
+  Then the status decides nothing, the error notice ends the turn as Failed and the failed turn after it is that ending restated
+  And a completed turn after a fatal error, or a second failed one, is still a scope violation
   And the status before a turn, and notLoaded during one, stay refused
 
 Scenario: Unsupported permissions and lost transport never become success

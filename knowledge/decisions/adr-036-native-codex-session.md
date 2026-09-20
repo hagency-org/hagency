@@ -265,3 +265,35 @@ only. It carries no cause and decides nothing; the existing `error` and failed
 is admissible at all, and `notLoaded`, which no qualified flow has produced,
 stays refused. `native_codex_session_outcomes_system_error_precedes_its_cause`
 replays the captured order. No retry, budget or verdict authority changes.
+
+### The failed turn that follows its own cause (2026-09-20)
+
+That amendment replayed the captured order in two halves, the status then the
+`error` notice in one session and the status then the failed `turn/completed` in
+another, and said either one ends the turn. The wire sends all three in the same
+instant. The `error` notice with `willRetry: false` ends the turn as Failed; the
+failed `turn/completed` that follows it is already in the same read, so it
+reaches the terminal-suffix drain, which refused every `turn/completed` as a
+scope violation. Live on 2026-09-20 the operator account's usage limit ran out
+mid-soak: the dispatch was reported as `session_error: scope`, not as a failed
+turn, and a fresh fleet then failed the same way on its first round. A recording
+of the real 0.154.0 app server confirmed the order, in one millisecond:
+`thread/status/changed` systemError, `error` willRetry false, `turn/completed`
+failed.
+
+The drain now accepts exactly one `turn/completed` whose status is `failed`, for
+the same thread and turn, after a turn that an `error` notice ended. It is that
+ending restated and decides nothing: the outcome stays Failed. A completed or
+interrupted turn after a fatal error, a second failed one, and any
+`turn/completed` after a turn that ended another way stay scope violations.
+`native_codex_session_outcomes_system_error_precedes_its_cause` now replays the
+whole captured order as one write at every byte split and fails on the previous
+drain with Scope.
+
+This corrects the reported cause only. A failed turn still ends the attempt as a
+protocol failure with its owner retained, which ends the agent's worker. The
+retained product settles such a dispatch as outcome-unknown with the provider's
+text as the reason, blocks the task, posts a notice in the thread, quarantines
+that one session until an operator resolves it, and keeps the agent running for
+its other sessions. That parity belongs to the recovery work and is not decided
+here.

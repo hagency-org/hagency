@@ -21,6 +21,10 @@ pub(super) struct State {
     final_ids: Vec<String>,
     text_bytes: usize,
     events: usize,
+    /// The turn was ended by an `error` notice that will not retry, and the
+    /// failed `turn/completed` the app server sends right after it has not been
+    /// read yet. Consumed by that one notice and nothing else.
+    failed_echo_owed: bool,
 }
 impl Default for State {
     fn default() -> Self {
@@ -34,6 +38,7 @@ impl Default for State {
             final_ids: Vec::new(),
             text_bytes: 0,
             events: 0,
+            failed_echo_owed: false,
         }
     }
 }
@@ -195,6 +200,7 @@ impl State {
                     Some(false) => {
                         self.phase = Phase::Ended;
                         self.outcome = Some(Outcome::Failed);
+                        self.failed_echo_owed = true;
                         Ok(Update::TurnEnded)
                     }
                     None => Err(Error::Malformed),
@@ -258,6 +264,22 @@ impl State {
             | "serverRequest/resolved"
             | "hook/completed" => Ok(()),
             "thread/status/changed" if string(object(params, "status")?, "type")? == "idle" => {
+                Ok(())
+            }
+            // A provider refusal ends a turn twice on the wire: `error` with
+            // `willRetry: false`, then `turn/completed` with status `failed`, in
+            // the same instant (captured 0.154.0 order, ADR036). The first ended
+            // this turn as Failed; the second reaches this drain. Live 2026-09-20
+            // it was refused here, so a usage-limit refusal was reported as a
+            // `scope` violation instead of a failed turn. Exactly that one echo,
+            // already checked above to be this thread and turn, is the ending
+            // restated and decides nothing. A turn that ended any other way, a
+            // second echo, or a status other than failed stays refused.
+            "turn/completed"
+                if self.failed_echo_owed
+                    && string(object(params, "turn")?, "status")? == "failed" =>
+            {
+                self.failed_echo_owed = false;
                 Ok(())
             }
             _ => Err(Error::Scope),

@@ -1080,6 +1080,50 @@ async fn native_codex_session_outcomes_system_error_precedes_its_cause() {
         Ok(Update::TurnEnded)
     ));
     assert!(matches!(session.outcome(), Some(Outcome::Failed)));
+    // The wire sends all three in one instant, so the failed turn that follows
+    // its own cause arrives in the same read and is drained as terminal suffix.
+    // Live 2026-09-20 that echo was refused there and a usage-limit refusal was
+    // reported as a scope violation instead of a failed turn. Replay the whole
+    // captured order as one write, at every split.
+    let cause = || {
+        note(
+            "error",
+            json!({ "threadId": "thread-one", "turnId": "turn-one", "willRetry": false,
+                "error": { "message": "usage limit reached", "codexErrorInfo": "usageLimitExceeded" } }),
+        )
+    };
+    let mut echo = end("failed");
+    echo["params"]["turn"]["error"] = json!({ "message": "usage limit reached" });
+    let stream = bytes(&[cause(), echo.clone()]);
+    for split in 0..=stream.len() {
+        let (mut session, mut peer) = running().await;
+        peer.stdout.write_all(&stream[..split]).await.unwrap();
+        let (result, ()) = tokio::join!(session.next_update(), async {
+            sleep(Duration::from_millis(5)).await;
+            let result = peer.stdout.write_all(&stream[split..]).await;
+            if let Err(error) = result {
+                assert_eq!(error.kind(), std::io::ErrorKind::BrokenPipe);
+            }
+        });
+        assert!(
+            matches!(result, Ok(Update::TurnEnded)),
+            "split {split}: {:?}",
+            result.err()
+        );
+        assert!(
+            matches!(session.outcome(), Some(Outcome::Failed)),
+            "split {split}"
+        );
+    }
+    // Only a failed turn is that echo, and only once: a completed turn after a
+    // fatal error, or a second failed one, is still a scope violation.
+    for suffix in [vec![end("completed")], vec![echo.clone(), echo.clone()]] {
+        let (mut session, mut peer) = running().await;
+        let mut frames = vec![cause()];
+        frames.extend(suffix);
+        peer.stdout.write_all(&bytes(&frames)).await.unwrap();
+        assert_eq!(session.next_update().await.err(), Some(Error::Scope));
+    }
 
     // The failed turn alone is also a defined ending after the status.
     let (mut session, mut peer) = running().await;
