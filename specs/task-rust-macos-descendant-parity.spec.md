@@ -28,6 +28,10 @@ exit for descendant observation or claim kernel crash containment.
   that the kernel refused to name classifies nothing.
 - Unrelated process churn on the host must not end any guardian's observation,
   including churn that detaches into its own process group.
+- When ancestry, session and group evidence all stall, classify a newcomer as
+  unrelated only when its resource and jetsam coalitions both differ from the
+  leader's. Coalition evidence is negative only: it never classifies a process
+  as owned, and a zero or unreadable coalition on either side classifies nothing.
 - Bound the remembered birth map so a guardian's lifetime does not depend on the
   host's process creation rate, and never forget an owned birth.
 - Report a fixed stop cause and refusal category to the host and to the operator
@@ -40,7 +44,8 @@ exit for descendant observation or claim kernel crash containment.
   claim a task completed from process exit, or hide existing qualification failures.
 - Do not treat unsupported kqueue NOTE_TRACK as a working native facility.
 - Do not classify a newcomer no evidence reaches; that refusal stays fatal and
-  sticky, and no later census repairs it.
+  sticky, and no later census repairs it. A newcomer in the leader's own
+  coalition with no ancestry, session or group evidence is such a newcomer.
 
 ## Boundaries
 
@@ -149,6 +154,19 @@ Scenario: A survivor in a session of its own still refuses and names its cause
   Then observation ends with ObservationFailure and detail AncestryUnconfirmed
   And the leader is reaped, every signal is accepted, and the whole-tree receipt stays false
 
+Scenario: A daemon started elsewhere through an unseen parent does not stop a guardian
+  Test: native_macos_coalition_evidence_is_negative_only
+  Given a newcomer alone in a session of its own whose parent no census saw
+  When its resource and jetsam coalitions both differ from the leader's
+  Then it is unrelated, observation continues and nothing becomes owned
+  And the same newcomer in the leader's coalition, with an unreadable coalition, with only one id differing, or under a leader whose coalition is unknown still refuses
+
+Scenario: The platform facts coalition evidence rests on still hold
+  Test: native_macos_coalition_survives_setsid_and_differs_from_launchd
+  Given this process, a child that opens its own session, and launchd
+  When their coalitions are read
+  Then the child keeps this process's coalition and launchd's differs in both ids
+
 Scenario: Remembered births stay bounded without losing needed ancestry
   Test: native_macos_known_births_are_pruned_without_losing_ancestry
   Given unrelated churn far past the prune threshold under one tracker
@@ -195,3 +213,10 @@ evidence is tried before group evidence, the remembered birth map is pruned, and
 the guardian's stop cause now reaches the operator status. The session-of-its-own
 case stays fatal; kqueue NOTE_TRACK remains the only complete answer and remains
 unused.
+
+2026-09-20: ADR029's coalition evidence amendment. The first soak on the amended
+tracker died in round one of `observation_failure:ancestry_unconfirmed`: an hourly
+launchd updater starts daemons through a middle that opens its own session and is
+gone before any census. Operator decision: add coalition evidence, negative only.
+A process in the service's own coalition with no other evidence still refuses.
+

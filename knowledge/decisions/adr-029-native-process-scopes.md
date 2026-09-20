@@ -314,6 +314,45 @@ status gains an optional stop_cause beside the unchanged, pinned cleanup
 vocabulary, from fixed categories only (ADR-175). Linux cgroup recovery and
 Windows Job reports carry no detail and are otherwise unchanged.
 
+## Coalition evidence for a daemon no other evidence reaches (2026-09-20)
+
+The residual case the previous amendment kept fatal is what ended the first soak
+on the amended tracker, in its first round, and the stop cause recorded for the
+first time said so: `observation_failure:ancestry_unconfirmed`. The refused rows
+were four processes of a browser updater. launchd runs that updater every hour;
+each process is started through a middle that opens its own session and exits
+before any census, so it has no ancestry, no session mate and no group mate. The
+census is whole-system, so every guardian on the host refused at once. Any Mac
+with that browser installed loses every owned tree once an hour.
+
+A coalition is the one scope that move does not leave. It is inherited across
+fork, exec and `setsid`. Leaving it takes a spawn attribute that only launchd may
+use, and whatever launchd starts on a descendant's behalf is launchd's child: it
+was never a descendant by ancestry either, so this rule concedes nothing the
+ancestry rule had not already conceded. `PROC_PIDCOALITIONINFO` is readable
+unprivileged for every process, root-owned ones included (measured against 962
+live processes; the only refusals were processes that had already exited), and
+770 of 796 launchd children on the measured host sat in a coalition other than
+the service's.
+
+When ancestry, session and group evidence have all stalled, a newcomer whose
+resource AND jetsam coalition ids both differ from the leader's is classified
+unrelated. The evidence is negative only. It can never classify a process as
+owned: the leader shares its coalition with the service, its terminal and
+everything else started there, so an equal coalition proves nothing and that
+newcomer still refuses, sticky and fatal as before. A zero id on either side is
+no evidence, a refusal to read one is recorded as zero and never ends a census,
+and requiring both ids to differ means a kernel that ever split only one of them
+would weaken nothing. The leader's coalition is read once, inside the identity
+bracket, while the leader is still suspended.
+
+`native_macos_coalition_evidence_is_negative_only` pins the rule and every case
+that must keep refusing. `native_macos_coalition_survives_setsid_and_differs_from_launchd`
+reads the two platform facts from real processes, so a platform that stopped
+honouring either fails a test before it fails a guardian. What remains fatal: a
+process in the service's own coalition that daemonizes through a parent no census
+saw. kqueue NOTE_TRACK remains the only complete answer and remains unused.
+
 ## Consequences
 
 Owned handles and native observations constrain signalling and cleanup claims. Process launch, leader exit and fixture success remain separate from sandbox qualification and canonical task completion.

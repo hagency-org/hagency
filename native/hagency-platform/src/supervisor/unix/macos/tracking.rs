@@ -34,6 +34,9 @@ pub(super) struct Tracking {
     /// alive when it forked, so a parent that has already exited was still in
     /// that census; this is the whole window an ancestry lookup can need.
     previous: BTreeSet<u64>,
+    /// The leader's own coalition, read while it was still suspended. Zeros mean
+    /// the kernel named none, and then coalition evidence classifies nothing.
+    leader_coalition: [u64; 2],
     init: Option<Snapshot>,
     failed: bool,
 }
@@ -48,6 +51,7 @@ impl Tracking {
             known,
             owned: BTreeMap::from([(root.birth, root)]),
             previous: baseline.iter().map(|s| s.birth).collect(),
+            leader_coalition: root.coalition,
             init: baseline.iter().find(|s| s.pid == 1).copied(),
             failed: false,
         }
@@ -129,6 +133,7 @@ impl Tracking {
             if pending.len() == before
                 && !self.classify_by(rows, &mut pending, |s| s.session)
                 && !self.classify_by(rows, &mut pending, |s| s.group)
+                && !self.classify_foreign_coalition(&mut pending)
             {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
@@ -238,6 +243,40 @@ impl Tracking {
         pending.len() != before
     }
 }
+impl Tracking {
+    /// Last resort, and negative evidence only. Live on 2026-09-20 an hourly
+    /// launchd job (a browser updater) started four daemons, each through a
+    /// middle that opened its own session and exited before any census: no
+    /// ancestry, no session mate, no group mate, and every guardian on the host
+    /// refused at once. A coalition is inherited across fork, exec and `setsid`,
+    /// and leaving one takes a spawn attribute only launchd may use; whatever
+    /// launchd starts on a descendant's behalf is launchd's child and was never a
+    /// descendant by ancestry either. So a newcomer whose resource AND jetsam
+    /// coalitions both differ from the leader's cannot descend from it.
+    ///
+    /// This can never classify a process as owned: the leader shares its
+    /// coalition with the service, its terminal and everything else started
+    /// there, so an equal coalition proves nothing and that newcomer still
+    /// refuses. A zero on either side is no evidence. Both ids must differ, so a
+    /// kernel that ever split only one of them would weaken nothing.
+    fn classify_foreign_coalition(&mut self, pending: &mut Vec<&Snapshot>) -> bool {
+        let leader = self.leader_coalition;
+        if leader.contains(&0) {
+            return false;
+        }
+        let before = pending.len();
+        pending.retain(|s| {
+            let foreign = !s.coalition.contains(&0)
+                && s.coalition[0] != leader[0]
+                && s.coalition[1] != leader[1];
+            if foreign {
+                self.known.insert(s.birth, false);
+            }
+            !foreign
+        });
+        pending.len() != before
+    }
+}
 fn gap() -> io::Error {
     io::Error::new(io::ErrorKind::InvalidData, Refusal::Gap)
 }
@@ -250,6 +289,9 @@ mod tests {
             pid,
             session: pid,
             group: pid,
+            // Every fixture row shares the leader's coalition unless a test says
+            // otherwise, so an equal coalition keeps proving nothing.
+            coalition: [7, 8],
             birth,
             parent_birth: parent,
             parent_pid: 10,
@@ -391,6 +433,63 @@ mod tests {
         let mut t = Tracking::new(&[root, foreign], root);
         assert!(
             t.update(&[root, scoped(20, 200, 1, 0, 20), scoped(90, 900, 995, 0, 89)])
+                .is_err()
+        );
+    }
+    #[test]
+    fn native_macos_coalition_evidence_is_negative_only() {
+        let root = row(10, 100, 1);
+        let foreign = row(20, 200, 1);
+        // The live shape: a daemon alone in a session of its own, its parent
+        // never in any census, started by launchd in a coalition of its own.
+        let daemon = |pid, birth, coalition| Snapshot {
+            coalition,
+            ..row(pid, birth, 990 + birth)
+        };
+        let mut t = Tracking::new(&[root, foreign], root);
+        assert_eq!(
+            t.update(&[root, foreign, daemon(70, 700, [31, 32])])
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(!t.failed());
+        assert_eq!(
+            t.owned().len(),
+            1,
+            "coalition evidence never owns a process"
+        );
+        // A child that daemon forks later is unrelated by plain ancestry.
+        let child = Snapshot {
+            coalition: [31, 32],
+            ..row(71, 710, 700)
+        };
+        assert_eq!(
+            t.update(&[root, foreign, daemon(70, 700, [31, 32]), child])
+                .unwrap()
+                .len(),
+            1
+        );
+        // The same daemon inside the leader's own coalition proves nothing and
+        // still refuses, as does one whose coalition the kernel would not name,
+        // and one that differs in only one of the two ids.
+        for coalition in [[7, 8], [0, 0], [31, 0], [31, 8], [7, 32]] {
+            let mut t = Tracking::new(&[root, foreign], root);
+            assert!(
+                t.update(&[root, foreign, daemon(70, 700, coalition)])
+                    .is_err(),
+                "{coalition:?} must not classify"
+            );
+            assert!(t.failed());
+        }
+        // A leader whose own coalition is unknown has no coalition evidence.
+        let blind = Snapshot {
+            coalition: [0, 0],
+            ..root
+        };
+        let mut t = Tracking::new(&[blind, foreign], blind);
+        assert!(
+            t.update(&[blind, foreign, daemon(70, 700, [31, 32])])
                 .is_err()
         );
     }

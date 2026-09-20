@@ -20,6 +20,12 @@ pub(super) struct Snapshot {
     /// entered only by fork inheritance or by creating it, so a group never mixes
     /// the owned leader's descendants with unrelated processes.
     pub group: i32,
+    /// Resource and jetsam coalition, or zeros when the kernel refused to name
+    /// them. A coalition is inherited across fork, exec and `setsid`, and leaving
+    /// one takes a spawn attribute only launchd may use. It therefore survives
+    /// the one move that defeats session and group evidence: a daemon that opens
+    /// its own session through a parent no census ever saw.
+    pub coalition: [u64; 2],
     pub birth: u64,
     pub parent_birth: u64,
     pub version: u32,
@@ -53,7 +59,19 @@ struct Short {
     sgid: u32,
     reserved: u32,
 }
-const _: () = assert!(size_of::<Unique>() == 56 && size_of::<Short>() == 64);
+/// `struct proc_pidcoalitioninfo`, <sys/proc_info.h>: one id per coalition type
+/// (resource, jetsam), then reserved words.
+#[repr(C)]
+#[derive(Default)]
+struct Coalition {
+    ids: [u64; 2],
+    reserved: [u64; 3],
+}
+const _: () =
+    assert!(size_of::<Unique>() == 56 && size_of::<Short>() == 64 && size_of::<Coalition>() == 40);
+/// PROC_PIDCOALITIONINFO. Like the two flavors below it permits foreign-user
+/// reads: measured unprivileged against every live process, root-owned included.
+const COALITION_INFO: i32 = 20;
 /// <sys/spawn.h>, macOS 10.15 and later; the libc crate does not export it.
 const POSIX_SPAWN_SETSID: i32 = 0x0400;
 unsafe extern "C" {
@@ -78,7 +96,7 @@ fn code(value: i32) -> io::Result<()> {
 }
 fn query<T: Default>(pid: i32, flavor: i32) -> io::Result<Option<T>> {
     let mut value = T::default();
-    // SAFETY: Only this module calls query with the two initialized repr(C)
+    // SAFETY: Only this module calls query with its three initialized repr(C)
     // layouts and their exact native flavors/sizes. The kernel copies into them.
     let n = unsafe {
         libc::proc_pidinfo(
@@ -128,6 +146,13 @@ pub(super) fn observe(pid: i32) -> io::Result<Option<Snapshot>> {
         }
         session = 0;
     }
+    // The same rule as the session: read inside the bracket, and a refusal is
+    // "no coalition evidence" for this row, never a failed census.
+    let coalition = match query::<Coalition>(pid, COALITION_INFO) {
+        Ok(Some(value)) => value.ids,
+        Ok(None) => return Ok(None),
+        Err(_) => [0, 0],
+    };
     let Some(after) = query::<Unique>(pid, 17)? else {
         return Ok(None);
     };
@@ -144,6 +169,7 @@ pub(super) fn observe(pid: i32) -> io::Result<Option<Snapshot>> {
         parent_pid: short.parent as i32,
         session,
         group: short.group as i32,
+        coalition,
         birth: after.birth,
         parent_birth: after.parent,
         version: after.version as u32,
@@ -371,5 +397,45 @@ pub(super) fn spawn(launch: &Launch, pipes: Option<ChildPipes>) -> io::Result<Ro
             return Err(invalid());
         }
         Ok(Root { pid, reaped: false })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::os::unix::process::CommandExt;
+
+    /// The two platform facts coalition evidence rests on, read from real
+    /// processes: a child that opens its own session keeps its parent's
+    /// coalition, and what launchd runs is in another one. If either ever stops
+    /// holding, the evidence is unsound and this fails before anything ships.
+    #[test]
+    fn native_macos_coalition_survives_setsid_and_differs_from_launchd() {
+        let own = observe(std::process::id() as i32).unwrap().unwrap();
+        assert!(!own.coalition.contains(&0), "{:?}", own.coalition);
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("30");
+        // SAFETY: setsid is async-signal-safe and the closure touches nothing else.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::setsid() < 0 {
+                    return Err(io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+        let mut child = command.spawn().unwrap();
+        let row = observe(child.id() as i32).unwrap().unwrap();
+        let launchd = observe(1).unwrap().unwrap();
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert_ne!(row.session, own.session, "the child leads its own session");
+        assert_eq!(row.coalition, own.coalition);
+        assert!(
+            launchd.coalition[0] != own.coalition[0] && launchd.coalition[1] != own.coalition[1],
+            "{:?} {:?}",
+            launchd.coalition,
+            own.coalition
+        );
     }
 }
