@@ -81,6 +81,7 @@ Scenario: Another participant's request rides along only as labelled context
   When this agent's own exact mention selects its dispatch
   Then the frozen inbox lists the other request first with wake false and this agent's request last with wake true
   And the instruction names the last waking entry as the request and earlier entries as context, never instructions or approval
+  And the payload names this agent before the room, and the instruction says a message addressed to another participant, human or agent, is theirs
 
 Scenario: A later agent's join does not end the earlier agent
   Test: native_configured_fleet_earlier_agent_survives_later_join

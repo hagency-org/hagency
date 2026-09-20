@@ -841,9 +841,26 @@ fn native_agent_inbox_names_the_waking_entry_as_the_request() {
             )
         })
         .collect();
+    // An agent is a participant like any other: it is shown the whole room,
+    // including the request addressed to someone else.
     assert_eq!(shape, [("$for_other", false), ("$for_worker", true)]);
+    assert!(
+        inbox[0]["message"]["body"]
+            .as_str()
+            .unwrap()
+            .contains("OTHER_DONE")
+    );
+    // What it lacked was knowing who it is. The payload names it...
+    assert_eq!(input["payload"]["agent"]["mxid"], "@worker:example.test");
+    assert_eq!(input["payload"]["agent"]["name"], "Worker");
+    // ...and the text the runner actually receives says so before the room.
+    let text = hagency_core::canonical::encode_payload(&input["payload"]).unwrap();
+    assert!(text.find("\"agent\"").unwrap() < text.find("\"inbox\"").unwrap());
     let instruction = input["payload"]["instruction"].as_str().unwrap();
     for rule in [
+        "agent.mxid is your own Matrix ID",
+        "as every participant sees it",
+        "human or agent, is theirs to act on",
         "LAST inbox entry",
         "wake is true",
         "room context only",

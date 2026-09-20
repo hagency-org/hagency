@@ -126,3 +126,14 @@ wake flags and the rule. Live, the identical inbox shape on a build with the new
 text: agent 1 answered its own request and its verified file stayed intact. A
 model can still misread a prompt; this removes the ambiguity the product itself
 created, and a repeated two-agent run exercises the same shape every round.
+
+## An agent is a participant, so it is told who it is (2026-09-19)
+
+The instruction above held for about fifty rounds and then failed once on the
+identical inbox. The cause was not what the agent could see. A human member sees
+requests addressed to others and ignores them because they know who they are, and
+the runner was never told. Agents are first-class participants, so nothing is
+withheld from them. The dispatch now carries the agent's own Matrix ID and name,
+placed before the room, and the instruction says a message addressed to another
+participant, human or agent, is theirs. A first attempt that hid such messages
+from agents was withdrawn, because it made the agent a lesser participant.
