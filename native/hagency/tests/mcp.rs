@@ -592,9 +592,10 @@ async fn native_mcp_approval_is_bound_to_the_assigned_task() {
         .await
         .unwrap();
         assert_eq!(reply["result"]["isError"], true, "{name}");
+        // The refusal names the ID it wants, so a caller that slipped can retry.
         assert_eq!(
             reply["result"]["content"][0]["text"],
-            "Task ID differs from the assigned task"
+            "Task ID differs from the assigned task; the assigned task ID is task"
         );
         assert!(reply["result"].get("structuredContent").is_none());
     }

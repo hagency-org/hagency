@@ -336,7 +336,15 @@ impl Session {
             return Ok(tool_error("Tool arguments must be an object"));
         };
         if args.remove("id").as_ref().and_then(Value::as_str) != Some(self.context.task_id()) {
-            return Ok(tool_error("Task ID differs from the assigned task"));
+            // Live 2026-09-20: a model did its work, named the wrong task on
+            // completion, read only "differs" and gave up, so a finished task never
+            // replied. The check is unchanged; the refusal now says which ID it
+            // wants. That ID is already in this same runner's developer guidance,
+            // so naming it discloses nothing and lets the caller correct itself.
+            return Ok(tool_error(&format!(
+                "Task ID differs from the assigned task; the assigned task ID is {}",
+                self.context.task_id()
+            )));
         }
         let call_id = args.remove("call_id");
         let call_id = match &call_id {
