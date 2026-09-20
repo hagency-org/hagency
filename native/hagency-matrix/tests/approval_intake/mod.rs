@@ -424,6 +424,50 @@ async fn native_matrix_approval_verdict_real_encrypted_owner_actions_exact_scope
     }
 }
 
+/// Live 2026-09-20: an owner wait expired, the host recorded its own deny
+/// (ADR046), and the approval pump's poll that had already read that request as
+/// pending reached its target read a moment later. The refusal ended the pump,
+/// and with it every agent of the fleet. A request the host decided is not an
+/// authority failure of the intake; a still-pending one refused is.
+#[tokio::test]
+async fn native_matrix_approval_intake_skips_a_request_the_host_decided() {
+    let (f, mut fake, c, cap) = ready().await;
+    let expired = request(&f, &cap, 1).await;
+    let live = request(&f, &cap, 2).await;
+    f.store
+        .deny_for_owner_wait_expiry(expired.request_id.clone(), now())
+        .await
+        .unwrap();
+    let (query, sync) = packet(&c, vec![verdict(&live, "approve_once")]).await;
+    let cancel = CancellationToken::new();
+    let (r, ()) = common::scripted(
+        c.intake(
+            HostApprovalPlan::new(vec![expired.request_id.clone(), live.request_id.clone()])
+                .unwrap(),
+            &cancel,
+        ),
+        wire_batch(&mut fake, &query, &sync, 1),
+    )
+    .await;
+    assert_eq!(
+        r.unwrap(),
+        ApprovalIntakeSummary {
+            accepted: 1,
+            replayed: 0,
+            rejected: 0,
+            pending: 0
+        }
+    );
+    let denied = f.store.approval_summary(expired.request_id).await.unwrap();
+    assert_eq!(denied.choice, Some(ApprovalChoice::Deny));
+    let approved = f.store.approval_summary(live.request_id).await.unwrap();
+    assert_eq!(approved.choice, Some(ApprovalChoice::Once));
+    assert!(
+        f.available().await,
+        "the intake must not fence its collector"
+    );
+    shutdown(f, fake, c).await;
+}
 async fn wire_batch(fake: &mut common::Fake, query: &Value, sync: &Value, grants: usize) {
     preflight(fake).await;
     let r = fake.next().await;

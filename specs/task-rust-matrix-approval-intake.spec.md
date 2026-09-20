@@ -78,6 +78,13 @@ Scenario: Persistent rejected outcomes and capacity prevent reinterpretation
   When requests or target plans change and the reader reopens
   Then original rejected outcomes remain rejected and capacity never evicts pending or dedup history
 
+Scenario: A planned request the host decided leaves the plan instead of ending the intake
+  Test: native_matrix_approval_intake_skips_a_request_the_host_decided
+  Given a plan naming one request the host denied at its owner bound and one still pending with an owner verdict
+  When the intake reads its targets
+  Then the decided request is skipped, the pending one is accepted and the collector stays available
+  And a request that still reads pending and is refused keeps ending the intake
+
 ## Out of Scope
 
 Live account provisioning device key publication missing-session maintenance

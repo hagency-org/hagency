@@ -505,3 +505,22 @@ reserve must still fit the operation budget or the configuration is refused.
 Not decided here: the owner is not told that a card expired, and
 `delivery_denial_reason` now names two kinds of host denial, so any surface that
 words it as "could not be delivered" is wrong for this one.
+
+### The approval pump and a request the host decided (2026-09-20)
+
+The expiry deny made the host a second writer of an approval's decision, and the
+first live expiry found the reader that had not been told. The approval pump
+reads each tracked request as pending, takes a service turn and refreshes its
+rooms, and only then reads each request's intake target; the deny landed in that
+gap, the target read refused a request that was no longer pending, the pump
+stopped, and every agent of the fleet ended `outcome_unknown` a moment after the
+agent itself had correctly declined and carried on. The offline fleet test ends
+right after the decline and never ran the pump's next poll.
+
+A planned request that is durably decided now leaves the intake's plan, which is
+what the pump's own filter already says one step earlier and what the later
+steps of the same intake already tolerate. A request that still reads pending
+and is refused keeps ending the intake. No authority moved:
+`native_matrix_approval_intake_skips_a_request_the_host_decided` denies one
+planned request at its owner bound before an intake that also carries a live
+verdict, and fails on the previous code.

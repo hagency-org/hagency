@@ -557,7 +557,23 @@ impl Inner {
             self.refresh_approval_rooms(&rooms, cancel).await?;
             let mut targets = vec![];
             for id in plan.requests {
-                let target = self.domain.approval_intake_target(id).await?;
+                let target = match self.domain.approval_intake_target(id.clone()).await {
+                    Ok(target) => target,
+                    // The host can decide a planned request by itself between the
+                    // pump's own pending check and this read: an owner wait nobody
+                    // answered is denied at its owner bound (ADR046). A durably
+                    // decided request has nothing left to take in, which is what
+                    // the pump's filter says one step earlier, so it leaves the
+                    // plan. A request that still reads pending was refused for a
+                    // real reason and keeps ending the intake.
+                    Err(hagency_store::Error::RunnerAuthority) => {
+                        if self.domain.approval_summary(id).await?.state == "pending" {
+                            return Err(hagency_store::Error::RunnerAuthority.into());
+                        }
+                        continue;
+                    }
+                    Err(error) => return Err(error.into()),
+                };
                 if !rooms.iter().any(|r| {
                     r.authority == target.authority
                         && r.generation == target.room_generation
