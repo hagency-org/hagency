@@ -9,7 +9,7 @@ fn native_stopped_inspection_schema34_upgrade() {
     db.put_resource(&resource).unwrap();
     drop(db);
     let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
-    sql.execute_batch("DROP TABLE owned_stop_inspections; PRAGMA user_version=33;")
+    sql.execute_batch("DROP TABLE owned_stop_inspections; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; PRAGMA user_version=33;")
         .unwrap();
     let before: String = sql
         .query_row(
@@ -31,7 +31,7 @@ fn native_stopped_inspection_schema34_upgrade() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            35
+            36
         );
         assert_eq!(
             sql.query_row(
@@ -101,7 +101,7 @@ fn native_account_schema22() {
     domain.approve("schema22-approval", &proof, 1000).unwrap();
     drop(domain);
     let sql = rusqlite::Connection::open(state.join("domain.sqlite3")).unwrap();
-    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE IF EXISTS account_login_observations; DROP TABLE IF EXISTS account_login_attempts; DROP TABLE IF EXISTS account_logout_receipts; DROP TABLE resource_accounts; DROP TABLE managed_accounts; DROP TABLE account_identity_key; ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; PRAGMA user_version=22;").unwrap();
+    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE IF EXISTS account_login_observations; DROP TABLE IF EXISTS account_login_attempts; DROP TABLE IF EXISTS account_logout_receipts; DROP TABLE resource_accounts; DROP TABLE managed_accounts; DROP TABLE account_identity_key; ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; PRAGMA user_version=22;").unwrap();
     let snapshot = |sql: &rusqlite::Connection| -> Vec<(String, String, String)> {
         sql.prepare("SELECT 'resources',id,config FROM resources UNION ALL SELECT 'seats',id,config FROM seats UNION ALL SELECT 'engagements',id,context FROM engagements ORDER BY 1,2").unwrap().query_map([],|r|Ok((r.get(0)?,r.get(1)?,r.get(2)?))).unwrap().collect::<Result<_,_>>().unwrap()
     };
@@ -114,7 +114,7 @@ fn native_account_schema22() {
     assert_eq!(
         sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
             .unwrap(),
-        35
+        36
     );
     assert_eq!(before, snapshot(&sql));
     drop(sql);

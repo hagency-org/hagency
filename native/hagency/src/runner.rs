@@ -38,6 +38,7 @@ pub(super) fn router() -> Router {
                 .push(Router::with_path("tasks/{id}/comments").get(comments))
                 .push(Router::with_path("tasks/{id}/operations").post(mutate))
                 .push(Router::with_path("inbox").get(inbox))
+                .push(Router::with_path("conversation").get(conversation_page))
                 .push(Router::with_path("peer-messages").post(send_peer))
                 .push(Router::with_path("peer-inbox").get(peer_inbox))
                 .push(workflows::router())
@@ -390,6 +391,33 @@ async fn inbox(req: &mut Request, depot: &mut Depot, res: &mut Response) {
     .await;
     match result {
         Ok(rows) => res.render(Json(rows)),
+        Err(error) => attributed_failure(res, Some(&c.store), error),
+    }
+}
+/// The frozen room discussion of the caller's OWN dispatch. It takes an offset
+/// and nothing else: no room, session or dispatch is addressable, because the
+/// window is reached through the presented capability alone. Recording how far
+/// the agent read is a max(), so the same page may be re-read; that is why an
+/// expired read is `Unavailable` rather than an unknown outcome.
+#[handler]
+async fn conversation_page(req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    let Some(c) = context(depot, res) else {
+        return;
+    };
+    let result = async {
+        let offset = req.query::<String>("offset").unwrap_or_default();
+        c.store
+            .runner_command(
+                c.cap,
+                RunnerCommand::ReadConversation {
+                    offset: sequence(&offset)?,
+                },
+            )
+            .await
+    }
+    .await;
+    match result {
+        Ok(value) => res.render(Json(value)),
         Err(error) => attributed_failure(res, Some(&c.store), error),
     }
 }

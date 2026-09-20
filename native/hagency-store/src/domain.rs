@@ -609,7 +609,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 35,
+                version: 36,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -664,9 +664,12 @@ impl DomainRepository {
                         include_str!("migrations/034-owned-stop-inspections.sql"),
                     ),
                     (35, include_str!("migrations/035-outcome-resolutions.sql")),
+                    (36, include_str!("migrations/036-dispatch-discussion.sql")),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
+                    "SELECT dispatch_id,message_sequence,addressed FROM dispatch_inputs LIMIT 0",
+                    "SELECT dispatch_id,read_parts FROM dispatch_conversation_reads LIMIT 0",
                     "SELECT id,dispatch_id,fence,receipt_digest,snapshot_digest,token_hash,created_at,expires_at,consumed_at FROM outcome_inspections LIMIT 0",
                     "SELECT request_id,dispatch_id,inspection_id,request_digest,action,response,resolved_at FROM outcome_resolutions LIMIT 0",
                     "SELECT dispatch_id,fence,digest,config,observed_at FROM owned_stop_inspections LIMIT 0",

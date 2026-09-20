@@ -273,7 +273,7 @@ fn native_graph_transactions() {
             inspect
                 .pragma_query_value(None, "user_version", |r| r.get::<_, u32>(0))
                 .unwrap(),
-            35
+            36
         );
     }
 }

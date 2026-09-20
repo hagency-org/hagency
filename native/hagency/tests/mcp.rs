@@ -48,7 +48,7 @@ async fn native_mcp_protocol() {
     )
     .await
     .unwrap();
-    assert_eq!(catalog["result"]["tools"].as_array().unwrap().len(), 22);
+    assert_eq!(catalog["result"]["tools"].as_array().unwrap().len(), 23);
     for tool in catalog["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["inputSchema"]["additionalProperties"], false);
         assert!(!tool.to_string().contains("secret"));
@@ -235,7 +235,7 @@ async fn native_mcp_receive_presentation() {
         let tools = replies[1]["result"]["tools"].as_array().unwrap();
         assert_eq!(
             tools.len(),
-            22 + 2 * usize::from(send) + 2 * usize::from(receive)
+            23 + 2 * usize::from(send) + 2 * usize::from(receive)
         );
         for name in ["list_received_files", "receive_file"] {
             let tool = tools.iter().find(|tool| tool["name"] == name);
@@ -417,7 +417,7 @@ async fn native_mcp_file_presentation() {
     assert_eq!(replies.len(), 2 + invalid_count);
     assert_eq!(replies[1]["id"], "catalog");
     let tools = replies[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 24);
+    assert_eq!(tools.len(), 25);
     let send = tools
         .iter()
         .find(|tool| tool["name"] == "send_file")
@@ -566,6 +566,119 @@ async fn native_mcp_approval_tools_are_catalogued_and_bounded() {
             .unwrap()
             .contains("Missing stable call_id")
     );
+}
+
+/// The dispatch payload carries only what addressed the agent, so the room
+/// discussion around it has to be reachable: the tool is catalogued for every
+/// owned dispatch, is bound to the assigned task like every other task tool,
+/// and names no room, agent, session or dispatch of its own.
+#[tokio::test]
+async fn native_mcp_conversation_read_is_catalogued_and_task_bound() {
+    let mut s = session();
+    request(&mut s, init(json!("1"))).await.unwrap();
+    // A notification takes no reply — assert it, do not unwrap it.
+    assert!(
+        request(
+            &mut s,
+            json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
+        )
+        .await
+        .is_none()
+    );
+    let catalog = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/list","params":{}}),
+    )
+    .await
+    .unwrap();
+    let tool = catalog["result"]["tools"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|tool| tool["name"] == "read_conversation")
+        .expect("read_conversation is catalogued")
+        .clone();
+    let properties = tool["inputSchema"]["properties"].as_object().unwrap();
+    assert_eq!(
+        properties.len(),
+        2,
+        "read_conversation declares id and offset"
+    );
+    assert!(properties.contains_key("offset"));
+    assert!(!properties.contains_key("call_id"));
+    for key in ["room_id", "agent", "session_id", "dispatch_id", "limit"] {
+        assert!(
+            !properties.contains_key(key),
+            "{key} is not a declared property"
+        );
+    }
+    assert_eq!(tool["inputSchema"]["required"], json!(["id"]));
+    assert_eq!(tool["inputSchema"]["additionalProperties"], false);
+    assert_eq!(tool["annotations"]["readOnlyHint"], true);
+    assert_eq!(tool["annotations"]["destructiveHint"], false);
+    assert!(
+        tool["description"]
+            .as_str()
+            .unwrap()
+            .contains("No room or agent can be selected")
+    );
+    // It is offered to an owned Codex dispatch unconditionally, never behind
+    // the coordination profile: without it the discussion is unreachable.
+    assert!(
+        hagency_runtime::task_mcp::owned_task_tools(false, false).contains(&"read_conversation")
+    );
+    // Naming another task is refused by the same binding gate, before the read.
+    let wrong = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"read_conversation","arguments":{"id":"another_task"}}}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        wrong["result"]["content"][0]["text"],
+        "Task ID differs from the assigned task; the assigned task ID is task"
+    );
+    for (id, arguments, message) in [
+        (
+            json!(4),
+            json!({"id":"task","offset":-1}),
+            "Invalid conversation offset",
+        ),
+        (
+            json!(5),
+            json!({"id":"task","offset":1.5}),
+            "Invalid conversation offset",
+        ),
+        (
+            json!(6),
+            json!({"id":"task","room_id":"!other:example.test"}),
+            "Read tools take the assigned task id only",
+        ),
+        (
+            json!(7),
+            json!({"id":"task","call_id":"stable_call_one"}),
+            "Read tools take the assigned task id only",
+        ),
+    ] {
+        let refused = request(
+            &mut s,
+            json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"read_conversation","arguments":arguments}}),
+        )
+        .await
+        .unwrap();
+        assert_eq!(refused["result"]["isError"], true);
+        assert_eq!(refused["result"]["content"][0]["text"], message);
+    }
+    // A correctly shaped read reaches the host API and is answered from it,
+    // never guessed: this fixture has no service, so it refuses by name.
+    let call = request(
+        &mut s,
+        json!({"jsonrpc":"2.0","id":8,"method":"tools/call","params":{"name":"read_conversation","arguments":{"id":"task","offset":0}}}),
+    )
+    .await
+    .unwrap();
+    assert_eq!(call["result"]["isError"], true);
+    assert!(call["result"].get("structuredContent").is_none());
 }
 
 /// PC-C3: both approval tools are bound to the session's assigned task — a

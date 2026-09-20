@@ -430,7 +430,7 @@ fn native_outcome_resolution_schema35_upgrade() {
     drop(f.db);
     let sql = rusqlite::Connection::open(path.join("domain.sqlite3")).unwrap();
     sql.execute_batch(
-        "DROP TABLE outcome_resolutions; DROP TABLE outcome_inspections; PRAGMA user_version=34;",
+        "DROP TABLE outcome_resolutions; DROP TABLE outcome_inspections; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; PRAGMA user_version=34;",
     )
     .unwrap();
     drop(sql);
@@ -447,7 +447,7 @@ fn native_outcome_resolution_schema35_upgrade() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            35
+            36
         );
         assert_eq!(
             sql.query_row("SELECT COUNT(*) FROM resource_leases", [], |r| r

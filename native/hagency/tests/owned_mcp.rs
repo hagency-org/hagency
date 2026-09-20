@@ -558,7 +558,8 @@ async fn native_claude_owned_task_mcp() {
                 .unwrap();
         assert_eq!(
             receipt,
-            json!({"heartbeat":true,"readback":true,"helper_exit":true,"tools":4+2*usize::from(send)+2*usize::from(receive),
+            // Five since the room discussion became a task tool of its own (ADR178).
+            json!({"heartbeat":true,"readback":true,"helper_exit":true,"tools":5+2*usize::from(send)+2*usize::from(receive),
             "outside_profile_refused":5,"foreign_task_refused":true})
         );
         let task: Task = serde_json::from_str(

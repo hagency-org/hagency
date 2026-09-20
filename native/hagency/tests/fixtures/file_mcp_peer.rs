@@ -109,6 +109,7 @@ fn helper(params: &Value) -> io::Result<()> {
                 "update_task_execution",
                 "transition_task",
                 "complete_task_with_reply",
+                "read_conversation",
                 "send_file",
                 "get_file_delivery"
             ])
@@ -120,7 +121,8 @@ fn helper(params: &Value) -> io::Result<()> {
                 "get_task":{"approval_mode":"approve"},
                 "update_task_execution":{"approval_mode":"approve"},
                 "transition_task":{"approval_mode":"approve"},
-                "complete_task_with_reply":{"approval_mode":"approve"}
+                "complete_task_with_reply":{"approval_mode":"approve"},
+                "read_conversation":{"approval_mode":"approve"}
             })
         || config["shell_environment_policy.inherit"] != "none"
         || config["shell_environment_policy.experimental_use_profile"] != false

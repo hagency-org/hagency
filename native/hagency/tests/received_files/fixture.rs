@@ -622,7 +622,7 @@ impl Fixture {
                         status["state"].as_str(),
                         Some("unavailable" | "outcome_unknown" | "no_work")
                     ),
-                    "actual incoming workflow refused: {status}; intake={}, GET={}, keys={}, runtime_entry={:?}, helper_phase={:?}, sent={:?}, stage={:?}, list={:?}, first={:?}",
+                    "actual incoming workflow refused: {status}; intake={}, GET={}, keys={}, runtime_entry={:?}, helper_phase={:?}, sent={:?}, stage={:?}, list={:?}, first={:?}, prompt_seen={:?}, discussion={:?}",
                     self.intakes,
                     self.gets,
                     self.sender.server.writes.len(),
@@ -631,7 +631,9 @@ impl Fixture {
                     self.receipt("sent"),
                     self.receipt("stage"),
                     self.receipt("list"),
-                    self.receipt("first")
+                    self.receipt("first"),
+                    self.receipt("prompt_seen"),
+                    self.receipt("discussion")
                 );
             }
             // The watchdog binds EVERY iteration, whatever the probe

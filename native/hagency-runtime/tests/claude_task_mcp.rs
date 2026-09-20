@@ -162,7 +162,8 @@ fn native_claude_task_mcp_profile() {
             "mcp__hagency_task_writer__get_task",
             "mcp__hagency_task_writer__update_task_execution",
             "mcp__hagency_task_writer__transition_task",
-            "mcp__hagency_task_writer__complete_task_with_reply"
+            "mcp__hagency_task_writer__complete_task_with_reply",
+            "mcp__hagency_task_writer__read_conversation"
         ]
     );
     // The TS ask patterns contain '*'; only the allow rules must be exact.

@@ -109,6 +109,7 @@ fn helper(params: &Value, turn: &Value, progress: &mut impl Write) -> io::Result
                 "update_task_execution",
                 "transition_task",
                 "complete_task_with_reply",
+                "read_conversation",
                 "list_received_files",
                 "receive_file"
             ])
@@ -122,8 +123,20 @@ fn helper(params: &Value, turn: &Value, progress: &mut impl Write) -> io::Result
         return Err(invalid());
     }
     receipt("phase", json!({"stage":"check_selected_prompt"}))?;
+    // The agent is asked only what addresses it (ADR178). In a direct room the
+    // upload itself addresses the agent and is the request. In a group thread
+    // the upload addressed nobody: the prompt holds the mention that followed it
+    // and a pointer to the room discussion, and the upload is read back through
+    // the tool below. Either way no media URL or key reaches the prompt.
     let prompt = serde_json::to_string(&turn["input"])?;
-    if !prompt.contains("$incoming") || prompt.contains("mxc://") || prompt.contains("key_ops") {
+    // Recorded before the check, so a refusal here shows what the prompt was.
+    receipt("prompt_seen", turn["input"].clone())?;
+    let upload_is_the_request = prompt.contains("$incoming");
+    if (!upload_is_the_request && !prompt.contains("$wake"))
+        || !prompt.contains("read_conversation")
+        || prompt.contains("mxc://")
+        || prompt.contains("key_ops")
+    {
         return Err(invalid());
     }
     receipt("prompt", turn["input"].clone())?;
@@ -183,6 +196,26 @@ fn helper(params: &Value, turn: &Value, progress: &mut impl Write) -> io::Result
     if !names.contains(&"list_received_files")
         || !names.contains(&"receive_file")
         || names.contains(&"send_file")
+    {
+        return Err(invalid());
+    }
+    // Nothing is hidden: the upload nobody addressed to this agent is in the
+    // frozen room discussion, with its speaker, and still carries no media URL.
+    let page = rpc(
+        &mut input,
+        &mut output,
+        9,
+        "tools/call",
+        json!({"name":"read_conversation","arguments":{
+            "id":std::env::var("HAGENCY_TASK_ID").map_err(|_| invalid())?,"offset":0}}),
+    )?;
+    receipt("discussion", page.clone())?;
+    let heard = serde_json::to_string(&page["structuredContent"]["messages"])?;
+    if page["isError"] != false
+        || !heard.contains("$incoming")
+        || (!upload_is_the_request && !heard.contains("$wake"))
+        || heard.contains("mxc://")
+        || heard.contains("key_ops")
     {
         return Err(invalid());
     }

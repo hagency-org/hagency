@@ -2260,6 +2260,9 @@ impl DomainStore {
                 RunnerCommand::Inbox { after, limit } => {
                     serde_json::to_value(db.runner_inbox(&cap, after, limit, now)?)?
                 }
+                RunnerCommand::ReadConversation { offset } => {
+                    serde_json::to_value(db.read_conversation(&cap, offset, now)?)?
+                }
                 RunnerCommand::Mutate {
                     id,
                     call_id,

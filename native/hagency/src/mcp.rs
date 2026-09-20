@@ -391,6 +391,38 @@ impl Session {
         // API, whose approval leg is the deferred piece (the same boundary the
         // readiness memo's surface list draws); the arms enforce every gate
         // they own and name that leg rather than silently fabricating data.
+        // The frozen discussion the payload points at. It inherits the same
+        // task-binding gate above and takes no target of its own: the window
+        // belongs to this runner's current dispatch, not to a named room.
+        if name == task_client::discussion::NAME {
+            let offset = match args.remove("offset") {
+                None => 0,
+                Some(Value::Number(n)) => match n.as_u64() {
+                    Some(offset) if offset <= JSON_SAFE_MAX => offset,
+                    _ => return Ok(tool_error("Invalid conversation offset")),
+                },
+                Some(_) => return Ok(tool_error("Invalid conversation offset")),
+            };
+            if call_id.is_some() || !args.is_empty() {
+                return Ok(tool_error("Read tools take the assigned task id only"));
+            }
+            return Ok(
+                match task_client::discussion::run(
+                    &self.context,
+                    offset,
+                    task_client::DEFAULT_DEADLINE,
+                )
+                .await
+                {
+                    Ok(page) => {
+                        let structured = serde_json::to_value(page)
+                            .map_err(|_| Error::Protocol("conversation projection failed"))?;
+                        json!({"content":[{"type":"text","text":structured.to_string()}],"structuredContent":structured,"isError":false})
+                    }
+                    Err(error) => tool_error(&error.to_string()),
+                },
+            );
+        }
         if name == "get_approval" {
             if call_id.is_some() || !args.is_empty() {
                 return Ok(tool_error("Read tools take the assigned task id only"));
@@ -485,6 +517,7 @@ fn valid_call(params: Option<&Value>, file_tools: bool, receive_tools: bool) -> 
                 | "complete_task_with_reply"
                 | "get_approval"
                 | "consume_approval"
+                | "read_conversation"
         )
     )) && p
         .keys()

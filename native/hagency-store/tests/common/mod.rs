@@ -129,8 +129,9 @@ pub fn remove_approval_schema(db: &rusqlite::Connection) {
     remove_notice_schema(db);
     // MA-S2's 033 contract: rewinding below 33 rebuilds runner_attempts to
     // its pre-033 shape — park_reason existed only from schema 33 on, and its
-    // ALTER does not replay idempotently.
-    db.execute_batch("ALTER TABLE runner_attempts DROP COLUMN park_reason;")
+    // ALTER does not replay idempotently. 036 splits the frozen window the
+    // same way: `addressed` exists only from schema 36 on.
+    db.execute_batch("ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads;")
         .unwrap();
     db.execute_batch("DROP TRIGGER approval_room_retire_grants; DROP TRIGGER approval_project_retire; DROP TRIGGER approval_registration_retire; DROP TRIGGER approval_engagement_retire; DROP TRIGGER approval_task_retire; DROP VIEW current_approval_bindings; DROP TABLE approval_verdict_receipts; DROP TABLE approval_grants; DROP TABLE owner_approvals; DROP TABLE approval_contexts; DROP TABLE approval_bindings; DROP TABLE approval_rooms;").unwrap();
 }

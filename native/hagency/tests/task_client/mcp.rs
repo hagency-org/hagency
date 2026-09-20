@@ -200,7 +200,9 @@ async fn native_mcp_sdk() {
     tokio::time::timeout(Duration::from_secs(15), async {
         let client = ().serve(transport).await.unwrap();
         let tools = client.list_all_tools().await.unwrap();
-        assert_eq!(tools.len(), 22);
+        // 23 since the room discussion became a task tool of its own (ADR178).
+        assert_eq!(tools.len(), 23);
+        assert!(tools.iter().any(|v| v.name == "read_conversation"));
         assert!(tools.iter().all(|v| !v.name.contains("approve")));
         let read = client
             .call_tool(

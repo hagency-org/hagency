@@ -205,12 +205,16 @@ fn helper(
         "update_task_execution",
         "transition_task",
         "complete_task_with_reply",
+        // The payload holds only what addressed this agent, so the room
+        // discussion it points at is always readable.
+        "read_conversation",
     ];
     let mut approved = json!({
         "get_task":{"approval_mode":"approve"},
         "update_task_execution":{"approval_mode":"approve"},
         "transition_task":{"approval_mode":"approve"},
-        "complete_task_with_reply":{"approval_mode":"approve"}
+        "complete_task_with_reply":{"approval_mode":"approve"},
+        "read_conversation":{"approval_mode":"approve"}
     });
     if fleet_files || fleet_media {
         environment.extend(["HAGENCY_FILE_TOOLS", "HAGENCY_RECEIVE_FILE_TOOLS"]);
@@ -315,9 +319,31 @@ fn helper(
         // A disposable peer gate, not production readiness or task authority.
         // The independent test observer waits for BOTH real helpers and the
         // service's actual Started rows before allowing either completion.
+        // When the payload points at a room discussion, read it the way the
+        // instruction says and report what came back: the other participant's
+        // message must be reachable, not merely frozen somewhere.
+        let payload: Value = turn["params"]["input"][0]["text"]
+            .as_str()
+            .and_then(|text| serde_json::from_str(text).ok())
+            .unwrap_or(Value::Null);
+        let discussion = if payload.get("discussion").is_some() {
+            let page = rpc(
+                &mut input,
+                &mut output,
+                5,
+                "tools/call",
+                json!({"name":"read_conversation","arguments":{"id":task,"offset":0}}),
+            )?;
+            if page["isError"] != false {
+                return Err(invalid());
+            }
+            page["structuredContent"].clone()
+        } else {
+            Value::Null
+        };
         receipt(
             "fleet-ready",
-            json!({"task_id":task,"pid":std::process::id(),
+            json!({"task_id":task,"pid":std::process::id(),"discussion":discussion,
                 "input":turn["params"]["input"][0]["text"]}),
         )?;
         // The release comes only after the OTHER agent's helper is in flight too.

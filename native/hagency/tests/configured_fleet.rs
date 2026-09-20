@@ -110,6 +110,40 @@ async fn project_mentions(mut f: Fixture) {
         })
         .collect();
     assert_ne!(tasks[0], tasks[1]);
+    // Each agent is ASKED only what addressed it: the other participant's
+    // near-identical request is not in its inbox, where live it got carried
+    // out. It still LISTENS to the whole room — the discussion is frozen for
+    // the dispatch and the agent read it back through read_conversation, with
+    // the speaker named.
+    for index in 0..2 {
+        let receipt = f.receipt(index, "fleet-ready");
+        let input: Value = serde_json::from_str(receipt["input"].as_str().unwrap()).unwrap();
+        let inbox = input["inbox"].as_array().unwrap();
+        assert_eq!(inbox.len(), 1, "only the addressed request is asked of it");
+        assert_eq!(
+            inbox[0]["message"]["body"],
+            format!("PROJECT_ADDRESSED_{index}")
+        );
+        assert_eq!(inbox[0]["wake"], true);
+        let page = &receipt["discussion"];
+        assert_eq!(page["total_messages"], input["discussion"]["message_count"]);
+        assert_eq!(page["next"], Value::Null);
+        let bodies: Vec<&str> = page["messages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|part| part["body"].as_str().unwrap())
+            .collect();
+        assert!(
+            bodies.contains(&"PROJECT_UNADDRESSED")
+                && bodies.contains(&format!("PROJECT_ADDRESSED_{index}").as_str()),
+            "the frozen room is reachable: {bodies:?}"
+        );
+        for part in page["messages"].as_array().unwrap() {
+            assert_eq!(part["sender"], OWNER);
+            assert_eq!(part["sender_name"], "project owner");
+        }
+    }
     for index in 0..2 {
         fs::write(
             f.work(index).join("owned-mcp.fleet-release"),

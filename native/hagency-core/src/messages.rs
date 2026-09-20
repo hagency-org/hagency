@@ -74,3 +74,42 @@ pub struct MessageReceipt {
     pub created: bool,
     pub projected: usize,
 }
+/// One frozen room message is cut into parts of this many characters, so the
+/// window bound and the page bound are measured in content rather than in
+/// however much JSON happens to fit (`router/src/conversations.ts`).
+pub const DISCUSSION_PART: usize = 1000;
+/// The frozen window's own bound: the discussion reaching back from the
+/// request, at most this many parts.
+pub const DISCUSSION_WINDOW: usize = 200;
+/// One `read_conversation` page. Small on purpose: the agent follows `next`
+/// until it is null, and reading is what advances its room position.
+pub const DISCUSSION_PAGE: usize = 8;
+/// Parts one body occupies. An empty body still occupies one part, so a
+/// message can never be skipped by the window or page arithmetic.
+pub fn discussion_parts(body: &str) -> usize {
+    body.chars().count().div_ceil(DISCUSSION_PART).max(1)
+}
+/// One part of one frozen room message, with the speaker's identity attached.
+/// `sender_name` is what the store knows the speaker as — an agent's
+/// engagement name, or the project owner — and is absent for a participant it
+/// holds no name for; the Matrix ID always identifies the speaker.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiscussionPart {
+    pub event_id: String,
+    pub sender: String,
+    pub sender_name: Option<String>,
+    pub timestamp: u64,
+    pub thread_root: Option<String>,
+    pub part: usize,
+    pub parts: usize,
+    pub body: String,
+}
+/// One page of the discussion frozen for one dispatch. `next` is the offset of
+/// the following page, or null at the end of the window.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DiscussionPage {
+    pub messages: Vec<DiscussionPart>,
+    pub next: Option<u64>,
+    pub total_messages: u64,
+    pub total_parts: u64,
+}

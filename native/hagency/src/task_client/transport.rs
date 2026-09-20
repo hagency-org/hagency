@@ -17,6 +17,9 @@ pub(super) enum Operation<'a> {
     Coordination(&'a coordination::Command),
     Files(&'a files::Command),
     Received(&'a received::Command),
+    Discussion {
+        offset: u64,
+    },
 }
 struct Prepared {
     path: String,
@@ -105,6 +108,21 @@ pub(super) async fn request(
                     body,
                     method,
                     mutation: operation.is_some(),
+                },
+                16 * 1024,
+            )
+        }
+        // A page read carries no body and names no target: the service takes
+        // the window from the presented capability. Recording how far the agent
+        // read is a max(), so re-reading a page is not a second effect.
+        Operation::Discussion { offset } => {
+            hagency_core::tasks::clock(offset).map_err(|_| Error::Invalid)?;
+            (
+                Prepared {
+                    path: format!("/api/native/v1/runner/conversation?offset={offset}"),
+                    body: vec![],
+                    method: "GET",
+                    mutation: false,
                 },
                 16 * 1024,
             )

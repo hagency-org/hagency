@@ -47,6 +47,12 @@ pub(super) fn list(file_tools: bool, receive_tools: bool) -> Value {
             vec![],
         ),
         (
+            "read_conversation",
+            "Read the frozen room discussion for this dispatch, with speaker identities. Start with offset 0 and follow next until null. No room or agent can be selected. Reading alone never completes the task.",
+            json!({"offset":{"type":"integer","minimum":0,"description":"Part offset; 0 first, then the previous page's next"}}),
+            vec![],
+        ),
+        (
             "consume_approval",
             "Apply the owner's decision on the approval derived from the assigned task; at-most-once through the stable call_id",
             json!({}),
@@ -56,12 +62,12 @@ pub(super) fn list(file_tools: bool, receive_tools: bool) -> Value {
         let mut properties = extra.as_object().unwrap().clone();
         properties.insert("id".into(), id.clone());
         let mut fields = vec!["id"];
-        if name != "get_task" && name != "get_approval" {
+        let read = matches!(name, "get_task" | "get_approval" | "read_conversation");
+        if !read {
             properties.insert("call_id".into(), call.clone());
             fields.push("call_id");
         }
         fields.extend(required);
-        let read = name == "get_task" || name == "get_approval";
         tools.push(json!({"name":name,"description":description,"inputSchema":{"type":"object","properties":properties,"required":fields,"additionalProperties":false},"annotations":{"readOnlyHint":read,"destructiveHint":!read,"idempotentHint":true,"openWorldHint":false}}));
     }
     tools.extend(super::coordination_catalog::tools());

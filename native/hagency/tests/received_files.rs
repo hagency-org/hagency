@@ -58,13 +58,24 @@ async fn native_receive_executable() {
             serde_json::from_str::<Value>(&facts).unwrap()["sha256"],
             received["sha256"]
         );
+        // The agent is asked only what addresses it and hears the rest (ADR178).
+        // In a direct room the upload is the request. In a group thread it
+        // addressed nobody: the prompt asks only the mention that followed, and
+        // the upload comes back from the room read, which hides nothing and
+        // leaks nothing either.
         let prompt = f.receipt("prompt").unwrap().to_string();
-        assert!(prompt.contains("$incoming"));
-        if !direct {
+        let heard = f.receipt("discussion").unwrap().to_string();
+        if direct {
+            assert!(prompt.contains("$incoming"));
+        } else {
             assert!(prompt.contains("$wake"));
+            assert!(!prompt.contains("$incoming"));
+            assert!(heard.contains("$wake"));
         }
+        assert!(heard.contains("$incoming"));
         for secret in ["mxc://", "key_ops", "A256CTR", "remote.media"] {
             assert!(!prompt.contains(secret));
+            assert!(!heard.contains(secret));
         }
         let status = f.capabilities().await;
         assert_eq!(

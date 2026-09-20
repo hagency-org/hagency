@@ -343,7 +343,7 @@ fn native_usage_migration() {
     // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
     // over a receipts table that already carries the column, so strip it
     // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
-    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason;")
+    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads;")
         .unwrap();
     sql.pragma_update(None, "user_version", 16).unwrap();
     drop(sql);
@@ -355,7 +355,7 @@ fn native_usage_migration() {
     assert_eq!(
         sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
             .unwrap(),
-        35
+        36
     );
     sql.execute_batch(
         "ALTER TABLE usage_receipts RENAME COLUMN observation TO missing_observation;",

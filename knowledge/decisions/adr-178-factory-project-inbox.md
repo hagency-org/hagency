@@ -137,3 +137,66 @@ withheld from them. The dispatch now carries the agent's own Matrix ID and name,
 placed before the room, and the instruction says a message addressed to another
 participant, human or agent, is theirs. A first attempt that hid such messages
 from agents was withdrawn, because it made the agent a lesser participant.
+
+## An agent listens to the whole room but is only asked what addresses it (2026-09-20)
+
+Naming the request inside one list held for a while and then failed again: on a
+two-agent project room, an agent whose payload named it correctly carried out the
+OTHER agent's near-identical request, which sat earlier in the same `inbox` with
+`wake` false. Every earlier fix kept one list and changed the words around it.
+The retained product never had that list, and the operator pointed at it. It
+separates two questions: `messageVisibleToAgent` (a room member may read every
+message) and `messageTargetsAgent` (only a direct message or an exact mention
+enters the inbox). A dispatch's `inbox` is its targeting messages only, and
+`context.discussion` is a pointer: the router freezes a bounded window at
+dispatch time and hands it out through `read_conversation`, eight parts at a
+time, with speaker identities. The agent is asked one thing and can read
+everything. The migration inventory listed `read_conversation` as to be ported
+and it never was; the native inbox merged the two questions instead.
+
+The native port now does the same. The dispatch payload's `inbox` holds only the
+entries addressed to this agent; for a room dispatch, the trigger. The rest of
+the window is still frozen and still bound to the dispatch through
+`dispatch_inputs`; it is not embedded. In its place the payload carries
+`discussion`: `message_count`, `has_more_history` and an instruction to read it
+with the task tool `read_conversation`, which pages that window in order, at most
+eight parts of 1000 characters, each with event id, sender Matrix ID, the name
+the store knows the speaker by (an engagement name, or the project owner),
+timestamp, thread root, part numbering and body slice. The tool names no room,
+agent, session or dispatch: it is bound to the calling runner's own current
+dispatch by the same capability check every task tool uses, and it is enabled
+for every owned dispatch rather than held behind the coordination profile,
+because without it the discussion would be unreachable. Nothing is hidden and
+nothing is dropped: every message in the window is reachable, which is what the
+earlier withdrawn attempt got wrong.
+
+The window's bound is content, as in the retained product: at most 200 parts of
+1000 characters reaching back from the request, instead of whatever still fits in
+the payload. Position follows the retained product too: on completion the
+dispatch consumes what addressed the agent plus the discussion it actually read,
+and releases the rest, so unread room history rides the next window instead of
+being consumed by a dispatch that never showed it. Schema 36 records both facts:
+`dispatch_inputs.addressed` (defaulting to 1, so dispatches frozen by the earlier
+build keep their behaviour) and `dispatch_conversation_reads.read_parts`.
+
+Delegated work is unchanged in shape and stays in `inbox` with `task` and
+`delegated_by` (ADR180). The retained product's own logic says so: a task-bound
+dispatch takes its inbox from the task's inputs, and no room window exists for
+handed-over messages, because they were handed over out of the delegator's room
+and never read out of the assignee's. They are the request in the delegator's
+words; the canonical task remains the job.
+
+Differences from the retained product that remain: the window is this session's
+admitted inputs, not a separate archive of every room event; `has_more_history`
+means older unclaimed discussion sits below the window; the pointer carries no
+room or position identifiers, because a runner can select neither; a page carries
+no attachment pointer, because attachment visibility is frozen separately and
+listed by its own tool; and a speaker's name is the engagement name or the project
+owner, because the store keeps no human display name.
+
+Pinned by `native_agent_inbox_names_the_waking_entry_as_the_request`,
+`native_agent_conversation_pages_in_order_within_its_own_dispatch`,
+`native_agent_conversation_releases_what_was_never_read`,
+`native_mcp_conversation_read_is_catalogued_and_task_bound` and
+`native_configured_fleet_project_mentions`, where the offline peer reads the room
+back through the tool.

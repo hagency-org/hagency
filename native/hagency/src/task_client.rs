@@ -9,6 +9,7 @@ use std::{io::Read, net::SocketAddr, path::PathBuf, time::Duration};
 
 pub(crate) mod completion;
 pub(crate) mod coordination;
+pub(crate) mod discussion;
 pub(crate) mod files;
 pub(crate) mod received;
 mod transport;

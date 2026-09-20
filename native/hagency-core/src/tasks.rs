@@ -251,6 +251,11 @@ pub enum RunnerCommand {
         after: u64,
         limit: usize,
     },
+    /// One page of the room discussion frozen for this dispatch. The dispatch
+    /// is the capability's own; no room, session or other dispatch is nameable.
+    ReadConversation {
+        offset: u64,
+    },
     Mutate {
         id: String,
         call_id: String,

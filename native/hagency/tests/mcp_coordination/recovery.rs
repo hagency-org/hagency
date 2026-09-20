@@ -151,7 +151,8 @@ async fn native_mcp_coordination_catalog() {
             "read_graph_dependencies",
             "read_graph_dependency",
             "get_approval",
-            "consume_approval"
+            "consume_approval",
+            "read_conversation"
         ])
     );
     for tool in tools {
