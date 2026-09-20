@@ -14,6 +14,10 @@ use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
+/// What an owner-wait expiry records. A constant, never caller text: the
+/// receipt digest is derived from it, so a replay must produce the same digest.
+pub const OWNER_WAIT_EXPIRED_REASON: &str = "owner wait expired without an answer";
+
 pub(super) mod card;
 pub(super) mod owned;
 pub(super) mod responses;
@@ -587,6 +591,101 @@ impl DomainRepository {
         tx.execute(
             "INSERT INTO approval_verdict_receipts(source_key,digest,request_id,denial_reason) VALUES(?1,?2,?3,?4)",
             params![source, digest, request_id, reason],
+        )?;
+        tx.execute(
+            "UPDATE owner_approvals SET state='decided',choice=?2,grant_id=NULL WHERE id=?1",
+            params![request_id, serialize(&ApprovalChoice::Deny)?],
+        )?;
+        let result = summary(&tx, request_id)?;
+        tx.commit()?;
+        Ok(result)
+    }
+
+    /// The owner never answered before the owner wait ran out, so the host
+    /// denies the pending request (ADR046 amendment, owner-wait expiry). This is
+    /// the durable transition that precedes any response byte, and it is the
+    /// same shape as the owner's own Deny -- `decided`, `deny`, no grant -- so
+    /// everything after it (`live_decision`, `consume`, `begin`, `check`, the
+    /// write) is the deny path unchanged and computes `allow=false` on its own
+    /// evidence. Like the delivery denial it adds no state and no authority: the
+    /// receipt's source identity is the expiry, never an owner event, and
+    /// `denial_reason` names it.
+    ///
+    /// At most once: a replay is idempotent on the receipt's source, a
+    /// differing digest is `Conflict`, and a row another path already decided
+    /// is refused with `State` -- which is also what refuses the stale card,
+    /// since `decide_verdict` admits only a `pending` row. The cutoff must
+    /// really have passed and must sit inside the request's own immutable
+    /// expiry, which must still be ahead: past it nothing may be answered.
+    pub fn deny_for_owner_wait_expiry(
+        &mut self,
+        request_id: &str,
+        owner_expires_at: u64,
+        now: u64,
+    ) -> Result<ApprovalSummary, Error> {
+        self.deny_for_owner_wait_expiry_clock(request_id, owner_expires_at, || Ok(now))
+    }
+    pub(crate) fn deny_for_owner_wait_expiry_clock(
+        &mut self,
+        request_id: &str,
+        owner_expires_at: u64,
+        sample: impl FnOnce() -> Result<u64, Error>,
+    ) -> Result<ApprovalSummary, Error> {
+        identifier(request_id, 128)?;
+        clock(owner_expires_at)?;
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        // Sampled after the writer queue and the SQLite lock, so a contended
+        // expiry is judged at the time it actually commits.
+        let now = sample()?;
+        clock(now)?;
+        let source = canonical::digest(&json!(["approval-owner-wait-expired", request_id]))?;
+        // No clock in the digest: a restart that replays the same expiry must
+        // not read as a conflicting second denial.
+        let digest = canonical::digest(&json!([
+            request_id,
+            OWNER_WAIT_EXPIRED_REASON,
+            owner_expires_at
+        ]))?;
+        let old: Option<String> = tx
+            .query_row(
+                "SELECT digest FROM approval_verdict_receipts WHERE source_key=?1",
+                [&source],
+                |r| r.get(0),
+            )
+            .optional()?;
+        if let Some(old) = old {
+            if old != digest {
+                return Err(Error::Conflict);
+            }
+            return summary(&tx, request_id);
+        }
+        let row: Option<(String, u64)> = tx
+            .query_row(
+                "SELECT state,expires_at FROM owner_approvals WHERE id=?1",
+                [request_id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()?;
+        let (state, expires_at) = row.ok_or(Error::NotFound)?;
+        if now < owner_expires_at || owner_expires_at > expires_at || expires_at <= now {
+            return Err(Error::RunnerAuthority);
+        }
+        if state != "pending" {
+            // Never overwrite a recorded decision with a second one.
+            return Err(Error::State);
+        }
+        bounded_row(
+            &tx,
+            "approval_verdict_receipts",
+            "source_key",
+            &source,
+            100_000,
+        )?;
+        tx.execute(
+            "INSERT INTO approval_verdict_receipts(source_key,digest,request_id,denial_reason) VALUES(?1,?2,?3,?4)",
+            params![source, digest, request_id, OWNER_WAIT_EXPIRED_REASON],
         )?;
         tx.execute(
             "UPDATE owner_approvals SET state='decided',choice=?2,grant_id=NULL WHERE id=?1",

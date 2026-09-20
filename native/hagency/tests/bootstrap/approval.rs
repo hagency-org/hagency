@@ -50,6 +50,12 @@ async fn with_approval(f: &Fixture, anchors: bool) {
 }
 
 fn fresh_approval(f: &Fixture, anchor: String) {
+    fresh_approval_waiting(f, anchor, 10_000);
+}
+/// `owner_wait_ms` explicit: the answered roundtrips need a wait long enough
+/// for the owner's encrypted reply to cross it; the expiry selector needs one
+/// short enough to elapse inside the startup watchdog.
+fn fresh_approval_waiting(f: &Fixture, anchor: String, owner_wait_ms: u64) {
     use sha2::{Digest, Sha256};
     let probe = std::path::PathBuf::from(env!("CARGO_BIN_EXE_hagency-approval-mcp-probe"))
         .canonicalize()
@@ -67,11 +73,11 @@ fn fresh_approval(f: &Fixture, anchor: String) {
     // it. On a small hosted runner the card send alone took about 1.4 s: the
     // approval had expired before it landed, the command approval stayed pending
     // and the transport timed out. These fixtures test the round trip, not wait
-    // expiry. The wait plus its 2 s response reserve must fit in the operation
+    // expiry. The wait plus its 5 s response reserve must fit in the operation
     // budget that remains at turn start, so both are raised together, as the
     // configured-fleet approval fixtures already do.
     config["operation_ms"] = json!(20_000);
-    config["approval_owner_wait_ms"] = json!(10_000);
+    config["approval_owner_wait_ms"] = json!(owner_wait_ms);
     config["approval"] = json!({
         "origin":f.fake.endpoint,"server_name":"example.test","registration_fingerprint":"a".repeat(64),
         "engagement_id":config["matrix"]["engagement_id"],"registration_generation":1,"transport_generation":1,
@@ -120,10 +126,26 @@ async fn ordinary(request: common::Request) {
     }
 }
 
-async fn roundtrip(plaintext_first: bool, action: &str) {
+/// `action: None` means the OWNER NEVER ANSWERS: the card is delivered and
+/// nothing comes back, so the owner wait runs out and the host must answer the
+/// runtime itself. Everything else about the composition is identical, so the
+/// two paths differ only in what the owner does.
+async fn roundtrip(plaintext_first: bool, action: Option<&str>) {
     let mut f = Fixture::new(false).await;
     let mut peer = support::crypto::Peer::for_sender(support::BOT, support::DEVICE).await;
-    fresh_approval(&f, peer.anchor());
+    // The expiry selector has to outlive the whole owner wait inside the 15 s
+    // startup watchdog, so its wait is shorter than the answered roundtrips'.
+    // It is not shorter than the card send, though: this fixture's own note
+    // above records a 1.4 s send on a small hosted runner, and a card that
+    // lands after the cutoff is refused by the card gate and never delivered,
+    // which would fail the "the owner really was asked" assertion below. 5 s
+    // clears that with room and still leaves the watchdog the startup, the send
+    // and the decline sequence.
+    fresh_approval_waiting(
+        &f,
+        peer.anchor(),
+        if action.is_some() { 10_000 } else { 5_000 },
+    );
     let child = f.launch(true);
     let until = tokio::time::Instant::now() + STARTUP_WATCHDOG;
     let mut plaintext_sent = false;
@@ -140,6 +162,17 @@ async fn roundtrip(plaintext_first: bool, action: &str) {
             ordinary(request).await;
         } else if request.target.contains("/sync?") && !peer.events.is_empty() {
             polls += 1;
+            let Some(action) = action else {
+                // The owner never answers. Keep serving empty batches so the
+                // service stays live while its owner wait runs out; the host's
+                // own decline is what ends this loop.
+                request.json(
+                    200,
+                    json!({"next_batch":format!("owner-poll-{polls}"),"to_device":{"events":[]},
+                        "rooms":{"join":{support::ROOM:{"timeline":{"events":[],"limited":false},"state":{"events":[]}}}}}),
+                );
+                continue;
+            };
             let detail = &peer.events[0]["content"]["com.agentchat.approval"];
             let verdict = json!({"msgtype":"com.agentchat.approval.verdict.v1","body":"Owner button action",
                 "com.agentchat.approval":{"version":1,"kind":"verdict","agent":detail["agent"],"project":detail["project"],
@@ -202,8 +235,33 @@ async fn roundtrip(plaintext_first: bool, action: &str) {
     let response: Value = serde_json::from_slice(&std::fs::read(response_path).unwrap()).unwrap();
     assert_eq!(
         response,
-        json!({"id":7,"result":{"decision":if action == "deny" {"decline"} else {"accept"}}})
+        json!({"id":7,"result":{"decision":if action == Some("approve_once") {"accept"} else {"decline"}}}),
+        "an unanswered owner wait must yield the family's own decline"
     );
+    // The card really was delivered; the owner simply never acted on it.
+    assert_eq!(peer.events.len(), 1);
+    if action.is_none() {
+        assert!(!encrypted_sent && !plaintext_sent, "the owner sent nothing");
+        let sql = rusqlite::Connection::open(f.state_dir.join("domain.sqlite3")).unwrap();
+        let (choice, reason): (String, Option<String>) = sql
+            .query_row(
+                "SELECT a.choice,(SELECT r.denial_reason FROM approval_verdict_receipts r WHERE r.request_id=a.id) FROM owner_approvals a",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(serde_json::from_str::<String>(&choice).unwrap(), "deny");
+        assert_eq!(
+            reason.as_deref(),
+            Some("owner wait expired without an answer"),
+            "the expiry is durably named, never inferred"
+        );
+        drop(sql);
+        // Fixture process cleanup is not native shutdown or sandbox qualification.
+        drop(child);
+        f.fake.close().await;
+        return;
+    }
     assert!(encrypted_sent);
     assert!(observed_startup);
     assert_eq!(plaintext_sent, plaintext_first);
@@ -222,7 +280,11 @@ async fn roundtrip(plaintext_first: bool, action: &str) {
         .unwrap();
     assert_eq!(
         serde_json::from_str::<String>(&choice).unwrap(),
-        if action == "deny" { "deny" } else { "once" }
+        if action == Some("deny") {
+            "deny"
+        } else {
+            "once"
+        }
     );
     assert_eq!(receipts, 1);
     drop(sql);
@@ -233,13 +295,22 @@ async fn roundtrip(plaintext_first: bool, action: &str) {
 
 #[tokio::test]
 async fn native_private_approval_roundtrip_encrypted_owner() {
-    roundtrip(false, "approve_once").await;
-    roundtrip(false, "deny").await;
+    roundtrip(false, Some("approve_once")).await;
+    roundtrip(false, Some("deny")).await;
+}
+
+/// The live 2026-09-19 shape at fleet scale: the whole real composition, the
+/// approval bot's own credential set, a card delivered to the owner's DM — and
+/// an owner who never answers. The agent must survive that and the decline must
+/// be the host's, recorded durably before it reached the wire.
+#[tokio::test]
+async fn native_fleet_approval_owner_wait_expiry() {
+    roundtrip(false, None).await;
 }
 
 #[tokio::test]
 async fn native_private_approval_roundtrip_plaintext_refused() {
-    roundtrip(true, "approve_once").await;
+    roundtrip(true, Some("approve_once")).await;
 }
 
 #[tokio::test]
@@ -318,6 +389,11 @@ async fn native_private_approval_delivery_is_wired() {
     let mut config: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     config["executable"] = json!(probe);
     config["executable_sha256"] = json!(probe_sha256);
+    // Same budgets, for the same reason, as the round-trip fixture above: on
+    // the 1 s default owner wait a hosted runner's card send outlives the wait,
+    // and this fixture tests that delivery is wired, not wait expiry.
+    config["operation_ms"] = json!(20_000);
+    config["approval_owner_wait_ms"] = json!(10_000);
     config["approval"] = json!({
         "origin": f.fake.endpoint,
         "server_name": "example.test",

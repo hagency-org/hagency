@@ -40,7 +40,25 @@ fn now() -> u64 {
         .as_millis() as u64
 }
 fn binary() -> PathBuf {
-    env!("CARGO_BIN_EXE_hagency-execution-probe").into()
+    let path: PathBuf = env!("CARGO_BIN_EXE_hagency-execution-probe").into();
+    // The first exec of a freshly linked binary is slow: macOS evaluates it on
+    // first launch (320 to 410 ms measured, against 7 to 14 ms afterwards).
+    // These scenarios spawn the probe inside sub-second windows, so whichever
+    // ran first after a relink lost its window and reported `SpawnFailed` with
+    // the child never started. `support/approval_loss.rs` already pays this
+    // cost once for its own harness; this one had no such guard and flaked the
+    // same way. Pay it once, before any scenario's clock starts. The probe
+    // exits immediately without a mode; its verdict is irrelevant.
+    static WARM: std::sync::Once = std::sync::Once::new();
+    WARM.call_once(|| {
+        let _ = std::process::Command::new(&path)
+            .env_clear()
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    });
+    path
 }
 fn limits() -> Limits {
     Limits {

@@ -51,6 +51,11 @@ impl PreparedApproval {
 
 enum CallbackStage {
     Waiting,
+    /// The owner wait ran out unanswered and the host took the callback over
+    /// (ADR046 amendment). It grants nothing and renews no clock; the only frame
+    /// it can produce is the family's own decline, inside the response reserve
+    /// fixed at admission.
+    Expired,
     Prepared,
     Sent,
 }
@@ -62,6 +67,9 @@ struct Callback {
 #[derive(Default)]
 pub(super) struct ControlState {
     policy: Option<ApprovalControlPolicy>,
+    /// The host answers an unanswered callback at its owner bound instead of
+    /// letting the session time out there.
+    host_expiry: bool,
     callbacks: BTreeMap<RequestId, Callback>,
     read_deadline: Option<Instant>,
 }
@@ -104,8 +112,14 @@ impl ControlState {
             .callbacks
             .values()
             .filter_map(|c| match c.stage {
+                // A wait computes its wake once, so a host that expires
+                // callbacks needs the session readable THROUGH the owner bound:
+                // any wait spanning it would otherwise end the session before
+                // the host could act. This is a read bound, not authority: an
+                // accept prepared after the owner bound is still refused below.
+                CallbackStage::Waiting if self.host_expiry => Some(c.response_deadline),
                 CallbackStage::Waiting => Some(c.owner_deadline),
-                CallbackStage::Prepared => Some(c.response_deadline),
+                CallbackStage::Expired | CallbackStage::Prepared => Some(c.response_deadline),
                 CallbackStage::Sent => None,
             })
             .min()
@@ -138,6 +152,40 @@ impl<R, W, E> SessionDriver<R, W, E> {
         }
         self.control.policy = Some(policy);
         self.approvals_enabled = true;
+        Ok(())
+    }
+
+    /// The host will answer an unanswered callback at its owner bound with the
+    /// family's decline (`expire_approval`). Without this the session times out
+    /// at the owner bound, as before. Grants nothing.
+    pub fn enable_owner_wait_expiry(&mut self) -> Result<(), Error> {
+        if self.phase() != Phase::Running || !self.control.enabled() {
+            return Err(Error::State);
+        }
+        self.control.host_expiry = true;
+        Ok(())
+    }
+
+    /// Hand one unanswered callback from the owner to the host at its owner
+    /// bound. Writes no byte, consumes no decision, renews no clock and moves no
+    /// other callback. Not wrapped in `Operation`: an error here is a host
+    /// sequencing fault, and failing the session on it would end the very turn
+    /// this exists to keep alive.
+    pub fn expire_approval(&mut self, id: &RequestId) -> Result<(), Error> {
+        if self.phase() != Phase::Running || !self.control.host_expiry {
+            return Err(Error::State);
+        }
+        let callback = self.control.callbacks.get_mut(id).ok_or(Error::Scope)?;
+        if !matches!(callback.stage, CallbackStage::Waiting) {
+            return Err(Error::State);
+        }
+        let now = Instant::now();
+        // Before the owner bound the owner is still deciding; at or after the
+        // response bound there is no margin left to answer in.
+        if now < callback.owner_deadline || now >= callback.response_deadline {
+            return Err(Error::Transport(transport::Error::Timeout));
+        }
+        callback.stage = CallbackStage::Expired;
         Ok(())
     }
 
@@ -182,11 +230,20 @@ impl<R, W, E> SessionDriver<R, W, E> {
         self.control.deadline(&self.wire)?;
         let id = response.request.id().clone();
         let callback = self.control.callbacks.get(&id).ok_or(Error::Scope)?;
-        if !matches!(callback.stage, CallbackStage::Waiting) {
-            return Err(Error::State);
-        }
-        if Instant::now() >= callback.owner_deadline {
-            return Err(Error::Transport(transport::Error::Timeout));
+        match callback.stage {
+            // The owner's path, unchanged: preparation finishes before the owner
+            // bound. A verdict first seen after it never buys preparation with
+            // the response reserve, whatever the read bound is.
+            CallbackStage::Waiting => {
+                if Instant::now() >= callback.owner_deadline {
+                    return Err(Error::Transport(transport::Error::Timeout));
+                }
+            }
+            // The host's expiry path: the reserve covers one frame, and it can
+            // only be the family's own decline.
+            CallbackStage::Expired if !response.allow => {}
+            CallbackStage::Expired => return Err(Error::Policy),
+            CallbackStage::Prepared | CallbackStage::Sent => return Err(Error::State),
         }
         let response_deadline = callback.response_deadline;
         let mcp_item = response.request.mcp_item().map(str::to_owned);

@@ -31,6 +31,11 @@ pub(super) struct Pending {
     // the middle case: a resolution must not cancel a frame that is in flight.
     pub in_flight: bool,
     pub admitted: bool,
+    /// The owner wait ran out unanswered and the host took this callback over
+    /// (ADR046 amendment). Set when the runtime stage moves, before the durable
+    /// deny, so a retried pass never expires it twice; from then on the only
+    /// frame this entry may produce is the family's own decline.
+    pub expired: bool,
     pub recorded: bool,
     pub resolved: bool,
     /// The dispatch id of the operation that drove this entry. Test and
@@ -278,6 +283,7 @@ impl Callbacks {
                 write: None,
                 in_flight: false,
                 admitted: false,
+                expired: false,
                 recorded: false,
                 resolved: false,
                 #[cfg(any(test, feature = "test-diagnostics"))]
@@ -428,6 +434,40 @@ mod trace_tests {
                 "recorded",
             ]
         );
+        // The owner-wait expiry (ADR046 amendment): the host takes an
+        // unanswered callback over and the entry then walks the ORDINARY deny
+        // path, so the only new label is the takeover itself. It is pinned
+        // here so renaming or withdrawing it fails the vocabulary rather than
+        // silently impoverishing the traces the operator reads.
+        let mut expired = PhaseTrace::new();
+        for label in [
+            "acknowledged",
+            "owner-wait-expired",
+            "prepared",
+            "begun",
+            "admitted",
+            "in-flight",
+            "checked",
+            "write-accepted",
+            "recorded",
+        ] {
+            expired.mark(label);
+        }
+        assert_eq!(expired.as_slice()[2], "owner-wait-expired");
+        assert_eq!(expired.as_slice().last(), Some(&"recorded"));
+        // The takeover precedes every frame label: nothing is prepared, begun,
+        // sent or recorded before the host owns the callback.
+        let takeover = expired
+            .as_slice()
+            .iter()
+            .position(|l| *l == "owner-wait-expired")
+            .unwrap();
+        for label in ["prepared", "begun", "admitted", "write-accepted"] {
+            assert!(
+                expired.as_slice().iter().position(|l| *l == label).unwrap() > takeover,
+                "{label} must follow the takeover"
+            );
+        }
         // The cancellation primitive labels and outcomes, both directions.
         assert_eq!(resolution_outcome(true), ("resolved-before-write", true));
         assert_eq!(resolution_outcome(false), ("resolved-after-write", false));

@@ -15,6 +15,14 @@ fn now() -> u64 {
         .as_millis() as u64
 }
 fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
+    host_with(
+        root,
+        fault,
+        mode,
+        ApprovalHost::new(2, 1, 20_000, 1500).unwrap(),
+    )
+}
+fn host_with(root: &std::path::Path, fault: Fault, mode: &str, approvals: ApprovalHost) -> Host {
     let binary = std::env::current_exe()
         .unwrap()
         .parent()
@@ -68,7 +76,7 @@ fn host(root: &std::path::Path, fault: Fault, mode: &str) -> Host {
         BTreeMap::from([("work".into(), root.to_owned())]),
     )
     .unwrap()
-    .with_approvals(ApprovalHost::new(2, 1, 20_000, 1500).unwrap())
+    .with_approvals(approvals)
     .unwrap();
     host.approval_fault = Some(fault);
     host
@@ -1591,5 +1599,113 @@ async fn native_owned_approval_turn_end_midwrite_uncertain() {
             || trace.contains("write-flushed")
             || trace.contains("settlement"),
         "no uncertainty arm stamped; trace: {trace}"
+    );
+}
+
+/// The owner-wait expiry's own delivery loss: the durable deny COMMITS and its
+/// reply is lost, so the coordinator's outcome is unknown.
+///
+/// The rule the whole design rests on is that durable authority precedes every
+/// response byte. When that authority is uncertain there is no authority, so
+/// nothing may be written — the uncertainty is preserved, never resolved
+/// optimistically into "probably decided, send the decline". The agent still
+/// dies here, but honestly: nothing is granted, nothing reaches the wire, and
+/// the recorded decision is a deny that a restart replays idempotently.
+///
+/// `Fault::ExpireAck` converts a SUCCESSFUL deny into the reply-loss verdict.
+/// It can only turn a success into an error, so the committed row below is the
+/// product's own write, not the fixture's.
+#[tokio::test]
+async fn native_owned_approval_expiry_deny_uncertain_sends_nothing() {
+    let root = tempfile::tempdir().unwrap();
+    let work = root.path().join("work");
+    hagency_store::private::directory(&work).unwrap();
+    let work = work.canonicalize().unwrap();
+    let (domain, cap) = fixture(root.path(), "expire-ack");
+    let mut op = Operation::start(
+        domain.clone(),
+        cap.clone(),
+        host_with(
+            &work,
+            Fault::ExpireAck,
+            "owned-approval",
+            // Short owner wait, reserve wide enough that only the fault, never
+            // the budget, can end this run.
+            ApprovalHost::new(2, 1, 1500, 8000).unwrap(),
+        ),
+        Limits {
+            operation_ms: 25_000,
+            response_ms: 1500,
+        },
+    )
+    .unwrap();
+    let mut notices = op.take_approval_requests().unwrap();
+    let notice = tokio::time::timeout(harness_wait() * 3, notices.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    // Nobody answers; the expiry fires and its reply is lost.
+    let report = op.wait().await.unwrap();
+    assert_eq!(
+        report.failure,
+        Some(Failure::LostAuthority),
+        "an uncertain decision is not authority: {:?}",
+        report.runtime_observation()
+    );
+
+    // Nothing reached the wire, and no response was ever authorized.
+    let requests =
+        std::fs::read_to_string(work.join("owned-dispatch.requests")).unwrap_or_default();
+    let responses: Vec<serde_json::Value> = requests
+        .lines()
+        .map(|v| serde_json::from_str(v).unwrap())
+        .filter(|v: &serde_json::Value| v.get("result").is_some())
+        .collect();
+    assert!(
+        responses.is_empty(),
+        "no byte may follow an unknown decision: {responses:?}"
+    );
+    let (_, frames, grants, writes) = report.approval_custody();
+    assert_eq!((frames, grants, writes), (0, 0, 0));
+    let sql = rusqlite::Connection::open(root.path().join("state/domain.sqlite3")).unwrap();
+    for (table, expected) in [
+        ("approval_responses", 0),
+        ("approval_grants", 0),
+        // The deny itself DID commit; only its reply was lost. That is the
+        // honest state: recorded, uncommunicated, and granting nothing.
+        ("approval_verdict_receipts", 1),
+    ] {
+        assert_eq!(
+            sql.query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |r| r
+                .get::<_, u64>(0))
+                .unwrap(),
+            expected,
+            "{table}"
+        );
+    }
+    assert_eq!(
+        domain
+            .approval_summary(notice.request_id.clone())
+            .await
+            .unwrap()
+            .choice,
+        Some(ApprovalChoice::Deny)
+    );
+
+    // Restart/replay safety: the same expiry replayed against the committed row
+    // is idempotent on its own source, not a second, conflicting denial.
+    let replayed = domain
+        .deny_for_owner_wait_expiry(notice.request_id.clone(), notice.owner_expires_at)
+        .await
+        .unwrap();
+    assert_eq!(replayed.choice, Some(ApprovalChoice::Deny));
+    assert_eq!(replayed.state, "decided");
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM approval_verdict_receipts", [], |r| {
+            r.get::<_, u64>(0)
+        })
+        .unwrap(),
+        1,
+        "a replay must not mint a second receipt"
     );
 }

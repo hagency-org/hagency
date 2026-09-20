@@ -710,6 +710,134 @@ fn native_owner_approval_recovery() {
         }
     }
 }
+/// The owner-wait expiry denial (ADR046 amendment): the owner never answered,
+/// so the host denies the pending request BEFORE any response byte exists, and
+/// the deny path carries it the rest of the way unchanged.
+///
+/// The request's own immutable expiry (`expires_at`, 12000 here) is the
+/// RESPONSE bound; the owner cutoff is the earlier one the host supplies, the
+/// same value the card admission gate takes. Everything below is expressed in
+/// that window.
+#[test]
+fn native_owner_approval_owner_wait_expiry_is_at_most_once() {
+    const REASON: &str = "owner wait expired without an answer";
+    const CUTOFF: u64 = 11000;
+
+    // The window is closed on every side. None of these may record anything.
+    for (cutoff, now, why) in [
+        (
+            CUTOFF,
+            CUTOFF - 1,
+            "before the cutoff the owner is still deciding",
+        ),
+        (12001, 12001, "a cutoff outside the request's own expiry"),
+        (
+            CUTOFF,
+            12000,
+            "at the request expiry no response may be written",
+        ),
+        (CUTOFF, 12001, "past the request expiry"),
+    ] {
+        let mut f = Fixture::new(true);
+        let a = f.admit(0, 1);
+        assert!(
+            matches!(
+                f.db.deny_for_owner_wait_expiry(&a.id, cutoff, now),
+                Err(Error::RunnerAuthority)
+            ),
+            "{why}"
+        );
+        assert_eq!(f.db.approval_summary(&a.id).unwrap().state, "pending");
+        assert_eq!(count(&f.sql(), "approval_verdict_receipts"), 0);
+    }
+    let mut f = Fixture::new(true);
+    assert!(matches!(
+        f.db.deny_for_owner_wait_expiry("approval_missing", CUTOFF, CUTOFF + 1),
+        Err(Error::NotFound)
+    ));
+
+    // The expiry itself: the same decided/deny the owner's own Deny records,
+    // no grant, plus a receipt naming why. The row never reaches a new state.
+    let mut f = Fixture::new(true);
+    let a = f.admit(0, 1);
+    let summary =
+        f.db.deny_for_owner_wait_expiry(&a.id, CUTOFF, CUTOFF + 1)
+            .unwrap();
+    assert_eq!(summary.state, "decided");
+    assert_eq!(summary.choice, Some(ApprovalChoice::Deny));
+    assert_eq!(
+        f.db.delivery_denial_reason(&a.id).unwrap().as_deref(),
+        Some(REASON),
+        "the operator-visible reason is the durable fact"
+    );
+    assert_eq!(count(&f.sql(), "approval_grants"), 0, "grants nothing");
+    assert_eq!(count(&f.sql(), "approval_verdict_receipts"), 1);
+    assert!(
+        f.sql()
+            .query_row(
+                "SELECT grant_id IS NULL FROM owner_approvals WHERE id=?1",
+                [&a.id],
+                |r| r.get::<_, bool>(0)
+            )
+            .unwrap()
+    );
+
+    // At most once. A replay of the same expiry is idempotent on the receipt's
+    // own source (a restart must not read as a second, conflicting denial);
+    // a DIFFERENT cutoff under that same source is the conflict.
+    let replay =
+        f.db.deny_for_owner_wait_expiry(&a.id, CUTOFF, CUTOFF + 500)
+            .unwrap();
+    assert_eq!(replay.state, "decided");
+    assert_eq!(replay.choice, Some(ApprovalChoice::Deny));
+    assert_eq!(count(&f.sql(), "approval_verdict_receipts"), 1);
+    assert!(matches!(
+        f.db.deny_for_owner_wait_expiry(&a.id, CUTOFF - 1, CUTOFF + 1),
+        Err(Error::Conflict)
+    ));
+
+    // The stale card. An owner who taps the expired card afterwards reaches
+    // `decide_verdict`, which admits only a `pending` row — refused, not
+    // applied, for an allow and for a deny alike.
+    for choice in [ApprovalChoice::Once, ApprovalChoice::Deny] {
+        let v = f.verdict(&a.id, choice, &format!("stale_{choice:?}"));
+        assert!(
+            matches!(
+                f.db.observe_owner_verdict(&v, CUTOFF + 1),
+                Err(Error::RunnerAuthority)
+            ),
+            "{choice:?}"
+        );
+    }
+    assert_eq!(count(&f.sql(), "approval_verdict_receipts"), 1);
+
+    // The deny path continues from here unchanged, and computes `allow=false`
+    // on its OWN evidence — the expiry told it nothing.
+    let grant =
+        f.db.authorize_approval_response(&f.caps[0], &a.id, CUTOFF + 1)
+            .unwrap();
+    assert!(!grant.application().allow, "fail closed");
+    assert_eq!(f.db.approval_summary(&a.id).unwrap().state, "applying");
+
+    // The other direction: a decision another path recorded first is never
+    // overwritten. Whoever wins, the loser records nothing.
+    for choice in [ApprovalChoice::Once, ApprovalChoice::Deny] {
+        let mut f = Fixture::new(true);
+        let a = f.admit(0, 1);
+        f.choose(&a.id, choice);
+        assert!(
+            matches!(
+                f.db.deny_for_owner_wait_expiry(&a.id, CUTOFF, CUTOFF + 1),
+                Err(Error::State)
+            ),
+            "{choice:?} landed first"
+        );
+        assert_eq!(f.db.approval_summary(&a.id).unwrap().choice, Some(choice));
+        assert_eq!(f.db.delivery_denial_reason(&a.id).unwrap(), None);
+        assert_eq!(count(&f.sql(), "approval_verdict_receipts"), 1);
+    }
+}
+
 #[test]
 fn native_owner_approval_bounds() {
     let mut f = Fixture::new(true);

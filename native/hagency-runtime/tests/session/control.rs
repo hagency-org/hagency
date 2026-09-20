@@ -440,3 +440,181 @@ async fn native_codex_control_write_cancellation() {
     assert_eq!(write.request_id, Some(RequestId::Number(7)));
     assert!(s.send_prepared_approval(&mut prepared).await.is_err());
 }
+
+/// Drive ONE host wait that begins before this callback's owner bound and ends
+/// after it, and assert the session survived the crossing.
+///
+/// This is the race regression's exact shape. `transport::control_inner`
+/// computes its wake ONCE per wait, so without the `host_expiry` read bound the
+/// wake lands on the owner deadline and the wait returns `Timeout` — which
+/// `Operation::finish` turns into a poisoned session — BEFORE the host can call
+/// `expire_approval`, which itself refuses until the bound has passed. The
+/// deadlock is exactly that: the only moment the host is allowed to act is the
+/// first moment it can no longer be reached.
+///
+/// Requires the `wide` policy below (5s owner wait, 5s reserve) so the 6s wait
+/// clears the owner bound while staying inside the reserve. `start_paused`
+/// makes it deterministic: nothing else holds a timer, so the clock advances to
+/// the earliest one.
+async fn span_owner_bound(s: &mut Session, id: &RequestId) {
+    let owner = s.approval_deadline(id).unwrap();
+    let mut control = Box::pin(async {
+        tokio::time::sleep(Duration::from_secs(6)).await;
+    });
+    assert!(
+        matches!(
+            s.next_observed_or_control(control.as_mut()).await,
+            Ok(ControlUpdate::Control(()))
+        ),
+        "a wait spanning the owner bound must not end the session"
+    );
+    assert!(
+        tokio::time::Instant::now() > owner,
+        "the wait must really have spanned the owner bound"
+    );
+    assert_eq!(s.phase(), Phase::Running);
+}
+
+/// The owner-wait expiry opt-in (ADR046 amendment), in one place.
+///
+/// Four properties, each an independent half of the rule:
+///  1. WITHOUT `enable_owner_wait_expiry` nothing moves: an unanswered
+///     callback still ends the session at its owner bound, and
+///     `expire_approval` is refused with `State`. This is the pin that the
+///     default is unchanged.
+///  2. WITH the opt-in, a host wait that SPANS the owner bound does NOT fail
+///     the session. This is the race regression: `control_inner` computes its
+///     wake once per wait, so before the opt-in any wait crossing the owner
+///     deadline returned `Timeout` and poisoned the session before the host
+///     could ever call `expire_approval` (which itself requires the bound to
+///     have passed). The test is deterministic under `start_paused`.
+///  3. The opt-in is a READ bound, not authority: on a still-`Waiting`
+///     callback, preparation after the owner bound is refused exactly as
+///     before. Only `expire_approval` changes what may be prepared.
+///  4. An expired callback may only ever be DECLINED — an accept is
+///     `Policy` — and the expiry window is closed on both sides.
+#[tokio::test(start_paused = true)]
+async fn native_codex_control_expired_callback_may_only_decline() {
+    // A reserve wide enough to hold a wait that starts before the owner bound
+    // and ends after it. `control_policy_fits` still holds: the reserve covers
+    // the write timeout and the total fits the 30s lifetime.
+    let wide = ApprovalControlPolicy {
+        owner_wait_ms: 5_000,
+        response_reserve_ms: 5_000,
+    };
+
+    // (1) No opt-in: the owner bound still ends the session, and the host may
+    // not expire anything.
+    let (mut s, mut p) = controlled_with_policy(4096, 4096, wide).await;
+    let request = callback(&mut s, &mut p, json!(7)).await;
+    let owner = s.approval_deadline(request.id()).unwrap();
+    assert!(
+        matches!(s.expire_approval(request.id()), Err(Error::State)),
+        "without the opt-in the host may not take a callback over"
+    );
+    let mut control = Box::pin(async {
+        // Ends after the owner bound but well inside the response reserve.
+        tokio::time::sleep(Duration::from_secs(6)).await;
+    });
+    assert!(matches!(
+        s.next_observed_or_control(control.as_mut()).await,
+        Err(Error::Transport(TransportError::Timeout))
+    ));
+    assert_eq!(
+        tokio::time::Instant::now(),
+        owner,
+        "ended at the owner bound"
+    );
+    assert_eq!(s.phase(), Phase::Ended);
+
+    // (2) The opt-in, same wait: the session survives the crossing and the
+    // control output is delivered. Without the `host_expiry` read bound this
+    // assertion fails at the owner bound, exactly as (1) does.
+    let (mut s, mut p) = controlled_with_policy(4096, 4096, wide).await;
+    let request = callback(&mut s, &mut p, json!(7)).await;
+    s.enable_owner_wait_expiry().unwrap();
+    // Before the bound the owner is still deciding: nothing may be taken over.
+    assert!(matches!(
+        s.expire_approval(request.id()),
+        Err(Error::Transport(TransportError::Timeout))
+    ));
+    span_owner_bound(&mut s, request.id()).await;
+
+    // (3) The read bound grants nothing. The callback is still `Waiting`, so
+    // preparation after the owner bound keeps its original refusal — neither
+    // an accept nor a decline buys preparation with the reserve. `prepare_*`
+    // runs inside an `Operation`, so its refusal ends the session exactly as
+    // it always has; each probe therefore needs its own session. That is also
+    // why the coordinator's own guard must catch a late allow BEFORE it ever
+    // reaches prepare, not after.
+    for allow in [true, false] {
+        let (mut s, mut p) = controlled_with_policy(4096, 4096, wide).await;
+        let request = callback(&mut s, &mut p, json!(7)).await;
+        s.enable_owner_wait_expiry().unwrap();
+        span_owner_bound(&mut s, request.id()).await;
+        assert!(
+            matches!(
+                s.prepare_approval(request.response(allow)),
+                Err(Error::Transport(TransportError::Timeout))
+            ),
+            "the read bound must not admit preparation on a waiting callback"
+        );
+        assert_eq!(s.phase(), Phase::Ended);
+    }
+
+    // (4) An EXPIRED callback may only be declined. An accept is `Policy`, and
+    // like every refused preparation it ends the session — fail-closed, and
+    // unreachable from the coordinator, whose own guard refuses a late allow
+    // one step earlier.
+    let (mut s, mut p) = controlled_with_policy(4096, 4096, wide).await;
+    let request = callback(&mut s, &mut p, json!(7)).await;
+    s.enable_owner_wait_expiry().unwrap();
+    span_owner_bound(&mut s, request.id()).await;
+    s.expire_approval(request.id()).unwrap();
+    assert!(matches!(
+        s.prepare_approval(request.response(true)),
+        Err(Error::Policy)
+    ));
+    assert_eq!(s.phase(), Phase::Ended);
+
+    // (5) The decline the expiry exists to send, byte for byte.
+    let (mut s, mut p) = controlled_with_policy(4096, 4096, wide).await;
+    let request = callback(&mut s, &mut p, json!(7)).await;
+    s.enable_owner_wait_expiry().unwrap();
+    span_owner_bound(&mut s, request.id()).await;
+    s.expire_approval(request.id()).unwrap();
+    // Twice is a host sequencing fault. `expire_approval` is deliberately not
+    // an `Operation`, so it must NOT poison the session.
+    assert!(matches!(s.expire_approval(request.id()), Err(Error::State)));
+    assert_eq!(
+        s.phase(),
+        Phase::Running,
+        "a refused expiry must not end the turn it exists to keep alive"
+    );
+    let mut prepared = s.prepare_approval(request.response(false)).unwrap();
+    let PreparedUpdate::WriteAccepted(receipt) =
+        s.send_prepared_approval(&mut prepared).await.unwrap()
+    else {
+        panic!("receipt");
+    };
+    let expected = json!({"id":7,"result":{"decision":"decline"}});
+    assert_eq!(receipt.request_id, Some(RequestId::Number(7)));
+    assert_eq!(read(&mut p.stdin).await, expected);
+    // One frame only, exactly like the owner's own path.
+    assert!(s.send_prepared_approval(&mut prepared).await.is_err());
+
+    // (6) The far side of the window: past the response bound there is no
+    // margin left, so the host may not take the callback over either.
+    let (mut s, mut p) = controlled_with_policy(4096, 4096, wide).await;
+    let request = callback(&mut s, &mut p, json!(7)).await;
+    s.enable_owner_wait_expiry().unwrap();
+    let mut control = Box::pin(pending::<()>());
+    assert!(matches!(
+        s.next_observed_or_control(control.as_mut()).await,
+        Err(Error::Transport(TransportError::Timeout))
+    ));
+    assert!(
+        matches!(s.expire_approval(request.id()), Err(Error::State)),
+        "a failed session refuses before any stage is read"
+    );
+}

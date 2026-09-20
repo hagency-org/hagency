@@ -110,6 +110,10 @@ impl ApprovalRun {
         );
         runner
             .enable_approval_control(self.callbacks.host.policy())
+            .map_err(|_| Failure::Admission)?;
+        // This coordinator answers an unanswered callback at its owner bound.
+        runner
+            .enable_owner_wait_expiry()
             .map_err(|_| Failure::Admission)
     }
 
@@ -120,6 +124,79 @@ impl ApprovalRun {
     ) -> Result<(), Failure> {
         let (domain, cap, cancel, until) = (drive.domain, drive.cap, drive.cancel, drive.until);
         loop {
+            // Owner-wait expiry (ADR046 amendment). An approval the owner never
+            // answered must not end the agent: the host declines it so the turn
+            // can report that approval was not granted in time.
+            //  1. `expire_approval` moves the runtime callback to its expired
+            //     stage. It writes nothing and grants nothing.
+            //  2. `deny_for_owner_wait_expiry` is the durable decision, committed
+            //     before any response byte. It is the same decided/deny the
+            //     owner's own Deny records.
+            //  3. Nothing else here. The decline is prepared, authorized, begun,
+            //     rechecked and written by the loop below from the persisted
+            //     choice, never from this site's knowledge that it expired.
+            // A refused deny sends nothing; an unknown one is LostAuthority, like
+            // every other unknown store call in this loop.
+            for key in self.callbacks.entries.keys().cloned().collect::<Vec<_>>() {
+                let entry = self
+                    .callbacks
+                    .entries
+                    .get_mut(&key)
+                    .ok_or(Failure::Protocol)?;
+                // A resolved entry has no runtime callback left to expire; the
+                // resolution rules own it. An entry already chosen, prepared or
+                // on the wire is past the owner's part.
+                if entry.expired
+                    || entry.resolved
+                    || entry.selected.is_some()
+                    || entry.prepared.is_some()
+                    || entry.write.is_some()
+                    || entry.admitted
+                    || entry.in_flight
+                    || Instant::now() < entry.owner_deadline
+                {
+                    continue;
+                }
+                // No durable request yet: nothing to decide against.
+                let Some(id) = entry.id.clone() else {
+                    continue;
+                };
+                let owner_expires_at = entry.owner_expires_at;
+                runner
+                    .expire_approval(&key)
+                    .map_err(|_| Failure::Deadline)?;
+                entry.expired = true;
+                #[cfg(any(test, feature = "test-diagnostics"))]
+                entry.mark("owner-wait-expired");
+                let denied = drive
+                    .pump(
+                        &mut self.callbacks,
+                        runner,
+                        domain.deny_for_owner_wait_expiry(id, owner_expires_at),
+                    )
+                    .await;
+                #[cfg(test)]
+                let outcome = if self.callbacks.fault == Some(super::Fault::ExpireAck) {
+                    // Test seam: a successful deny converted to the reply-loss
+                    // verdict, so the decision is committed while this outcome
+                    // is unknown. It can only convert a success into an error.
+                    Err(hagency_store::Error::OutcomeUnknown)
+                } else {
+                    denied.output
+                };
+                #[cfg(not(test))]
+                let outcome = denied.output;
+                // `State`: another path decided first. That decision is read
+                // below like any other, and an allow first seen after the cutoff
+                // is still refused there.
+                match outcome {
+                    Ok(_) | Err(hagency_store::Error::State) => {}
+                    Err(_) => return Err(Failure::LostAuthority),
+                }
+                if denied.terminal? {
+                    return Ok(());
+                }
+            }
             let scope = self.scope.as_ref().ok_or(Failure::Admission)?;
             let maintenance = domain.maintain_owned_approval(scope);
             #[cfg(test)]
@@ -167,10 +244,15 @@ impl ApprovalRun {
                 let Some(choice) = summary.choice else {
                     continue;
                 };
-                if Instant::now() >= entry.owner_deadline {
+                let allow = choice != ApprovalChoice::Deny;
+                // Past the owner cutoff only a deny may still be answered, and
+                // only on a callback the host has expired. An allow first seen
+                // after the cutoff keeps its refusal: the response reserve never
+                // revives an expired decision. The runtime enforces the same
+                // rule on its own, so a fault here cannot put an accept on the wire.
+                if (allow || !entry.expired) && Instant::now() >= entry.owner_deadline {
                     return Err(Failure::Deadline);
                 }
-                let allow = choice != ApprovalChoice::Deny;
                 entry.prepared = Some(
                     runner
                         .prepare_approval(entry.request.response(allow))

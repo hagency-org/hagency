@@ -87,7 +87,10 @@ fn matrix_limits(
     Ok(limits)
 }
 fn approval_host(wait: u64, limits: Limits) -> Result<hagency_execution::ApprovalHost, Failure> {
-    let reserve = limits.response_ms.max(2000);
+    // After an unanswered owner wait the host still has to record the expiry
+    // and send the decline (ADR046 amendment): one durable write, the existing
+    // authorize/begin/check round trips and the frame all fit in this reserve.
+    let reserve = limits.response_ms.max(5000);
     if wait
         .checked_add(reserve)
         .is_none_or(|n| n > limits.operation_ms)
@@ -143,8 +146,8 @@ mod approval_wait_tests {
         assert_eq!(default_approval_wait(), 1000);
         assert!(approval_host(default_approval_wait(), limits).is_ok());
         assert!(approval_host(10000, limits).is_ok());
-        assert!(approval_host(28000, limits).is_ok());
-        for wait in [0, 28001, u64::MAX] {
+        assert!(approval_host(25000, limits).is_ok());
+        for wait in [0, 25001, u64::MAX] {
             assert!(approval_host(wait, limits).is_err());
         }
         assert!(
@@ -166,10 +169,10 @@ mod approval_wait_tests {
             long.capability_ms().unwrap(),
             hagency_core::tasks::MAX_OWNED_CAPABILITY_MS
         );
-        for wait in [1000, 60_000, 598_000] {
+        for wait in [1000, 60_000, 595_000] {
             assert!(approval_host(wait, long).is_ok());
         }
-        for wait in [0, 598_001, u64::MAX] {
+        for wait in [0, 595_001, u64::MAX] {
             assert!(approval_host(wait, long).is_err());
         }
     }

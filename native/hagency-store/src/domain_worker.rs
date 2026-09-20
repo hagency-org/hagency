@@ -1695,6 +1695,19 @@ impl DomainStore {
         })
         .await
     }
+    /// The owner never answered in time: the host denies the pending request
+    /// before any response byte (ADR046 amendment). Idempotent per request; a
+    /// row another path already decided is refused with `Error::State`.
+    pub async fn deny_for_owner_wait_expiry(
+        &self,
+        request_id: String,
+        owner_expires_at: u64,
+    ) -> Result<hagency_core::approvals::ApprovalSummary, Error> {
+        self.call(weight(&request_id)? + 8, move |db| {
+            db.deny_for_owner_wait_expiry_clock(&request_id, owner_expires_at, writer_time)
+        })
+        .await
+    }
     pub async fn consume_owner_approval(
         &self,
         cap: RunnerCapability,

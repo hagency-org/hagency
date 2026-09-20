@@ -187,6 +187,15 @@ impl OwnedSession {
     ) -> Result<tokio::time::Instant, session::Error> {
         self.session.approval_deadline(id)
     }
+    /// The host takes on owner-wait expiry for this session. Grants nothing.
+    pub fn enable_owner_wait_expiry(&mut self) -> Result<(), session::Error> {
+        self.session.enable_owner_wait_expiry()
+    }
+    /// Hand one unanswered callback to the host at its owner bound. Pure session
+    /// state, deliberately not an `Operation`: see `SessionDriver::expire_approval`.
+    pub fn expire_approval(&mut self, id: &crate::codex::RequestId) -> Result<(), session::Error> {
+        self.session.expire_approval(id)
+    }
     pub fn prepare_approval(
         &mut self,
         response: crate::codex::approval::ApprovalResponse,

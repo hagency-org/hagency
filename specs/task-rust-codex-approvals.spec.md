@@ -21,6 +21,7 @@ upstream provides no proof of effective permission application.
 - Consume the durable decision before sending a typed allow or deny response and never send it twice.
 - Treat upstream resolution cancellation EOF timeout and write completion as insufficient proof of effective application.
 - Keep pending data bounded and reject malformed unsupported or substituted requests without granting authority.
+- Decline an unanswered callback at its owner bound only after recording a durable host-minted deny, only with that family's own decline, never an accept, and only when the host opted the session in; a failed approval channel still ends the operation.
 - Answer a pinned approval request that adapter policy refuses with that family's own decline when it offers one, as the adapter's refusal and never an owner verdict, keep its resolution from the coordinator, and bound such declines per turn.
 - Cover real durable store admission and fake-stream protocol exchanges without live models.
 
@@ -67,6 +68,51 @@ Scenario: A request refused by adapter policy is declined and the turn goes on
   When each arrives and is later resolved upstream
   Then the family's own decline is written without any owner authority and the resolution never reaches the coordinator
   And a following ordinary request is still retained while no-decline and malformed requests and the ninth refusal end the session
+
+Scenario: An unanswered owner wait is declined by the host and the turn goes on
+  Test: native_owned_approval_owner_wait_expiry_declines_and_continues
+  Given an owned approval callback the owner never answers
+  When its owner wait runs out inside the request's own expiry
+  Then the expiry is recorded as a durable host-minted deny before one decline frame is written
+  And the operation completes instead of ending outcome-unknown
+
+Scenario: The command family declines at expiry with its own frame
+  Test: native_owned_approval_owner_wait_expiry_command_family
+  Given an unanswered command approval callback
+  When its owner wait runs out
+  Then the family's own decline is written and the turn goes on
+
+Scenario: An allow first seen after the owner wait is still refused
+  Test: native_owned_approval_expired_allow_is_still_refused
+  Given a callback the host has expired
+  When an owner allow is observed afterwards
+  Then no accept is prepared or written and the late verdict is refused
+
+Scenario: An unknown expiry denial sends nothing
+  Test: native_owned_approval_expiry_deny_uncertain_sends_nothing
+  Given the durable expiry denial whose outcome is lost
+  When the coordinator continues
+  Then no response byte is written and the operation ends without authority
+
+Scenario: An expired callback may only be declined and the opt-in only moves a read bound
+  Test: native_codex_control_expired_callback_may_only_decline
+  Given sessions with and without the host's owner-wait expiry opt-in
+  When a wait spans the owner bound and an accept or a decline is prepared afterwards
+  Then without the opt-in the session times out at the owner bound as before
+  And with it the session stays readable, an accept is refused by policy and only a decline is prepared inside the response bound
+
+Scenario: The expiry denial is recorded at most once
+  Test: native_owner_approval_owner_wait_expiry_is_at_most_once
+  Given a pending owner approval past its owner cutoff
+  When the expiry denial is recorded, replayed, raced with an owner verdict and followed by a stale card tap
+  Then the replay is idempotent, an already decided row and a premature cutoff are refused, and the stale tap is refused
+
+Scenario: A whole composed service declines an approval its owner never answers
+  Test: native_fleet_approval_owner_wait_expiry
+  Given the real service composition with the approval bot's own credentials and a card delivered to the owner's encrypted DM
+  When the owner sends nothing before the owner wait ends
+  Then the runner receives the family's own decline inside the response reserve
+  And the approval is durably denied with the host's expiry reason and the owner sent nothing
 
 Scenario: Durable authority precedes every native response byte
   Test: native_codex_approval_coordinator

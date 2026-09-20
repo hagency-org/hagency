@@ -50,6 +50,10 @@ pub(super) fn policy_decline(method: &str, params: &Value) -> Option<Value> {
 pub struct ApprovalResponse {
     pub(super) request: ApprovalRequest,
     pub(super) result: Value,
+    /// Which side of `response()` built this frame, so the session can enforce
+    /// that an expired callback is only ever declined. An assertion input, not
+    /// authority; `response()` is the only constructor.
+    pub(super) allow: bool,
 }
 
 impl ApprovalRequest {
@@ -223,6 +227,7 @@ impl ApprovalRequest {
         ApprovalResponse {
             request: self.clone(),
             result,
+            allow,
         }
     }
 }

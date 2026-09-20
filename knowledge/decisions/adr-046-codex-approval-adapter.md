@@ -452,3 +452,56 @@ refusing branch and its wire bytes, the swallowed resolution, a following ordina
 request still reaching the coordinator, the no-decline and malformed cases, and
 the bound. Not yet observed live: the refusal is model-initiated and was seen
 once; which branch refused it was not recorded by the product.
+
+## Amendment (2026-09-19): owner-wait expiry declines instead of ending the agent
+
+Operator decision. Live, three times in one day, an owner approval that was not
+answered ended the agent: nobody noticed the expiry. The session's read deadline
+was the callback's owner bound, so at that instant the control wait returned
+Timeout, the session was failed, the host mapped it to Protocol, and the dispatch
+settled outcome-unknown with its owner retained while the `owner_approvals` row
+stayed `pending` for good. A human owner will often take longer than the wait.
+REQ-TSS-APPROVAL-TIMEOUT required exactly that outcome; its expiry half is amended
+with this decision, and its channel-failure half is unchanged.
+
+An unanswered callback is now declined by the host at its owner bound, and the turn
+continues so the agent can report that approval was not granted in time.
+
+- Durable authority still precedes every response byte. The host records
+  `deny_for_owner_wait_expiry` first: the same `decided`/`deny` with no grant that
+  the owner's own Deny records, with a verdict receipt whose source identity is the
+  expiry and whose `denial_reason` names it (the migration 032 precedent; no new
+  state, column or authority). Everything after it -- `live_decision`, `consume`,
+  `begin`, `check`, the write -- is the deny path unchanged and computes
+  `allow=false` on its own evidence. The expiry site never tells the send path what
+  it knows.
+- It grants nothing. "The response reserve never revives an expired domain decision"
+  still holds: the decision answered is a fresh host-minted deny, not an expired one.
+  An allow first observed after the owner bound is refused twice over -- by the
+  coordinator's guard and, independently, by the runtime, whose `Expired` callback
+  stage accepts only the family's own decline (`Policy` otherwise).
+- A tap on the stale card is refused: `decide_verdict` admits only a `pending` row.
+  Whoever writes first at the cutoff wins; an allow that loses is never applied, and
+  neither outcome ends the turn.
+- At most once: the receipt source is deterministic and its digest carries no clock,
+  so a replay returns the same summary; a row another path decided is `State`.
+- An uncertain decline write is unknown, as before. An unknown expiry denial sends
+  nothing and ends the operation with LostAuthority.
+
+One mechanism had to change for this to be reachable at all. A control wait computes
+its wake once, so any host wait spanning the owner bound -- the coordinator's own
+100 ms wait, or a store call in flight -- returned Timeout and failed the session
+before the host could expire anything, and `expire_approval` is only valid at or
+after that bound. A host that takes on expiry therefore opts in
+(`enable_owner_wait_expiry`), after which a waiting callback bounds the session's
+read by its response deadline. That is a read bound, not authority: preparing any
+frame on a still-waiting callback at or after the owner bound is refused exactly as
+before. Without the opt-in a session still times out at the owner bound.
+
+The response reserve now has to hold one durable write, the existing round trips and
+the frame, so the service's floor for it rises from 2 s to 5 s; owner wait plus
+reserve must still fit the operation budget or the configuration is refused.
+
+Not decided here: the owner is not told that a card expired, and
+`delivery_denial_reason` now names two kinds of host denial, so any surface that
+words it as "could not be delivered" is wrong for this one.
