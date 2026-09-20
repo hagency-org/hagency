@@ -353,6 +353,27 @@ honouring either fails a test before it fails a guardian. What remains fatal: a
 process in the service's own coalition that daemonizes through a parent no census
 saw. kqueue NOTE_TRACK remains the only complete answer and remains unused.
 
+## A row caught mid-exec no longer fails the census (2026-09-20)
+
+With coalition evidence in place the next soak ran through the hourly updater
+without a refusal and then lost an agent thirty rounds in to a different cause,
+which the recorded stop cause again named: `observation_failure:census_failed`.
+The tracker had refused nothing. The census reads every process on the host
+forty times a second, each inside an identity bracket, and a process that execs
+between the bracket's two reads disagrees with itself. That single unrelated row
+returned "native identity changed during observation", the sweep propagated it,
+and the guardian stopped observing and ended its tree. Four threads running
+`sh -c 'exec true'` reproduce it within a few hundred sweeps, three runs out of
+three. The defect is older than this amendment series; the session and coalition
+reads added to the bracket only widened its window.
+
+A row that cannot be read is now read again, up to four attempts within the same
+sweep. Every attempt is a complete identity bracket, so a returned row is exactly
+as consistent as before and no partial row is ever combined. A row that still
+cannot be read ends the census as it always did, so persistent loss of inspection
+stays fatal. `native_macos_census_survives_exec_churn` runs the churn above for
+three seconds against a tight census loop and fails on the previous reader.
+
 ## Consequences
 
 Owned handles and native observations constrain signalling and cleanup claims. Process launch, leader exit and fixture success remain separate from sandbox qualification and canonical task completion.

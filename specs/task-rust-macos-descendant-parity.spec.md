@@ -32,6 +32,10 @@ exit for descendant observation or claim kernel crash containment.
   unrelated only when its resource and jetsam coalitions both differ from the
   leader's. Coalition evidence is negative only: it never classifies a process
   as owned, and a zero or unreadable coalition on either side classifies nothing.
+- Read again, a bounded number of times and always as a complete identity
+  bracket, a census row caught mid-exec, mid-exit or mid-reuse; one unrelated
+  row at one instant must not end an observation, and a row that still cannot be
+  read ends the census as before.
 - Bound the remembered birth map so a guardian's lifetime does not depend on the
   host's process creation rate, and never forget an owned birth.
 - Report a fixed stop cause and refusal category to the host and to the operator
@@ -161,6 +165,12 @@ Scenario: A daemon started elsewhere through an unseen parent does not stop a gu
   Then it is unrelated, observation continues and nothing becomes owned
   And the same newcomer in the leader's coalition, with an unreadable coalition, with only one id differing, or under a leader whose coalition is unknown still refuses
 
+Scenario: Unrelated processes that exec do not fail the census
+  Test: native_macos_census_survives_exec_churn
+  Given several threads continuously forking shells that exec and exit
+  When the whole-system census runs in a tight loop for three seconds
+  Then every sweep completes
+
 Scenario: The platform facts coalition evidence rests on still hold
   Test: native_macos_coalition_survives_setsid_and_differs_from_launchd
   Given this process, a child that opens its own session, and launchd
@@ -219,4 +229,8 @@ tracker died in round one of `observation_failure:ancestry_unconfirmed`: an hour
 launchd updater starts daemons through a middle that opens its own session and is
 gone before any census. Operator decision: add coalition evidence, negative only.
 A process in the service's own coalition with no other evidence still refuses.
+
+2026-09-20: a census row caught mid-exec failed the whole sweep and ended an
+agent thirty soak rounds in (`observation_failure:census_failed`). The row is now
+re-read, bounded, each attempt a complete bracket; persistent failure stays fatal.
 

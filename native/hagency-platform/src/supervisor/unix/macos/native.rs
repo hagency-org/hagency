@@ -177,6 +177,27 @@ pub(super) fn observe(pid: i32) -> io::Result<Option<Snapshot>> {
         status: short.status,
     }))
 }
+/// A row read while its process is mid-exec, mid-exit or mid-reuse disagrees
+/// with itself: the two identity reads differ, or the kernel refuses one. That is
+/// one unrelated process at one instant and says nothing about the owned tree,
+/// yet it used to fail the whole sweep, which ends the guardian's observation
+/// and stops the tree (live 2026-09-20, `census_failed`, thirty soak rounds in;
+/// reproduced within a few hundred sweeps under exec churn). Read it again: every
+/// attempt is a complete identity bracket, so a returned row is as consistent as
+/// before, and a row that still cannot be read ends the census exactly as it did.
+const ROW_ATTEMPTS: usize = 4;
+fn observe_settled(pid: i32) -> io::Result<Option<Snapshot>> {
+    let mut attempt = 1;
+    loop {
+        match observe(pid) {
+            Err(_) if attempt < ROW_ATTEMPTS => {
+                attempt += 1;
+                std::thread::yield_now();
+            }
+            result => return result,
+        }
+    }
+}
 pub(super) fn census() -> io::Result<Vec<Snapshot>> {
     let mut pids = vec![0i32; 32768];
     // SAFETY: The initialized aligned buffer has exactly the passed byte size.
@@ -196,7 +217,7 @@ pub(super) fn census() -> io::Result<Vec<Snapshot>> {
     let mut result = Vec::new();
     for &pid in &pids[..n as usize] {
         if pid > 0
-            && let Some(row) = observe(pid)?
+            && let Some(row) = observe_settled(pid)?
         {
             result.push(row);
         }
@@ -404,6 +425,47 @@ pub(super) fn spawn(launch: &Launch, pipes: Option<ChildPipes>) -> io::Result<Ro
 mod tests {
     use super::*;
     use std::os::unix::process::CommandExt;
+
+    /// Live 2026-09-20: thirty soak rounds in, a guardian stopped its tree with
+    /// `census_failed`. No tracker refusal: one unrelated row, read while it was
+    /// mid-exec, failed the whole sweep. Short-lived processes that exec are what
+    /// a working machine is made of, so this churns them under a tight census.
+    #[test]
+    fn native_macos_census_survives_exec_churn() {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let churn: Vec<_> = (0..4)
+            .map(|_| {
+                let stop = stop.clone();
+                std::thread::spawn(move || {
+                    while !stop.load(std::sync::atomic::Ordering::Relaxed) {
+                        // fork, exec a shell, which execs again, then exits.
+                        let _ = std::process::Command::new("/bin/sh")
+                            .args(["-c", "exec /usr/bin/true"])
+                            .status();
+                    }
+                })
+            })
+            .collect();
+        let until = Instant::now() + Duration::from_secs(3);
+        let mut sweeps = 0u32;
+        let mut failure = None;
+        while Instant::now() < until {
+            match census() {
+                Ok(rows) => assert!(rows.len() > 1),
+                Err(error) => {
+                    failure = Some((sweeps, error.to_string()));
+                    break;
+                }
+            }
+            sweeps += 1;
+        }
+        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+        for thread in churn {
+            thread.join().unwrap();
+        }
+        assert!(sweeps > 10, "only {sweeps} sweeps completed");
+        assert_eq!(failure, None, "a census failed under exec churn");
+    }
 
     /// The two platform facts coalition evidence rests on, read from real
     /// processes: a child that opens its own session keeps its parent's
