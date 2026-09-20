@@ -76,7 +76,7 @@ fn approval_config(base: &matrix::Fixture, endpoint: &str, anchor: String) -> Ho
                     human_mxid: OWNER.into(),
                 },
             }],
-            matrix::load_limits(),
+            matrix::factory_limits(),
         )
         .unwrap()
         .with_root_pem(include_bytes!(
@@ -277,7 +277,7 @@ impl Fixture {
         } else {
             warm
         };
-        let limits = matrix::load_limits();
+        let limits = matrix::factory_limits();
         let host = if application_service {
             TokenProvisioningHost::application_service(
                 reg(),

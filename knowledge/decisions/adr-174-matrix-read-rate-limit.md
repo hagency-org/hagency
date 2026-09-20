@@ -102,3 +102,22 @@ request received, the TLS exclusion, reuse versus fresh write connections); the
 Matrix crate's 235 tests pass. Live evidence is
 recorded in docs/progress.md once a single fleet has run past the earlier
 lifetimes.
+
+### Correction (2026-09-20): a dial that times out was not reaching the redial
+
+The amendment above was written for `ConnectError("tcp connect error", TimedOut)`,
+and as landed it could miss exactly that. A send is awaited under a header wait
+that is armed before the dial starts, and the shipped connect and header budgets
+are both 5 s (ADR047), so the header wait ended first or tied: the failure
+surfaced as Timeout, which is never redialled. The offline tests only refused a
+connection, which fails at once, so they could not see it; a review of hosted CI
+logs found it by reading the ordering.
+
+Within one attempt the header wait now never ends before the connect budget plus a
+100 ms margin. No default, validation rule or configured budget changes; when the
+header budget is already the longer one it is untouched. A dial that times out is
+therefore always observed as the connect failure it is, and is redialled.
+`native_matrix_send_wait_never_ends_before_the_connect_budget` pins the bound for
+the shipped tie and for both orderings. Still not covered offline: a real
+black-holed dial, which needs a saturated listener and is not deterministic on
+hosted runners.

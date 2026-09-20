@@ -477,6 +477,15 @@ impl Fixture {
     pub async fn until(&mut self, stage: &str, ready: impl Fn(&Self) -> bool) {
         let until = tokio::time::Instant::now() + Duration::from_secs(60);
         loop {
+            // Answer everything already admitted before spending time on this
+            // stage's predicate. The child runs with the PRODUCT's limits (5 s
+            // headers), so a request left waiting behind this loop's own
+            // `try_wait` and SQL is a product-visible timeout, not a slow peer:
+            // hosted, one such wait refused an inbox intake, which ends that
+            // worker, and then no amount of patience makes the stage ready.
+            while let Some(request) = self.fake.try_next() {
+                self.peer.respond(request).await;
+            }
             assert!(
                 self.child.0.try_wait().unwrap().is_none(),
                 "service exited during {stage}: {}",

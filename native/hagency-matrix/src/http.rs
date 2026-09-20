@@ -56,6 +56,15 @@ pub(crate) struct Http {
 /// First wait before redialling a JSON request whose connection never existed;
 /// doubled per attempt inside the original request deadline.
 const CONNECT_RETRY: std::time::Duration = std::time::Duration::from_millis(100);
+/// The header wait is armed before the dial starts, so when it is no longer than
+/// the connect budget (both default to 5 s) it ends first or ties, and a dial
+/// that timed out surfaces as Timeout instead of the connect failure it is --
+/// which is never redialled. Live, that is exactly the failure the redial exists
+/// for. Never let the wait end before the connect budget has had its say.
+const CONNECT_MARGIN: std::time::Duration = std::time::Duration::from_millis(100);
+fn send_bound(limits: &Limits) -> std::time::Duration {
+    limits.headers.max(limits.connect + CONNECT_MARGIN)
+}
 /// How one attempt ended, for the only caller allowed to repeat it.
 enum Failed {
     /// The dial failed before a connection existed: no request byte left.
@@ -635,7 +644,7 @@ impl Http {
         self.pace(cancel, deadline).await?;
         let mut response = wait(
             cancel,
-            deadline.min(Instant::now() + self.limits.headers),
+            deadline.min(Instant::now() + send_bound(&self.limits)),
             request.send(),
         )
         .await?

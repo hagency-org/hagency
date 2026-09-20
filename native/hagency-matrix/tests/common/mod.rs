@@ -78,6 +78,24 @@ pub fn load_limits() -> Limits {
         ..Limits::default()
     }
 }
+/// One tier above `load_limits`, for the fixtures that also fork a child process
+/// and copy a project tree on the same host as their single-threaded runtime
+/// (`inline_factory`). There a 2 s header bound measures a fork, an exec and a
+/// directory copy competing for a small hosted runner's cores, not the peer:
+/// hosted macOS answered OutcomeUnknown with the effect `uncertain` after every
+/// product step had been recorded done. Still strictly below
+/// `hagency_matrix::Limits::default()` for headers and the request, so a real
+/// transport refusal still fails a test.
+pub fn factory_limits() -> Limits {
+    Limits {
+        connect: Duration::from_secs(4),
+        headers: Duration::from_secs(4),
+        request: Duration::from_secs(12),
+        body_idle: Duration::from_secs(2),
+        sdk: Duration::from_secs(20),
+        ..Limits::default()
+    }
+}
 pub struct Fixture {
     pub root: tempfile::TempDir,
     pub store: DomainStore,
@@ -383,6 +401,20 @@ impl Fake {
     }
     pub async fn next(&mut self) -> Request {
         self.next_phase(None).await
+    }
+    /// A request already admitted, or None, without waiting. A harness that also
+    /// polls state between requests drains these first, so a request's latency
+    /// is the peer's work and never the harness's own polling.
+    pub fn try_next(&mut self) -> Option<Request> {
+        let request = self.requests.try_recv().ok()?;
+        eprintln!(
+            "[fake] recv round={} seq={} {} {}",
+            SCRIPTED_ROUND.with(|round| round.get()),
+            request.seq,
+            request.method,
+            request.target
+        );
+        Some(request)
     }
     pub async fn next_phase(&mut self, phase: Option<&'static str>) -> Request {
         // An SDK bootstrap or committed sync runs between HTTP requests. This

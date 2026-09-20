@@ -83,6 +83,30 @@ async fn serve(listener: TcpListener, seen: Arc<Seen>) {
 }
 const PATH: [&str; 4] = ["_matrix", "client", "v3", "sync"];
 
+/// A dial that times out must be seen as the connect failure it is. The header
+/// wait is armed before the dial, so with equal budgets (the defaults) it used
+/// to end first or tie and the failure became Timeout, which is never redialled.
+#[test]
+fn native_matrix_send_wait_never_ends_before_the_connect_budget() {
+    let shipped = Limits::default();
+    assert_eq!(shipped.connect, shipped.headers, "the shipped tie");
+    assert!(send_bound(&shipped) > shipped.connect);
+    // A header budget already longer than the dial is left alone.
+    let roomy = Limits {
+        connect: Duration::from_millis(300),
+        headers: Duration::from_secs(2),
+        ..Limits::default()
+    };
+    assert_eq!(send_bound(&roomy), roomy.headers);
+    // A header budget shorter than the dial still waits the dial out.
+    let tight = Limits {
+        connect: Duration::from_secs(2),
+        headers: Duration::from_millis(300),
+        ..Limits::default()
+    };
+    assert_eq!(send_bound(&tight), tight.connect + CONNECT_MARGIN);
+}
+
 #[tokio::test]
 async fn native_matrix_get_connect_retry_reaches_a_late_peer() {
     let (socket, port) = reserved();
