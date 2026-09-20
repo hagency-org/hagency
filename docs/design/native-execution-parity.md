@@ -884,3 +884,44 @@ Still open, in the order they limit a long run:
   thread, a completion report to the delegator, peer ID discovery, a peer-message
   wake lane. The policy decline of a refused command approval has still not been
   seen live.
+
+### Two parity gaps the operator pointed at, and what the retained product does (2026-09-20)
+
+Both were found by treating a live failure as a new problem. The retained product
+had already answered each; read it first next time.
+
+**Who a room message is for.** The retained product separates listening from
+being asked. A room member may read every message (`messageVisibleToAgent`), but
+its inbox holds only direct messages and room messages that @mention its name
+(`messageTargetsAgent`, `getUnreadInboxMessages`). A dispatch's `inbox` is only
+those targeting messages, and the rest of the room is a frozen per-dispatch
+window the agent reads on demand through `read_conversation`, with speaker
+identities, in order, eight parts at a time, at most two hundred parts; its room
+position advances only as far as it actually read (`router/src/conversations.ts`,
+`router/src/store.ts` payload, `lib/mcp-server-core.js`). The migration inventory
+lists `read_conversation` as to be ported and it never was. The native agent
+inbox (ADR178) instead embedded the whole window in the payload with a `wake`
+flag and an instruction naming the last entry as the request; live, an agent
+carried out the other agent's near-identical request that sat earlier in that
+list. Hiding the other message was rejected by the operator, and telling the
+agent who it is only reduced the rate. The port of the retained design is in
+progress: nothing is hidden, and nothing that is not addressed to the agent is
+put in front of it as a request.
+
+**What a failed turn does.** The retained product settles the DISPATCH as
+outcome-unknown with the provider's text as the reason, blocks the task, marks a
+written workspace dirty, posts a notice in the thread ("Result uncertain: the
+runner stopped after work may have started. Inspect the workspace before
+retrying; this dispatch will not be run again automatically."), and quarantines
+that one session: later requests in it are answered with "Waiting: a previous
+runner in this session stopped… An operator must inspect and resolve that outcome
+before another turn can run", until an operator inspects and resolves it
+(`settleUnknownInternal`, `beginOutcomeInspection`, `resolveOutcomeUnknown`). The
+agent's runner loop stays alive throughout. The native store has the same
+quarantine and a `recover-dispatch` console route, but the continuous driver
+returns the attempt's failure and the agent's worker ends for good, silently:
+nothing is posted to the room, later requests get no answer, and resuming needs a
+service restart, which is its own open problem. The native port also turns every
+turn that did not complete into a protocol failure, where the retained product
+records the provider's own words. Closing this gap is the first slice of the
+recovery work and wants the operator's decisions on restart alongside it.
