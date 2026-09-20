@@ -112,7 +112,18 @@ that copy empty, which every verified reader refuses.
 The assignee is a first-class participant. Its delegated inbox shows those
 original messages as every participant sees them, the payload names the agent
 as it does for any inbox, and the instruction says plainly that the messages
-are addressed to the delegator and that the canonical task is the job.
+are addressed to the delegator and that the task is the job.
+
+The first live delegation (2026-09-20) was delivered and then done wrong. The
+payload held the assignee's identity and one inbox entry, the owner's message to
+the delegator, which told its reader to call `delegate_task`; the task's title and
+description were reachable only through a tool. The assignee carried out the
+message: it called `delegate_task` again and reported the refusal as the task's
+result. A human assignee has the task card in front of them and knows who handed
+it over, so the payload now carries `task` (id, title, description) and
+`delegated_by` (Matrix ID and name, read from durable rows rather than the
+delegator's current route), and the instruction leads with them. Nothing was
+removed from the inbox.
 
 Still owed: follow-up messages in the delegated thread are not admitted, the
 delegator receives no completion report, and an ordinary single-agent host runs

@@ -20,6 +20,10 @@ intent, and the assignee's own driver dispatches the delegated task.
 - The assignee is a first-class participant. Its delegated inbox shows the
   original request messages exactly as every participant sees them; nothing is
   hidden or rewritten, and the payload names the agent as it does for any inbox.
+- The assignee has what a human assignee has in front of them: the payload
+  carries the delegated task's id, title and description and the participant who
+  delegated it, and the instruction names that task as the job and the inbox as
+  the conversation it came from.
 - A delegation created from a verified dispatch resolves a verified assignee
   session and a verified notice route, and that session holds its own durable
   copy of each handed-over message. An unverified creator keeps the existing
@@ -73,6 +77,7 @@ Scenario: A delivered notice activates the intent and its own driver dispatches 
   Given a delegated intent whose task notice Matrix accepted
   When the assignee selects its delegated session
   Then one dispatch is minted for the intent's own task and no new task is created
+  And its payload carries the task's id, title and description and the delegator's Matrix ID and name
   And the assignee's claim profile claims it and a repeated selection replays
 
 Scenario: An intent whose notice is not delivered yet is not dispatched
@@ -102,5 +107,5 @@ Scenario: Two composed agents carry a delegation from approval to the assignee's
   Given two inline factory agents in one project with the coordination tools on and an owner who approves once
   When the mentioned agent delegates a task to the other and completes its own
   Then the assignee posts exactly one m.notice, under its own identity, threaded on the delegator's question and with no mentions
-  And the intent activates, one dispatch is minted on the assignee's delegated session only, and its payload names the assignee and carries the owner's original message
+  And the intent activates, one dispatch is minted on the assignee's delegated session only, and its payload names the assignee, the delegator and the task and carries the owner's original message
   And the delegated task reaches Done with its reply delivered in that thread and both agents stay healthy

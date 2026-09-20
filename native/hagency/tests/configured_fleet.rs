@@ -277,11 +277,20 @@ async fn native_configured_fleet_delegated_task_delivery() {
     assert_eq!(input["inbox"][0]["message"]["event_id"], DELEGATION_EVENT);
     assert_eq!(input["inbox"][0]["message"]["body"], "PROJECT_DELEGATION");
     assert_eq!(input["inbox"][0]["message"]["sender_mxid"], OWNER);
+    // Like a human assignee it has the task card and knows who handed it over.
+    assert_eq!(input["task"]["id"], task.as_str());
+    assert_eq!(input["task"]["title"], "Delegated fleet report");
+    assert_eq!(
+        input["task"]["description"],
+        "Draft the report and reply with it."
+    );
+    assert_eq!(input["delegated_by"]["mxid"], f.peer.agents[1].user);
+    assert_eq!(input["delegated_by"]["name"], "FleetAgent1");
     assert!(
         input["instruction"]
             .as_str()
             .unwrap()
-            .contains("delegated this task to you")
+            .contains("The participant named in delegated_by handed you the work in task")
     );
     fs::write(
         f.work(0).join("owned-mcp.fleet-release"),
