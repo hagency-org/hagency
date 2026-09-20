@@ -12,7 +12,7 @@ pub use file_identity::same_file;
 mod supervisor;
 #[cfg(unix)]
 pub use supervisor::run_guardian;
-pub use supervisor::{StopCause, SupervisedProcess, SupervisedReport};
+pub use supervisor::{StopCause, StopDetail, SupervisedProcess, SupervisedReport};
 mod stdio;
 pub use stdio::StdioPipes;
 #[cfg(target_os = "linux")]

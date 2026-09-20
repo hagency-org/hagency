@@ -234,6 +234,86 @@ original lifetime identities, and crash containment on macOS still refuses.
 unrelated churn, and `native_macos_unseen_parent_in_owned_group_is_stopped` an
 owned survivor of an unseen parent. Both fixtures fail on the previous tracker.
 
+## Session-scoped evidence, pruned bookkeeping and recorded stop causes (2026-09-19)
+
+The 2026-09-18 group-evidence amendment narrowed the refusal but did not close
+it, and its own text named the remaining case wrongly: "a descendant that
+daemonizes through an unseen parent into a session of its own" describes an
+owned process. The identical FOREIGN row is equally unclassifiable, is far more
+common, and is what three live occurrences on 2026-09-19 were. Two agents under
+one service lost their owned attempts 2-6 ms apart, both peer_unavailable with
+transport peer_eof, stage update and cleanup unknown, and the service kept two
+defunct children whose exit status says each guardian returned 1 from "complete
+descendant cleanup is unproven". The census is whole-system, so one
+unclassifiable row anywhere on the host is refused by every guardian at once;
+the offending process need belong to no agent.
+
+The trigger is an ordinary spawner that detaches. A process started in its own
+process group -- Rust's Command::process_group, Node's detached: true, Python's
+start_new_session=True, posix_spawn with SETSID, ssh -f, shell job control --
+that forks a survivor and exits inside one 25 ms census interval leaves that
+survivor as the only member of a group no census ever classified. Offline
+reproduction: the existing idle-leaf fixture plus `sh -c '(sleep 0.4 &); exit 0'`
+spawned with process_group(0) ended the observation at the second sample in five
+runs out of five, while the same shell without process_group survived 35-37
+samples. Two supervised trees observed beside each other both lost their owner
+0.2, 3.9 and 5.1 ms apart from a single shell exit.
+
+Ancestry now stalls into session evidence before group evidence. The reasoning
+is the one already made here for groups, one level coarser: a process enters a
+session only by being forked inside it or by creating it, setpgid never crosses
+a session, and the leader starts its own session, so every session is wholly
+owned or wholly unrelated. A pending newcomer sharing its session with a process
+classified in that same census takes that classification; a session with no
+classified member, or with conflicting members, proves nothing, and group
+evidence is tried next. XNU's fork allocation skips a PID while it still names a
+live process, group or session, so neither id is recycled under a census. The
+session is read with getsid inside the existing identity bracket. A getsid
+refusal other than ESRCH records zero, which classifies nothing: a kernel
+refusal on one unrelated row must never end a census. ESRCH keeps meaning gone,
+and a zero answer is never read as an error.
+
+Birth ordering was considered and rejected for this slice. XNU's p_uniqueid is
+monotone, so an owned row's parent birth is never below the leader's, but the
+field is replaced with init's during exec after adoption, and the guards that
+make the rule sound -- parent_pid above 1 and a present init row -- leave it
+covering almost nothing that occurs. It is not implemented.
+
+The refusal itself is unchanged and stays fatal. A survivor whose unseen parent
+opened a session of its own has neither session nor group evidence; the tracker
+refuses, sets its sticky failure, and denies the whole-tree receipt even though
+the leader is reaped and every signal is accepted. Census data cannot decide
+that case, because the process that would have decided it was never in a census.
+Only a kernel fork feed could -- kqueue EVFILT_PROC with NOTE_TRACK attached to
+the leader while it is still suspended -- and this ADR's refusal to rely on
+NOTE_TRACK stands. The case is now pinned by a test that asserts both the
+refusal and its reported cause, in its own test binary because the row it
+creates ends every other guardian's observation on the same host.
+
+`known` is pruned. It grew by one entry for every process ever created on the
+host and reached the hard 65536 bound in about two hours at the measured 9.3
+process creations per second, failing every live guardian within one census of
+the others. Above 8192 entries a successful census keeps an entry only when it
+is owned, present in this census, present in the previous one, or named as a
+current row's parent. Owned births are never forgotten and the prune writes no
+verdicts, so no owned process can be reclassified; forgetting a dead foreign
+birth can only demote a later newcomer to unclassified, where session or group
+evidence or the existing refusal applies. The window is sufficient because a
+newcomer's parent was alive when it forked, so the last census that saw it is
+the previous one, and `previous` advances only on a successful update. The
+65536 bound stays as the backstop, and an owned tree that itself creates that
+many processes under one guardian still reaches it.
+
+The stop cause is recorded. Reply::Stopped already carried StopCause to the host
+and the host dropped it, which is why three occurrences read only an unexplained
+cleanup unknown. The guardian now also carries a fixed StopDetail --
+ancestry_unconfirmed, tracking_gap, census_failed, leader_unreadable -- taken
+from the tracker's typed error payload rather than a message; SupervisedReport
+carries it; the guardian's unproven-cleanup error names both; and the operator
+status gains an optional stop_cause beside the unchanged, pinned cleanup
+vocabulary, from fixed categories only (ADR-175). Linux cgroup recovery and
+Windows Job reports carry no detail and are otherwise unchanged.
+
 ## Consequences
 
 Owned handles and native observations constrain signalling and cleanup claims. Process launch, leader exit and fixture success remain separate from sandbox qualification and canonical task completion.

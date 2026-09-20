@@ -1,6 +1,6 @@
 //! Native port of the TS guardian's continuous descendant observation/stop path.
 //! This is observed ancestry, not kernel crash containment or a runner sandbox.
-use crate::{Launch, StopReport, stdio::ChildPipes};
+use crate::{Launch, StopDetail, StopReport, stdio::ChildPipes};
 use std::{
     io,
     time::{Duration, Instant},
@@ -10,7 +10,19 @@ mod native;
 #[path = "macos/tracking.rs"]
 mod tracking;
 use native::{Root, Snapshot};
-use tracking::Tracking;
+use tracking::{Refusal, Tracking};
+
+/// Name the fixed category the guardian reports to its host. A census that could
+/// not be completed is a different fact from a census the tracker refused, and
+/// the difference is exactly what the next live occurrence needs to explain
+/// itself. Read from the error payload; never from its message.
+pub(super) fn observation_detail(error: &std::io::Error) -> StopDetail {
+    match error.get_ref().and_then(|e| e.downcast_ref::<Refusal>()) {
+        Some(Refusal::Ancestry(_)) => StopDetail::AncestryUnconfirmed,
+        Some(Refusal::Gap) => StopDetail::TrackingGap,
+        None => StopDetail::CensusFailed,
+    }
+}
 
 pub(super) struct Scope {
     root: Option<Root>,

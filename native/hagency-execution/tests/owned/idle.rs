@@ -17,12 +17,15 @@ async fn native_owned_turn_long_lifetime() {
     let report = operation.wait().await.unwrap();
     assert!(
         began.elapsed() >= Duration::from_secs(31),
-        "early exit after {:?}: protocol={:?}, failure={:?}, startup={:?}, observation={:?}",
+        "early exit after {:?}: protocol={:?}, failure={:?}, startup={:?}, observation={:?}, cleanup={:?}",
         began.elapsed(),
         report.protocol,
         report.failure,
         report.startup_error(),
-        report.runtime_observation()
+        report.runtime_observation(),
+        // Names the guardian's own stop cause: a quiet turn that ends early was
+        // stopped by something, and the transport error alone never says what.
+        report.cleanup
     );
     assert_eq!(
         report.protocol,

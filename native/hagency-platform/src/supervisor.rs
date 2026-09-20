@@ -26,9 +26,26 @@ pub enum StopCause {
     /// the guardian process exited; the retained cgroup supplies cleanup proof.
     GuardianLost,
 }
+/// Fixed categories naming why a guardian stopped observing. Diagnostic only:
+/// a detail never authorizes anything and never strengthens `StopReport`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopDetail {
+    /// A newcomer that neither ancestry, its session nor its process group
+    /// classified in the same census.
+    AncestryUnconfirmed,
+    /// A bookkeeping bound, or a row that breaks an identity invariant.
+    TrackingGap,
+    /// The whole-system census itself could not be completed.
+    CensusFailed,
+    /// The retained leader's own identity could not be read.
+    LeaderUnreadable,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SupervisedReport {
     pub cause: StopCause,
+    /// Present when the guardian could name a fixed refusal category.
+    pub detail: Option<StopDetail>,
     pub scope: StopReport,
 }
 pub struct SupervisedProcess {

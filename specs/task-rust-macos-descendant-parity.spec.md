@@ -23,9 +23,15 @@ exit for descendant observation or claim kernel crash containment.
 - Keep lost inspection, unclassified new ancestry, capacity and deadline outcomes
   explicitly unknown. No fresh census repairs an earlier tracking gap.
 - Start the leader in its own session. When ancestry stalls, classify a newcomer
-  only by a process it shares a group with in that same census; a group with no
-  classified member, or with conflicting members, classifies nothing.
-- Unrelated process churn on the host must not end an idle owner's observation.
+  only by a process it shares that same census with, in its session and then in
+  its group; a scope with no classified member, with conflicting members, or
+  that the kernel refused to name classifies nothing.
+- Unrelated process churn on the host must not end any guardian's observation,
+  including churn that detaches into its own process group.
+- Bound the remembered birth map so a guardian's lifetime does not depend on the
+  host's process creation rate, and never forget an owned birth.
+- Report a fixed stop cause and refusal category to the host and to the operator
+  status, beside the pinned cleanup words and never in place of them.
 - Preserve Linux subreaper and Windows Job behavior and existing bounded waits.
 - Run actual local native process fixtures and then the local runtime path.
 
@@ -33,11 +39,16 @@ exit for descendant observation or claim kernel crash containment.
 - Do not contact models/Palpo from ordinary tests, change sandbox defaults,
   claim a task completed from process exit, or hide existing qualification failures.
 - Do not treat unsupported kqueue NOTE_TRACK as a working native facility.
+- Do not classify a newcomer no evidence reaches; that refusal stays fatal and
+  sticky, and no later census repairs it.
 
 ## Boundaries
 
 ### Allowed Changes
 - native/hagency-platform/src/lib.rs
+- native/hagency-platform/src/supervisor.rs
+- native/hagency-platform/src/supervisor/windows.rs
+- native/hagency/src/bootstrap.rs
 - native/hagency-platform/src/unix.rs
 - native/hagency-platform/src/supervisor/unix.rs
 - native/hagency-platform/src/supervisor/unix/macos.rs
@@ -106,6 +117,52 @@ Scenario: An owned survivor of an unseen parent is stopped with its tree
   When the owner observes and then stops the tree
   Then observation stays positive, the receipt proves the whole tree and the survivor is gone
 
+Scenario: Session evidence classifies a survivor left alone in its process group
+  Test: native_macos_session_evidence_classifies_detached_group
+  Given newcomers with unseen parents alone in a group, inside the leader's session and inside a session of their own
+  When the tracker updates from one census
+  Then the first is unrelated, the second is owned and live, and the third still refuses
+  And a session the kernel refused to name classifies nothing
+
+Scenario: Detached unrelated churn does not cost an idle owner its observation
+  Test: native_macos_detached_unrelated_churn_keeps_descendant_proof
+  Given an idle supervised leader and a subshell that leads its own process group
+  When that subshell forks a survivor and exits before any census sees it
+  Then every observation stays positive and the stop receipt proves the whole tree
+
+Scenario: The same churn without a new process group isolates the evidence
+  Test: native_macos_attached_unrelated_churn_control
+  Given the identical survivor shape with no process group change
+  When the owner observes and then stops the tree
+  Then the receipt proves the whole tree, so only the changed scope differs
+
+Scenario: One unrelated orphan stops no guardian on the host
+  Test: native_macos_one_detached_foreign_orphan_stops_no_guardian
+  Given two supervised leaders observed beside each other under one host
+  When a single unrelated subshell leaves a detached survivor behind
+  Then neither owner loses its observation and both receipts prove their whole tree
+
+Scenario: A survivor in a session of its own still refuses and names its cause
+  Test: native_macos_unseen_session_orphan_refuses_and_names_its_cause
+  Given an unrelated middle that opens its own session and exits before its survivor is born
+  When the owner observes the census that first contains that survivor
+  Then observation ends with ObservationFailure and detail AncestryUnconfirmed
+  And the leader is reaped, every signal is accepted, and the whole-tree receipt stays false
+
+Scenario: Remembered births stay bounded without losing needed ancestry
+  Test: native_macos_known_births_are_pruned_without_losing_ancestry
+  Given unrelated churn far past the prune threshold under one tracker
+  When repeated censuses replace the whole unrelated population
+  Then the map stays bounded, an owned birth is never forgotten
+  And a parent seen only in the previous census still classifies the orphan it left
+
+Scenario: The host records why a guardian stopped observing
+  Test: native_bootstrap_runtime_observation_projection
+  Given an observed cleanup report carrying a stop cause and a refusal category
+  When the operator status is projected
+  Then stop_cause names a fixed category beside the unchanged cleanup word
+  And the bounded operator projection still fits its existing limit
+
 Scenario: Local operator configuration cannot widen the requested thread policy
   Test: native_codex_session_settings
   Given provider-owned login and existing operator sandbox settings
@@ -129,3 +186,12 @@ guardian death. The real local Palpo/Robrix run remains required after this link
 fleet lost a warm Codex runtime's authority before Started because any process on
 the host with an unseen parent stopped the owned tree. The refusal now applies
 only to a newcomer that neither ancestry nor its process group classifies.
+
+2026-09-19: ADR029's session evidence amendment. The 2026-09-18 amendment framed
+the residual case as an owned descendant; the identical unrelated row is equally
+unclassifiable and far more common, and three live occurrences were exactly that,
+stopping both agents' trees 2-6 ms apart from one host process exit. Session
+evidence is tried before group evidence, the remembered birth map is pruned, and
+the guardian's stop cause now reaches the operator status. The session-of-its-own
+case stays fatal; kqueue NOTE_TRACK remains the only complete answer and remains
+unused.

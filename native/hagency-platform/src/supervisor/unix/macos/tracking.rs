@@ -4,9 +4,36 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     io,
 };
+/// The tracker's fixed refusal categories. Carried as the `io::Error` payload so
+/// the guardian names one to its host instead of matching on a message.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum Refusal {
+    /// A newcomer that neither ancestry, its session nor its group classified.
+    Ancestry(&'static str),
+    /// A bookkeeping bound, or a row that breaks an identity invariant.
+    Gap,
+}
+impl std::fmt::Display for Refusal {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Ancestry(reason) => reason,
+            Self::Gap => "descendant ancestry is unconfirmed",
+        })
+    }
+}
+impl std::error::Error for Refusal {}
+
+/// Above this many remembered births a successful census forgets the foreign
+/// ones it can no longer need. The hard 65536 bound below stays as the backstop.
+const PRUNE_ABOVE: usize = 8192;
+
 pub(super) struct Tracking {
     known: BTreeMap<u64, bool>,
     owned: BTreeMap<u64, Snapshot>,
+    /// Births present in the previous successful census. A newcomer's parent was
+    /// alive when it forked, so a parent that has already exited was still in
+    /// that census; this is the whole window an ancestry lookup can need.
+    previous: BTreeSet<u64>,
     init: Option<Snapshot>,
     failed: bool,
 }
@@ -20,9 +47,14 @@ impl Tracking {
         Self {
             known,
             owned: BTreeMap::from([(root.birth, root)]),
+            previous: baseline.iter().map(|s| s.birth).collect(),
             init: baseline.iter().find(|s| s.pid == 1).copied(),
             failed: false,
         }
+    }
+    #[cfg(test)]
+    pub fn known_len(&self) -> usize {
+        self.known.len()
     }
     pub fn failed(&self) -> bool {
         self.failed
@@ -88,14 +120,23 @@ impl Tracking {
             if pending.is_empty() {
                 break;
             }
-            if pending.len() == before && !self.classify_by_group(rows, &mut pending) {
+            // Session before group: a group lies inside exactly one session, so
+            // session evidence is sound for the same reason and is present far
+            // more often. Every spawner that changes only the process group
+            // (setpgid, Rust's process_group, shell job control) leaves its
+            // survivor in a session that still holds classified members, while
+            // its group may hold nobody at all.
+            if pending.len() == before
+                && !self.classify_by(rows, &mut pending, |s| s.session)
+                && !self.classify_by(rows, &mut pending, |s| s.group)
+            {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    if pending.iter().any(|s| s.parent_pid <= 1) {
+                    Refusal::Ancestry(if pending.iter().any(|s| s.parent_pid <= 1) {
                         "new orphan ancestry is unconfirmed"
                     } else {
                         "missing parent ancestry is unconfirmed"
-                    },
+                    }),
                 ));
             }
         }
@@ -115,7 +156,39 @@ impl Tracking {
                 }
             }
         }
+        self.prune(rows, births);
         Ok(live)
+    }
+    /// `known` otherwise grows by one entry for every process ever created on
+    /// the host and reaches the hard 65536 bound in about two hours of ordinary
+    /// machine use, failing every live guardian within one census of each other.
+    /// Forget only foreign births that nothing can still need: absent from this
+    /// census, absent from the previous one, and named as no current row's
+    /// parent.
+    ///
+    /// Soundness: an owned birth is never forgotten, so no owned process can be
+    /// reclassified and nothing here ever writes an owned verdict. Forgetting a
+    /// dead FOREIGN birth can only remove the ancestry that would have proved a
+    /// later newcomer foreign, which demotes that newcomer to unclassified —
+    /// session or group evidence, else the existing refusal. It can never turn
+    /// an unrelated process into an owned one.
+    ///
+    /// The window is sufficient: a newcomer's parent was alive when it forked,
+    /// so either no census ever saw the parent (already the unseen-parent case,
+    /// untouched here) or the last census that saw it is the previous one, since
+    /// every live process appears in every census. `previous` only advances on a
+    /// successful update, so a refused or failed census never shifts it.
+    fn prune(&mut self, rows: &[Snapshot], current: BTreeSet<u64>) {
+        if self.known.len() > PRUNE_ABOVE {
+            let previous = std::mem::take(&mut self.previous);
+            let parents = rows.iter().map(|s| s.parent_birth).collect::<BTreeSet<_>>();
+            self.known.retain(|birth, own| {
+                *own || current.contains(birth)
+                    || previous.contains(birth)
+                    || parents.contains(birth)
+            });
+        }
+        self.previous = current;
     }
     /// Ancestry has stalled: each pending newcomer's parent exited before any
     /// census saw it. That happens constantly on a working machine and says
@@ -124,17 +197,25 @@ impl Tracking {
     /// A process group lives inside exactly one session. A process enters a
     /// session only by being forked inside it or by creating it, and `setpgid`
     /// never crosses a session. The owned leader starts its own session, so
-    /// every group is wholly owned (the leader's session, or one a descendant
-    /// created) or wholly unrelated. A newcomer sharing its group with a process
-    /// already classified in this same census therefore has that classification.
-    /// A group with no classified member, or with conflicting members, proves
-    /// nothing, and the newcomer stays unconfirmed.
-    fn classify_by_group(&mut self, rows: &[Snapshot], pending: &mut Vec<&Snapshot>) -> bool {
-        let mut groups: BTreeMap<i32, Option<bool>> = BTreeMap::new();
-        for row in rows.iter().filter(|row| row.group > 0) {
+    /// every group — and every session — is wholly owned (the leader's session,
+    /// or one a descendant created) or wholly unrelated. A newcomer sharing that
+    /// scope with a process already classified in this same census therefore has
+    /// that classification. A scope with no classified member, or with
+    /// conflicting members, proves nothing, and the newcomer stays unconfirmed.
+    /// XNU's fork allocation skips a PID while it still names a live process,
+    /// group or session, so neither id can be recycled under a census. Zero is
+    /// never a scope and classifies nothing.
+    fn classify_by(
+        &mut self,
+        rows: &[Snapshot],
+        pending: &mut Vec<&Snapshot>,
+        scope: impl Fn(&Snapshot) -> i32,
+    ) -> bool {
+        let mut scopes: BTreeMap<i32, Option<bool>> = BTreeMap::new();
+        for row in rows.iter().filter(|row| scope(row) > 0) {
             if let Some(&own) = self.known.get(&row.birth) {
-                groups
-                    .entry(row.group)
+                scopes
+                    .entry(scope(row))
                     .and_modify(|verdict| {
                         if *verdict != Some(own) {
                             *verdict = None;
@@ -144,7 +225,7 @@ impl Tracking {
             }
         }
         let before = pending.len();
-        pending.retain(|s| match groups.get(&s.group).copied().flatten() {
+        pending.retain(|s| match scopes.get(&scope(s)).copied().flatten() {
             Some(own) => {
                 self.known.insert(s.birth, own);
                 if own {
@@ -158,10 +239,7 @@ impl Tracking {
     }
 }
 fn gap() -> io::Error {
-    io::Error::new(
-        io::ErrorKind::InvalidData,
-        "descendant ancestry is unconfirmed",
-    )
+    io::Error::new(io::ErrorKind::InvalidData, Refusal::Gap)
 }
 
 #[cfg(test)]
@@ -170,6 +248,7 @@ mod tests {
     fn row(pid: i32, birth: u64, parent: u64) -> Snapshot {
         Snapshot {
             pid,
+            session: pid,
             group: pid,
             birth,
             parent_birth: parent,
@@ -257,7 +336,8 @@ mod tests {
         );
         assert_eq!(t.owned().len(), 2);
         assert!(!t.failed());
-        // A group with no classified member proves nothing.
+        // Neither a group nor a session with no classified member proves
+        // anything: this newcomer is alone in both and still refuses.
         let mut t = Tracking::new(&[root, foreign], root);
         assert!(
             t.update(&[root, foreign, grouped(70, 700, 997, 70)])
@@ -272,5 +352,83 @@ mod tests {
         let mixed = grouped(20, 200, 1, 10);
         assert!(t.update(&[root, mixed, grouped(80, 800, 996, 10)]).is_err());
         assert!(t.failed());
+    }
+    #[test]
+    fn native_macos_session_evidence_classifies_detached_group() {
+        let root = row(10, 100, 1);
+        let foreign = row(20, 200, 1);
+        let scoped = |pid, birth, parent, session, group| Snapshot {
+            session,
+            group,
+            ..row(pid, birth, parent)
+        };
+        // The production shape: an unrelated spawner puts a shell in its own
+        // process group, the shell forks and exits before any census, and the
+        // survivor is the only member of that group. Its session still holds a
+        // classified member, so it is unrelated and observation continues.
+        let mut t = Tracking::new(&[root, foreign], root);
+        let survivor = scoped(50, 500, 999, 20, 49);
+        assert_eq!(t.update(&[root, foreign, survivor]).unwrap().len(), 1);
+        assert!(!t.failed());
+        assert_eq!(t.owned().len(), 1);
+        // The same shape inside the leader's session is owned and live, even
+        // though the leader's group holds nobody but the leader.
+        let escaped = scoped(60, 600, 998, 10, 59);
+        assert_eq!(
+            t.update(&[root, foreign, survivor, escaped]).unwrap().len(),
+            2
+        );
+        assert_eq!(t.owned().len(), 2);
+        // A survivor that entered a session of its own through an unseen parent
+        // has neither session nor group evidence and still refuses.
+        let mut t = Tracking::new(&[root, foreign], root);
+        assert!(
+            t.update(&[root, foreign, scoped(70, 700, 997, 70, 70)])
+                .is_err()
+        );
+        assert!(t.failed());
+        // A refused session id (zero) is not evidence and classifies nothing.
+        let mut t = Tracking::new(&[root, foreign], root);
+        assert!(
+            t.update(&[root, scoped(20, 200, 1, 0, 20), scoped(90, 900, 995, 0, 89)])
+                .is_err()
+        );
+    }
+    #[test]
+    fn native_macos_known_births_are_pruned_without_losing_ancestry() {
+        let init = row(1, 1, 0);
+        let root = row(10, 100, 1);
+        let mut t = Tracking::new(&[init, root], root);
+        let foreign = |birth: u64| row((birth % 20000) as i32 + 1000, birth, init.birth);
+        // Unrelated churn far past the prune threshold: each census replaces the
+        // whole foreign population, and the map must stay bounded.
+        let mut birth = 1000u64;
+        for _ in 0..16 {
+            let mut rows = vec![init, root];
+            for _ in 0..1024 {
+                birth += 1;
+                rows.push(foreign(birth));
+            }
+            t.update(&rows).unwrap();
+        }
+        assert!(!t.failed());
+        assert!(
+            t.known_len() <= PRUNE_ABOVE + 1200,
+            "known grew unbounded: {}",
+            t.known_len()
+        );
+        // An owned birth is never forgotten: a late child of the leader is still
+        // owned after all that churn, even though no census kept the leader's
+        // ancestors alive.
+        let owned_child = row(4242, birth + 1, root.birth);
+        assert_eq!(t.update(&[init, root, owned_child]).unwrap().len(), 2);
+        assert!(t.owned().len() == 2 && !t.failed());
+        // A foreign parent seen in one census and gone in the next still
+        // classifies the child it left behind.
+        let parent = foreign(birth + 2);
+        t.update(&[init, root, parent]).unwrap();
+        let orphan = row(4243, birth + 3, parent.birth);
+        assert!(t.update(&[init, root, orphan]).unwrap().len() == 1);
+        assert!(!t.failed());
     }
 }

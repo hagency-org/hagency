@@ -11,6 +11,11 @@ use std::{
 pub(super) struct Snapshot {
     pub pid: i32,
     pub parent_pid: i32,
+    /// Session, or zero when the kernel refused to name one. A process enters a
+    /// session only by being forked inside it or by creating it, and `setpgid`
+    /// never crosses a session, so a session carries the same evidence a group
+    /// does one level coarser: it survives a descendant changing only its group.
+    pub session: i32,
     /// Process group. A group lives inside exactly one session, and a session is
     /// entered only by fork inheritance or by creating it, so a group never mixes
     /// the owned leader's descendants with unrelated processes.
@@ -109,6 +114,20 @@ pub(super) fn observe(pid: i32) -> io::Result<Option<Snapshot>> {
     let Some(short) = query::<Short>(pid, 13)? else {
         return Ok(None);
     };
+    // Read inside the identity bracket, so a session can never be combined with
+    // a different PID lifetime. Darwin answers for any PID, but a refusal is not
+    // evidence about this row and must never end a census: zero means "no
+    // session evidence" and classification ignores it.
+    // SAFETY: getsid is a pure lookup on a PID; it writes nothing.
+    let mut session = unsafe { libc::getsid(pid) };
+    // Only -1 sets errno. A zero answer reads no errno, which would otherwise be
+    // a stale value from an earlier row and could report a live process gone.
+    if session < 0 {
+        if io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH) {
+            return Ok(None);
+        }
+        session = 0;
+    }
     let Some(after) = query::<Unique>(pid, 17)? else {
         return Ok(None);
     };
@@ -123,6 +142,7 @@ pub(super) fn observe(pid: i32) -> io::Result<Option<Snapshot>> {
     Ok(Some(Snapshot {
         pid,
         parent_pid: short.parent as i32,
+        session,
         group: short.group as i32,
         birth: after.birth,
         parent_birth: after.parent,

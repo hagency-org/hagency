@@ -1,4 +1,4 @@
-use super::{StopCause, SupervisedReport};
+use super::{StopCause, StopDetail, SupervisedReport};
 use crate::{Launch, StopReport};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -105,6 +105,10 @@ enum Reply {
     Failed,
     Stopped {
         cause: StopCause,
+        /// Fixed refusal category. Absent from an older guardian's frame and
+        /// from every cause that names no category; never load-bearing.
+        #[serde(default)]
+        detail: Option<StopDetail>,
         leader_exited: bool,
         signals_accepted: bool,
         whole_tree_stopped: bool,
@@ -282,11 +286,18 @@ impl Supervisor {
             }
             Reply::Stopped {
                 cause,
+                detail,
                 leader_exited,
                 signals_accepted,
                 whole_tree_stopped,
             } => {
-                self.record_stopped(cause, leader_exited, signals_accepted, whole_tree_stopped)?;
+                self.record_stopped(
+                    cause,
+                    detail,
+                    leader_exited,
+                    signals_accepted,
+                    whole_tree_stopped,
+                )?;
                 #[cfg(target_os = "linux")]
                 if self.recovery.is_some() {
                     // Observation must not cache a peer report in place of the
@@ -298,7 +309,7 @@ impl Supervisor {
                             .remember_signal_failure();
                     }
                     self.report = None;
-                    self.recover(cause, until)?;
+                    self.recover(cause, detail, until)?;
                 }
                 Ok(false)
             }
@@ -315,6 +326,7 @@ impl Supervisor {
     fn record_stopped(
         &mut self,
         cause: StopCause,
+        detail: Option<StopDetail>,
         leader_exited: bool,
         signals_accepted: bool,
         whole_tree_stopped: bool,
@@ -326,6 +338,7 @@ impl Supervisor {
         self.pending_observation = None;
         self.report = Some(SupervisedReport {
             cause,
+            detail,
             scope: StopReport {
                 leader_exited,
                 signals_accepted,
@@ -341,7 +354,7 @@ impl Supervisor {
                 return Ok(self.report);
             }
             let until = Instant::now() + timeout;
-            let cause = match self.wait_inner(timeout) {
+            let (cause, detail) = match self.wait_inner(timeout) {
                 Ok(None) => return Ok(None),
                 Ok(Some(report)) => {
                     if !report.scope.signals_accepted {
@@ -350,13 +363,13 @@ impl Supervisor {
                             .ok_or_else(protocol_error)?
                             .remember_signal_failure();
                     }
-                    report.cause
+                    (report.cause, report.detail)
                 }
-                Err(_) => StopCause::GuardianLost,
+                Err(_) => (StopCause::GuardianLost, None),
             };
             // A peer report is not the independent cgroup observation.
             self.report = None;
-            return self.recover(cause, until).map(Some);
+            return self.recover(cause, detail, until).map(Some);
         }
         self.wait_inner(timeout)
     }
@@ -369,12 +382,14 @@ impl Supervisor {
             match reply {
                 Reply::Stopped {
                     cause,
+                    detail,
                     leader_exited,
                     signals_accepted,
                     whole_tree_stopped,
                 } => {
                     self.record_stopped(
                         cause,
+                        detail,
                         leader_exited,
                         signals_accepted,
                         whole_tree_stopped,
@@ -394,7 +409,7 @@ impl Supervisor {
         let until = Instant::now() + timeout;
         #[cfg(target_os = "linux")]
         if self.recovery.is_some() {
-            return self.recover(StopCause::Requested, until);
+            return self.recover(StopCause::Requested, None, until);
         }
         if !self.stop_requested {
             self.stop_requested = true;
@@ -417,7 +432,12 @@ impl Supervisor {
             })
     }
     #[cfg(target_os = "linux")]
-    fn recover(&mut self, cause: StopCause, until: Instant) -> io::Result<SupervisedReport> {
+    fn recover(
+        &mut self,
+        cause: StopCause,
+        detail: Option<StopDetail>,
+        until: Instant,
+    ) -> io::Result<SupervisedReport> {
         let scope = self
             .recovery
             .as_mut()
@@ -426,7 +446,11 @@ impl Supervisor {
         // Empty population proves no live execution, not adoption/reaping of all
         // zombies. Only our retained guardian Child is reaped by this host.
         let _ = self.child.try_wait();
-        let report = SupervisedReport { cause, scope };
+        let report = SupervisedReport {
+            cause,
+            detail,
+            scope,
+        };
         self.report = Some(report);
         Ok(report)
     }
@@ -438,7 +462,7 @@ impl Drop for Supervisor {
         if self.recovery.is_some() && self.report.is_none() {
             // This explicitly optional path can kill a failed guardian safely:
             // its workspace inherited the independently retained cgroup first.
-            let _ = self.recover(StopCause::OwnerLost, until);
+            let _ = self.recover(StopCause::OwnerLost, None, until);
         }
         let _ = self.pipe.stream.shutdown(Shutdown::Both);
         // EOF authorizes cleanup, not killing the guardian. Retain its independent
@@ -507,9 +531,13 @@ pub fn run_guardian() -> io::Result<()> {
         Instant::now() + Duration::from_secs(1),
     )?;
     let mut observation_nonce = 0u64;
+    // The guardian's stderr is /dev/null by construction, so the only place a
+    // refusal can be recorded is the terminal report it sends to its host.
+    let mut detail: Option<StopDetail> = None;
     let cause = loop {
         #[cfg(target_os = "macos")]
-        if process.observe().is_err() {
+        if let Err(error) = process.observe() {
+            detail = Some(scope::observation_detail(&error));
             break StopCause::ObservationFailure;
         }
         match pipe.receive::<Request>(Instant::now() + Duration::from_millis(25), 1024) {
@@ -531,7 +559,10 @@ pub fn run_guardian() -> io::Result<()> {
                         }
                     }
                     Ok(false) => break StopCause::LeaderExited,
-                    Err(_) => break StopCause::ObservationFailure,
+                    Err(_) => {
+                        detail = Some(StopDetail::LeaderUnreadable);
+                        break StopCause::ObservationFailure;
+                    }
                 }
             }
             Ok(Some(_)) => break StopCause::ProtocolFailure,
@@ -549,13 +580,17 @@ pub fn run_guardian() -> io::Result<()> {
         match process.is_leader_running() {
             Ok(true) => {}
             Ok(false) => break StopCause::LeaderExited,
-            Err(_) => break StopCause::ObservationFailure,
+            Err(_) => {
+                detail = Some(StopDetail::LeaderUnreadable);
+                break StopCause::ObservationFailure;
+            }
         }
     };
     let report = process.stop(Duration::from_secs(2))?;
     let _ = pipe.send(
         &Reply::Stopped {
             cause,
+            detail,
             leader_exited: report.leader_exited,
             signals_accepted: report.signals_accepted,
             whole_tree_stopped: report.whole_tree_stopped,
@@ -565,7 +600,12 @@ pub fn run_guardian() -> io::Result<()> {
     if report.whole_tree_stopped {
         Ok(())
     } else {
-        Err(io::Error::other("complete descendant cleanup is unproven"))
+        // Exit code 1 alone left three live occurrences unexplainable. The host
+        // learns the same fact from the report above; this covers any embedding
+        // that does give the guardian a stderr.
+        Err(io::Error::other(format!(
+            "complete descendant cleanup is unproven ({cause:?}, {detail:?})"
+        )))
     }
 }
 
@@ -627,6 +667,7 @@ mod tests {
                 peer.send(
                     &Reply::Stopped {
                         cause: StopCause::Requested,
+                        detail: None,
                         leader_exited: true,
                         signals_accepted: true,
                         whole_tree_stopped: false,

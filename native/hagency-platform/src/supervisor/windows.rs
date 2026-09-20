@@ -63,6 +63,8 @@ impl Supervisor {
                 }
                 let report = SupervisedReport {
                     cause: StopCause::LeaderExited,
+                    // The Job Object reports population, not a tracker refusal.
+                    detail: None,
                     scope: self.process.stop(remaining.min(Duration::from_secs(2)))?,
                 };
                 if report.scope.whole_tree_stopped {
@@ -83,6 +85,7 @@ impl Supervisor {
         }
         let report = SupervisedReport {
             cause: StopCause::Requested,
+            detail: None,
             scope: self.process.stop(timeout)?,
         };
         if report.scope.whole_tree_stopped {

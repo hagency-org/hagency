@@ -96,6 +96,10 @@ mod custody_tests {
             ));
             status.protocol = Some("not_started");
             status.cleanup = Some("whole_tree_stopped");
+            status.stop_cause = Some(stop_cause_label(
+                hagency_platform::StopCause::ObservationFailure,
+                Some(hagency_platform::StopDetail::AncestryUnconfirmed),
+            ));
             status.settlement = Some("canonical_reply_ready");
         }
         handle.fail(Failure::OutcomeUnknown);
@@ -109,6 +113,10 @@ mod custody_tests {
         assert_eq!(value["runtime"]["write_accepted_bytes"], usize::MAX);
         assert_eq!(value["runtime"]["refused_notification"], "thread_status");
         assert_eq!(value["runtime"].as_object().unwrap().len(), 9);
+        assert_eq!(
+            value["stop_cause"],
+            "observation_failure:ancestry_unconfirmed"
+        );
         assert!(serde_json::to_vec(&value).unwrap().len() <= 768);
         assert_eq!(
             session_error_label(session::Error::Rejected(i64::MIN)),
@@ -312,6 +320,33 @@ fn owned_failure_label(error: &hagency_execution::Failure) -> &'static str {
         UnsupportedRunner { .. } => "unsupported_runner",
     }
 }
+/// Bounded projection of why a guardian stopped observing its tree. Diagnostic
+/// only: a fixed category (ADR-175), never authority, retry input or cleanup
+/// proof, and it never changes the pinned `cleanup` vocabulary beside it.
+/// `ObservationFailure` alone cannot be acted on, so it carries the guardian's
+/// own refusal category when it named one.
+fn stop_cause_label(
+    cause: hagency_platform::StopCause,
+    detail: Option<hagency_platform::StopDetail>,
+) -> &'static str {
+    use hagency_platform::{StopCause::*, StopDetail};
+    match (cause, detail) {
+        (ObservationFailure, Some(StopDetail::AncestryUnconfirmed)) => {
+            "observation_failure:ancestry_unconfirmed"
+        }
+        (ObservationFailure, Some(StopDetail::TrackingGap)) => "observation_failure:tracking_gap",
+        (ObservationFailure, Some(StopDetail::CensusFailed)) => "observation_failure:census_failed",
+        (ObservationFailure, Some(StopDetail::LeaderUnreadable)) => {
+            "observation_failure:leader_unreadable"
+        }
+        (ObservationFailure, None) => "observation_failure",
+        (Requested, _) => "requested",
+        (LeaderExited, _) => "leader_exited",
+        (OwnerLost, _) => "owner_lost",
+        (ProtocolFailure, _) => "protocol_failure",
+        (GuardianLost, _) => "guardian_lost",
+    }
+}
 /// Bounded projection of which store refusal produced a settlement failure.
 /// Diagnostic only: a fixed label, never authority, retry, reply or lease
 /// input, and never the store's own error text.
@@ -401,6 +436,11 @@ pub struct Status {
     workspace_registered: bool,
     protocol: Option<&'static str>,
     cleanup: Option<&'static str>,
+    /// Why the guardian stopped, when it reported one. `cleanup` is a pinned
+    /// vocabulary and keeps its existing words; this names the cause beside it
+    /// from fixed categories only (ADR-175), never free text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stop_cause: Option<&'static str>,
     settlement: Option<&'static str>,
     error: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -431,6 +471,7 @@ impl StatusHandle {
             workspace_registered: false,
             protocol: None,
             cleanup: None,
+            stop_cause: None,
             settlement: None,
             error: None,
             matrix_error: None,
@@ -457,6 +498,7 @@ impl StatusHandle {
         status.workspace_registered = false;
         status.protocol = None;
         status.cleanup = None;
+        status.stop_cause = None;
         status.settlement = None;
         status.error = None;
         status.matrix_error = None;
@@ -520,6 +562,12 @@ impl StatusHandle {
             Cleanup::Observed(v) if v.scope.whole_tree_stopped => "whole_tree_stopped",
             _ => "unknown",
         });
+        // The guardian already names why it stopped and the host used to drop
+        // it, which left three live occurrences of an unexplained `unknown`.
+        status.stop_cause = match report.cleanup {
+            Cleanup::Observed(v) => Some(stop_cause_label(v.cause, v.detail)),
+            _ => None,
+        };
         status.settlement = Some(match report.settlement {
             Settlement::Pending => "pending",
             Settlement::Completed => "completed",
