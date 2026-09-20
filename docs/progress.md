@@ -11650,3 +11650,17 @@ Still ending live fleets: both guardians exiting together (third occurrence, exi
 code 1 on both children, cause lost to a discarded stderr); an unanswered owner
 approval ending the agent at expiry. Detail in
 docs/design/native-execution-parity.md.
+
+## 2026-09-20 — Codex live validation and first passing single-fleet soak
+
+- Pushed 769c6825..1427fbf7 (eleven commits): agent identity, redial
+  reachability + hosted fixture budgets, approval expiry decline, guardian session
+  evidence + pruning + recorded stop cause, delegated task delivery, approval pump
+  vs host deny, delegated payload carries the task, coalition evidence, wrong-task
+  refusal names the ID, census row re-read.
+- Live: delegation x4, expiry decline x3, churn, redial rescue; qualification on
+  the UNMODIFIED binary with the official model; one fleet, 100 rounds, 200 tasks,
+  zero wrong answers, 63 minutes (tracing build, official model).
+- Details, the five defects only live runs found, and what is still open:
+  docs/design/native-execution-parity.md, "Live validation of the 2026-09-19/20
+  batch".

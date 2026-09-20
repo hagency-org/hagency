@@ -811,3 +811,76 @@ returns only "invalid native command or runner context"; peer messages have no
 production wake lane; restart and recovery are unchanged. The official model is
 unavailable until 2026-09-24, so every live run here used the private qualification
 overlay and nothing has been qualified on the unmodified binary.
+
+### Live validation of the 2026-09-19/20 batch, and the first passing soak (2026-09-20)
+
+Heads c52b4ed1 to 1427fbf7. Every gap the previous section lists as what ends a
+live fleet was closed offline first and then met live; the live runs found five
+more defects the offline suites could not, and each was fixed and pushed the same
+day. The official model became available again during the session, so the last
+qualification ran on the unmodified binary.
+
+Passed live:
+
+- Delegation end to end, four times (ADR180 delivery): the delegator is approved
+  once, the assignee posts its own task notice, the intent activates, and the
+  assignee writes the exact file in its own workdir and replies. It used to stay
+  pending forever.
+- An owner approval nobody answers is denied by the host at the owner bound with
+  its own durable reason, the agent replies and carries on, and the fleet stays up
+  (ADR046 amendment), three times.
+- 175 detached unrelated survivors spawned during a live delegation: no guardian
+  refusal (ADR029 session evidence).
+- The connect redial rescued a request live for the first time: one timed-out dial
+  of `POST keys/query`, redialled, no failure. It cannot rescue two consecutive
+  5 s connect timeouts, which spend the whole 10 s request budget.
+- Qualification on the unmodified binary 1427fbf7 with the official model and no
+  policy overlay: three verified two-agent rounds, one delegation, one expiry, and
+  a clean one-second shutdown.
+- Soak: one fleet, 100 rounds, 200 tasks, 200 replies delivered and present on the
+  homeserver, no wrong answer, no lease, 63 minutes, through an hourly updater
+  wake, zero guardian refusals, zero failed census rows, zero redials needed. It
+  ran on the tracing build with the official model. The same soak on the
+  unmodified binary reached 28 rounds and lost an agent to
+  `ancestry_unconfirmed`; see below.
+
+Defects only the live runs found:
+
+1. The host's expiry deny was a second writer the approval pump did not expect:
+   the pump read a request as pending, the deny landed during its service turn,
+   the intake's target read refused, the pump stopped and every agent ended. A
+   planned request that is durably decided now leaves the plan (ADR046).
+2. A delegation was delivered and then done wrong: the assignee's payload held the
+   owner's message to the delegator but not the task, and it carried out the
+   message. The payload now carries `task` and `delegated_by` (ADR180); nothing
+   was removed from the inbox.
+3. The recorded stop cause named the first soak's killer on its first use:
+   `observation_failure:ancestry_unconfirmed`, four daemons of an hourly launchd
+   updater, each alone in a session of its own. Coalition evidence, negative only,
+   now classifies them (ADR029); two later soaks ran through that wake untouched.
+4. `observation_failure:census_failed` thirty rounds into the next soak: one
+   unrelated row read mid-exec failed the whole sweep. The row is re-read, bounded
+   (ADR029). Reproduced offline within a few hundred sweeps.
+5. A model finished its work, named the wrong task on completion, read only that
+   the ID differed and gave up. The refusal now names the assigned task ID.
+
+Still open, in the order they limit a long run:
+
+- A process in the service's OWN coalition that daemonizes through a parent no
+  census saw still stops every guardian. Seen three times: once it was the
+  operator's own `ssh` leaving a background master from the terminal that had
+  started the service, twice the process was never named. A service started by
+  launchd has a coalition of its own, which would leave this to the owned tree.
+- A provider refusal (usage limit) surfaces as `session_error: scope` and ends
+  the agent instead of failing the task. That is what ended one 77-round soak.
+- The context bleed is reduced, not closed: once in about 450 live tasks an agent
+  whose payload named it correctly still carried out the other agent's
+  near-identical request. None in the last 300.
+- A service holding a retained owner after an owned-attempt failure ignores
+  SIGTERM; a healthy one closes in a second.
+- Hosted Ubuntu was red on three of five runs on three different fixtures, none
+  touched by these commits; macOS is green.
+- Unchanged: restart and recovery, the owner-join wait, follow-ups in a delegated
+  thread, a completion report to the delegator, peer ID discovery, a peer-message
+  wake lane. The policy decline of a refused command approval has still not been
+  seen live.
