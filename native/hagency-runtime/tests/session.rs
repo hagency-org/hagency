@@ -1445,13 +1445,14 @@ async fn native_codex_approval_session() {
     assert!(update(&mut session, &mut peer, first).await.is_err());
 }
 
-/// Live, one command approval the adapter refused by policy closed the session
-/// and ended the agent. Such a request now gets its family's own decline, the
-/// turn goes on, and its resolution never reaches the host coordinator.
+/// Live, twice, a command approval the adapter refused by its shape closed the
+/// session and ended the agent, for a request the owner never saw. The retained
+/// runner refuses no approval by shape: it parks every one for the owner and
+/// answers accept or decline. So does this adapter now: each of these reaches
+/// the host coordinator as an ordinary approval, and nothing is answered for it.
 #[tokio::test]
-async fn native_codex_approval_policy_refusal_declines_and_the_turn_goes_on() {
+async fn native_codex_approval_shapes_all_reach_the_owner() {
     use hagency_runtime::codex::RequestId;
-    let decline = json!({"decision":"decline"});
     let common =
         json!({"threadId":"thread-one","turnId":"turn-one","itemId":"item-one","startedAtMs":1});
     let with = |method: &str, extra: Value| {
@@ -1462,80 +1463,46 @@ async fn native_codex_approval_policy_refusal_declines_and_the_turn_goes_on() {
         json!({"id":7,"method":method,"params":params})
     };
     let command = "item/commandExecution/requestApproval";
-    for (event, expected) in [
-        (
-            with(
-                command,
-                json!({"kind":"other","command":"echo","cwd":cwd()}),
-            ),
-            decline.clone(),
+    for event in [
+        with(
+            command,
+            json!({"kind":"other","command":"echo","cwd":cwd()}),
         ),
-        (
-            with(
-                command,
-                json!({"command":"echo","cwd":cwd(),"availableDecisions":["acceptForSession","decline"]}),
-            ),
-            decline.clone(),
+        with(
+            command,
+            json!({"command":"echo","cwd":cwd(),"availableDecisions":["acceptForSession","decline"]}),
         ),
-        (
-            with(
-                "item/fileChange/requestApproval",
-                json!({"grantRoot":"/work"}),
-            ),
-            decline.clone(),
+        // The shape that ended a live soak: no decline on the menu.
+        with(
+            command,
+            json!({"command":"echo","cwd":cwd(),"availableDecisions":["accept","cancel"]}),
         ),
-        (
-            with(
-                "item/permissions/requestApproval",
-                json!({"cwd":cwd(),"permissions":{"fileSystem":{"globScanMaxDepth":3}}}),
-            ),
-            json!({"permissions":{},"scope":"turn"}),
+        with(
+            "item/fileChange/requestApproval",
+            json!({"grantRoot":"/work"}),
+        ),
+        with(
+            "item/permissions/requestApproval",
+            json!({"cwd":cwd(),"permissions":{"fileSystem":{"globScanMaxDepth":3}}}),
         ),
     ] {
         let (mut session, mut peer) = running().await;
         session.enable_approvals().unwrap();
-        assert!(matches!(
-            update(&mut session, &mut peer, event).await,
-            Ok(Update::Notice)
-        ));
-        assert_eq!(
-            read(&mut peer.stdin).await,
-            json!({"id":7,"result":expected})
-        );
-        // Not an owner callback: the coordinator must not see its resolution.
-        assert!(matches!(
-            update(
-                &mut session,
-                &mut peer,
-                note(
-                    "serverRequest/resolved",
-                    json!({"threadId":"thread-one","requestId":7})
-                )
-            )
-            .await,
-            Ok(Update::Progress)
-        ));
-        // The turn goes on: an ordinary request still reaches the coordinator.
-        let Ok(Update::Approval(request)) =
+        let Ok(Update::Approval(request)) = update(&mut session, &mut peer, event).await else {
+            panic!("an approval was refused by its shape instead of reaching the owner")
+        };
+        // The exact accept and decline it can then be answered with are pinned
+        // beside the adapter (`native_codex_approval_mapping`).
+        assert_eq!(request.id(), &RequestId::Number(7));
+        // The turn goes on: the next request reaches the coordinator too.
+        let Ok(Update::Approval(next)) =
             update(&mut session, &mut peer, approval_event(json!(8))).await
         else {
-            panic!("the turn ended with the declined request")
+            panic!("the turn ended with the first request")
         };
-        assert_eq!(request.id(), &RequestId::Number(8));
+        assert_eq!(next.id(), &RequestId::Number(8));
     }
-
-    // No decline this adapter can issue: the refusal still ends the session.
-    let (mut session, mut peer) = running().await;
-    session.enable_approvals().unwrap();
-    let no_decline = with(
-        command,
-        json!({"command":"echo","cwd":cwd(),"availableDecisions":["accept","cancel"]}),
-    );
-    assert!(matches!(
-        update(&mut session, &mut peer, no_decline).await,
-        Err(Error::Policy)
-    ));
-    // A malformed request is a protocol fault, never a declinable refusal.
+    // A malformed request is a protocol fault and still ends the session.
     let (mut session, mut peer) = running().await;
     session.enable_approvals().unwrap();
     assert!(matches!(
@@ -1546,29 +1513,5 @@ async fn native_codex_approval_policy_refusal_declines_and_the_turn_goes_on() {
         )
         .await,
         Err(Error::Malformed)
-    ));
-    // A turn that keeps asking is ended by the refusal itself.
-    let (mut session, mut peer) = running().await;
-    session.enable_approvals().unwrap();
-    for id in 1..=8 {
-        let mut event = with(
-            command,
-            json!({"kind":"other","command":"echo","cwd":cwd()}),
-        );
-        event["id"] = json!(id);
-        assert!(matches!(
-            update(&mut session, &mut peer, event).await,
-            Ok(Update::Notice)
-        ));
-        assert_eq!(read(&mut peer.stdin).await["id"], json!(id));
-    }
-    let mut event = with(
-        command,
-        json!({"kind":"other","command":"echo","cwd":cwd()}),
-    );
-    event["id"] = json!(9);
-    assert!(matches!(
-        update(&mut session, &mut peer, event).await,
-        Err(Error::Policy)
     ));
 }

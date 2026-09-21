@@ -22,7 +22,7 @@ upstream provides no proof of effective permission application.
 - Treat upstream resolution cancellation EOF timeout and write completion as insufficient proof of effective application.
 - Keep pending data bounded and reject malformed unsupported or substituted requests without granting authority.
 - Decline an unanswered callback at its owner bound only after recording a durable host-minted deny, only with that family's own decline, never an accept, and only when the host opted the session in; a failed approval channel still ends the operation.
-- Answer a pinned approval request that adapter policy refuses with that family's own decline when it offers one, as the adapter's refusal and never an owner verdict, keep its resolution from the coordinator, and bound such declines per turn.
+- Refuse no pinned approval request by its shape, as the retained runner does: every well-formed command, file-change and permissions request reaches the owner, who sees the whole request, and is answered with nothing but that family's exact accept or decline. A request the core cannot turn into an exact reusable rule is offered once or deny only. A malformed request is a protocol fault and still ends the session.
 - Cover real durable store admission and fake-stream protocol exchanges without live models.
 
 ### Must Not
@@ -62,12 +62,19 @@ Scenario: Default sessions refuse approval and opted sessions preserve exact sco
   When request and resolution messages arrive
   Then opt-in is explicit and stale or duplicate request responses fail closed
 
-Scenario: A request refused by adapter policy is declined and the turn goes on
-  Test: native_codex_approval_policy_refusal_declines_and_the_turn_goes_on
-  Given an opted session and pinned approval requests the adapter refuses by policy
-  When each arrives and is later resolved upstream
-  Then the family's own decline is written without any owner authority and the resolution never reaches the coordinator
-  And a following ordinary request is still retained while no-decline and malformed requests and the ninth refusal end the session
+Scenario: No approval is refused by its shape
+  Test: native_codex_approval_shapes_all_reach_the_owner
+  Given an opted session and command, file-change and permissions requests with an unusual kind, a decision menu without accept or without decline, a grant root, or an unusual permission profile
+  When each arrives
+  Then it reaches the host coordinator as an ordinary approval, nothing is answered on the owner's behalf, and the turn goes on
+  And a malformed request still ends the session
+
+Scenario: Whatever was offered or proposed, the answer is an exact accept or decline
+  Test: native_codex_approval_mapping
+  Given pinned requests carrying alternate decision menus, policy amendments, a network context, a grant root or an unusual permission profile
+  When each is parsed and answered
+  Then a command or file change is answered accept or decline and never a session-wide or amended decision
+  And a permission profile is granted as asked for this turn only, or not at all
 
 Scenario: An unanswered owner wait is declined by the host and the turn goes on
   Test: native_owned_approval_owner_wait_expiry_declines_and_continues

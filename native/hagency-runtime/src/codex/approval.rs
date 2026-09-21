@@ -133,22 +133,26 @@ impl ApprovalRequest {
                         "availableDecisions",
                     ],
                 )?;
-                if params.get("kind").is_some_and(|v| v != "command") {
-                    return Err(Error::Policy);
+                // The retained runner refuses no approval by shape: it parks every
+                // one for the owner, who sees the whole request, and answers
+                // accept or decline (`router/src/runner.ts`). Refusing here ended
+                // the session instead, and with it the agent, for a request the
+                // owner never saw (live 2026-09-20, twice). Shapes the core cannot
+                // turn into an exact reusable rule are offered once or deny only,
+                // and this adapter still answers nothing but accept or decline.
+                if present(&params, "kind").is_some() {
+                    optional_text(&params, "kind", 255)?;
                 }
                 for field in ["approvalId", "environmentId", "command", "cwd"] {
                     optional_text(&params, field, 8192)?;
                 }
-                // Alternate decision sets must still offer exactly the two
-                // responses this adapter can issue. Never apply amendments.
-                if let Some(v) = present(&params, "availableDecisions") {
-                    let values = v
-                        .as_array()
-                        .filter(|a| a.len() <= 16)
-                        .ok_or(Error::Malformed)?;
-                    if !values.contains(&json!("accept")) || !values.contains(&json!("decline")) {
-                        return Err(Error::Policy);
-                    }
+                // The offered decisions are the requester's menu, not this
+                // adapter's: it answers accept or decline whatever the list says,
+                // as the retained runner does. Never apply amendments.
+                if let Some(v) = present(&params, "availableDecisions")
+                    && v.as_array().is_none_or(|a| a.len() > 16)
+                {
+                    return Err(Error::Malformed);
                 }
                 if let Some(v) = present(&params, "commandActions")
                     && !v
@@ -169,13 +173,12 @@ impl ApprovalRequest {
                     ) {
                         return Err(Error::Malformed);
                     }
-                    // Network callbacks are not arbitrary command callbacks.
-                    if present(&params, "command").is_some()
-                        || present(&params, "cwd").is_some()
-                        || present(&params, "additionalPermissions").is_some()
-                    {
-                        return Err(Error::Policy);
-                    }
+                    // A network callback that also names a command goes to the
+                    // owner like any other. The core scopes it as the retained
+                    // product does: approving a network request is a decision
+                    // about the host (`lib/execution-authorization.js`).
+                    optional_text(&params, "command", 8192)?;
+                    optional_text(&params, "cwd", 8192)?;
                 } else {
                     required_text(&params, "command", 8192)?;
                     required_text(&params, "cwd", 8192)?;
@@ -184,10 +187,10 @@ impl ApprovalRequest {
             }
             "item/fileChange/requestApproval" => {
                 fields(&params, &shared, &["grantRoot"])?;
-                // The grant-root UI asks for session-wide write authority.
-                if present(&params, "grantRoot").is_some() {
-                    return Err(Error::Policy);
-                }
+                // The grant-root UI asks for session-wide write authority. The
+                // owner sees that request; the answer is still an exact accept or
+                // decline of this one change, never the session-wide grant.
+                optional_text(&params, "grantRoot", 8192)?;
                 Kind::File
             }
             "item/permissions/requestApproval" => {
@@ -271,8 +274,8 @@ fn profile(value: &Value) -> Result<(), Error> {
     }
     if let Some(fs) = present(value, "fileSystem") {
         fields(fs, &["read", "write", "entries", "globScanMaxDepth"], &[])?;
-        if present(fs, "globScanMaxDepth").is_some() {
-            return Err(Error::Policy);
+        if present(fs, "globScanMaxDepth").is_some_and(|v| !v.is_u64()) {
+            return Err(Error::Malformed);
         }
         for key in ["read", "write"] {
             if let Some(paths) = present(fs, key)
@@ -290,18 +293,13 @@ fn profile(value: &Value) -> Result<(), Error> {
                 .ok_or(Error::Malformed)?;
             for entry in entries {
                 fields(entry, &["access", "path"], &[])?;
-                if !matches!(
-                    entry.get("access").and_then(Value::as_str),
-                    Some("read" | "write")
-                ) {
-                    return Err(Error::Policy);
-                }
+                required_text(entry, "access", 255)?;
                 let path = entry.get("path").ok_or(Error::Malformed)?;
-                fields(path, &["type", "path"], &[])?;
-                if path.get("type") != Some(&json!("path")) {
-                    return Err(Error::Policy);
+                if !path.is_object() {
+                    return Err(Error::Malformed);
                 }
-                required_text(path, "path", 8192)?;
+                required_text(path, "type", 255)?;
+                optional_text(path, "path", 8192)?;
             }
         }
     }
@@ -341,18 +339,43 @@ mod tests {
             ("threadId", json!(null)),
             ("itemId", json!("")),
             ("startedAtMs", json!(-1)),
-            ("kind", json!("writeStdin")),
-            ("kind", json!(null)),
+            ("kind", json!(3)),
             ("command", json!(3)),
             ("environmentId", json!({})),
             ("owner", json!("fake")),
-            ("availableDecisions", json!(["acceptForSession", "decline"])),
+            ("availableDecisions", json!("decline")),
             ("commandActions", json!(true)),
         ] {
             let mut p = params();
             p[key] = value;
             assert!(parse(p).is_err(), "{key}");
         }
+        // No approval is refused by its shape: the owner sees the whole request
+        // and decides, as with the retained runner. Whatever was offered or
+        // proposed, the answer is still exactly accept or decline.
+        for (key, value) in [
+            ("kind", json!("writeStdin")),
+            ("kind", json!(null)),
+            ("availableDecisions", json!(["acceptForSession", "cancel"])),
+            (
+                "availableDecisions",
+                json!(["acceptWithExecpolicyAmendment"]),
+            ),
+            ("proposedExecpolicyAmendment", json!(["rm", "-rf"])),
+        ] {
+            let mut p = params();
+            p[key] = value;
+            let request = parse(p).unwrap_or_else(|e| panic!("{key}: {e:?}"));
+            assert_eq!(request.response(true).result, json!({"decision":"accept"}));
+            assert_eq!(
+                request.response(false).result,
+                json!({"decision":"decline"})
+            );
+        }
+        let mut p = params();
+        p["networkApprovalContext"] = json!({"host":"example.test","protocol":"https"});
+        let network = parse(p).unwrap();
+        assert_eq!(network.response(true).result, json!({"decision":"accept"}));
         let mut p = params();
         p["reason"] = json!("x".repeat(MAX_APPROVAL_BYTES));
         assert!(parse(p).is_err());
@@ -365,9 +388,13 @@ mod tests {
         .unwrap();
         assert_ne!(request.id(), file.id());
         assert_eq!(file.response(true).result, json!({"decision":"accept"}));
+        // A grant-root request reaches the owner too. Accepting it accepts this
+        // one change; the adapter has no session-wide answer to give.
         let mut p = common.clone();
         p["grantRoot"] = json!("/work");
-        assert!(ApprovalRequest::parse(RequestId::Number(7), file.method().into(), p).is_err());
+        let rooted = ApprovalRequest::parse(RequestId::Number(7), file.method().into(), p).unwrap();
+        assert_eq!(rooted.response(true).result, json!({"decision":"accept"}));
+        assert_eq!(rooted.response(false).result, json!({"decision":"decline"}));
         let mut p = common;
         p["cwd"] = json!("/work");
         p["permissions"] = json!({"fileSystem":{"read":["/one"],"write":["/two"],"entries":[{"access":"write","path":{"type":"path","path":"/three"}}]},"network":{"enabled":true}});
@@ -388,13 +415,31 @@ mod tests {
         for bad in [
             json!({"extra":true}),
             json!({"network":{"enabled":true,"host":"fake"}}),
-            json!({"fileSystem":{"globScanMaxDepth":1}}),
-            json!({"fileSystem":{"entries":[{"access":"write","path":{"type":"special","value":"root"}}]}}),
+            json!({"fileSystem":{"globScanMaxDepth":"deep"}}),
         ] {
             p["permissions"] = bad;
             assert!(
                 ApprovalRequest::parse(RequestId::Number(7), permission.method().into(), p.clone())
                     .is_err()
+            );
+        }
+        // An unusual but well-formed profile is the owner's to judge. It is
+        // granted as asked, for this turn only, or not at all.
+        for unusual in [
+            json!({"fileSystem":{"globScanMaxDepth":1}}),
+            json!({"fileSystem":{"entries":[{"access":"write","path":{"type":"special","value":"root"}}]}}),
+        ] {
+            p["permissions"] = unusual.clone();
+            let request =
+                ApprovalRequest::parse(RequestId::Number(7), permission.method().into(), p.clone())
+                    .unwrap();
+            assert_eq!(
+                request.response(true).result,
+                json!({"permissions":unusual,"scope":"turn"})
+            );
+            assert_eq!(
+                request.response(false).result,
+                json!({"permissions":{},"scope":"turn"})
             );
         }
         assert!(

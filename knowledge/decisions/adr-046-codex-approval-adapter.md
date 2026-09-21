@@ -524,3 +524,40 @@ and is refused keeps ending the intake. No authority moved:
 `native_matrix_approval_intake_skips_a_request_the_host_decided` denies one
 planned request at its owner bound before an intake that also carries a live
 verdict, and fails on the previous code.
+
+### No approval is refused by its shape (2026-09-20)
+
+The policy-decline amendment above kept the adapter's own refusals and gave most
+of them a way out: a request it refused by policy was declined and the turn went
+on, unless the request offered no decline, in which case the session still ended.
+That last case is what ended a 168-task soak: `session_error: policy`,
+`server_request: command_approval`, the agent gone, for a request the owner never
+saw. It was the second time in about 650 live tasks.
+
+The refusals themselves were the port's invention. The retained runner refuses no
+approval by its shape (`router/src/runner.ts`): it parks every command,
+file-change and permissions request for the owner and answers `accept` or
+`decline`, whatever decision menu the request carried. Operator decision
+2026-09-20: do the same.
+
+The adapter now refuses nothing it can faithfully show. A command request with an
+unusual `kind`, a decision menu that lacks `accept` or lacks `decline`, a network
+context that also names a command, a file change with a grant root, and a
+permission profile with a scan depth or an unusual path type all reach the host
+coordinator as ordinary approvals. Three things keep that safe, and none of them
+is new. The owner's card carries the whole request as its input, so the owner
+sees exactly what is asked. The core derives a reusable rule only for the shapes
+the retained product does (`lib/execution-authorization.js`, pinned by the shared
+vectors), so everything else is offered once or deny only, never always. And the
+adapter can still answer nothing but the family's exact accept or decline: never
+a session-wide acceptance, never a policy or network amendment, and a permission
+profile only as asked and only for the turn. Accepting a grant-root file change
+accepts that one change.
+
+What still ends a session is a request the adapter cannot show faithfully:
+malformed, oversized, an unknown field, or an unknown method. The decline path of
+the earlier amendment stays in the driver and is dormant, since no shape is
+refused today. `native_codex_approval_shapes_all_reach_the_owner` replaces the
+test that pinned the refusals, and `native_codex_approval_mapping` pins the exact
+answers for every such shape.
+
