@@ -41,6 +41,13 @@ pub(crate) struct Routes {
     failed: Arc<AtomicBool>,
     closed: Arc<AtomicBool>,
 }
+
+/// An agent whose attempt failed is lost to the fleet unless it says it is alive
+/// and waiting for the operator to resolve that attempt. Its own status keeps
+/// reporting the failure either way.
+fn lost(status: &super::Status) -> bool {
+    status.error.is_some() && !status.awaiting_operator
+}
 impl Routes {
     pub(crate) async fn select(
         &self,
@@ -74,9 +81,7 @@ impl Routes {
         }
         let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         if self.failed.load(Ordering::Acquire)
-            || entries
-                .values()
-                .any(|entry| entry.status.get().error.is_some())
+            || entries.values().any(|entry| lost(&entry.status.get()))
         {
             return "outcome_unknown";
         }
@@ -89,9 +94,7 @@ impl Routes {
     pub(crate) fn snapshot(&self) -> serde_json::Value {
         let entries = self.entries.lock().unwrap_or_else(|e| e.into_inner());
         let failed = self.failed.load(Ordering::Acquire)
-            || entries
-                .values()
-                .any(|entry| entry.status.get().error.is_some());
+            || entries.values().any(|entry| lost(&entry.status.get()));
         let agents: Vec<_>=entries.iter().map(|(engagement,entry)|serde_json::json!({"engagement_id":engagement,"status":entry.status.get()})).collect();
         serde_json::json!({"profile":"inline_factory_service_checkpoint_v1","running":self.running.load(Ordering::Acquire),
             "closed":self.closed.load(Ordering::Acquire),"failed":failed,"registered_backends":entries.len(),"agents":agents})
@@ -433,6 +436,33 @@ mod tests {
             "receiving"
         );
         assert!(serde_json::to_vec(&value).unwrap().len() < 2048);
+        // An agent whose failed attempt is recoverable is alive and waiting for
+        // the operator. It keeps reporting its failure, says that it waits, and
+        // is not what makes a fleet failed; the agent that is gone still is.
+        failed.awaiting_operator();
+        let value = fleet.routes.snapshot();
+        assert_eq!(value["agents"][0]["status"]["error"], "outcome_unknown");
+        assert_eq!(value["agents"][0]["status"]["awaiting_operator"], true);
+        assert!(
+            value["agents"][1]["status"]
+                .get("awaiting_operator")
+                .is_none()
+        );
+        assert_eq!(value["failed"], false);
+        assert_eq!(fleet.routes.state(), "not_started");
+        let gone = StatusHandle::new(true);
+        gone.fail(Failure::OutcomeUnknown);
+        fleet
+            .register_root("en_gone".into(), None, None, gone.clone())
+            .unwrap();
+        assert_eq!(fleet.routes.snapshot()["failed"], true);
+        // The next attempt clears the wait with everything else.
+        failed.begin_attempt();
+        assert!(
+            fleet.routes.snapshot()["agents"][0]["status"]
+                .get("awaiting_operator")
+                .is_none()
+        );
         drop(fleet);
         collector.close().await.unwrap();
         test_common::shutdown_domain(&f.store, "factory diagnostics").await;

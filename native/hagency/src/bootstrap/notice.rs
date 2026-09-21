@@ -19,7 +19,8 @@ pub(super) async fn deliver(
     collector: &Collector,
     engagement: &str,
     cancel: &CancellationToken,
-    status: &StatusHandle,
+    // None after a failed attempt: the status must keep saying what failed.
+    status: Option<&StatusHandle>,
 ) -> Result<(), Failure> {
     for _ in 0..MAX_NOTICES {
         if cancel.is_cancelled() {
@@ -32,13 +33,17 @@ pub(super) async fn deliver(
         else {
             break;
         };
-        status.phase("delivering_notice");
+        if let Some(status) = status {
+            status.phase("delivering_notice");
+        }
         let sent = collector
             .send_notice(claim, cancel)
             .await
             .map_err(|error| {
-                status.matrix_refusal(&error);
-                tracing::warn!(error = ?error, "delegated task notice refused");
+                if let Some(status) = status {
+                    status.matrix_refusal(&error);
+                }
+                tracing::warn!(error = ?error, "task notice refused");
                 if cancel.is_cancelled() {
                     Failure::Cancelled
                 } else {

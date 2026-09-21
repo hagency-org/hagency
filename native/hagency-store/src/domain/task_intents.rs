@@ -23,6 +23,59 @@ fn notice_id(task_id: &str, kind: &str) -> Result<String, Error> {
         canonical::digest(&json!([task_id, kind]))?
     ))
 }
+/// The retained product's words for a run whose outcome is unknown
+/// (`router/src/store.ts` `settleUnknownInternal`).
+pub(super) const OUTCOME_UNKNOWN_NOTICE: &str = "Result uncertain: the runner stopped after work may have started. Inspect the workspace before retrying; this dispatch will not be run again automatically.";
+
+/// Tell the thread when a dispatch is fenced with an unknown outcome, as the
+/// retained product does. Before this the room only saw an agent that stopped
+/// answering (live 2026-09-20: one transient provider failure, and silence).
+/// One notice per task, for a verified session only, rooted at the request the
+/// dispatch was answering. A dispatch with no task, no request or no verified
+/// session has nowhere to say it and says nothing.
+pub(super) fn outcome_unknown_notice(
+    tx: &Transaction<'_>,
+    dispatch: &str,
+    now: u64,
+) -> Result<(), Error> {
+    let bound: Option<(Option<String>, String, bool)> = tx
+        .query_row(
+            "SELECT d.task_id,d.session_id,s.matrix_generation>0 FROM runner_dispatches d JOIN runner_sessions s ON s.id=d.session_id WHERE d.id=?1",
+            [dispatch],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .optional()?;
+    let Some((Some(task_id), session, true)) = bound else {
+        return Ok(());
+    };
+    let root: Option<u64> = tx.query_row(
+        "SELECT MAX(message_sequence) FROM dispatch_inputs WHERE dispatch_id=?1 AND addressed=1",
+        [dispatch],
+        |r| r.get(0),
+    )?;
+    let Some(root) = root else {
+        return Ok(());
+    };
+    let id = notice_id(&task_id, "outcome_unknown")?;
+    if tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM task_notices WHERE id=?1)",
+        [&id],
+        |r| r.get::<_, bool>(0),
+    )? {
+        return Ok(());
+    }
+    let task = execution::task(tx, &task_id)?;
+    let root = super::verified_ingress::input_message(tx, &session, root)?;
+    add_notice(
+        tx,
+        &task,
+        &root,
+        "outcome_unknown",
+        OUTCOME_UNKNOWN_NOTICE.into(),
+        now,
+    )?;
+    Ok(())
+}
 pub(super) fn add_notice(
     tx: &Transaction<'_>,
     task: &Task,

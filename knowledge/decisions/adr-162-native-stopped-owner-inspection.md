@@ -50,3 +50,34 @@ This verifies evidence custody, not stopped-task resume or complete E2E.
 ADR163 consumes the exact receipt only to distinguish stopped physical occupancy
 from an unknown physical owner at claim time. It does not consume or alter the
 receipt, settle the stop, clear the lease/quarantine or authorize a retry.
+
+## Saying it, and being seen to wait (2026-09-21)
+
+The recovery flow this ADR records was complete and silent. Live, one turn the
+provider failed ended a soak: the dispatch was fenced with an unknown outcome,
+the tree was proven stopped, the inspection was recorded and the worker waited
+for the operator exactly as designed. The room saw an agent that stopped
+answering, and the fleet reported it as lost, because any status carrying an
+error counted as lost. The retained product does the same recovery out loud: it
+posts "Result uncertain: the runner stopped after work may have started. Inspect
+the workspace before retrying; this dispatch will not be run again
+automatically." in the thread and keeps the agent up (`settleUnknownInternal`).
+
+Recording the failure of a started run now queues that notice, in those words:
+once per task, for a verified session, rooted at the request the dispatch was
+answering. The attempt is its own savepoint, so recording a failure never fails
+for a notice it could not address. It is queued there and not in the fence,
+because a successful completion retires its dispatch through the same fence: the
+first draft queued it in the fence and the two-agent fixtures caught finished
+tasks being announced as uncertain. The agent's own driver posts it, best effort,
+before it waits or gives up; ADR045 admits the ordinary task it belongs to. A
+worker that waits carries `awaiting_operator` beside the failure it keeps
+reporting, and the fleet counts an agent as lost only when it failed and is not
+waiting.
+
+No recovery authority changed: the operator's resolution, the inspection receipt
+and the quarantine are as recorded above. Not ported in this slice: the retained
+product also answers later requests in a quarantined session with "Waiting: …an
+operator must inspect and resolve that outcome…"; here the waiting worker does
+not take in new requests until it is resolved.
+

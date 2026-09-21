@@ -441,6 +441,11 @@ pub struct Status {
     /// from fixed categories only (ADR-175), never free text.
     #[serde(skip_serializing_if = "Option::is_none")]
     stop_cause: Option<&'static str>,
+    /// The failed attempt is recoverable and this worker is alive, waiting for
+    /// the operator to resolve it. Never authority: the resolution itself is the
+    /// store's, and the failure it follows stays reported beside it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    awaiting_operator: bool,
     settlement: Option<&'static str>,
     error: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -472,6 +477,7 @@ impl StatusHandle {
             protocol: None,
             cleanup: None,
             stop_cause: None,
+            awaiting_operator: false,
             settlement: None,
             error: None,
             matrix_error: None,
@@ -492,6 +498,12 @@ impl StatusHandle {
     fn phase(&self, phase: &'static str) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).state = phase;
     }
+    fn awaiting_operator(&self) {
+        self.0
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .awaiting_operator = true;
+    }
     fn begin_attempt(&self) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
         status.state = "refreshing";
@@ -499,6 +511,7 @@ impl StatusHandle {
         status.protocol = None;
         status.cleanup = None;
         status.stop_cause = None;
+        status.awaiting_operator = false;
         status.settlement = None;
         status.error = None;
         status.matrix_error = None;

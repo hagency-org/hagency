@@ -25,8 +25,11 @@ fn frozen(db: &Connection, id: &str) -> Result<(TaskNotice, ReplyRoute, String),
 }
 fn current(db: &Connection, id: &str) -> Result<bool, Error> {
     let (notice, route, _) = frozen(db, id)?;
+    // A delegated task's notice lives and dies with its intent. An ordinary
+    // room request has no intent at all, and its notice (an unknown outcome said
+    // in the thread) is current on its task epoch and route alone.
     let (epoch, cancelled, active): (Option<u64>, bool, bool) = db.query_row(
-        "SELECT n.task_epoch,n.cancel_requested,i.state<>'closed' FROM task_notices n JOIN task_intents i ON i.task_id=n.task_id WHERE n.id=?1",
+        "SELECT n.task_epoch,n.cancel_requested,COALESCE(i.state<>'closed',1) FROM task_notices n LEFT JOIN task_intents i ON i.task_id=n.task_id WHERE n.id=?1",
         [id], |r| Ok((r.get(0)?,r.get(1)?,r.get(2)?)),
     )?;
     if cancelled || !active || epoch != Some(execution::task(db, &notice.task_id)?.execution_epoch)
@@ -84,7 +87,7 @@ fn activate(tx: &Transaction<'_>, id: &str, input: &ReplyDeliveryObservation) ->
 /// Called during route reconciliation as well as before custody operations.
 /// Possible sends remain uncertain and keep their attempt fence for inspection.
 pub(super) fn retire(tx: &Transaction<'_>) -> Result<(), Error> {
-    tx.execute("UPDATE task_notices SET cancel_requested=1,state=CASE WHEN state IN ('sending','uncertain') THEN 'uncertain' ELSE 'cancelled' END,claim_hash=NULL,claim_until=NULL,error_code='scope_retired' WHERE verified_route IS NOT NULL AND state IN ('pending','claimed','sending','uncertain','failed') AND NOT EXISTS(SELECT 1 FROM current_matrix_routes r JOIN canonical_tasks t ON t.session_id=r.session_id JOIN task_intents i ON i.task_id=t.id WHERE t.id=task_notices.task_id AND json_extract(t.config,'$.execution_epoch')=task_notices.task_epoch AND i.state<>'closed')",[])?;
+    tx.execute("UPDATE task_notices SET cancel_requested=1,state=CASE WHEN state IN ('sending','uncertain') THEN 'uncertain' ELSE 'cancelled' END,claim_hash=NULL,claim_until=NULL,error_code='scope_retired' WHERE verified_route IS NOT NULL AND state IN ('pending','claimed','sending','uncertain','failed') AND NOT EXISTS(SELECT 1 FROM current_matrix_routes r JOIN canonical_tasks t ON t.session_id=r.session_id LEFT JOIN task_intents i ON i.task_id=t.id WHERE t.id=task_notices.task_id AND json_extract(t.config,'$.execution_epoch')=task_notices.task_epoch AND COALESCE(i.state<>'closed',1))",[])?;
     Ok(())
 }
 pub(super) fn reconcile(tx: &Transaction<'_>, now: u64, restart: bool) -> Result<(), Error> {

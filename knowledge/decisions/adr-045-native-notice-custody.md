@@ -50,3 +50,21 @@ Sending becomes uncertain after owner loss and requires exact authenticated insp
 ## Alternatives Considered
 
 Acknowledging delivery directly from a claim or requeueing every expired claim could repeat a private notice. Timeout and transaction-ID stability are insufficient evidence for a NotSent transition.
+
+## A notice for a task with no intent (2026-09-21)
+
+Notice custody was written for task intents: `current` and the reconcile's
+`retire` both joined `task_intents`, so a notice whose task had no intent row was
+retired at the next reconcile and could never be claimed. That was invisible while
+every notice belonged to a delegation. It became the obstacle when an unknown
+outcome had to be said in the thread (ADR162): an ordinary room request is a task
+with no intent at all.
+
+A delegated task's notice still lives and dies with its intent. A task with no
+intent is current on its task epoch and route alone; both joins became left joins
+and a missing intent counts as not closed. Nothing else moves: the verified claim
+stays scoped to the agent's own engagement, a notice whose route is no longer
+current is never claimed, begin still commits before any external write, and one
+claim is never sent twice. `native_outcome_unknown_is_said_in_the_thread_once`
+fails on the previous joins at the claim.
+

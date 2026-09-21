@@ -589,6 +589,22 @@ impl DomainRepository {
         let result = if d.fence != cap.fence {
             OwnedObservation::Historical
         } else if ["leased", "started", "parked"].contains(&d.state.as_str()) {
+            if d.state != "leased" {
+                // A started run that failed has an unknown outcome: say so in the
+                // thread, as the retained product does. Only here, never in the
+                // fence itself, which a successful completion also passes through.
+                // Best effort by construction: recording the failure must never
+                // fail because its notice could not be addressed (a retired route,
+                // a legacy session), so the attempt is its own savepoint and a
+                // refusal undoes only itself.
+                tx.execute_batch("SAVEPOINT outcome_notice")?;
+                match super::task_intents::outcome_unknown_notice(&tx, &cap.dispatch_id, now) {
+                    Ok(()) => tx.execute_batch("RELEASE outcome_notice")?,
+                    Err(_) => {
+                        tx.execute_batch("ROLLBACK TO outcome_notice; RELEASE outcome_notice")?
+                    }
+                }
+            }
             conversation_lifecycle::fence_dispatch(
                 &tx,
                 &cap.dispatch_id,

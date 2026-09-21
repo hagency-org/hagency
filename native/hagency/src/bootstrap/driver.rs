@@ -344,13 +344,43 @@ async fn run_continuous(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failu
                 | hagency_execution::Settlement::CanonicalReplyReady
         );
         let physically_stopped = stopped(&mut completed.report);
-        if (completed.report.failure.is_some() || !settled || !physically_stopped)
-            && (!physically_stopped
-                || completed.report.stop_inspection_status()
-                    != hagency_execution::StopInspectionStatus::Recorded
-                || !wait_for_resolution(input.domain, &completed.capability, input.cancel).await)
-        {
-            return Ok(Some(completed.report));
+        if completed.report.failure.is_some() || !settled {
+            // The retained product tells the thread when a run's outcome is
+            // unknown ("Result uncertain… will not be run again automatically")
+            // and keeps the agent up; this worker used to go quiet, so the room
+            // saw an agent that simply stopped answering. The store queues that
+            // notice when it fences the dispatch; post it before waiting for the
+            // operator or giving up. Best effort by construction: the attempt
+            // has already failed, and a refused send changes nothing about it.
+            if let RuntimeOwner::Factory(agent) = &*input.owner {
+                let engagement = agent.session().engagement_id.clone();
+                let _ = notice::deliver(
+                    input.domain,
+                    input.collector,
+                    &engagement,
+                    input.cancel,
+                    None,
+                )
+                .await;
+            }
+        }
+        if completed.report.failure.is_some() || !settled || !physically_stopped {
+            // A failed attempt whose tree is proven stopped and whose stop
+            // inspection is recorded is recoverable: this worker stays up and
+            // waits for the operator to resolve it, which is the retained
+            // product's session quarantine in another shape. Say so, because the
+            // status otherwise reads exactly like a worker that is gone.
+            let recoverable = physically_stopped
+                && completed.report.stop_inspection_status()
+                    == hagency_execution::StopInspectionStatus::Recorded;
+            if recoverable {
+                input.status.awaiting_operator();
+            }
+            if !recoverable
+                || !wait_for_resolution(input.domain, &completed.capability, input.cancel).await
+            {
+                return Ok(Some(completed.report));
+            }
         }
         input.workspace.release(&completed.capability)?;
         drop(completed.report);
@@ -509,7 +539,7 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
     // before scheduling, because that delivery is what activates the intent.
     let delegated = if let RuntimeOwner::Factory(agent) = &*owner {
         let engagement = agent.session().engagement_id.clone();
-        notice::deliver(domain, collector, &engagement, cancel, status).await?;
+        notice::deliver(domain, collector, &engagement, cancel, Some(status)).await?;
         Some((engagement, agent.workspace_id().to_owned()))
     } else {
         None

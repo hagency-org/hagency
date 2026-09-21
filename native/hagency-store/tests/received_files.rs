@@ -1027,6 +1027,67 @@ fn native_agent_conversation_pages_in_order_within_its_own_dispatch() {
 /// TS `conversations.delivered()`: completion consumes what addressed the agent
 /// and only the discussion it actually read. The rest returns to the session,
 /// so a bounded window never silently swallows unread room history.
+/// Live 2026-09-20: one transient provider failure fenced a dispatch, and the
+/// room saw only an agent that stopped answering. The retained product says so
+/// in the thread (`settleUnknownInternal`), and now this one does: once, in the
+/// same words, claimable by that agent's own notice pump and by nobody else's.
+/// An ordinary room request has no delegation record at all, and its notice has
+/// to survive that: the notice lane used to retire any notice without one.
+#[test]
+fn native_outcome_unknown_is_said_in_the_thread_once() {
+    let mut f = Fixture::new(1);
+    let (dispatch_id, _) = discussion_fixture(&mut f);
+    let cap = f.start_selected(&dispatch_id, "runner_agent", 3100);
+    assert_eq!(
+        f.db.observe_owned_failure(&cap, hagency_store::OwnedFailure::Protocol, 3110)
+            .unwrap(),
+        hagency_store::OwnedObservation::Fenced
+    );
+    fn notices(f: &Fixture) -> Vec<(String, String, String, bool)> {
+        f.sql()
+            .prepare("SELECT json_extract(config,'$.kind'),json_extract(config,'$.body'),state,verified_route IS NOT NULL FROM task_notices ORDER BY rowid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+    assert_eq!(
+        notices(&f),
+        vec![(
+            "outcome_unknown".to_owned(),
+            "Result uncertain: the runner stopped after work may have started. Inspect the workspace before retrying; this dispatch will not be run again automatically.".to_owned(),
+            "pending".to_owned(),
+            true
+        )]
+    );
+    assert_eq!(
+        f.sql()
+            .query_row("SELECT COUNT(*) FROM task_intents", [], |r| r
+                .get::<_, u64>(0))
+            .unwrap(),
+        0,
+        "an ordinary room request has no delegation record"
+    );
+    // Not the other agent's to post, and still current for its own.
+    assert!(
+        f.db.claim_verified_task_notice_for("en_someone_else", 3120, 60_000)
+            .unwrap()
+            .is_none()
+    );
+    let engagement = f.engagement.clone();
+    let claim =
+        f.db.claim_verified_task_notice_for(&engagement, 3121, 60_000)
+            .unwrap()
+            .expect("the agent's own pump claims its outcome notice");
+    assert_eq!(claim.claim.notice.kind, "outcome_unknown");
+    assert_eq!(claim.route.engagement_id, engagement);
+    // Said once: observing the same failure again adds nothing.
+    let _ =
+        f.db.observe_owned_failure(&cap, hagency_store::OwnedFailure::Protocol, 3130);
+    assert_eq!(notices(&f).len(), 1);
+}
+
 #[test]
 fn native_agent_conversation_releases_what_was_never_read() {
     let mut f = Fixture::new(1);
