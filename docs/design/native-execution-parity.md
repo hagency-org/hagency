@@ -957,3 +957,27 @@ Still open, in the order they limit a long run: that approval policy; a failed
 turn ending the agent's worker instead of only its session (above); a service
 holding a retained owner ignoring SIGTERM; restart and recovery; the owner-join
 wait; follow-ups in a delegated thread and a completion report to the delegator.
+
+### Approval parity landed; what now ends a soak is a single failed turn (2026-09-20, night)
+
+Head 059b50d3: no approval is refused by its shape (ADR046), as the retained
+runner does. With the inbox, guardian and approval parity ports together, the
+unmodified binary ran 28 clean rounds (56 tasks) and then stopped on one turn the
+provider failed. The model answered again seconds later, so it was transient.
+The status is now truthful, `protocol: failed` with no session error (it used to
+read `scope`), the process tree was proven stopped, and no approval, guardian or
+wrong-agent problem occurred in any of the three soaks since the ports: 94, 84
+and 28 rounds, 412 tasks, no wrong answer.
+
+So the next limit is the one recorded above under "What a failed turn does". Two
+facts narrow it. The continuous driver already waits for an operator's resolution
+after a failed attempt whose tree is proven stopped and whose stop inspection is
+recorded, and carries on afterwards; that is the retained product's session
+quarantine in another shape. But the fleet snapshot reports `failed` as soon as
+any agent's status carries an error, so an agent that is alive and waiting is
+indistinguishable from a dead one, and nothing is said in the thread. The notice
+lane cannot say it yet either: it is built for delegated-task notices only, and a
+notice for a task with no delegation record is retired at the next reconcile.
+Closing this means a status that tells waiting from dead, a thread notice in the
+retained product's words, and a notice lane that admits an ordinary task. The
+last is a custody rule change and wants the operator's wording first.
