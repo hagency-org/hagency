@@ -104,6 +104,25 @@ pub(crate) struct Binding {
     local_codex: Option<Arc<crate::LocalCodex>>,
 }
 impl Binding {
+    /// The root of a follow-up chain for an agent a restart re-attached. Every
+    /// field is one the original warm start also held; the caller has already
+    /// checked the scope, the home and the workspace root against each other.
+    pub(crate) fn reattached(
+        scope: OwnedProvisionScope,
+        home: Arc<ManagedAgentHome>,
+        root: Arc<crate::workspace::Root>,
+        workspace_id: String,
+        local_codex: Option<Arc<crate::LocalCodex>>,
+    ) -> Self {
+        Self {
+            scope,
+            home,
+            root,
+            workspace_id,
+            failure: None,
+            local_codex,
+        }
+    }
     async fn current(
         &self,
         domain: &DomainStore,

@@ -57,6 +57,9 @@ struct SavedResponse {
 /// Process Host only: no Deserialize, Debug, Clone or secret accessor. A
 /// Started effect supplied by trusted Host code is not network/room evidence.
 pub struct TokenAccountProvision {
+    /// A restart re-attaching an account this custody already completed. It may
+    /// only read: the stored response, then whoami. It can never register or log in.
+    reattach: bool,
     pub(crate) factory_rooms: Option<Arc<tokio::sync::Mutex<()>>>,
     as_guard: Option<Arc<application_service::Guard>>,
     scope: Option<ProvisionScope>,
@@ -203,6 +206,7 @@ impl TokenAccountProvision {
             device,
         };
         Ok(Self {
+            reattach: false,
             factory_rooms: None,
             as_guard: None,
             scope: None,
@@ -223,6 +227,12 @@ impl TokenAccountProvision {
             .push(reqwest::Certificate::from_pem(pem).map_err(|_| Error::Config)?);
         Ok(self)
     }
+    /// `effect` is the original claimed snapshot the store rebuilt for a
+    /// provision that is already Complete, so the custody binding is unchanged.
+    pub fn for_reattach(mut self) -> Self {
+        self.reattach = true;
+        self
+    }
     pub(crate) fn with_domain(
         mut self,
         domain: DomainStore,
@@ -239,32 +249,39 @@ impl TokenAccountProvision {
     async fn current(&self, cancel: &CancellationToken, deadline: Instant) -> Result<(), Error> {
         checkpoint(cancel, deadline)?;
         if let Some(scope) = &self.scope {
-            timeout_at(
-                deadline,
-                scope
-                    .domain
-                    .validate_provision_account(scope.effect.clone(), scope.registration.clone()),
-            )
-            .await
-            .map_err(|_| Error::OutcomeUnknown)??;
+            self.validate(scope, deadline).await?;
         }
         if let Some(guard) = &self.as_guard {
             timeout_at(deadline, guard.check(cancel))
                 .await
                 .map_err(|_| Error::OutcomeUnknown)??;
             if let Some(scope) = &self.scope {
-                timeout_at(
-                    deadline,
-                    scope.domain.validate_provision_account(
-                        scope.effect.clone(),
-                        scope.registration.clone(),
-                    ),
-                )
-                .await
-                .map_err(|_| Error::OutcomeUnknown)??;
+                self.validate(scope, deadline).await?;
             }
         }
         checkpoint(cancel, deadline)
+    }
+    async fn validate(&self, scope: &ProvisionScope, deadline: Instant) -> Result<(), Error> {
+        let (effect, registration) = (scope.effect.clone(), scope.registration.clone());
+        if self.reattach {
+            timeout_at(
+                deadline,
+                scope
+                    .domain
+                    .validate_active_provision_account(effect, registration),
+            )
+            .await
+        } else {
+            timeout_at(
+                deadline,
+                scope
+                    .domain
+                    .validate_provision_account(effect, registration),
+            )
+            .await
+        }
+        .map_err(|_| Error::OutcomeUnknown)??;
+        Ok(())
     }
     /// Accepted ownership survives a dropped receiver. The original operation
     /// retains its private lock until network/accepted blocking writes settle.
@@ -303,6 +320,10 @@ impl TokenAccountProvision {
             .await
             .map_err(|_| Error::OutcomeUnknown)??;
         let complete = records.complete.clone();
+        if self.reattach && complete.is_none() {
+            // Nothing was completed here: that is a provision, not a re-attach.
+            return Err(Error::Storage);
+        }
         let response = if self.context.application_service.is_some() {
             self.application_service_run(&custody, records, cancel, deadline)
                 .await?
@@ -421,6 +442,7 @@ impl TokenAccountProvision {
         }
         checkpoint(cancel, deadline)?;
         Ok(ProvisionedTokenAccount {
+            reattach: self.reattach,
             factory_rooms: self.factory_rooms,
             as_guard: self.as_guard,
             scope: self.scope,
@@ -461,6 +483,10 @@ impl TokenAccountProvision {
         cancel: &CancellationToken,
         deadline: Instant,
     ) -> Result<SavedResponse, Error> {
+        if self.reattach {
+            // The one place a register or login leaves this type.
+            return Err(Error::Storage);
+        }
         self.current(cancel, deadline).await?;
         checkpoint(cancel, deadline)?;
         let response = timeout_at(deadline, http.post(path, body, cancel))
@@ -477,6 +503,8 @@ impl TokenAccountProvision {
 /// Actual matching register + fresh whoami evidence. Not room, SDK, domain or
 /// runtime authority. Secrets stay private and cannot be Debug/serialized.
 pub struct ProvisionedTokenAccount {
+    /// Re-attached after a restart: every later step only reads and replays.
+    reattach: bool,
     factory_rooms: Option<Arc<tokio::sync::Mutex<()>>>,
     as_guard: Option<Arc<application_service::Guard>>,
     scope: Option<ProvisionScope>,

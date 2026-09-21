@@ -290,6 +290,91 @@ impl ManagedHomePlan {
         }
         Ok(())
     }
+    /// Reopen the home a completed provision already created, after a restart.
+    /// It creates and writes nothing: every path is derived from the same facts
+    /// as the original creation, and the recorded binding and manifest must
+    /// still agree with a binding recomputed now. A missing, partial or foreign
+    /// home is refused rather than repaired.
+    pub fn reopen(
+        &self,
+        scope: &crate::OwnedProvisionScope,
+        effect: &Effect,
+        registration: &Registration,
+    ) -> Result<Arc<ManagedAgentHome>, Error> {
+        let request: ProjectRequest = serde_json::from_value(
+            effect
+                .payload
+                .get("request")
+                .ok_or(Error::Conflict)?
+                .clone(),
+        )?;
+        request.validate(registration)?;
+        if effect.engagement_id != request.engagement_id()?
+            || effect.engagement_id != scope.engagement_id()
+        {
+            return Err(Error::Conflict);
+        }
+        let source = self
+            .sources
+            .get(&request.target_project_id)
+            .cloned()
+            .ok_or(Error::NotFound)?;
+        let provision = canonical::transport_digest(&json!([effect, registration]))?;
+        let binding = canonical::transport_digest(
+            &json!({"kind":"native-agent-home-v1","effect":effect,"registration":registration,
+            "root":self.root.path,"source":source.root.path,"mode":source.mode,"binary":self.binary.path,
+            "binary_length":self.binary.length,"binary_modified":self.binary.modified}),
+        )?;
+        let mut jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
+        if jobs.contains_key(&effect.id) {
+            return Err(Error::Busy);
+        }
+        if jobs.len() >= JOBS {
+            return Err(Error::Capacity);
+        }
+        let home = self
+            .root
+            .path
+            .join("agents")
+            .join(format!("agent_{}", effect.engagement_id));
+        let workdir = home.join("workdir");
+        let project_path = workdir.join("projects").join(&request.target_project_id);
+        let custody = self
+            .root
+            .path
+            .join("custody")
+            .join(format!("home-{}", effect.engagement_id));
+        let manifest = String::from_utf8(bounded(&custody.join("complete"), 64)?)
+            .map_err(|_| Error::Private)?;
+        let reopened = Arc::new(ManagedAgentHome {
+            project_root: match source.mode {
+                ProjectMode::Copy => Some(Root::open(project_path.clone(), true)?),
+                ProjectMode::Symlink => None,
+            },
+            home: Root::open(home, true)?,
+            workdir: Root::open(workdir, true)?,
+            custody: Root::open(custody, true)?,
+            root: self.root.clone(),
+            source,
+            binary: self.binary.clone(),
+            project_path,
+            binding: binding.clone(),
+            manifest,
+            resource: canonical::transport_digest(&json!(scope.resource()))?,
+            provision,
+        });
+        reopened.check_provision_scope(scope)?;
+        jobs.insert(
+            effect.id.clone(),
+            Arc::new(Job {
+                binding,
+                busy: Arc::new(Semaphore::new(1)),
+                result: Mutex::new(Some(Ok(reopened.clone()))),
+                home: Mutex::new(Some(reopened.clone())),
+            }),
+        );
+        Ok(reopened)
+    }
     pub async fn materialize(
         &self,
         domain: DomainStore,

@@ -647,6 +647,51 @@ async fn native_token_account_provision_observes_registration() {
 }
 
 #[tokio::test]
+async fn native_token_account_reattach_only_reads() {
+    let state = PrivateState::new();
+    let effect = effect();
+    let mut fake = Fake::start(true).await;
+    let cancel = CancellationToken::new();
+    // Nothing was ever completed here: a re-attach refuses before any request.
+    let empty = operation(&fake, state.path(), &effect).for_reattach();
+    assert_eq!(error(empty.execute(&cancel).await), Error::Storage);
+    assert_eq!(fake.requests(), 0);
+    // The original provision: one register, one whoami.
+    let original = operation(&fake, state.path(), &effect);
+    let (result, ()) = tokio::join!(original.execute(&cancel), async {
+        fake.next().await.json(200, response(&effect));
+        fake.next().await.json(200, whoami(&effect));
+    });
+    assert!(result.is_ok());
+    let settled = snapshot(&root(state.path(), &effect));
+    // After a restart: the stored token, one GET whoami, and nothing written.
+    for _ in 0..2 {
+        let reattached = operation(&fake, state.path(), &effect).for_reattach();
+        let (result, ()) = tokio::join!(reattached.execute(&cancel), async {
+            let request = fake.next().await;
+            assert_eq!(request.method, "GET");
+            assert_eq!(request.target, "/_matrix/client/v3/account/whoami");
+            assert_eq!(request.headers["authorization"], format!("Bearer {TOKEN}"));
+            request.json(200, whoami(&effect));
+        });
+        assert!(result.is_ok());
+        assert_eq!(settled, snapshot(&root(state.path(), &effect)));
+    }
+    assert_eq!(fake.requests(), 4);
+    // The homeserver no longer knows the token: refused, still nothing written
+    // and nothing registered again.
+    let reattached = operation(&fake, state.path(), &effect).for_reattach();
+    let (result, ()) = tokio::join!(reattached.execute(&cancel), async {
+        let request = fake.next().await;
+        assert_eq!(request.method, "GET");
+        request.json(401, json!({"errcode":"M_UNKNOWN_TOKEN"}));
+    });
+    assert_eq!(error(result), Error::Unauthorized);
+    assert_eq!(settled, snapshot(&root(state.path(), &effect)));
+    assert_eq!(fake.requests(), 5);
+    fake.close().await;
+}
+#[tokio::test]
 async fn native_token_account_provision_reopens_original_response() {
     let state = PrivateState::new();
     let effect = effect();

@@ -172,6 +172,166 @@ fn native_provisioning_original_activation_scope() {
     }
 }
 #[test]
+fn native_reattach_scope_rebuilds_only_what_the_factory_completed() {
+    for case in ["original", "adopted", "revoked", "tampered", "absent"] {
+        let root = tempfile::tempdir().unwrap();
+        let state = root.path().join("state");
+        let mut db = DomainRepository::open(&state).unwrap();
+        let pool = resource("pool", "seat", 1000);
+        let effect = provision(&mut db, &pool);
+        let engagement = effect.engagement_id.clone();
+        if case == "adopted" {
+            // Another path completed this provision: its receipt is not the factory's.
+            db.observe_effect(
+                &effect.id,
+                effect.fence,
+                &EffectOutcome::Applied {
+                    receipt: "adopted_by_the_operator".into(),
+                },
+            )
+            .unwrap();
+        } else {
+            let scope = db
+                .provision_runtime_scope(&effect, &registration())
+                .unwrap();
+            scope.claim_warm().unwrap();
+            db.complete_original_provision(&scope).unwrap();
+        }
+        match case {
+            "revoked" => {
+                db.revoke("revoke", &engagement).unwrap();
+            }
+            "tampered" => {
+                rusqlite::Connection::open(state.join("domain.sqlite3"))
+                    .unwrap()
+                    .execute(
+                        "UPDATE effects SET payload=json_set(payload,'$.resource.model','gpt-other') WHERE id=?1",
+                        [&effect.id],
+                    )
+                    .unwrap();
+            }
+            _ => {}
+        }
+        // A restart: the writer reopens with no in-memory scope.
+        drop(db);
+        let mut db = DomainRepository::open(&state).unwrap();
+        let wanted = if case == "absent" {
+            "en_00000000000000000000000000000000".to_owned()
+        } else {
+            engagement.clone()
+        };
+        if case != "original" {
+            assert!(
+                matches!(db.reattach_provision_scope(&wanted), Err(Error::State)),
+                "{case}"
+            );
+            if case != "absent" {
+                assert!(
+                    db.inline_factory_engagements().unwrap().is_empty(),
+                    "{case}"
+                );
+            }
+            continue;
+        }
+        assert_eq!(
+            db.inline_factory_engagements().unwrap(),
+            vec![engagement.clone()]
+        );
+        let (rebuilt, registered, scope) = db.reattach_provision_scope(&engagement).unwrap();
+        // The rebuilt value IS the original claim, not the Complete row.
+        assert_eq!(value(&rebuilt), value(&effect));
+        assert_eq!(value(&registered), value(registration()));
+        assert_eq!(scope.engagement_id(), engagement);
+        db.validate_warm_runtime_scope(&scope).unwrap();
+        db.validate_active_provision_account(&rebuilt, &registered)
+            .unwrap();
+        // One warm runtime per process, and no second completion.
+        scope.claim_warm().unwrap();
+        assert!(matches!(
+            db.reattach_provision_scope(&engagement)
+                .unwrap()
+                .2
+                .claim_warm(),
+            Err(Error::Busy)
+        ));
+        assert!(db.complete_original_provision(&scope).is_err());
+        assert_eq!(
+            db.get(&engagement).unwrap().state,
+            hagency_core::project::EngagementState::Active
+        );
+    }
+}
+#[tokio::test]
+async fn native_managed_home_reopens_after_a_restart() {
+    use hagency_store::agent_home::{HomeProject, ManagedHomePlan, ProjectMode};
+    let root = tempfile::tempdir().unwrap();
+    let state = root.path().join("state");
+    let homes = root.path().join("homes");
+    hagency_store::private::directory(&homes).unwrap();
+    let project = root.path().join("source-project");
+    hagency_store::private::directory(&project).unwrap();
+    std::fs::write(project.join("source.txt"), b"offline source").unwrap();
+    let plan = || {
+        ManagedHomePlan::new(
+            homes.canonicalize().unwrap(),
+            vec![HomeProject {
+                project_id: "project_one".into(),
+                source: project.canonicalize().unwrap(),
+                mode: ProjectMode::Copy,
+            }],
+            std::env::current_exe().unwrap().canonicalize().unwrap(),
+        )
+        .unwrap()
+    };
+    let mut db = DomainRepository::open(&state).unwrap();
+    let pool = resource("pool", "seat", 1000);
+    let effect = provision(&mut db, &pool);
+    let scope = db
+        .provision_runtime_scope(&effect, &registration())
+        .unwrap();
+    let domain = DomainStore::start(db, 16).unwrap();
+    let created = plan()
+        .materialize(
+            domain.clone(),
+            effect.clone(),
+            registration(),
+            Instant::now() + Duration::from_secs(10),
+            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        )
+        .await
+        .unwrap();
+    let work = created.workdir_path().unwrap();
+    scope.claim_warm().unwrap();
+    domain.complete_original_provision(scope).await.unwrap();
+    // A restart: every in-memory owner is gone.
+    drop(created);
+    domain.shutdown().await.unwrap();
+    let mut db = DomainRepository::open(&state).unwrap();
+    let (rebuilt, registered, scope) = db.reattach_provision_scope(&effect.engagement_id).unwrap();
+    let reopening = plan();
+    let reopened = reopening.reopen(&scope, &rebuilt, &registered).unwrap();
+    assert_eq!(reopened.workdir_path().unwrap(), work);
+    reopened.check_provision_scope(&scope).unwrap();
+    assert_eq!(
+        std::fs::read(work.join("projects/project_one/source.txt")).unwrap(),
+        b"offline source"
+    );
+    // One owner per home, and nothing on disk is repaired or replaced.
+    assert!(matches!(
+        reopening.reopen(&scope, &rebuilt, &registered),
+        Err(Error::Busy)
+    ));
+    let binding = work.parent().unwrap().join("state/home-binding");
+    let original = std::fs::read(&binding).unwrap();
+    std::fs::write(&binding, "0".repeat(64)).unwrap();
+    assert!(plan().reopen(&scope, &rebuilt, &registered).is_err());
+    std::fs::write(&binding, original).unwrap();
+    plan().reopen(&scope, &rebuilt, &registered).unwrap();
+    std::fs::remove_file(homes.join(format!("custody/home-{}/complete", effect.engagement_id)))
+        .unwrap();
+    assert!(plan().reopen(&scope, &rebuilt, &registered).is_err());
+}
+#[test]
 fn native_warm_runtime_writer_scope() {
     let root = tempfile::tempdir().unwrap();
     let mut db = DomainRepository::open(&root.path().join("state")).unwrap();

@@ -20,6 +20,9 @@ use custody::Custody;
 
 pub(super) struct Operation {
     scope: ProvisionScope,
+    /// A restart re-attaching rooms this custody already completed: replay the
+    /// stored responses and read current state; never create, invite or join.
+    reattach: bool,
     request: ProjectRequest,
     binding: String,
     root: PathBuf,
@@ -95,6 +98,7 @@ impl Operation {
             .join(format!("agent-rooms-{}", scope.effect.id));
         Ok(Self {
             scope,
+            reattach: account.reattach,
             request,
             binding,
             root,
@@ -110,21 +114,27 @@ impl Operation {
     }
     async fn writer(&self, cancel: &CancellationToken, deadline: Instant) -> Result<(), Error> {
         checkpoint(cancel, deadline)?;
-        self.scope
-            .domain
-            .validate_provision_account(self.scope.effect.clone(), self.scope.registration.clone())
-            .await?;
+        self.validate().await?;
         if let Some(guard) = &self.agent.config.as_guard {
             guard.check(cancel).await?;
-            self.scope
-                .domain
-                .validate_provision_account(
-                    self.scope.effect.clone(),
-                    self.scope.registration.clone(),
-                )
-                .await?;
+            self.validate().await?;
         }
         checkpoint(cancel, deadline)
+    }
+    async fn validate(&self) -> Result<(), Error> {
+        let (effect, registration) = (self.scope.effect.clone(), self.scope.registration.clone());
+        if self.reattach {
+            self.scope
+                .domain
+                .validate_active_provision_account(effect, registration)
+                .await?;
+        } else {
+            self.scope
+                .domain
+                .validate_provision_account(effect, registration)
+                .await?;
+        }
+        Ok(())
     }
     async fn agent_current(
         &self,
@@ -315,6 +325,10 @@ impl Operation {
         cancel: &CancellationToken,
         deadline: Instant,
     ) -> Result<SavedResponse, Error> {
+        if self.reattach {
+            // The one place a create, invite or join leaves this operation.
+            return Err(Error::Storage);
+        }
         self.writer(cancel, deadline).await?;
         let response = http
             .post(
@@ -375,6 +389,10 @@ impl Operation {
         } else {
             if records.iter().any(Option::is_some) {
                 return Err(Error::OutcomeUnknown);
+            }
+            if self.reattach {
+                // No rooms were ever completed here: that is a provision.
+                return Err(Error::Storage);
             }
             write(&custody, "dm-possible", Value::Null).await?;
             self.agent_current(cancel, deadline).await?;

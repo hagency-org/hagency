@@ -51,6 +51,9 @@ pub struct FactoryRuntime {
 }
 enum Phase {
     Initial,
+    /// A restart re-attached this agent: there is no warm child, and the first
+    /// dispatch is already a follow-up from this rebuilt binding.
+    Reattached(Box<crate::warm::Binding>),
     Queued(Arc<Admission>),
     Running(Arc<crate::operation::Continuation>),
     Spent,
@@ -145,6 +148,92 @@ impl WarmHostPlan {
     pub fn with_coordination_tools(mut self) -> Self {
         self.coordination = true;
         self
+    }
+    /// The runtime of an agent a restart re-attached, from a scope and a home
+    /// the store rebuilt and reopened. It starts no child and reads no retained
+    /// task context: that file belongs to the original first task. The same
+    /// per-agent Host is built as in `start`, and the agent's next task launches
+    /// through the ordinary follow-up binding. One runtime per scope per process.
+    pub async fn reattach(
+        &self,
+        domain: DomainStore,
+        scope: OwnedProvisionScope,
+        home: Arc<ManagedAgentHome>,
+    ) -> Result<FactoryRuntime, Failure> {
+        let until = Instant::now() + Duration::from_millis(self.limits.initialize.operation_ms);
+        let account =
+            tokio::time::timeout_at(until, domain.validate_warm_runtime_scope(scope.clone()))
+                .await
+                .map_err(|_| Failure::Deadline)?
+                .map_err(|_| Failure::LostAuthority)
+                .map(|()| scope.requires_managed_account())?;
+        if account {
+            // A provider-account launch is prepared per provision; not re-attached yet.
+            return Err(Failure::Admission);
+        }
+        let guardian = self.guardian.clone();
+        let executable = self.executable.clone();
+        let environment = self.environment.clone();
+        let helper = self.bridge.helper.clone();
+        let address = self.bridge.address;
+        let approvals = self.approvals.clone();
+        let files = self.files;
+        let coordination = self.coordination;
+        let local_codex = self.local_codex.clone();
+        tokio::task::spawn_blocking(move || {
+            if Instant::now() >= until {
+                return Err(Failure::Deadline);
+            }
+            scope.claim_warm().map_err(|_| Failure::Admission)?;
+            let workspace = format!("work_{}", scope.engagement_id());
+            let work = home.workdir_path().map_err(|_| Failure::Admission)?;
+            let mut environment = environment;
+            if let Some(local) = &local_codex {
+                local.admit_provision(&scope)?;
+                local.separate_from(&work)?;
+                local.apply(&mut environment)?;
+            } else {
+                let agent_home = home.home_path().map_err(|_| Failure::Admission)?;
+                environment.insert("HOME".into(), agent_home.clone().into_os_string());
+                environment.insert("CODEX_HOME".into(), agent_home.into_os_string());
+            }
+            let mut host = Host::new(
+                guardian,
+                executable,
+                environment,
+                BTreeMap::from([(workspace.clone(), work)]),
+            )?
+            .with_task_helper(helper, address)?
+            .with_approvals(approvals)?;
+            if let Some((limit, send, receive)) = files {
+                host = host.with_file_limit(limit)?;
+                if send {
+                    host = host.with_file_tools()?;
+                }
+                if receive {
+                    host = host.with_receive_tools()?;
+                }
+            }
+            if coordination {
+                host = host.with_coordination_tools()?;
+            }
+            if let Some(local) = local_codex.clone() {
+                host = host.with_retained_local_codex(local)?;
+            }
+            let root = host.reattach_root(&scope, &home, &workspace)?;
+            let binding =
+                crate::warm::Binding::reattached(scope, home, root, workspace, local_codex);
+            Ok(FactoryRuntime {
+                host: host.into_shared(),
+                domain,
+                warm: None,
+                phase: Phase::Reattached(Box::new(binding)),
+                last: None,
+                cancelled: AtomicBool::new(false),
+            })
+        })
+        .await
+        .map_err(|_| Failure::Worker)?
     }
     pub async fn start(
         &self,
@@ -313,6 +402,7 @@ impl FactoryRuntime {
         }
         let binding = match &self.phase {
             Phase::Initial if self.warm.is_some() => None,
+            Phase::Reattached(binding) => Some((**binding).clone()),
             Phase::Running(original) => Some(original.binding()?),
             _ => return Err(Failure::Admission),
         };

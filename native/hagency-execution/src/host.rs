@@ -492,6 +492,47 @@ impl Host {
         launch.validate().map_err(|_| super::Failure::Admission)?;
         Ok(launch)
     }
+    /// The checks `prepare_warm` makes on the scope, the home and the workspace
+    /// root, without preparing a launch: a re-attached agent starts no warm
+    /// child, its next task launches through the ordinary follow-up binding.
+    pub(crate) fn reattach_root(
+        &self,
+        scope: &hagency_store::OwnedProvisionScope,
+        home: &hagency_store::agent_home::ManagedAgentHome,
+        workspace_id: &str,
+    ) -> Result<Arc<crate::workspace::Root>, super::Failure> {
+        if self.task_helper.is_none() || self.task_context.is_some() {
+            return Err(super::Failure::Admission);
+        }
+        let resource = scope.resource();
+        if resource.framework == "claude" {
+            return Err(super::Failure::UnsupportedRunner {
+                framework: resource.framework.clone(),
+            });
+        }
+        if resource.framework != "codex"
+            || resource.provider.as_deref().is_some_and(|v| v != "openai")
+        {
+            return Err(super::Failure::Admission);
+        }
+        home.check_provision_scope(scope)
+            .map_err(|_| super::Failure::Admission)?;
+        let root = self.workspaces.get(workspace_id)?;
+        root.check().map_err(|_| super::Failure::Admission)?;
+        if root.path()
+            != home
+                .workdir_path()
+                .map_err(|_| super::Failure::Admission)?
+                .as_path()
+        {
+            return Err(super::Failure::Admission);
+        }
+        if let Some(local) = &self.local_codex {
+            local.admit_provision(scope)?;
+            local.separate_from(root.path())?;
+        }
+        Ok(root)
+    }
     pub(crate) fn prepare_warm(
         &self,
         scope: &hagency_store::OwnedProvisionScope,

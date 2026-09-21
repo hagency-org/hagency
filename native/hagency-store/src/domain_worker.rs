@@ -3193,6 +3193,28 @@ impl DomainStore {
         })
         .await
     }
+    /// Read-only rebuild of an already completed inline-factory scope after a
+    /// restart. See `DomainRepository::reattach_provision_scope`.
+    pub async fn reattach_provision_scope(
+        &self,
+        engagement_id: String,
+    ) -> Result<
+        (
+            Effect,
+            hagency_core::authority::Registration,
+            crate::OwnedProvisionScope,
+        ),
+        Error,
+    > {
+        self.call(weight(&engagement_id)?, move |db| {
+            db.reattach_provision_scope(&engagement_id)
+        })
+        .await
+    }
+    pub async fn inline_factory_engagements(&self) -> Result<Vec<String>, Error> {
+        self.call(weight(&())?, |db| db.inline_factory_engagements())
+            .await
+    }
     pub async fn provision_runtime_account(
         &self,
         scope: crate::OwnedProvisionScope,
