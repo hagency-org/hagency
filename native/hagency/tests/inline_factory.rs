@@ -910,8 +910,10 @@ async fn native_provisioning_factory_close_waiter_loss() {
         agent.claim_profile().await,
         Err(hagency_matrix::Error::Generation)
     ));
+    // The closed handle refuses, but a clean close retires nothing durable:
+    // the agent's incarnation stays available for the next start.
     assert!(
-        !f.base
+        f.base
             .store
             .matrix_transport_state(f.engagement())
             .await

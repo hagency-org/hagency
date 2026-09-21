@@ -276,3 +276,12 @@ words of a LIVE loop that was refused — the loop's own `tracing::warn!` says i
 next tick — so every `Tick(_)` state is ready. The words stay on the wire for diagnosis.
 `native_health_readiness_refused_tick_is_ready` injects the loop's own busy-refusal word on
 the real channel type with a genuinely-live task and asserts both boundaries answer 200.
+
+## Amendment: a clean close no longer fences the transport (operator decision, 2026-09-21)
+
+The sentence "Collector::close explicitly fences its transport" above is
+reversed by the ADR-047 amendment "a clean close retires nothing". Everything
+else in that paragraph stands and is what makes the reversal safe: regardless of
+persisted availability, a start authenticates its CURRENT token, account and
+device and observes full room state before claiming; an already fenced
+generation remains unavailable; startup must not rotate a generation.

@@ -193,28 +193,8 @@ pub async fn enroll(
     assert_eq!(peer.claims, 1);
     let anchor = peer.anchor();
     collector.close().await.unwrap();
-    // The close job fences every room candidate on the way out
-    // (approval_intake.rs's `fence_approval_candidates`, `prior=None`) — the
-    // collector's own lifecycle retires the room it just observed, leaving
-    // `available=0` and `current_approval_bindings` empty. The scripted host
-    // act therefore re-states the SAME positive observation at generation 2
-    // AFTER the close (a fresh positive write the close path cannot fence):
-    // the room returns to `available=1`, the binding's room_generation moves
-    // with it, and the composition's `bind_context` finds a live binding.
-    store
-        .observe_approval_room(hagency_core::approvals::ApprovalRoomObservation {
-            engagement_id: engagement_id.to_owned(),
-            registration_generation: 1,
-            generation: 2,
-            room_id: ROOM.to_owned(),
-            device_id: DEVICE.to_owned(),
-            joined: [crypto::HUMAN.to_owned(), BOT.to_owned()].into(),
-            invite_only: true,
-            encrypted: true,
-            available: true,
-        })
-        .await
-        .unwrap();
+    // A clean close retires nothing, so the room the collector observed is
+    // still available and the composition's `bind_context` finds its binding.
     common::shutdown_domain(&store, "pc-c0b-enrollment").await;
     (anchor, peer)
 }

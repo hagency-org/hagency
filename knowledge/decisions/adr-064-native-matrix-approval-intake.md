@@ -248,3 +248,12 @@ approval proof. Direct collector users retain their existing Busy semantics.
 Pure channel and virtual-time fixtures prove scheduling only; actual executable
 encrypted callbacks, original TLS ownership and physical factory tests remain
 required. Configured fleet execution and real client soaking are separate gates.
+
+## Amendment: a clean close fences no approval room (operator decision, 2026-09-21)
+
+The sentence "Closing attempts exact negative fencing" above is reversed by the
+ADR-047 amendment "a clean close retires nothing". `ApprovalCollector::close`
+still always waits for the owned SDK shutdown and still reports its error, but it
+no longer fences the approval rooms it served: the owner's standing grants and
+pending requests outlive a planned restart, as they already outlived a crash.
+Every failure path in this ADR still fences exactly as written.

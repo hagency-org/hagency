@@ -181,7 +181,8 @@ async fn native_matrix_operation_observation_primary_fence() {
     assert_eq!(snapshot.fence.unwrap().error, Some(Error::Domain));
     assert!(trace.has(Phase::Whoami));
     assert!(!trace.has(Phase::OpenOwner));
-    assert_eq!(c.close().await, Err(Error::Domain));
+    // A clean close writes nothing to the domain, so a stopped writer cannot fail it.
+    assert_eq!(c.close().await, Ok(()));
     fake.close().await;
 }
 

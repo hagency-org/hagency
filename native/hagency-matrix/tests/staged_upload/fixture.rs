@@ -394,20 +394,13 @@ impl Fixture {
     pub async fn finish(self) {
         // Unknown uploads deliberately retain Collector custody until explicit
         // host teardown. This fixture makes no inference from dropping it.
+        // A clean close writes nothing to the domain, so a revoked engagement
+        // closes like any other.
         let result = self.collector.close().await;
-        if self.revoked && result != Err(Error::Busy) {
-            // Existing close reports retired domain authority. Preserve that
-            // result; close only the remaining private SDK owner explicitly.
-            assert_eq!(result, Err(Error::Domain));
-            if let Some(owner) = self.collector.inner.owner.lock().await.take() {
-                owner.close().await.unwrap();
-            }
-        } else {
-            assert!(
-                result.is_ok() || result == Err(Error::Busy),
-                "close: {result:?}"
-            );
-        }
+        assert!(
+            result.is_ok() || result == Err(Error::Busy),
+            "close: {result:?}"
+        );
         self.fake.close().await;
         self.base.store.shutdown().await.unwrap();
     }

@@ -65,8 +65,6 @@ pub(crate) enum Phase {
     Acknowledge,
     Finish,
     Quarantine,
-    CloseTransportRead,
-    CloseTransportFence,
     CloseOwnerLock,
     CloseSdk,
     Fence,

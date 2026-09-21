@@ -221,3 +221,78 @@ safety predicate just rejected mint durable state — the store records only
 what it admitted, and a refusal creates nothing; a row at generation 1 would
 additionally collide with the room's real first safe observation, which must
 own generation 1 when it arrives.
+
+## Amendment: a clean close retires nothing (operator decision, 2026-09-21)
+
+**Reverses** the sentence "Successful close also fences its exact current
+incarnation" above, and the matching sentences in ADR-064 ("Closing attempts
+exact negative fencing") and ADR-096 ("Collector::close explicitly fences its
+transport").
+
+**What was wrong.** Measured live on 2026-09-20: a service stopped with
+`kill -9` came back ready on the same state directory, while the same service
+stopped cleanly (every close acknowledged) refused its next start with a startup
+failure. The transport generation is host configuration. A clean close marked
+that generation unavailable, a same-generation positive observation cannot
+restore an unavailable generation, and so the only way back was an operator
+editing the generation. In the same transaction the close-time fence retired the
+agent's sessions, cancelled queued dispatches and pending final replies,
+revoked every standing (`always`) approval grant and invalidated pending
+approvals. An orderly stop was strictly more destructive than a crash, and every
+planned restart silently discarded what the owner had granted. The retained
+product fences nothing at shutdown.
+
+**Decision.** `Collector::close` and `ApprovalCollector::close` write nothing to
+the domain. They stop accepting uploads, wait for the owned SDK shutdown and
+report its error, exactly as before; they no longer invalidate the transport
+incarnation or fence the approval room. After a clean close the incarnation is
+still available at its generation, and the next start on the same state
+directory authenticates again and observes again at the SAME generation, with
+the same device identity, sync cursor, sessions, queued work and approval grants.
+
+**Why this is no weaker.**
+1. It is the state a crash already leaves, and startup has always accepted it.
+2. Exclusivity while running is the SDK owner's filesystem lock, not the
+   availability flag.
+3. Persisted availability is never trusted by itself: every start authenticates
+   its current token, account and device and observes full room state through
+   the collector before claiming (ADR-096), and every send observes the room
+   again before it acts.
+4. All negative evidence still fences. A failed or incomplete authenticated
+   collection, an unsafe room snapshot, a wrong device, a revoked engagement and
+   a host invalidation retire the incarnation exactly as before. Only the
+   *absence* of any failure no longer counts as negative evidence.
+
+**A cancelled read is not negative evidence.** The live stop and start check
+found a second way a clean stop retired an incarnation: the service's own
+shutdown token cancelled a collection whose whoami was in flight, and the
+collector fenced "after any incomplete authenticated collection". An idle agent
+spends most of its time in exactly that refresh, so most clean stops hit it; had
+it been the coordinator, the next start would have been refused again. On
+observation that only reads the homeserver (collection, intake staging, the
+intake status whoami and the approval room refresh) the caller's own
+cancellation now returns `Cancelled` and fences nothing: nothing was refused and
+nothing was sent, so the last complete collection stands, as it would after a
+crash at that instant. Every other error on those paths still fences. A path
+that may have a write in flight (sends, uploads, enrollment, provisioning) keeps
+fencing on cancellation, because there a lost acknowledgement is real
+uncertainty; `native_matrix_enrollment_custody` pins that.
+
+**Unchanged.** A fenced generation stays unavailable, and startup still must not
+rotate a generation by itself. A close still fails with the SDK shutdown's own
+error and never reports a failed store close as success. A close no longer fails
+because the domain writer has stopped or the engagement was revoked, because it
+no longer asks the domain for anything.
+
+**Not covered here.** Inline factory agents are held in memory only and do not
+come back after any restart, clean or not. That is a separate decision.
+
+Pinned by `native_matrix_transport_identity_authenticated_https_and_sdk_restart`
+(close, then a second collector at the same generation resumes from the stored
+cursor with the same device identity, and the verified session still resolves)
+and `native_matrix_approval_verdict_real_encrypted_owner_actions_exact_scopes`
+(after a close the approval room is still available and no grant is revoked),
+and `native_matrix_cancelled_read_retires_nothing` (a collection cancelled with
+its whoami in flight leaves the transport available, and the same incarnation
+collects again at the same generation). All three fail against the previous
+code.

@@ -419,6 +419,22 @@ async fn native_matrix_approval_verdict_real_encrypted_owner_actions_exact_scope
         );
         assert!(f.available().await);
         c.close().await.unwrap();
+        // A clean close retires no approval room and revokes nothing the owner
+        // granted: a planned restart keeps what a crash already kept.
+        let capture = f
+            .store
+            .approval_room_capture(target.authority.clone())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(capture.available);
+        let kept = f
+            .store
+            .approval_grants(target.authority.engagement_id.clone(), String::new(), 100)
+            .await
+            .unwrap();
+        assert_eq!(kept.len(), grants.len());
+        assert!(kept.iter().all(|g| !g.revoked));
         f.store.shutdown().await.unwrap();
         fake.close().await;
     }

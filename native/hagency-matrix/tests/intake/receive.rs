@@ -388,24 +388,9 @@ async fn native_matrix_receive_retirement() {
                 .is_err()
         );
         fake.quiesced(fake.requests(), &c.inner.config.limits).await;
-        if case == "revoke" {
-            // Revoked engagement no longer permits Collector::close's transport
-            // mutation. Close the actual retained SDK first, and preserve that
-            // existing domain refusal rather than treating it as successful close.
-            c.inner
-                .owner
-                .lock()
-                .await
-                .take()
-                .unwrap()
-                .close()
-                .await
-                .unwrap();
-            assert_eq!(c.close().await, Err(Error::Domain));
-            finish(f, fake).await;
-        } else {
-            close(c, f, fake).await;
-        }
+        // A clean close writes nothing to the domain, so a revoked engagement
+        // closes like any other.
+        close(c, f, fake).await;
     }
 }
 

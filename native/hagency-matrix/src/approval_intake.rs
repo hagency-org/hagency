@@ -353,29 +353,18 @@ impl ApprovalCollector {
         let observation = crate::collector::observation::current();
         let missing_owner = self.jobs.missing_owner_result();
         let inner = self.inner.clone();
-        let engagements = self.engagements.snapshot()?;
         let job = self.jobs.start(true, false, permit, async move {
             let work = async {
-                let fence = async {
-                    observe!(RoomPrior);
-                    let rooms = inner.approval_rooms(&engagements).await?;
-                    observe!(Fence);
-                    inner.fence_approval_candidates(&rooms).await
-                }
-                .await;
-                #[cfg(test)]
-                crate::collector::observation::fence(fence.as_ref().err().cloned());
-                // Even retired domain authority must not skip actual SDK shutdown.
+                // A clean close retires no approval room: the owner's standing
+                // grants and pending requests outlive a planned restart, as
+                // they already outlive a crash. Only a failure fences.
                 observe!(CloseOwnerLock);
-                let shutdown = if let Some(owner) = inner.owner.lock().await.take() {
+                if let Some(owner) = inner.owner.lock().await.take() {
                     observe!(CloseSdk);
                     owner.close().await
                 } else {
                     missing_owner
-                };
-                shutdown?;
-                fence?;
-                Ok(())
+                }
             };
             #[cfg(test)]
             let work = crate::collector::observation::owned(observation, work);
@@ -503,6 +492,11 @@ impl Inner {
         }
         .await;
         if let Err(error) = result {
+            // This refresh only reads (whoami, room state): the caller's own
+            // cancellation is not evidence about the room.
+            if error == Error::Cancelled {
+                return Err(error);
+            }
             let mut failed = false;
             for (r, old) in rooms.iter().zip(prior) {
                 if self

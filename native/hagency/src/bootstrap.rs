@@ -259,11 +259,16 @@ mod custody_tests {
             owner.domain.clone(),
         )
         .unwrap();
-        let original = Arc::new(approval::Pump::new(collector, owner.domain.clone()));
+        let original = Arc::new(approval::Pump::new(collector.clone(), owner.domain.clone()));
         owner.approval = Some(original.clone());
-        // This is a real, network-free close failure: the original domain
-        // cannot resolve its missing engagement for negative fencing. It is
-        // not an injected SDK shutdown result or positive shutdown proof.
+        // This is a real, network-free close failure: an original service turn
+        // is still held when the close arrives, so the bounded close cannot
+        // reach the SDK shutdown it would have to prove. It is not an injected
+        // SDK shutdown result or positive shutdown proof.
+        let _held = collector
+            .service_turn(&CancellationToken::new())
+            .await
+            .unwrap();
         for _ in 0..2 {
             assert_eq!(owner.close().await, Err(Failure::OutcomeUnknown));
             assert!(Arc::ptr_eq(owner.approval.as_ref().unwrap(), &original));

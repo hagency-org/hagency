@@ -85,6 +85,12 @@ Scenario: A planned request the host decided leaves the plan instead of ending t
   Then the decided request is skipped, the pending one is accepted and the collector stays available
   And a request that still reads pending and is refused keeps ending the intake
 
+Scenario: A clean close keeps the approval room and what the owner granted
+  Test: native_matrix_approval_verdict_real_encrypted_owner_actions_exact_scopes
+  Given a decided owner approval, with a task or always grant where the owner chose one
+  When the approval collector closes cleanly
+  Then the approval room is still available and no grant is revoked
+
 ## Out of Scope
 
 Live account provisioning device key publication missing-session maintenance

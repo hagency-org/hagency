@@ -199,7 +199,7 @@ impl Collector {
             // positive observation or expose a constructor for authenticated event data.
             let expected = inner.config.identity.transport.clone();
             if let Err(error) = inner.whoami(&cancel).await {
-                return inner.fence_observation(expected, error).await;
+                return inner.fence_read(expected, error).await;
             }
             let mut owner = inner.owner.lock().await;
             if owner.is_none() {
@@ -625,7 +625,8 @@ impl Inner {
             Err(error) => {
                 #[cfg(test)]
                 crate::collector::observation::primary(error.clone());
-                return self.fence_observation(expected, error).await;
+                // Staging only reads the homeserver and writes local custody.
+                return self.fence_read(expected, error).await;
             }
         };
         let Some(batch) = batch else {

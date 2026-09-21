@@ -1006,3 +1006,39 @@ answer to later requests is not ported; the operator's resolution is the console
 recover route, which no rig drives yet; restart and recovery; the owner-join wait;
 follow-ups in a delegated thread and a completion report to the delegator; a clean
 close that takes over 90 seconds after a long run.
+
+### A clean stop no longer bricks the next start (2026-09-21)
+
+Operator decision: a clean stop fences nothing, as in the retained product, which
+invalidates nothing at shutdown and whose standing grants and queued work survive
+a restart. Two rules landed, both as an amendment to ADR047 (with pointers in
+ADR064 and ADR096).
+
+1. A clean close writes nothing to the domain. The collector and the approval
+   collector still stop uploads, wait for the SDK shutdown and report its error;
+   they no longer invalidate the transport incarnation or fence the approval
+   room. Until now an orderly stop was more destructive than a crash: it made the
+   configured generation unavailable, so the next start was refused, and in the
+   same transaction it retired sessions, cancelled queued dispatches and pending
+   replies and revoked every standing approval grant.
+2. A cancelled read is not negative evidence. The first live check found the
+   second cause: the service's own shutdown token cancelled a refresh whose whoami
+   was in flight, and the collector fenced "after any incomplete collection". An
+   idle agent spends most of its time in that refresh. On paths that only read
+   the homeserver (collection, intake staging, the intake status whoami, the
+   approval room refresh) the caller's cancellation now fences nothing. A path
+   that may have a write in flight still fences on cancellation.
+
+Live, working-tree binary, official model: one two-agent round passed, then six
+clean stop and start cycles on the same state directory. Every stop took about a
+second, every start was ready in two seconds, all three transports and the
+approval room stayed available at the same generation, and the coordinator came
+back healthy each time. Three of the six stops were timed to land while the
+coordinator's own refresh was in flight (each log records one cancelled
+refresh); before rule 2 that fenced the coordinator and refused the next start.
+
+What a restart still does not do: the inline factory agents are held in memory
+only and do not come back, clean stop or crash alike. The retained product
+persists each agent's record, credential and sync position and re-attaches them at
+startup, skipping (not failing on) an agent that cannot come back. That is the
+next slice.

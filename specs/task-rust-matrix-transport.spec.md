@@ -22,6 +22,8 @@ bounded authenticated observations without enabling event admission or sends.
 - Persist exact negative transport evidence and atomically retire all old routes grants final and notice authority.
 - Refuse positive replay at an unavailable generation and require fresh authenticated evidence at a new generation.
 - Reject stale failed bootstrap evidence that targets a newer transport incarnation.
+- Leave the incarnation available across a clean close so the same state directory starts again at the same generation.
+- Treat the caller's own cancellation of a read-only observation as no evidence, and keep fencing a cancellation that may have a write in flight.
 
 ### Must Not
 - Do not treat plaintext event JSON browser claims or display names as authenticated event or approval authority.
@@ -102,6 +104,24 @@ Scenario: Native schema upgrade retains older state
   Given schema fourteen transport state and incomplete or failing upgrade conditions
   When schema fifteen is opened or rolled back
   Then original identities and custody remain intact and missing structure fails visibly
+
+Scenario: A clean close retires nothing and the same generation starts again
+  Test: native_matrix_transport_identity_authenticated_https_and_sdk_restart
+  Level: integration
+  Test Double: local scripted HTTPS Matrix responses
+  Given an authenticated available transport with a verified session and a stored sync cursor
+  When the collector closes cleanly and a second collector opens the same state at the same generation
+  Then the transport is still available and collection resumes from the stored cursor with the same device identity
+  And the verified session still resolves
+
+Scenario: A cancelled read retires nothing
+  Test: native_matrix_cancelled_read_retires_nothing
+  Level: integration
+  Test Double: local scripted HTTP Matrix responses
+  Given an available transport and a collection whose whoami is in flight
+  When the caller cancels the collection
+  Then the collection returns cancelled and the transport is still available
+  And the same incarnation collects again at the same generation
 
 Scenario: A room's first unsafe snapshot is refused by name
   Test: native_matrix_first_unsafe_snapshot_is_refused_by_name

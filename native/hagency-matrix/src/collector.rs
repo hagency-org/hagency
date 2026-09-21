@@ -108,23 +108,9 @@ impl Collector {
         let observation = observation::current();
         let job = async move {
             let _permit = _permit;
-            observe!(CloseTransportRead);
-            if let Some(state) = inner
-                .domain
-                .matrix_transport_state(inner.config.identity.transport.engagement_id.clone())
-                .await?
-                && state.available
-                && state.observation == inner.config.identity.transport
-            {
-                observe!(CloseTransportFence);
-                inner
-                    .domain
-                    .invalidate_matrix_transport(MatrixTransportInvalidation {
-                        expected: state.observation,
-                        reason: "Matrix SDK owner closed".into(),
-                    })
-                    .await?;
-            }
+            // A clean close retires nothing: the incarnation stays available so
+            // the same state directory starts again at the same generation, as
+            // it already does after a crash. Only a failure fences.
             observe!(CloseOwnerLock);
             if let Some(owner) = inner.owner.lock().await.take() {
                 observe!(CloseSdk);
@@ -259,7 +245,7 @@ impl Inner {
         if let Err(error) = result {
             #[cfg(test)]
             observation::primary(error.clone());
-            return self.fence_observation(expected, error).await;
+            return self.fence_read(expected, error).await;
         }
         result
     }
@@ -279,6 +265,23 @@ impl Inner {
             return Err(Error::Generation);
         }
         Ok(prior.map_or_else(|| t.clone(), |p| p.observation))
+    }
+    /// For observation that only reads the homeserver (whoami, sync, room
+    /// state). There the caller's own cancellation is not evidence: nothing was
+    /// refused and nothing was sent, so the last complete collection stands, as
+    /// it would after a crash at this instant. Every other error fences. A path
+    /// that may have a write in flight must call `fence_observation` directly.
+    pub(crate) async fn fence_read<T>(
+        &self,
+        expected: MatrixTransportObservation,
+        error: Error,
+    ) -> Result<T, Error> {
+        if error == Error::Cancelled {
+            #[cfg(test)]
+            observation::primary(error.clone());
+            return Err(error);
+        }
+        self.fence_observation(expected, error).await
     }
     pub(crate) async fn fence_observation<T>(
         &self,

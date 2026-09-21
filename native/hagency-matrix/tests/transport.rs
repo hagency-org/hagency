@@ -37,9 +37,10 @@ async fn native_matrix_transport_identity_authenticated_https_and_sdk_restart() 
         .await
         .unwrap();
     let identity = std::fs::read(f.root.path().join("sdk/identity")).unwrap();
+    // A clean close retires nothing: the same incarnation starts again at the
+    // same generation, with its cursor, its device identity and its sessions.
     c.close().await.unwrap();
-    assert!(!f.available().await);
-    f.identity.transport.generation = 3;
+    assert!(f.available().await);
     let c = Collector::new(
         f.config(&fake.endpoint)
             .with_root_pem(include_bytes!("fixtures/ca.pem"))
@@ -60,12 +61,42 @@ async fn native_matrix_transport_identity_authenticated_https_and_sdk_restart() 
         std::fs::read(f.root.path().join("sdk/identity")).unwrap(),
         identity
     );
-    assert!(
-        f.store
-            .resolve_verified_matrix_session(binding)
-            .await
-            .is_err()
-    );
+    assert!(f.available().await);
+    f.store
+        .resolve_verified_matrix_session(binding)
+        .await
+        .unwrap();
+    c.close().await.unwrap();
+    f.store.shutdown().await.unwrap();
+    fake.close().await;
+}
+#[tokio::test]
+async fn native_matrix_cancelled_read_retires_nothing() {
+    let mut fake = Fake::start(false).await;
+    let f = Fixture::new();
+    f.store
+        .observe_matrix_transport(f.identity.transport.clone())
+        .await
+        .unwrap();
+    let c = Collector::new(f.config(&fake.endpoint), f.store.clone()).unwrap();
+    // The service is stopping: its own token cancels a collection whose whoami
+    // is still in flight. Nothing was refused and nothing was sent.
+    let cancel = CancellationToken::new();
+    let (result, _) = tokio::join!(c.collect(&cancel), async {
+        let request = fake.next().await;
+        cancel.cancel();
+        drop(request);
+    });
+    assert_eq!(result, Err(Error::Cancelled));
+    assert!(f.available().await);
+    // The same incarnation collects again at the same generation.
+    let (result, _) = scripted(
+        c.collect(&CancellationToken::new()),
+        success(&mut fake, "batch1"),
+    )
+    .await;
+    assert_eq!(result.unwrap().rooms, 1);
+    assert!(f.available().await);
     c.close().await.unwrap();
     f.store.shutdown().await.unwrap();
     fake.close().await;
