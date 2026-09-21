@@ -9,10 +9,10 @@
 //! owned tree of *every* guardian on the host, because the census is
 //! whole-system and the offending process need belong to no agent at all.
 //!
-//! Session evidence covers the group-only case. The survivor that reaches a
-//! session of its own through an unseen parent still refuses; that residual
-//! case has its own binary in `macos_session_refusal.rs`, because the row it
-//! creates would end these tests' observations too.
+//! Session evidence adopts or dismisses the group-only case. The survivor that
+//! reaches a session of its own through an unseen parent has no evidence at all;
+//! it is simply not owned, and `macos_unplaceable_orphan.rs` pins that it ends
+//! nothing and is never signalled.
 #![cfg(target_os = "macos")]
 use hagency_platform::{Launch, StopCause, SupervisedProcess};
 use std::{

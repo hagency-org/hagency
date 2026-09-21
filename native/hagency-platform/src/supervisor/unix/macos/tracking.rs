@@ -8,16 +8,13 @@ use std::{
 /// the guardian names one to its host instead of matching on a message.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Refusal {
-    /// A newcomer that neither ancestry, its session nor its group classified.
-    Ancestry(&'static str),
     /// A bookkeeping bound, or a row that breaks an identity invariant.
     Gap,
 }
 impl std::fmt::Display for Refusal {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter.write_str(match self {
-            Self::Ancestry(reason) => reason,
-            Self::Gap => "descendant ancestry is unconfirmed",
+            Self::Gap => "descendant tracking bound or identity invariant broken",
         })
     }
 }
@@ -135,14 +132,22 @@ impl Tracking {
                 && !self.classify_by(rows, &mut pending, |s| s.group)
                 && !self.classify_foreign_coalition(&mut pending)
             {
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    Refusal::Ancestry(if pending.iter().any(|s| s.parent_pid <= 1) {
-                        "new orphan ancestry is unconfirmed"
-                    } else {
-                        "missing parent ancestry is unconfirmed"
-                    }),
-                ));
+                // No evidence reaches what is left. The retained tracker
+                // (`owned-process-tree.ts`) tracks only what it can prove is its
+                // own and ignores every other process on the machine; this one
+                // used to refuse instead, and because the census is whole-system
+                // that stopped a healthy running agent for an hourly browser
+                // updater, for an operator's `ssh`, and for the OTHER agent's
+                // shell command (live 2026-09-20, three soaks). A process nobody
+                // can place is not proven owned, so it is not owned: it is never
+                // signalled, and it never ends an observation. Every evidence
+                // rule above only ever ADOPTS a straggler this rule would miss.
+                // The cost is the retained product's own: an owned process that
+                // daemonizes through a parent no census saw escapes cleanup.
+                for unplaced in pending.drain(..) {
+                    self.known.insert(unplaced.birth, false);
+                }
+                break;
             }
         }
         let mut live = Vec::new();
@@ -317,11 +322,16 @@ mod tests {
         );
         assert_eq!(t.owned().len(), 3);
         assert!(!t.failed());
+        // A process nobody can place is not proven owned, so it is not owned
+        // (the retained tracker's rule): it joins no tree, its own children are
+        // unrelated by ancestry, and it never ends the observation.
         let unknown = row(50, 500, 999);
-        assert!(t.update(&[unknown]).is_err());
-        assert!(t.failed());
+        assert!(t.update(&[unknown]).unwrap().is_empty());
+        assert!(t.update(&[unknown, row(51, 510, 500)]).unwrap().is_empty());
+        assert_eq!(t.owned().len(), 3);
+        assert!(!t.failed());
         assert!(t.update(&[foreign]).unwrap().is_empty());
-        assert!(t.failed());
+        assert!(!t.failed());
         let init = row(1, 1, 0);
         let mut t = Tracking::new(&[root, foreign, init], root);
         let mut orphan = row(50, 501, 200);
@@ -332,10 +342,11 @@ mod tests {
         );
         orphan.birth = 502;
         orphan.parent_birth = init.birth;
-        assert!(
-            t.update(&[orphan]).is_err(),
-            "new orphan is not proved foreign by launchd adoption"
-        );
+        // Launchd adoption proves nothing either way, so this orphan is simply
+        // not owned; it is not taken for a direct launchd child and not adopted.
+        assert!(t.update(&[orphan]).unwrap().is_empty());
+        assert_eq!(t.owned().len(), 1);
+        assert!(!t.failed());
         let mut t = Tracking::new(&[root, foreign, init], root);
         orphan.original_parent_version = init.version;
         assert!(
@@ -379,21 +390,32 @@ mod tests {
         assert_eq!(t.owned().len(), 2);
         assert!(!t.failed());
         // Neither a group nor a session with no classified member proves
-        // anything: this newcomer is alone in both and still refuses.
+        // anything: this newcomer is alone in both, so it is not adopted, and it
+        // ends nothing.
         let mut t = Tracking::new(&[root, foreign], root);
-        assert!(
+        assert_eq!(
             t.update(&[root, foreign, grouped(70, 700, 997, 70)])
-                .is_err()
+                .unwrap()
+                .len(),
+            1
         );
-        assert!(t.failed());
+        assert!(t.owned().len() == 1 && !t.failed());
         // Evidence must be present in the same census, not remembered.
         let mut t = Tracking::new(&[root, foreign], root);
-        assert!(t.update(&[root, grouped(50, 500, 999, 20)]).is_err());
-        // Conflicting members prove nothing.
+        assert_eq!(
+            t.update(&[root, grouped(50, 500, 999, 20)]).unwrap().len(),
+            1
+        );
+        // Conflicting members prove nothing, so nothing is adopted on them.
         let mut t = Tracking::new(&[root, foreign], root);
         let mixed = grouped(20, 200, 1, 10);
-        assert!(t.update(&[root, mixed, grouped(80, 800, 996, 10)]).is_err());
-        assert!(t.failed());
+        assert_eq!(
+            t.update(&[root, mixed, grouped(80, 800, 996, 10)])
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(t.owned().len() == 1 && !t.failed());
     }
     #[test]
     fn native_macos_session_evidence_classifies_detached_group() {
@@ -422,19 +444,24 @@ mod tests {
         );
         assert_eq!(t.owned().len(), 2);
         // A survivor that entered a session of its own through an unseen parent
-        // has neither session nor group evidence and still refuses.
+        // has neither session nor group evidence: it is not adopted.
         let mut t = Tracking::new(&[root, foreign], root);
-        assert!(
+        assert_eq!(
             t.update(&[root, foreign, scoped(70, 700, 997, 70, 70)])
-                .is_err()
+                .unwrap()
+                .len(),
+            1
         );
-        assert!(t.failed());
-        // A refused session id (zero) is not evidence and classifies nothing.
+        assert!(t.owned().len() == 1 && !t.failed());
+        // A refused session id (zero) is not evidence and adopts nothing.
         let mut t = Tracking::new(&[root, foreign], root);
-        assert!(
+        assert_eq!(
             t.update(&[root, scoped(20, 200, 1, 0, 20), scoped(90, 900, 995, 0, 89)])
-                .is_err()
+                .unwrap()
+                .len(),
+            1
         );
+        assert!(t.owned().len() == 1 && !t.failed());
     }
     #[test]
     fn native_macos_coalition_evidence_is_negative_only() {
@@ -470,28 +497,33 @@ mod tests {
                 .len(),
             1
         );
-        // The same daemon inside the leader's own coalition proves nothing and
-        // still refuses, as does one whose coalition the kernel would not name,
-        // and one that differs in only one of the two ids.
+        // An equal coalition, one the kernel would not name, or one that differs
+        // in only one id proves nothing. Whatever the coalition says, the daemon
+        // is never adopted and never ends the observation.
         for coalition in [[7, 8], [0, 0], [31, 0], [31, 8], [7, 32]] {
             let mut t = Tracking::new(&[root, foreign], root);
-            assert!(
+            assert_eq!(
                 t.update(&[root, foreign, daemon(70, 700, coalition)])
-                    .is_err(),
-                "{coalition:?} must not classify"
+                    .unwrap()
+                    .len(),
+                1,
+                "{coalition:?}"
             );
-            assert!(t.failed());
+            assert!(t.owned().len() == 1 && !t.failed(), "{coalition:?}");
         }
-        // A leader whose own coalition is unknown has no coalition evidence.
+        // The same under a leader whose own coalition is unknown.
         let blind = Snapshot {
             coalition: [0, 0],
             ..root
         };
         let mut t = Tracking::new(&[blind, foreign], blind);
-        assert!(
+        assert_eq!(
             t.update(&[blind, foreign, daemon(70, 700, [31, 32])])
-                .is_err()
+                .unwrap()
+                .len(),
+            1
         );
+        assert!(t.owned().len() == 1 && !t.failed());
     }
     #[test]
     fn native_macos_known_births_are_pruned_without_losing_ancestry() {

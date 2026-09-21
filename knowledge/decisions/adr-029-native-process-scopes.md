@@ -374,6 +374,54 @@ cannot be read ends the census as it always did, so persistent loss of inspectio
 stays fatal. `native_macos_census_survives_exec_churn` runs the churn above for
 three seconds against a tight census loop and fails on the previous reader.
 
+## A process nobody can place is not owned (2026-09-20)
+
+Four amendments in three days narrowed one rule and never removed it: a newcomer
+that no evidence classified was refused, the refusal was sticky, and because the
+census is whole-system it ended every guardian on the host. Each amendment added
+evidence for the case that had just ended a live run. The next run always found
+another. With coalition evidence in place a soak ran 94 clean rounds and then lost
+an agent to `rustup`: the OTHER agent's shell command had started it, in that
+agent's session, through a parent gone before this guardian's next census, in the
+service's own coalition. Two agents under one service stop each other this way by
+doing ordinary work. Before it: an hourly browser updater, and the operator's own
+`ssh`.
+
+The retained tracker never had that rule, and the operator pointed at it.
+`owned-process-tree.ts` tracks what it can prove is its own, the root, the root's
+process group and the children of owned parents, and ignores every other process
+on the machine. It cannot refuse on a process it does not own, because it never
+looks at one. This task was to port that tracker. The refusal was the port's own
+invention.
+
+The tracker now does the same. A newcomer that ancestry, session, group and
+coalition evidence all fail to classify is recorded as not owned: it is not
+adopted, its children are unrelated by ancestry, it is never signalled, and it
+never ends an observation. Every evidence rule above stays and now only ever
+ADOPTS: it catches an owned straggler whose parent no census saw, which the
+retained tracker would miss, so cleanup is strictly better than the retained
+product's and never stricter than proof allows. Coalition evidence, negative
+only, is subsumed by this rule and kept as the cheaper earlier answer.
+
+What stays fatal and sticky is loss of inspection itself: a census that cannot be
+completed, a row that still cannot be read after its bounded re-reads, a
+bookkeeping bound, a duplicate or recycled identity. The stop cause still names
+which. `ancestry_unconfirmed` remains a defined category for an older guardian's
+frame and is no longer produced.
+
+The cost is the retained product's own and is accepted with it: an owned process
+that daemonizes into a session of its own through a parent no census ever saw is
+not adopted, so a stop does not signal it and the receipt does not cover it.
+Only a kernel fork feed would close that, and this ADR's refusal to rely on
+NOTE_TRACK stands.
+
+`native_macos_unplaceable_orphan_neither_stops_nor_joins_the_tree` replaces the
+test that pinned the refusal: the same unrelated middle that opens its own session
+and exits before its survivor is born now leaves every observation positive, the
+stop receipt proves the owned tree, and the survivor is still alive afterwards
+because nobody proved it owned. The tracker unit tests assert the same for every
+case that used to refuse.
+
 ## Consequences
 
 Owned handles and native observations constrain signalling and cleanup claims. Process launch, leader exit and fixture success remain separate from sandbox qualification and canonical task completion.

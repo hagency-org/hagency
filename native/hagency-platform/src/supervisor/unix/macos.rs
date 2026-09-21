@@ -18,7 +18,6 @@ use tracking::{Refusal, Tracking};
 /// itself. Read from the error payload; never from its message.
 pub(super) fn observation_detail(error: &std::io::Error) -> StopDetail {
     match error.get_ref().and_then(|e| e.downcast_ref::<Refusal>()) {
-        Some(Refusal::Ancestry(_)) => StopDetail::AncestryUnconfirmed,
         Some(Refusal::Gap) => StopDetail::TrackingGap,
         None => StopDetail::CensusFailed,
     }

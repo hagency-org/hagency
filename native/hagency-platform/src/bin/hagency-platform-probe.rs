@@ -118,7 +118,7 @@ fn main() -> io::Result<()> {
         }
         #[cfg(target_os = "macos")]
         Some("foreign-session-middle") => {
-            // The residual case session evidence cannot reach. Spawned as a
+            // The case no evidence reaches. Spawned as a
             // non-group-leader, so setsid succeeds and opens a session and group
             // holding only this process and what it spawns. The subshell forks
             // the survivor and exits at once, and this process exits before the
@@ -128,7 +128,7 @@ fn main() -> io::Result<()> {
             rustix::process::setsid()?;
             std::process::Command::new("/bin/sh")
                 .arg("-c")
-                .arg("(/bin/sleep 0.6 & echo $! > \"$0\"); exit 0")
+                .arg("(/bin/sleep 8 & echo $! > \"$0\"); exit 0")
                 .arg(marker.with_extension("survivor"))
                 .stdin(std::process::Stdio::null())
                 .stdout(std::process::Stdio::null())

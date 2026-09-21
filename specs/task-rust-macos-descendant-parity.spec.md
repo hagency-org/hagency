@@ -20,8 +20,11 @@ exit for descendant observation or claim kernel crash containment.
 - Track descendant ancestry continuously and retain it after reparenting.
 - Signal only original lifetime identities; PID metadata alone grants no authority.
 - Stop and inspect detached descendants while preserving unrelated processes.
-- Keep lost inspection, unclassified new ancestry, capacity and deadline outcomes
-  explicitly unknown. No fresh census repairs an earlier tracking gap.
+- Keep lost inspection, capacity and deadline outcomes explicitly unknown. No
+  fresh census repairs an earlier tracking gap.
+- Track what is provably owned and ignore the rest, as the retained tracker does:
+  a newcomer no evidence classifies is not owned. It is not adopted, is never
+  signalled, and never ends an observation.
 - Start the leader in its own session. When ancestry stalls, classify a newcomer
   only by a process it shares that same census with, in its session and then in
   its group; a scope with no classified member, with conflicting members, or
@@ -47,9 +50,8 @@ exit for descendant observation or claim kernel crash containment.
 - Do not contact models/Palpo from ordinary tests, change sandbox defaults,
   claim a task completed from process exit, or hide existing qualification failures.
 - Do not treat unsupported kqueue NOTE_TRACK as a working native facility.
-- Do not classify a newcomer no evidence reaches; that refusal stays fatal and
-  sticky, and no later census repairs it. A newcomer in the leader's own
-  coalition with no ancestry, session or group evidence is such a newcomer.
+- Do not adopt a newcomer no evidence reaches, and do not stop a running tree
+  because of one. Evidence only ever adopts; absence of evidence owns nothing.
 
 ## Boundaries
 
@@ -83,11 +85,12 @@ exit for descendant observation or claim kernel crash containment.
 
 ## Acceptance Criteria
 
-Scenario: Native tracking preserves ancestry and refuses missing evidence
+Scenario: Native tracking owns only what it can prove
   Test: native_macos_descendant_tracking
   Given baseline foreign processes original root and later descendant observations
-  When parents exit or identities change or a census loses ancestry
-  Then only proven descendants are owned and uncertainty remains sticky
+  When parents exit, identities change or a newcomer's ancestry was never seen
+  Then only proven descendants are owned, an unplaceable newcomer and its children are not, and neither ends the observation
+  And a duplicate or recycled identity is still a sticky tracking gap
 
 Scenario: Native launch establishes identity before work and seals descriptors
   Test: native_guardian_start_stop
@@ -111,8 +114,8 @@ Scenario: Group membership classifies a newcomer whose parent no census saw
   Test: native_macos_group_evidence_classifies_unseen_parent
   Given newcomers with unseen parents in a foreign group, the owned group and an unknown group
   When the tracker updates from one census
-  Then the first is unrelated, the second is owned and live, and the third still refuses
-  And evidence absent from that census or conflicting within a group classifies nothing
+  Then the first is unrelated, the second is owned and live, and the third is not adopted and ends nothing
+  And evidence absent from that census or conflicting within a group adopts nothing
 
 Scenario: Unrelated churn does not cost an idle owner its observation or stop proof
   Test: native_macos_unrelated_churn_keeps_descendant_proof
@@ -130,8 +133,8 @@ Scenario: Session evidence classifies a survivor left alone in its process group
   Test: native_macos_session_evidence_classifies_detached_group
   Given newcomers with unseen parents alone in a group, inside the leader's session and inside a session of their own
   When the tracker updates from one census
-  Then the first is unrelated, the second is owned and live, and the third still refuses
-  And a session the kernel refused to name classifies nothing
+  Then the first is unrelated, the second is owned and live, and the third is not adopted and ends nothing
+  And a session the kernel refused to name adopts nothing
 
 Scenario: Detached unrelated churn does not cost an idle owner its observation
   Test: native_macos_detached_unrelated_churn_keeps_descendant_proof
@@ -151,19 +154,19 @@ Scenario: One unrelated orphan stops no guardian on the host
   When a single unrelated subshell leaves a detached survivor behind
   Then neither owner loses its observation and both receipts prove their whole tree
 
-Scenario: A survivor in a session of its own still refuses and names its cause
-  Test: native_macos_unseen_session_orphan_refuses_and_names_its_cause
+Scenario: A process nobody can place neither stops nor joins the tree
+  Test: native_macos_unplaceable_orphan_neither_stops_nor_joins_the_tree
   Given an unrelated middle that opens its own session and exits before its survivor is born
-  When the owner observes the census that first contains that survivor
-  Then observation ends with ObservationFailure and detail AncestryUnconfirmed
-  And the leader is reaped, every signal is accepted, and the whole-tree receipt stays false
+  When the owner observes through repeated such survivors and then stops the tree
+  Then every observation stays positive and the stop receipt proves the owned tree
+  And the survivor is still alive afterwards, because a guardian signals only what it proved is its own
 
 Scenario: A daemon started elsewhere through an unseen parent does not stop a guardian
   Test: native_macos_coalition_evidence_is_negative_only
   Given a newcomer alone in a session of its own whose parent no census saw
   When its resource and jetsam coalitions both differ from the leader's
   Then it is unrelated, observation continues and nothing becomes owned
-  And the same newcomer in the leader's coalition, with an unreadable coalition, with only one id differing, or under a leader whose coalition is unknown still refuses
+  And the same newcomer in the leader's coalition, with an unreadable coalition, with only one id differing, or under a leader whose coalition is unknown is not adopted either and ends nothing
 
 Scenario: Unrelated processes that exec do not fail the census
   Test: native_macos_census_survives_exec_churn
@@ -233,4 +236,9 @@ A process in the service's own coalition with no other evidence still refuses.
 2026-09-20: a census row caught mid-exec failed the whole sweep and ended an
 agent thirty soak rounds in (`observation_failure:census_failed`). The row is now
 re-read, bounded, each attempt a complete bracket; persistent failure stays fatal.
+
+2026-09-20: a process nobody can place is not owned. Operator decision after the
+retained tracker was read: it tracks what it proves is its own and ignores the
+rest, and the refusal that ended every guardian on the host was the port's own
+invention. Loss of inspection itself stays fatal.
 
