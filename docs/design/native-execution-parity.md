@@ -981,3 +981,28 @@ notice for a task with no delegation record is retired at the next reconcile.
 Closing this means a status that tells waiting from dead, a thread notice in the
 retained product's words, and a notice lane that admits an ordinary task. The
 last is a custody rule change and wants the operator's wording first.
+
+### The soak passes on the unmodified binary (2026-09-21)
+
+Head be8481f3, unmodified binary, official model, no overlay, no tracing: one
+two-agent fleet, 100 rounds, 200 dispatches completed, 200 tasks done, 200 replies
+delivered and present on the homeserver, no wrong answer, no wrong-agent
+execution, no lease, fleet never failed, 65 minutes, through two hourly updater
+wakes. The service then closed by itself after SIGTERM, in more than 90 seconds.
+
+What it took since the first passing soak on a tracing build, each found by a live
+run and each already answered by the retained product once it was read: the inbox
+holds only what addresses the agent and the room is read on demand (ADR178); a
+process nobody can place is not owned (ADR029); no approval is refused by its
+shape (ADR046); an unknown outcome is said in the thread and a waiting agent is
+seen to wait (ADR162, ADR045). The last was proved live by forcing failed turns
+on an exhausted model: both agents reported `protocol: failed` with
+`awaiting_operator`, the fleet stayed up, and the room showed both "Result
+uncertain…" notices.
+
+Open, none of which a soak exercises: an agent that waits for the operator takes
+in nothing until the operator resolves it, and the retained product's "Waiting…"
+answer to later requests is not ported; the operator's resolution is the console
+recover route, which no rig drives yet; restart and recovery; the owner-join wait;
+follow-ups in a delegated thread and a completion report to the delegator; a clean
+close that takes over 90 seconds after a long run.

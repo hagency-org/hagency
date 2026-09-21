@@ -11673,3 +11673,12 @@ docs/design/native-execution-parity.md.
 - Soak on the unmodified binary, official model: 84 rounds / 168 tasks / 0 wrong /
   0 guardian stops / 56 min. Ended by a policy-refused command approval (adapter
   policy stricter than the retained product's; operator decision owed).
+
+## 2026-09-21 — Codex soak passes on the unmodified binary
+
+- be8481f3: unknown outcome said in the thread + waiting agent seen to wait
+  (ADR162/ADR045). Live-proved with forced failed turns.
+- Soak, unmodified binary be8481f3, official model: 100 rounds / 200 tasks /
+  0 wrong / fleet never failed / 65 min / two updater wakes.
+- Dev Mac disk cleaned: 29 GB -> 376 GB free (stale peer build dirs, incremental
+  cache, rig binary copies).
