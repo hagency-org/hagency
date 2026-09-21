@@ -11664,3 +11664,12 @@ docs/design/native-execution-parity.md.
 - Details, the five defects only live runs found, and what is still open:
   docs/design/native-execution-parity.md, "Live validation of the 2026-09-19/20
   batch".
+
+## 2026-09-20 (later) — both parity ports landed; 168-task soak on the unmodified binary
+
+- 7a8e1642 provider refusal reported as a failed turn (not scope); 19896506 TS
+  inbox parity + `read_conversation`; fa2fbba6 TS guardian parity (unplaceable
+  process is not owned). Hosted CI green on all three, Ubuntu included.
+- Soak on the unmodified binary, official model: 84 rounds / 168 tasks / 0 wrong /
+  0 guardian stops / 56 min. Ended by a policy-refused command approval (adapter
+  policy stricter than the retained product's; operator decision owed).

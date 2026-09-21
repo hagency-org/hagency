@@ -925,3 +925,35 @@ service restart, which is its own open problem. The native port also turns every
 turn that did not complete into a protocol failure, where the retained product
 records the provider's own words. Closing this gap is the first slice of the
 recovery work and wants the operator's decisions on restart alongside it.
+
+### Both parity ports landed and soaked on the unmodified binary (2026-09-20, later)
+
+Heads 19896506 (an agent listens to the whole room but is only asked what
+addresses it, ADR178) and fa2fbba6 (a process nobody can place is not owned,
+ADR029). Hosted CI is green on both, Ubuntu included.
+
+Live, on the unmodified binary with the official model and no overlay: one fleet,
+84 rounds, 168 tasks, 168 replies, no wrong answer, no lease, 56 minutes, and no
+guardian stop. With the inbox port alone the previous soak had reached 94 rounds
+before the other agent's `rustup` stopped a guardian; that cause is gone. Checked
+in the live store during the run: every dispatch inbox held exactly one entry, the
+one mentioning its own agent; the frozen discussion held the rest of the room;
+and every dispatch called `read_conversation`.
+
+What ended this soak is the one item that had never been seen live: a Codex
+command approval the adapter refuses by policy. `session_error: policy`,
+`server_request: command_approval`, one server request left pending, host closed.
+The adapter accepts a command approval's `availableDecisions` only when it offers
+both `accept` and `decline`, and answers a policy refusal with the family's own
+decline only when `decline` is offered; otherwise the session ends, and a failed
+turn still ends the agent. The retained product refuses nothing here: every
+command, file-change and permissions approval is parked and sent to the owner,
+and the answer is `accept` or `decline` whatever list the request carried
+(`router/src/runner.ts`, `approvalResponse`). Which requests reach the owner is
+the operator's policy, so this is recorded, not changed. Seen twice in about 650
+live tasks.
+
+Still open, in the order they limit a long run: that approval policy; a failed
+turn ending the agent's worker instead of only its session (above); a service
+holding a retained owner ignoring SIGTERM; restart and recovery; the owner-join
+wait; follow-ups in a delegated thread and a completion report to the delegator.
