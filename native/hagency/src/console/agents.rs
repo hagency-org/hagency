@@ -377,6 +377,12 @@ async fn recover_dispatch(req: &mut Request, depot: &mut Depot, res: &mut Respon
             refusal(res, StatusCode::CONFLICT, "dispatch_not_recoverable")
         }
         Err(hagency_store::Error::NotFound) => refusal(res, StatusCode::NOT_FOUND, "not_found"),
+        // The original was already recovered, or the replacement id is taken:
+        // the recovery happened once and a replay mints nothing (live proof
+        // 2026-09-22 answered this with the resources page's revision word).
+        Err(hagency_store::Error::Conflict) => {
+            refusal(res, StatusCode::CONFLICT, "recovery_conflict")
+        }
         Err(error) => failure(res, error),
     }
 }

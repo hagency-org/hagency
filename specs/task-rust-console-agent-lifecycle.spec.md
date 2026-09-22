@@ -105,6 +105,7 @@ Scenario: Operator recovery resumes an orphaned dispatch exactly once
   Then the read-only post is refused before any row changes
   And the operator post clears the lease clears the quarantine clears the dirty flag supersedes the orphan and enqueues the replacement
   And the recovery row records the operator evidence unchanged
+  And the same recovery posted again is refused with recovery_conflict and writes no second recovery row
 
 Scenario: Recovery refuses a dispatch already fenced by a stop
   Test: native_console_agent_recover_dispatch_refuses_stopped_dispatch

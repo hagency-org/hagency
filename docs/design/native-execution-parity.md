@@ -1192,3 +1192,22 @@ rust-unknown-outcome-notice). Pinned by
 `native_request_into_a_quarantined_session_is_answered_with_waiting`.
 
 Live, working-tree binary: kill -9 mid-round, restart ready in two seconds, both Result uncertain notices posted; the next round posted two requests and both agents answered Waiting within six seconds, no dispatch was minted, no reply was sent, the fleet was not failed. Rig: tools/waiting-live.py after tools/restart-kill.py.
+
+### Operator recovery of an orphaned dispatch, live (2026-09-22)
+
+The console route `POST /console/api/agents/{id}/recover-dispatch` (ADR148)
+was driven against a live instance whose two agents' dispatches were orphaned
+by a `kill -9` mid-turn and a restart. The operator path was the real one: a
+lifecycle ticket from `hagency console-access --manage-agent-lifecycle`,
+exchanged at `/console/session` for the console cookie, the agent workdir
+listed before the post and that listing written into the evidence, the
+replacement carrying the original's resource and a new instruction. Both
+recoveries cleared the quarantine, the leases and the dirty flags; the
+re-attached agents claimed the replacements (the original inbox re-attached
+as `recoveryInbox`) and completed them with the round's expected replies in
+about 50 s; the two requests kept unread during the quarantine (the ones the
+"Waiting…" notice answered) were selected next and answered in about 106 s;
+an unauthenticated post was refused 401 and a replayed recovery 409. The
+replay carried the resources page's `resource_revision_conflict`; the route
+now says `recovery_conflict`, pinned in
+`native_console_agent_recover_dispatch_recovers_orphan`.

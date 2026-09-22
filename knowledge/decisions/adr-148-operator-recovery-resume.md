@@ -228,3 +228,23 @@ ADR-053/060/095.
   lease, counts against the live-dispatch cap and keeps its session quarantined
   permanently — a resource leak with no operator path back, which is the gap that
   motivated G5a.
+
+### Proven live (2026-09-22)
+
+The route was driven end to end against a live two-agent instance whose two
+dispatches were orphaned by a `kill -9` mid-turn and a restart (state
+`outcome_unknown`, no `dispatch_stops` row, sessions quarantined, leases held,
+workspaces dirty, "Result uncertain…" and "Waiting…" already said in the room).
+An operator session was minted with `hagency console-access
+--manage-agent-lifecycle`, exchanged at `/console/session`, and each agent's
+workdir was listed before the post; the listing (no `live-002.txt`) went into
+the evidence. Both posts returned 200: quarantine, leases and dirty flags
+cleared, the replacements (`<original>_recovery1`, same resource, the
+original's four inbox items re-attached as `recoveryInbox`) were claimed by
+the re-attached agents and completed with the round's expected replies in
+about 50 s, and the two requests kept unread during the quarantine were
+selected next and answered in about 106 s. The same post replayed was refused
+with 409; it carried the resources page's `resource_revision_conflict`, now
+named `recovery_conflict` on this route and pinned in
+`native_console_agent_recover_dispatch_recovers_orphan`. No automatic path was
+added; the rig is operator tooling outside the repository.

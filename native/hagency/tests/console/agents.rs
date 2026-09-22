@@ -730,6 +730,29 @@ async fn native_console_agent_recover_dispatch_recovers_orphan() {
         "the replacement, not the orphan, is enqueued for resume"
     );
     assert_eq!(evidence, "operator inspected workspace and stopped owner");
+    // Exactly once: the same recovery posted again is refused with the
+    // recovery's own conflict word and mints no second replacement.
+    let mut replay = post(
+        &format!("/console/api/agents/{}/recover-dispatch", f.engagement),
+        &cookie,
+    )
+    .json(&recovery_body())
+    .send(&service)
+    .await;
+    assert_eq!(replay.status_code, Some(StatusCode::CONFLICT));
+    assert_eq!(
+        replay.take_json::<Value>().await.unwrap()["code"],
+        "recovery_conflict"
+    );
+    let recoveries: u32 = db
+        .query_row(
+            "SELECT COUNT(*) FROM dispatch_recoveries WHERE original_id='orphan_dispatch'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(recoveries, 1);
+    drop(db);
     f.close().await;
 }
 
