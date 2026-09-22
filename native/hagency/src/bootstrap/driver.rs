@@ -508,14 +508,21 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
             tracing::warn!(error=?error,"factory inbox observation refused");
             Failure::Refresh
         })?;
-        (
-            profile,
-            inboxes
-                .iter()
-                .map(|inbox| inbox.session_id.clone())
-                .collect(),
-            inboxes,
-        )
+        let mut sessions: Vec<String> = inboxes
+            .iter()
+            .map(|inbox| inbox.session_id.clone())
+            .collect();
+        // A delegated task's thread is this agent's to read too: the follow-ups
+        // the owner posts in it are admitted through the delegated session, as
+        // the retained product routes a thread message to the task bound to
+        // that thread (task rust-delegated-thread-followup).
+        sessions.extend(
+            domain
+                .intent_sessions(agent.session().engagement_id.clone())
+                .await
+                .map_err(|_| Failure::Refresh)?,
+        );
+        (profile, sessions, inboxes)
     } else {
         (profile, intake_sessions, agent_inboxes)
     };

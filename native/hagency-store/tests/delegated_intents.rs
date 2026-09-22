@@ -385,6 +385,117 @@ fn native_delegated_intent_activates_and_dispatches() {
     );
 }
 
+/// The retained product routes a human follow-up that mentions the assignee
+/// in the delegated thread to the assignee's existing task
+/// (`findThreadTaskBinding` -> `attachTaskInputs`). Here: the follow-up
+/// arrives through the assignee's own room-level session, resolves to the
+/// delegated session by (engagement, room, thread root), and the next
+/// selection for that session carries the same task and the follow-up.
+#[test]
+fn native_delegated_thread_followup_continues_the_delegated_task() {
+    let mut f = Fixture::new();
+    let cap = f.working();
+    let created = f.delegate(&cap, "call-1", 3007);
+    f.deliver_notice(3008);
+    assert_eq!(f.intent_state(&created.task_id), "active");
+    let plan = AgentInboxPlan {
+        session_id: created.session_id.clone(),
+        workspace_id: "work_assignee".into(),
+    };
+    let AgentInboxSelection::Selected { dispatch_id, .. } =
+        f.db.select_intent_inbox(&plan, 3010).unwrap()
+    else {
+        panic!("an active delegated intent did not mint a dispatch")
+    };
+    // The assignee is finished with the first dispatch of the delegated task.
+    let assignee_cap =
+        f.db.claim_owned_dispatch_for_host(
+            &f.assignee_profile(),
+            "runner_assignee",
+            3011,
+            60_000,
+            60_000,
+            8,
+        )
+        .unwrap()
+        .expect("the assignee claims its delegated dispatch");
+    assert_eq!(assignee_cap.dispatch_id, dispatch_id);
+    let scope = f.db.owned_dispatch_scope(&assignee_cap, 3012).unwrap();
+    f.db.start_owned_dispatch(&assignee_cap, scope.fingerprint(), 3013)
+        .unwrap();
+    f.db.complete_dispatch(&assignee_cap, &serde_json::json!({"done":false}), 3020)
+        .unwrap();
+    // The owner follows up in the delegated thread. The intake admits a
+    // threaded event through the session bound to that thread, so the
+    // assignee carries its delegated sessions in its intake plan.
+    let observation = MatrixEventObservation {
+        scope: f.db.matrix_ingress_scope(&created.session_id).unwrap(),
+        event: InboundMessage {
+            server_name: "example.test".into(),
+            room_id: ROOM.into(),
+            event_id: "$followup".into(),
+            sender_mxid: "@owner:example.test".into(),
+            thread_root: Some("$wake".into()),
+            body: "@helper:example.test also add the totals per region".into(),
+            kind: "m.text".into(),
+            origin_ts: 4000,
+        },
+        mentions: BTreeSet::from(["@helper:example.test".to_owned()]),
+        encrypted: true,
+    };
+    let receipt = f.db.admit_matrix_event(&observation, 4001).unwrap();
+    assert_eq!(
+        (receipt.session_id.as_str(), receipt.wake),
+        (created.session_id.as_str(), true),
+        "the follow-up belongs to the delegated session and addresses the assignee"
+    );
+    // The follow-up is an input of the delegated task, so the assignee's
+    // delegated session is listed again and its next selection carries the
+    // same task and the follow-up.
+    assert_eq!(
+        f.db.intent_inboxes(&f.assignee.engagement).unwrap(),
+        vec![created.session_id.clone()],
+        "the delegated session waits for a dispatch again"
+    );
+    let AgentInboxSelection::Selected {
+        dispatch_id: next,
+        task_id,
+        count,
+        ..
+    } = f.db.select_intent_inbox(&plan, 4010).unwrap()
+    else {
+        panic!("the follow-up in the delegated thread was not selected for the assignee")
+    };
+    assert_ne!(next, dispatch_id);
+    assert_eq!(
+        task_id, created.task_id,
+        "the follow-up continues the delegated task"
+    );
+    assert_eq!(count, 1);
+    let payload = f.dispatch_payload(&next);
+    assert_eq!(payload["task"]["id"], created.task_id.as_str());
+    assert_eq!(payload["inbox"][0]["message"]["event_id"], "$followup");
+    // Live 2026-09-22: shown the follow-up under the handed-over instruction
+    // ("addressed to the delegator, not to you: read for context only"), the
+    // assignee did nothing, three times. A follow-up read from this agent's own
+    // room is marked as such and the instruction says to carry it out.
+    assert_eq!(payload["inbox"][0]["follow_up"], true);
+    assert!(
+        payload["instruction"]
+            .as_str()
+            .unwrap()
+            .contains("carry them out as part of task")
+    );
+    let first = f.dispatch_payload(&dispatch_id);
+    assert!(first["inbox"][0].get("follow_up").is_none());
+    assert!(
+        first["instruction"]
+            .as_str()
+            .unwrap()
+            .contains("read them for context only")
+    );
+}
+
 #[test]
 fn native_delegated_intent_is_not_selected_before_activation() {
     let mut f = Fixture::new();

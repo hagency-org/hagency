@@ -3810,6 +3810,12 @@ mod received_file_commands {
         }
         /// Bounded projection (at most 16) of this engagement's own delegated
         /// sessions that are waiting for a dispatch.
+        pub async fn intent_sessions(&self, engagement_id: String) -> Result<Vec<String>, Error> {
+            self.call(weight(&engagement_id)?, move |db| {
+                db.intent_sessions(&engagement_id)
+            })
+            .await
+        }
         pub async fn intent_inboxes(&self, engagement_id: String) -> Result<Vec<String>, Error> {
             hagency_core::project::identifier(&engagement_id, 128)?;
             self.call(weight(&engagement_id)?, move |db| {

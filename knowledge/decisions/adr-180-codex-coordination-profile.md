@@ -136,3 +136,35 @@ under the assignee's own identity threaded on the delegator's question, the
 activated intent, a single dispatch on the assignee's delegated session, and the
 delivered reply, all inside one attempt of the assignee. A live run is the
 remaining evidence.
+
+## Amendment: follow-ups in a delegated thread reach the assignee (2026-09-22)
+
+The retained product routes a thread message that mentions the assignee to the
+task bound to that thread (`findThreadTaskBinding` -> `attachTaskInputs`), and
+lets only the original requester reopen a completed one. The native store
+already did both at admission (`bound_intent`, the after-done rule), and the
+intent selector already minted another dispatch for the same task when the
+delegated session held an unprocessed input; but the assignee's intake never
+targeted its delegated sessions, and a threaded event is admitted only through
+the session bound to its thread, so the owner's follow-up in a delegated
+thread was never admitted at all. A factory agent's intake plan now carries
+its active delegated sessions (`intent_sessions`) beside its own.
+
+Not added, on purpose: a completion report to the delegator. The retained
+product has none. The assignee's final reply is posted as the assignee in the
+shared thread, agent messages never wake another agent, and the delegator
+learns by an explicit peer reply, by reading the task it created, or by reading
+the thread later. Pinned by
+`native_delegated_thread_followup_continues_the_delegated_task`.
+
+The first live run with the plan change found the second half. The follow-up
+was admitted, a second dispatch for the same task was minted and ran, and the
+assignee did nothing, three times: the dispatch reused the handed-over
+instruction, which says the inbox messages are addressed to the delegator and
+not to this agent and must be read for context only. That is right for the
+delegator's own words and wrong for the owner's follow-up. A delegated
+dispatch now marks an entry this agent read from its own room as `follow_up`
+(an ingress event of this engagement names it; a handed-over row has none),
+and when one is present the instruction says to carry the follow-ups out as
+part of the task while the delegator's words stay context only. The mark is
+absent from every other payload.

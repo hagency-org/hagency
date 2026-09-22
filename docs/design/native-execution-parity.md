@@ -1118,3 +1118,60 @@ fixture's owner joins only after the first attempt's whole budget and the agent
 still finishes and runs its first task. Known limit: a restart during the wait
 leaves that provision Started, which a restarted host cannot claim; it is the
 operator's, as any Started effect is today.
+
+### An unknown outcome is said in the thread after a restart too (2026-09-22)
+
+The retained product settles a started run a restart interrupted through the
+same path as a reported failure, notice included (`reconcileOnStart` ->
+`settleUnknownInternal`). The native reopen matched it on state only: started
+and parked runs became outcome_unknown, the session quarantined, the workspace
+dirty, and the thread heard nothing; the sweep that expires a capability was
+silent in the same way. `lose()` now queues the same "Result uncertain…"
+notice the reported failure queues, best effort in its own savepoint, once per
+task, and the agent that comes back after the restart (ADR147 re-attach) posts
+it on its first turn.
+
+Live, working-tree binary: a round posted, kill -9 with both agents' dispatches
+started, restart ready in two seconds, both agents re-attached, both notices
+delivered and both "Result uncertain…" messages in the project room within
+seconds; the fleet not failed and both agents back at work. Pinned offline by
+`native_outcome_unknown_is_said_in_the_thread_after_a_restart` for the reopen
+and for the expiry sweep.
+
+### Follow-ups in a delegated thread, and why there is no completion report (2026-09-22)
+
+Read first: the retained product has no automatic completion report to the
+delegator. The assignee's final reply is posted as the assignee in the shared
+thread, an agent's message never wakes another agent, and the delegator learns
+by an explicit peer reply, by reading the task it created, or by reading the
+thread later; delegation is fire-and-forget and the runner prompt says to keep
+the task open and revisit. So the "completion report" on the open list was not
+a parity gap and is dropped as such.
+
+What is parity: a thread message that mentions the assignee reaches the task
+bound to that thread (`findThreadTaskBinding` -> `attachTaskInputs`), and only
+the original requester reopens a completed one. The native store already did
+both at admission and already minted another dispatch for the same task from
+the intent selector; the offline probe showed the one missing piece. A threaded
+event is admitted only through the session bound to its thread, and the
+assignee's intake never targeted its delegated sessions, so the owner's
+follow-up in a delegated thread was refused before anything else could happen.
+A factory agent's intake plan now carries its active delegated sessions beside
+its own (task rust-delegated-thread-followup, ADR180 amendment). Pinned by
+`native_delegated_thread_followup_continues_the_delegated_task`.
+
+The first live run with the plan change found the second half: the follow-up
+was admitted and a second dispatch for the same task ran, and the assignee did
+nothing, three times, because the dispatch reused the handed-over instruction
+("addressed to the delegator and not to you: read for context only"). A
+delegated dispatch now marks an entry this agent read from its own room as
+`follow_up` and, when one is present, its instruction says to carry the
+follow-ups out as part of the task while the delegator's own words stay
+context only.
+
+Live, working-tree binary, official model, coordination tools on: agent 1
+delegated a two-step task; agent 2 did step 1 and left the task open; the
+owner followed up in the delegated thread mentioning agent 2; a second intent
+dispatch for the same task ran; agent 2 appended the second line, read the
+file back and completed with the follow-up's reply; the task is done and the
+file holds both lines.

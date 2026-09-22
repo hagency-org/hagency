@@ -67,6 +67,11 @@ pub struct Message {
 pub struct InboxItem {
     pub message: Message,
     pub wake: bool,
+    /// In a delegated dispatch: this entry was read from the agent's own room
+    /// (a follow-up in the task's thread that addresses it), not handed over
+    /// from the delegator. Absent everywhere else.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub follow_up: bool,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageReceipt {
