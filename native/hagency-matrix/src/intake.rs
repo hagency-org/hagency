@@ -474,8 +474,15 @@ impl Inner {
             .approve(command_id, verified, msg.origin_ts)
             .await?;
         if let Some(host) = &self.config.provisioning {
-            host.account(&self.domain, &reg, &engagement.id, cancel)
-                .await?;
+            match host
+                .account(&self.domain, &reg, &engagement.id, cancel)
+                .await
+            {
+                // The rooms exist and the agent is in them; the owner has not
+                // joined yet. The effect stays Started and a later turn resumes.
+                Ok(()) | Err(Error::AwaitingOwner) => {}
+                Err(error) => return Err(error),
+            }
         }
         // The explicit private account-stage profile runs inline, not through
         // a separate effect worker. Without it the approved effect stays Pending.
@@ -559,6 +566,12 @@ impl Inner {
         cancel: &CancellationToken,
     ) -> Result<IntakeSummary, Error> {
         let expected = self.expected_transport().await?;
+        // Provisions waiting for their owner to join get one more look each
+        // turn. The wait itself has no deadline and is not an error; any
+        // other refusal is the provision's own, as it would have been inline.
+        if let Some(host) = &self.config.provisioning {
+            host.resume_awaiting_owners(&self.domain, cancel).await?;
+        }
         // Capture current targets before acquiring a new remote response. A resumed
         // handoff uses only its original journal targets, regardless of a new plan.
         let staged = async {

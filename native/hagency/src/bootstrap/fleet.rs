@@ -66,14 +66,42 @@ impl Routes {
     }
     fn insert(&self, engagement: String, backends: Backends) -> Result<(), Failure> {
         let mut entries = self.entries.lock().map_err(|_| Failure::OutcomeUnknown)?;
+        // A row that only said "waiting for the owner" is replaced by the
+        // agent it was waiting for; any other existing row is a conflict.
+        let placeholder = entries
+            .get(&engagement)
+            .is_some_and(|entry| entry.status.state() == "awaiting_owner");
         if self.closed.load(Ordering::Acquire)
-            || entries.len() >= 17
-            || entries.contains_key(&engagement)
+            || (entries.len() >= 17 && !placeholder)
+            || (entries.contains_key(&engagement) && !placeholder)
         {
             return Err(Failure::Registration);
         }
         entries.insert(engagement, backends);
         Ok(())
+    }
+    /// Drop a "waiting for the owner" row whose provision no longer waits and
+    /// was not admitted. Any other row is left alone.
+    fn remove_awaiting(&self, engagement: &str) {
+        if let Ok(mut entries) = self.entries.lock()
+            && entries
+                .get(engagement)
+                .is_some_and(|entry| entry.status.state() == "awaiting_owner")
+        {
+            entries.remove(engagement);
+        }
+    }
+    fn awaiting_rows(&self) -> Vec<String> {
+        self.entries
+            .lock()
+            .map(|entries| {
+                entries
+                    .iter()
+                    .filter(|(_, entry)| entry.status.state() == "awaiting_owner")
+                    .map(|(engagement, _)| engagement.clone())
+                    .collect()
+            })
+            .unwrap_or_default()
     }
     pub(crate) fn state(&self) -> &'static str {
         if self.closed.load(Ordering::Acquire) {
@@ -353,6 +381,30 @@ impl Service {
             }
         }
     }
+    /// Publish the provisions waiting for their owner as `awaiting_owner`
+    /// rows, and drop the rows of provisions that stopped waiting without
+    /// being admitted. Status only: no decision reads these rows.
+    fn reconcile_awaiting_owners(&self) {
+        let waiting = self.coordinator.awaiting_owner_engagements();
+        for (engagement, since) in &waiting {
+            let present = self
+                .routes
+                .entries
+                .lock()
+                .map(|entries| entries.contains_key(engagement))
+                .unwrap_or(true);
+            if !present {
+                let status = StatusHandle::for_mode(DriverMode::Continuous);
+                status.awaiting_owner(*since);
+                let _ = self.register_root(engagement.clone(), None, None, status);
+            }
+        }
+        for engagement in self.routes.awaiting_rows() {
+            if !waiting.iter().any(|(e, _)| *e == engagement) {
+                self.routes.remove_awaiting(&engagement);
+            }
+        }
+    }
     /// The actual service keeps discovery independent of the coordinator's
     /// potentially long inline intake. No job is replayed or reconstructed.
     pub async fn run(
@@ -377,6 +429,7 @@ impl Service {
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
             tokio::select! {biased;_ = cancel.cancelled()=>return Ok(()),_ = tick.tick()=>{}}
+            self.reconcile_awaiting_owners();
             let next = self
                 .coordinator
                 .take_next_provisioned_agent()

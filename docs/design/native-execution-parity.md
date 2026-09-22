@@ -1089,3 +1089,32 @@ binary upgrade (its binding covers the binary's length and mtime); an agent on
 a provider-managed account is not re-attached yet. Still open from the restart
 list: the retained product's thread notice for dispatches a restart settled as
 unknown, and the owner-join wait.
+
+### The owner's join has no deadline (2026-09-22)
+
+Operator decisions: no deadline; the agent is not active until the owner
+joins; status only, no reminder. A new agent's DM is encrypted, so the agent's
+keys can only be shared once the owner has joined it; that wait was bounded by
+a single request's budget (at most sixty seconds), a slower human left the
+provision uncertain forever, its rooms custody could never resume, and because
+provisioning runs inline in the coordinator's intake the refusal ended the
+coordinator. The retained product never waited for the owner at all (its DMs
+were plaintext), so this was a genuine design question rather than a parity
+port.
+
+What landed (ADR147 amendment, task rust-owner-join-wait): an attempt whose
+rooms exist and whose owner has not joined within its own budget ends as
+`AwaitingOwner`, not a failure. No room is retired, the effect stays Started,
+and the rooms custody (every POST accepted, no `complete`) resumes GET-only.
+The intake counts it as success and, before every later read of the room,
+gives each waiting provision one look; the turn after the join finishes rooms,
+enrollment and the factory with nothing created, invited, joined or registered
+again. The fleet shows the wait as `awaiting_owner` with the millisecond it
+began, replaces the row with the agent on admission, and is not failed by it.
+
+Pinned offline by the tail of `native_provisioning_inline_rooms_refusals` and
+by `native_provisioning_waits_for_the_owner_without_a_deadline`, where the
+fixture's owner joins only after the first attempt's whole budget and the agent
+still finishes and runs its first task. Known limit: a restart during the wait
+leaves that provision Started, which a restarted host cannot claim; it is the
+operator's, as any Started effect is today.

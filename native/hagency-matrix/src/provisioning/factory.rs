@@ -720,6 +720,16 @@ impl Collector {
         .await
         .map_err(|_| Error::OutcomeUnknown)?
     }
+    /// Provisions waiting for their owner to join, with the wall-clock
+    /// millisecond each started waiting. Read-only, for the fleet's status.
+    pub fn awaiting_owner_engagements(&self) -> Vec<(String, u64)> {
+        self.inner
+            .config
+            .provisioning
+            .as_ref()
+            .map(|host| host.awaiting_owner_engagements())
+            .unwrap_or_default()
+    }
     pub async fn close_provisioned_agents(&self) -> Result<(), Error> {
         let permit = self
             .inner

@@ -651,3 +651,60 @@ Pinned by `native_configured_fleet_reattaches_after_restart` (an agent comes
 back and runs its next task through a follow-up; a tampered home leaves it
 `not_attached` with the fleet running and its work queued), and by the store
 and transport pins named in `task-rust-factory-agent-reattach`.
+
+## Amendment: the owner's join has no deadline (operator decision, 2026-09-22)
+
+**Reverses** the sentence above "the retained job waits only for the owner's
+actual joined state within its original finite budget", and in
+`task-rust-inline-agent-rooms` "Timeout is unknown, never readiness", for the
+owner's join specifically.
+
+**What was wrong.** The wait for a human to click "join" was bounded by the
+same budget as a single homeserver request, hard-capped at 60 seconds. When
+the owner took longer, the provision was marked uncertain (never claimable
+again, its rooms custody never resumable) and, because provisioning runs
+inline in the coordinator's intake, the refusal ended the coordinator for
+good. The retained product never waited for the owner at all; its DMs were
+plaintext. Here the DM is encrypted and the agent's keys can only be shared
+once the owner is in the room, so the wait is real, but it is a wait for a
+person, not a protocol timeout.
+
+**Decision** (three operator answers: no deadline; the agent is not active
+until the owner joins; status only, no reminder).
+
+1. When the DM exists, the owner is invited and the agent has joined, and the
+   owner has not joined within the attempt's own budget, the attempt ends as
+   `AwaitingOwner`. That is not a failure: no room is retired, the effect is
+   not observed unknown, it stays Started, and the rooms custody (every POST
+   accepted, no `complete` yet) resumes GET-only. Only the job that observed
+   the wait may resume it: on disk, a wait and a completed custody whose
+   record was lost look the same, and the latter stays unknown, as does a
+   wait a restart interrupted.
+2. The intake treats `AwaitingOwner` as success for the approval it just
+   handled. On every later turn, before it reads the room, it gives each
+   waiting provision one more look: a resumed attempt polls once, within two
+   seconds, and hands the wait back. Once the owner has joined, that turn
+   finishes the rooms, the enrollment and the factory exactly as the first
+   attempt would have, creating, inviting and joining nothing again.
+3. The fleet publishes each waiting provision as an `awaiting_owner` row with
+   the wall-clock millisecond it began waiting. The row is replaced by the
+   agent when it is admitted and dropped if the provision stops waiting
+   without admission. Nothing reads it to decide anything; the fleet is not
+   failed and readiness is unchanged.
+4. No reminder is sent. The status is the signal.
+
+**Unchanged.** A lost or torn POST is still unknown and never repeated. The
+SDK budget (ADR-179) is untouched: each look is one bounded read. The agent
+is not Active and has no session until the owner has joined.
+
+**Known limit.** A restart during the wait leaves that provision Started,
+which a restarted host cannot claim (task-rust-inline-provision-effect-claim);
+it is the operator's, as any Started effect is today.
+
+Pinned by the tail of `native_provisioning_inline_rooms_refusals` (the first
+attempt runs out, the effect stays Started, a turn with the owner absent looks
+once, the turn after the join finishes rooms and enrollment with no new POST)
+and by `native_provisioning_waits_for_the_owner_without_a_deadline` (the
+fixture's owner joins only after the first attempt's whole budget; the fleet
+shows `awaiting_owner` with its start, coordinator turns look again, the agent
+takes the row's place and runs its first task).

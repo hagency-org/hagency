@@ -348,6 +348,7 @@ impl Operation {
         job: &Job,
         cancel: &CancellationToken,
         deadline: Instant,
+        resuming: bool,
     ) -> Result<Vec<HostRoom>, Error> {
         let root = self.root.clone();
         let binding = self.binding.clone();
@@ -361,7 +362,13 @@ impl Operation {
         let records = tokio::task::spawn_blocking(move || inspect.values())
             .await
             .map_err(|_| Error::OutcomeUnknown)??;
-        let dm = if records.iter().all(Option::is_some) {
+        // Every POST accepted but the owner not yet in the DM: the wait for
+        // the owner resumes here, GET-only, on each coordinator turn. Only the
+        // job that observed the wait may resume it: on disk, a wait and a
+        // completed custody whose record was lost look the same, and the
+        // latter stays unknown, as does any wait a restart interrupted.
+        let resumed = resuming && records[..6].iter().all(Option::is_some) && records[6].is_none();
+        let dm = if records.iter().all(Option::is_some) || resumed {
             for index in [0, 2, 4] {
                 if records[index].as_ref().is_none_or(|v| !v.is_null()) {
                     return Err(Error::Storage);
@@ -380,8 +387,9 @@ impl Operation {
             if success(&invited)?.as_object().is_none_or(|v| !v.is_empty())
                 || success(&joined)?.get("room_id").and_then(Value::as_str)
                     != Some(self.request.target_room_id.as_str())
-                || records[6].as_ref()
-                    != Some(&json!({"dm":dm,"project":self.request.target_room_id}))
+                || records[6]
+                    .as_ref()
+                    .is_some_and(|c| c != &json!({"dm":dm,"project":self.request.target_room_id}))
             {
                 return Err(Error::Storage);
             }
@@ -480,9 +488,22 @@ impl Operation {
         if !self.member(&project, "join") {
             return Err(Error::Recipients);
         }
+        // The owner's join has no deadline. A first attempt polls to its own
+        // budget, since owners usually join within seconds; a resumed attempt
+        // looks once and hands the wait back to the next coordinator turn.
+        // Neither running out is evidence of anything: the attempt ends as
+        // awaiting the owner, and the effect stays Started.
+        let poll_until = if resumed {
+            std::cmp::min(deadline, Instant::now() + std::time::Duration::from_secs(2))
+        } else {
+            deadline
+        };
         loop {
             if self.joined_dm(&dm, cancel, deadline).await? {
                 break;
+            }
+            if Instant::now() + std::time::Duration::from_secs(3) >= poll_until {
+                return Err(Error::AwaitingOwner);
             }
             tokio::time::sleep(std::time::Duration::from_millis(250)).await;
             checkpoint(cancel, deadline)?;
@@ -548,6 +569,7 @@ impl Jobs {
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);
         }
+        let mut resuming = false;
         let job = {
             let mut guard = self.0.lock().map_err(|_| Error::OutcomeUnknown)?;
             if let Some(job) = guard.as_ref() {
@@ -561,6 +583,8 @@ impl Jobs {
                     .as_ref()
                 {
                     Some(Ok(_)) => {}
+                    // Waiting for the owner is resumed, never replayed as a failure.
+                    Some(Err(Error::AwaitingOwner)) => resuming = true,
                     Some(Err(error)) => return Err(error.clone()),
                     None => return Err(Error::Busy),
                 }
@@ -585,10 +609,13 @@ impl Jobs {
         let cancel = cancel.clone();
         tokio::spawn(async move {
             let _permit = permit;
-            let result = timeout_at(deadline, job.operation.run(&job, &cancel, deadline))
-                .await
-                .unwrap_or(Err(Error::Timeout));
-            let result = if result.is_err()
+            let result = timeout_at(
+                deadline,
+                job.operation.run(&job, &cancel, deadline, resuming),
+            )
+            .await
+            .unwrap_or(Err(Error::Timeout));
+            let result = if result.as_ref().is_err_and(|e| *e != Error::AwaitingOwner)
                 && job
                     .operation
                     .scope

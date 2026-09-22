@@ -33,9 +33,12 @@ home/runtime, both ADR-016 profiles and genuine completion/routes remain owed.
   loss does not discard it. Keep actual known room IDs inspectable, with no
   owner/task Arc cycle, and never clear unknown effects to relaunch.
 - With actual known room creation/join, poll only the original DM state for the
-  owner's real join under one original limits.sdk deadline. Timeout is unknown,
-  never readiness. Actual SDK enrollment follows through unchanged Agent-purpose
-  original protocol/anchors/session custody, without publishing Active authority.
+  owner's real join. Running out of the attempt's limits.sdk budget is
+  awaiting-owner, never unknown and never readiness: the effect stays Started
+  and a later coordinator turn looks again (task-rust-owner-join-wait). A lost
+  or torn POST is still unknown. Actual SDK enrollment follows through unchanged
+  Agent-purpose original protocol/anchors/session custody, without publishing
+  Active authority.
 - Add only an explicit private registration_token_rooms_enrollment_step_v1
   marker. Credentials remain separate protected files, never driver JSON/DTOs.
   Existing account-only and absent profiles preserve their previous boundary.

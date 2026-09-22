@@ -21,6 +21,16 @@ struct Job {
     home: Mutex<Option<Arc<hagency_store::agent_home::ManagedAgentHome>>>,
     account: Mutex<Option<Arc<ProvisionedTokenAccount>>>,
     result: Mutex<Option<Result<Arc<ProvisionedTokenAccount>, Error>>>,
+    /// The claimed effect, kept so a wait for the owner resumes from the rooms.
+    effect: Mutex<Option<hagency_store::Effect>>,
+    /// Wall-clock milliseconds since this provision first waited for its owner.
+    awaiting_since: Mutex<Option<u64>>,
+}
+fn wall_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
 }
 /// Private process Host capability. No Deserialize/Debug/Clone, credential
 /// getter, generic adapter callback or public observed-result setter.
@@ -236,6 +246,8 @@ impl TokenProvisioningHost {
                 home: Mutex::new(None),
                 account: Mutex::new(None),
                 result: Mutex::new(None),
+                effect: Mutex::new(Some(effect.clone())),
+                awaiting_since: Mutex::new(None),
             });
             jobs.insert(effect.id.clone(), job.clone());
             job
@@ -288,6 +300,161 @@ impl TokenProvisioningHost {
         *job.result.lock().map_err(|_| Error::OutcomeUnknown)? = Some(result);
         response
     }
+    /// Rooms, SDK enrollment and the factory, once the account was observed.
+    /// This is the part a wait for the owner resumes.
+    async fn continue_provision(
+        &self,
+        domain: &DomainStore,
+        effect: &hagency_store::Effect,
+        account: &Arc<ProvisionedTokenAccount>,
+        job: &Arc<Job>,
+        cancel: &CancellationToken,
+        activated: &mut bool,
+    ) -> Result<(), Error> {
+        if let Some(plan) = &self.rooms {
+            account
+                .create_agent_rooms(&plan.representative, cancel)
+                .await?;
+            account
+                .enroll_created_rooms(1, self.key, plan.anchors.clone(), cancel)
+                .await?;
+        }
+        if self.warm.is_some() {
+            self.finish_factory(domain, effect, account, job, cancel, activated)
+                .await?;
+        }
+        Ok(())
+    }
+    /// The custody after an attempt: a fenced factory when it failed after
+    /// activation, a cancelled one before, and the effect observed unknown.
+    /// Waiting for the owner is not a failure: nothing is fenced or observed,
+    /// the effect stays Started, and a later turn resumes from the rooms.
+    async fn settle_provision(
+        &self,
+        domain: &DomainStore,
+        effect: &hagency_store::Effect,
+        job: &Arc<Job>,
+        activated: bool,
+        result: Result<Arc<ProvisionedTokenAccount>, Error>,
+    ) -> Result<Arc<ProvisionedTokenAccount>, Error> {
+        if matches!(result, Err(Error::AwaitingOwner)) {
+            let mut since = job
+                .awaiting_since
+                .lock()
+                .map_err(|_| Error::OutcomeUnknown)?;
+            if since.is_none() {
+                *since = Some(wall_ms());
+            }
+            return Err(Error::AwaitingOwner);
+        }
+        let mut result = result;
+        if activated && let Err(error) = result {
+            result = Err(match &job.factory {
+                Some(custody) => custody.fence_failure(error).await,
+                None => error,
+            });
+        }
+        if result.is_err()
+            && let Some(custody) = &job.factory
+        {
+            custody.cancel().await;
+        }
+        if result.is_err()
+            && !activated
+            && domain
+                .observe_effect(effect.id.clone(), effect.fence, EffectOutcome::Unknown)
+                .await
+                .is_err()
+        {
+            Err(Error::OutcomeUnknown)
+        } else {
+            result
+        }
+    }
+    /// One more look for the owner, then the rest of the provision if they
+    /// joined. Called on every coordinator turn for each waiting provision.
+    async fn resume_provision(
+        &self,
+        domain: &DomainStore,
+        job: &Arc<Job>,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let effect = job
+            .effect
+            .lock()
+            .map_err(|_| Error::OutcomeUnknown)?
+            .clone()
+            .ok_or(Error::OutcomeUnknown)?;
+        let account = job
+            .account
+            .lock()
+            .map_err(|_| Error::OutcomeUnknown)?
+            .clone()
+            .ok_or(Error::OutcomeUnknown)?;
+        let mut activated = false;
+        let result = self
+            .continue_provision(domain, &effect, &account, job, cancel, &mut activated)
+            .await
+            .map(|()| account.clone());
+        let result = self
+            .settle_provision(domain, &effect, job, activated, result)
+            .await;
+        let response = result.as_ref().map(|_| ()).map_err(Clone::clone);
+        if response.is_ok() {
+            *job.awaiting_since
+                .lock()
+                .map_err(|_| Error::OutcomeUnknown)? = None;
+        }
+        *job.result.lock().map_err(|_| Error::OutcomeUnknown)? = Some(result);
+        response
+    }
+    /// The provisions waiting for their owner, with the wall-clock millisecond
+    /// each started waiting. Read-only; for the fleet's status.
+    pub(crate) fn awaiting_owner_engagements(&self) -> Vec<(String, u64)> {
+        let Ok(jobs) = self.jobs.lock() else {
+            return Vec::new();
+        };
+        jobs.iter()
+            .filter_map(|(id, job)| {
+                let waiting = matches!(
+                    job.result.lock().ok()?.as_ref(),
+                    Some(Err(Error::AwaitingOwner))
+                );
+                let since = (*job.awaiting_since.lock().ok()?)?;
+                (waiting && id.starts_with("provision_"))
+                    .then(|| (id["provision_".len()..].to_owned(), since))
+            })
+            .collect()
+    }
+    /// Resume every provision waiting for its owner: one look each. Still
+    /// waiting is counted, not reported; any other refusal is the provision's
+    /// own and is returned as it would have been inline.
+    pub(crate) async fn resume_awaiting_owners(
+        &self,
+        domain: &DomainStore,
+        cancel: &CancellationToken,
+    ) -> Result<usize, Error> {
+        let waiting: Vec<String> = self
+            .awaiting_owner_engagements()
+            .into_iter()
+            .map(|(engagement, _)| engagement)
+            .collect();
+        let mut still = 0;
+        for engagement in waiting {
+            match self
+                .account(domain, &self.registration, &engagement, cancel)
+                .await
+            {
+                Ok(()) => {}
+                Err(Error::AwaitingOwner) => still += 1,
+                Err(error) => return Err(error),
+            }
+        }
+        Ok(still)
+    }
     pub(crate) async fn account(
         &self,
         domain: &DomainStore,
@@ -308,22 +475,33 @@ impl TokenProvisioningHost {
             return Err(Error::Cancelled);
         }
         let id = format!("provision_{engagement}");
-        let job = {
-            let mut jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
-            if let Some(job) = jobs.get(&id) {
-                // Historical step acknowledgement only; it cannot establish
-                // current SDK/room/runner authority for the remaining factory.
-                return match job
+        // Historical step acknowledgement only; it cannot establish current
+        // SDK/room/runner authority for the remaining factory. A provision
+        // waiting for its owner is the one exception: it resumes from the
+        // rooms, with the account it already observed. The registry lock is
+        // released before anything awaits.
+        let resume = {
+            let jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
+            match jobs.get(&id) {
+                None => None,
+                Some(job) => match job
                     .result
                     .lock()
                     .map_err(|_| Error::OutcomeUnknown)?
                     .as_ref()
                 {
-                    Some(Ok(_)) => Ok(()),
-                    Some(Err(error)) => Err(error.clone()),
-                    None => Err(Error::OutcomeUnknown),
-                };
+                    Some(Ok(_)) => return Ok(()),
+                    Some(Err(Error::AwaitingOwner)) => Some(job.clone()),
+                    Some(Err(error)) => return Err(error.clone()),
+                    None => return Err(Error::OutcomeUnknown),
+                },
             }
+        };
+        if let Some(job) = resume {
+            return self.resume_provision(domain, &job, cancel).await;
+        }
+        let job = {
+            let mut jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
             if jobs.len() >= MAX_JOBS {
                 return Err(Error::Capacity);
             }
@@ -335,6 +513,8 @@ impl TokenProvisioningHost {
                 home: Mutex::new(None),
                 account: Mutex::new(None),
                 result: Mutex::new(None),
+                effect: Mutex::new(None),
+                awaiting_since: Mutex::new(None),
             });
             jobs.insert(id.clone(), job.clone());
             job
@@ -344,60 +524,81 @@ impl TokenProvisioningHost {
         let claimed = domain.claim_effect_for(id).await;
         let result = match claimed {
             Ok(Some(effect)) => {
+                *job.effect.lock().map_err(|_| Error::OutcomeUnknown)? = Some(effect.clone());
                 let mut activated = false;
-                let mut result = async {
-                    domain.validate_provision_account(effect.clone(), registration.clone()).await?;
-                    if let Some(plan)=&self.homes {
-                        let cancelled=Arc::new(std::sync::atomic::AtomicBool::new(cancel.is_cancelled()));
-                        let home=plan.materialize(domain.clone(),effect.clone(),registration.clone(),
-                            std::time::Instant::now()+self.limits.sdk,cancelled.clone());
+                let result = async {
+                    domain
+                        .validate_provision_account(effect.clone(), registration.clone())
+                        .await?;
+                    if let Some(plan) = &self.homes {
+                        let cancelled =
+                            Arc::new(std::sync::atomic::AtomicBool::new(cancel.is_cancelled()));
+                        let home = plan.materialize(
+                            domain.clone(),
+                            effect.clone(),
+                            registration.clone(),
+                            std::time::Instant::now() + self.limits.sdk,
+                            cancelled.clone(),
+                        );
                         tokio::pin!(home);
-                        let home=tokio::select! {
-                            result=&mut home=>result,
-                            _=cancel.cancelled()=>{cancelled.store(true,std::sync::atomic::Ordering::Release);home.await},
+                        let home = tokio::select! {
+                            result = &mut home => result,
+                            _ = cancel.cancelled() => {
+                                cancelled.store(true, std::sync::atomic::Ordering::Release);
+                                home.await
+                            },
                         };
-                        *job.home.lock().map_err(|_|Error::OutcomeUnknown)?=Some(home?);
-                        domain.validate_provision_account(effect.clone(),registration.clone()).await?;
+                        *job.home.lock().map_err(|_| Error::OutcomeUnknown)? = Some(home?);
+                        domain
+                            .validate_provision_account(effect.clone(), registration.clone())
+                            .await?;
                     }
-                    let mut operation=if let Some(namespace)=&self.as_namespace {
-                        TokenAccountProvision::application_service(registration,&effect,self.endpoint.as_str(),
-                            crate::ApplicationServiceCredential::new(&self.token,namespace)?,self.state.clone(),self.key,self.limits.clone())
+                    let mut operation = if let Some(namespace) = &self.as_namespace {
+                        TokenAccountProvision::application_service(
+                            registration,
+                            &effect,
+                            self.endpoint.as_str(),
+                            crate::ApplicationServiceCredential::new(&self.token, namespace)?,
+                            self.state.clone(),
+                            self.key,
+                            self.limits.clone(),
+                        )
                     } else {
-                        TokenAccountProvision::new(registration,&effect,self.endpoint.as_str(),&self.token,self.state.clone(),self.key,self.limits.clone())
-                    }?.with_domain(domain.clone(), effect.clone(), registration.clone());
-                    if self.warm.is_some() {operation.factory_rooms=Some(self.factory_rooms.clone());}
+                        TokenAccountProvision::new(
+                            registration,
+                            &effect,
+                            self.endpoint.as_str(),
+                            &self.token,
+                            self.state.clone(),
+                            self.key,
+                            self.limits.clone(),
+                        )
+                    }?
+                    .with_domain(
+                        domain.clone(),
+                        effect.clone(),
+                        registration.clone(),
+                    );
+                    if self.warm.is_some() {
+                        operation.factory_rooms = Some(self.factory_rooms.clone());
+                    }
                     operation.roots = self.roots.clone();
                     let account = Arc::new(operation.execute(cancel).await?);
                     *job.account.lock().map_err(|_| Error::OutcomeUnknown)? = Some(account.clone());
-                    if let Some(plan) = &self.rooms {
-                        account.create_agent_rooms(&plan.representative, cancel).await?;
-                        account.enroll_created_rooms(1,self.key,plan.anchors.clone(),cancel).await?;
-                    }
-                    if self.warm.is_some() {self.finish_factory(domain,&effect,&account,&job,cancel,&mut activated).await?;}
+                    self.continue_provision(
+                        domain,
+                        &effect,
+                        &account,
+                        &job,
+                        cancel,
+                        &mut activated,
+                    )
+                    .await?;
                     Ok(account)
-                }.await;
-                if activated && let Err(error) = result {
-                    result = Err(match &job.factory {
-                        Some(custody) => custody.fence_failure(error).await,
-                        None => error,
-                    });
                 }
-                if result.is_err()
-                    && let Some(custody) = &job.factory
-                {
-                    custody.cancel().await;
-                }
-                if result.is_err()
-                    && !activated
-                    && domain
-                        .observe_effect(effect.id, effect.fence, EffectOutcome::Unknown)
-                        .await
-                        .is_err()
-                {
-                    Err(Error::OutcomeUnknown)
-                } else {
-                    result
-                }
+                .await;
+                self.settle_provision(domain, &effect, &job, activated, result)
+                    .await
             }
             Ok(None) => Err(Error::OutcomeUnknown),
             Err(error) => Err(error.into()),

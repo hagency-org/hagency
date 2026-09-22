@@ -451,6 +451,11 @@ pub struct Status {
     /// store's, and the failure it follows stays reported beside it.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     awaiting_operator: bool,
+    /// A provision whose rooms exist, waiting for the owner to join the
+    /// agent's DM since this wall-clock millisecond. Status only: nothing
+    /// reads it to decide anything, and the wait has no deadline.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    awaiting_owner_since_ms: Option<u64>,
     settlement: Option<&'static str>,
     error: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -483,6 +488,7 @@ impl StatusHandle {
             cleanup: None,
             stop_cause: None,
             awaiting_operator: false,
+            awaiting_owner_since_ms: None,
             settlement: None,
             error: None,
             matrix_error: None,
@@ -517,6 +523,13 @@ impl StatusHandle {
         status.state = "not_attached";
         status.matrix_error = cause.map(matrix_error_label);
     }
+    /// A provision waiting for its owner to join. Not an error: the fleet is
+    /// not failed and readiness is unchanged.
+    fn awaiting_owner(&self, since_ms: u64) {
+        let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        status.state = "awaiting_owner";
+        status.awaiting_owner_since_ms = Some(since_ms);
+    }
     fn begin_attempt(&self) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
         status.state = "refreshing";
@@ -525,6 +538,7 @@ impl StatusHandle {
         status.cleanup = None;
         status.stop_cause = None;
         status.awaiting_operator = false;
+        status.awaiting_owner_since_ms = None;
         status.settlement = None;
         status.error = None;
         status.matrix_error = None;
@@ -618,6 +632,7 @@ pub(crate) fn matrix_error_label(error: &hagency_matrix::Error) -> &'static str 
         Busy => "busy",
         Cancelled => "cancelled",
         Timeout => "timeout",
+        AwaitingOwner => "awaiting_owner",
         Transport => "transport",
         Redirect => "redirect",
         Headers => "headers",

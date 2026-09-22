@@ -47,6 +47,11 @@ pub enum Error {
     Cancelled,
     #[error("Matrix operation timed out")]
     Timeout,
+    /// The new agent's rooms exist and the agent is in them; the owner has not
+    /// joined the agent's DM yet. Not a failure: the provision stays Started and
+    /// is resumed on a later turn. Waiting for a human has no deadline.
+    #[error("the owner has not joined the new agent's room yet")]
+    AwaitingOwner,
     #[error("Matrix transport request failed")]
     Transport,
     #[error("Matrix redirect refused")]

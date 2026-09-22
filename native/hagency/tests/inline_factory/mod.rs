@@ -707,6 +707,8 @@ pub struct Peer {
     as_logged: bool,
     pub account_posts: usize,
     owner_job: Option<tokio::task::JoinHandle<()>>,
+    /// Hold the owner's join back, to exercise the wait for a slow human.
+    pub owner_join_delay: Option<Duration>,
 }
 impl Peer {
     async fn new(application_service: bool, endpoint: String) -> Self {
@@ -733,6 +735,7 @@ impl Peer {
             as_logged: false,
             account_posts: 0,
             owner_job: None,
+            owner_join_delay: None,
         }
     }
     fn project(&self) -> Value {
@@ -972,7 +975,14 @@ impl Peer {
             && self.owner_job.is_none();
         request.json(response.0, response.1);
         if invite_owner {
-            self.owner_job = Some(tokio::spawn(join_owner(self.endpoint.clone())));
+            let endpoint = self.endpoint.clone();
+            let delay = self.owner_join_delay;
+            self.owner_job = Some(tokio::spawn(async move {
+                if let Some(delay) = delay {
+                    tokio::time::sleep(delay).await;
+                }
+                join_owner(endpoint).await
+            }));
         }
     }
 }

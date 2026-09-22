@@ -489,27 +489,91 @@ async fn native_provisioning_inline_rooms_refusals() {
         assert_eq!(route_rows(&f), 0);
         finish(f, fake, c).await;
     }
+    // The owner does not join within the attempt's own budget. That is not a
+    // failure: the rooms exist, the effect stays Started, the intake succeeds,
+    // and a later turn looks again; once the owner has joined, the provision
+    // continues from the rooms without creating, inviting or joining again.
     let mut server = Server::new().await;
     let mut limits = common::load_limits();
-    limits.sdk = std::time::Duration::from_millis(700);
+    limits.sdk = std::time::Duration::from_secs(4);
     let (f, mut fake, c) = ready_inline_limits(
         Some((REP_TOKEN, vec![(OWNER.into(), server.peer.anchor())])),
         limits,
     )
     .await;
-    assert!(
-        drive(&f, &mut fake, &c, &mut server, false, |_, _| {})
-            .await
-            .is_err()
-    );
+    drive(&f, &mut fake, &c, &mut server, false, |_, _| {})
+        .await
+        .unwrap();
     assert_eq!(server.posts, 3);
     assert!(server.owner_reads > 0 && !server.owner);
     assert!(server.peer.writes.is_empty());
+    assert_eq!(effect_row(&f), Some(("provision".into(), "started".into())));
+    assert_eq!(route_rows(&f), 0);
+    let reads = server.owner_reads;
+    // A turn with the owner still absent looks once and keeps waiting.
+    turn(&mut fake, &c, &mut server).await.unwrap();
+    assert!(server.owner_reads > reads && !server.owner);
+    assert!(server.peer.writes.is_empty());
+    assert_eq!(effect_row(&f), Some(("provision".into(), "started".into())));
+    // The owner joins; the next turn finishes the rooms and the enrollment.
+    let mut owner = tokio::spawn(owner_join(fake.endpoint.clone()));
+    loop {
+        tokio::select! {
+            result=&mut owner=>{result.unwrap();break;},
+            request=fake.next()=>{let response=server.reply(&request).await;request.json(response.0,response.1);}
+        }
+    }
+    assert!(server.owner);
+    turn(&mut fake, &c, &mut server).await.unwrap();
     assert_eq!(
-        effect_row(&f),
-        Some(("provision".into(), "uncertain".into()))
+        server.posts, 3,
+        "nothing is created, invited or joined again"
     );
+    assert!(!server.peer.writes.is_empty(), "the enrollment followed");
+    assert_eq!(effect_row(&f), Some(("provision".into(), "started".into())));
     finish(f, fake, c).await;
+}
+/// One coordinator turn with nothing new to admit: the intake resumes every
+/// provision waiting for its owner before it reads the room. The coordinator's
+/// own reads (whoami, an empty sync, its room states) are answered here; the
+/// agent's, the representative's and the owner's go to the rooms peer.
+async fn turn(
+    fake: &mut common::Fake,
+    c: &Collector,
+    server: &mut Server,
+) -> Result<IntakeSummary, Error> {
+    let cancel = CancellationToken::new();
+    let operation = c.intake(plan(), &cancel);
+    tokio::pin!(operation);
+    let coordinator = format!("Bearer {}", common::TOKEN);
+    let mut states = [
+        super::session_state(),
+        super::reception_state(),
+        super::project_state(),
+    ]
+    .into_iter()
+    .cycle();
+    loop {
+        tokio::select! {
+            result=&mut operation=>break result,
+            request=fake.next()=>{
+                if request.headers.get("authorization") == Some(&coordinator) {
+                    if request.target.ends_with("/whoami") {
+                        request.json(200, common::who());
+                    } else if request.target.contains("/sync?") {
+                        request.json(200, super::provisioning_sync("idle_turn", vec![]));
+                    } else if request.target.ends_with("/state") {
+                        request.json(200, states.next().unwrap());
+                    } else {
+                        panic!("unexpected coordinator request in an idle turn: {}", request.target);
+                    }
+                } else {
+                    let response=server.reply(&request).await;
+                    request.json(response.0,response.1);
+                }
+            }
+        }
+    }
 }
 #[tokio::test]
 async fn native_provisioning_inline_rooms_replay() {

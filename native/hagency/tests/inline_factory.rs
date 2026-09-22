@@ -300,6 +300,131 @@ async fn run_fleet_until(
     }
     last
 }
+async fn fleet_snapshot(client: &reqwest::Client, url: &str) -> serde_json::Value {
+    let response = client
+        .get(url)
+        .bearer_auth("fixture_operator_token_32_bytes_minimum")
+        .send()
+        .await
+        .unwrap();
+    let value: serde_json::Value = serde_json::from_str(&response.text().await.unwrap()).unwrap();
+    value["factory_service"].clone()
+}
+fn agent_row(snapshot: &serde_json::Value, engagement: &str) -> serde_json::Value {
+    snapshot["agents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|a| a["engagement_id"] == engagement)
+        .cloned()
+        .unwrap_or_default()
+}
+/// The owner's join has no deadline (task rust-owner-join-wait). A provision
+/// whose rooms exist waits as `awaiting_owner`; the coordinator keeps taking
+/// turns and looks again on each; when the owner joins, a later turn finishes
+/// the agent, which takes the waiting row's place and runs its first task.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[tokio::test]
+async fn native_provisioning_waits_for_the_owner_without_a_deadline() {
+    let mut f = Fixture::new_service(false).await;
+    // Longer than the first attempt's whole budget (the fixture's SDK limit).
+    f.peer.owner_join_delay = Some(Duration::from_secs(24));
+    let started = std::time::Instant::now();
+    f.provision().await;
+    let engagement = f.engagement();
+    assert_eq!(f.target_state(), ("started".into(), "reserved".into()));
+    assert!(!f.peer.owner, "the owner has not joined yet");
+    assert_eq!(f.peer.account_posts, 1);
+    let waiting = f.collector.awaiting_owner_engagements();
+    assert_eq!(waiting.len(), 1);
+    assert_eq!(waiting[0].0, engagement);
+    let since = waiting[0].1;
+    fs::write(
+        f.work().join("owned-mcp.fleet-files"),
+        b"offline probe only",
+    )
+    .unwrap();
+    let mut fleet = f.fleet.take().unwrap();
+    let cancel = CancellationToken::new();
+    let (notices, mut receiver) = tokio::sync::mpsc::channel(1);
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .unwrap();
+    let url = format!("http://{}/api/native/v1/capabilities", f.address);
+    {
+        let mut runner = Box::pin(fleet.run(notices, &cancel));
+        tokio::time::timeout(Duration::from_secs(90), async {
+            // 1. The fleet shows the wait, with its start, and is not failed.
+            loop {
+                tokio::select! {
+                    result=&mut runner=>panic!("service stopped early: {result:?}"),
+                    request=f.fake.next()=>f.peer.respond(request,&f.base).await,
+                    Some(_)=receiver.recv()=>{},
+                    _=tokio::time::sleep(Duration::from_millis(10))=>{},
+                }
+                let snapshot = fleet_snapshot(&client, &url).await;
+                let row = agent_row(&snapshot, &engagement);
+                if row["status"]["state"] == "awaiting_owner" {
+                    assert_eq!(row["status"]["awaiting_owner_since_ms"], since);
+                    assert_eq!(snapshot["failed"], false);
+                    break;
+                }
+            }
+            // 2. Coordinator turns look again until the owner has joined.
+            while !f.collector.awaiting_owner_engagements().is_empty() {
+                let turn = f
+                    .collector
+                    .intake(HostIntakePlan::new(vec!["root".into()]).unwrap(), &cancel);
+                tokio::pin!(turn);
+                loop {
+                    tokio::select! {
+                        result=&mut runner=>panic!("service stopped early: {result:?}"),
+                        result=&mut turn=>{result.unwrap();break;},
+                        request=f.fake.next()=>f.peer.respond(request,&f.base).await,
+                        Some(_)=receiver.recv()=>{},
+                    }
+                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+            }
+            assert!(f.peer.owner);
+            assert!(started.elapsed() >= Duration::from_secs(24));
+            assert_eq!(f.target_state(), ("complete".into(), "active".into()));
+            // 3. The agent takes the waiting row's place and runs its first task.
+            queue_service_task(&f, 1).await;
+            loop {
+                tokio::select! {
+                    result=&mut runner=>panic!("service stopped early: {result:?}"),
+                    request=f.fake.next()=>f.peer.respond(request,&f.base).await,
+                    Some(_)=receiver.recv()=>{},
+                    _=tokio::time::sleep(Duration::from_millis(10))=>{},
+                }
+                if f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='completed'") == 1 {
+                    break;
+                }
+            }
+            let snapshot = fleet_snapshot(&client, &url).await;
+            let row = agent_row(&snapshot, &engagement);
+            assert_ne!(row["status"]["state"], "awaiting_owner");
+            assert_eq!(snapshot["failed"], false);
+        })
+        .await
+        .unwrap();
+        cancel.cancel();
+        runner.await.unwrap();
+    }
+    assert_eq!(f.receipt("readback")["task"]["id"], "service_task_1");
+    assert_eq!(f.peer.account_posts, 1, "the account is registered once");
+    {
+        let closing = fleet.close();
+        tokio::pin!(closing);
+        loop {
+            tokio::select! {result=&mut closing=>{result.unwrap();break;},request=f.fake.next()=>f.peer.respond(request,&f.base).await}
+        }
+    }
+    f.close().await;
+}
 /// After a restart the service brings back the agents its inline factory
 /// completed, from what their provision left on disk (task
 /// rust-factory-agent-reattach). It registers nothing and uploads no keys.
