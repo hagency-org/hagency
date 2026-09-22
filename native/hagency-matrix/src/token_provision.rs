@@ -594,6 +594,37 @@ impl ProvisionedTokenAccount {
             .run(config, original.domain.clone(), scope, cancel)
             .await
     }
+    /// Re-attach only. Replays this account's completed rooms custody (no
+    /// create, invite or join can leave it in this mode), then opens its
+    /// existing enrolled SDK store and collects at `generation`.
+    pub async fn reattach_collector(
+        &self,
+        representative_token: &str,
+        generation: u64,
+        key: [u8; 32],
+        anchors: Vec<(String, String)>,
+        cancel: &CancellationToken,
+    ) -> Result<crate::Collector, Error> {
+        if !self.reattach {
+            return Err(Error::Config);
+        }
+        self.create_agent_rooms(representative_token, cancel)
+            .await?;
+        let rooms = self.room_jobs.rooms()?;
+        self.room_jobs.check_rooms(&rooms)?;
+        let original = self.scope.as_ref().ok_or(Error::Config)?;
+        let config = self
+            .host_config(generation, key, rooms)?
+            .with_fresh_account_enrollment(anchors)?;
+        let scope = crate::enrollment::provisioning::Scope::new(
+            original.effect.clone(),
+            original.registration.clone(),
+            &config,
+        )?;
+        self.enrollment_jobs
+            .reattach_enrolled(config, original.domain.clone(), scope, cancel)
+            .await
+    }
     /// Close only this retained enrollment SDK. This is not a canonical
     /// transport/route/lifecycle cleanup receipt and cannot rearm enrollment.
     pub async fn close_enrollment_sdk(&self) -> Result<(), Error> {

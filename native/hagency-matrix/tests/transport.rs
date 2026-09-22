@@ -79,16 +79,33 @@ async fn native_matrix_cancelled_read_retires_nothing() {
         .await
         .unwrap();
     let c = Collector::new(f.config(&fake.endpoint), f.store.clone()).unwrap();
-    // The service is stopping: its own token cancels a collection whose whoami
-    // is still in flight. Nothing was refused and nothing was sent.
-    let cancel = CancellationToken::new();
-    let (result, _) = tokio::join!(c.collect(&cancel), async {
-        let request = fake.next().await;
-        cancel.cancel();
-        drop(request);
-    });
-    assert_eq!(result, Err(Error::Cancelled));
-    assert!(f.available().await);
+    // The service is stopping: its own token cancels a collection while its
+    // whoami is in flight, then one while its room-state read is in flight.
+    // Nothing was refused and nothing was sent, so neither the transport nor
+    // the room is retired.
+    for reads_before_cancel in [0, 2] {
+        let cancel = CancellationToken::new();
+        let (result, _) = tokio::join!(c.collect(&cancel), async {
+            if reads_before_cancel == 2 {
+                fake.next().await.json(200, who());
+                fake.next().await.json(200, sync("batch0"));
+            }
+            let request = fake.next().await;
+            cancel.cancel();
+            drop(request);
+        });
+        assert_eq!(result, Err(Error::Cancelled));
+        assert!(f.available().await);
+        let room = f
+            .store
+            .matrix_room_state(
+                f.identity.transport.engagement_id.clone(),
+                "!direct:example.test".into(),
+            )
+            .await
+            .unwrap();
+        assert!(room.is_none_or(|room| room.available));
+    }
     // The same incarnation collects again at the same generation.
     let (result, _) = scripted(
         c.collect(&CancellationToken::new()),

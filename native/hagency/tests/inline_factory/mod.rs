@@ -100,6 +100,9 @@ pub struct Fixture {
     custody: hagency_store::Store,
     server: tokio::task::JoinHandle<()>,
     handle: salvo::server::ServerHandle,
+    application_service: bool,
+    service_mode: bool,
+    pub address: std::net::SocketAddr,
 }
 impl Fixture {
     pub async fn new(application_service: bool) -> Self {
@@ -164,6 +167,29 @@ impl Fixture {
             b"genuine offline factory source",
         )
         .unwrap();
+        let fake = matrix::Fake::start(true).await;
+        let peer = Peer::new(application_service, fake.endpoint.clone()).await;
+        Self::assemble(
+            base,
+            fake,
+            peer,
+            application_service,
+            foreign_writer,
+            service_mode,
+        )
+        .await
+    }
+    /// Every in-memory owner over an existing state: the approval bot, the
+    /// coordinator with its provisioner, the app and the fleet. A fresh fixture
+    /// and a restarted one build the same way.
+    async fn assemble(
+        base: matrix::Fixture,
+        fake: matrix::Fake,
+        peer: Peer,
+        application_service: bool,
+        foreign_writer: bool,
+        service_mode: bool,
+    ) -> Self {
         let custody = hagency_store::Store::start(
             hagency_store::Repository::open(&base.root.path().join("runtime")).unwrap(),
             16,
@@ -183,8 +209,7 @@ impl Fixture {
         .with_domain(base.store.clone());
         let service = salvo::Server::new(acceptor);
         let handle = service.handle();
-        let fake = matrix::Fake::start(true).await;
-        let mut peer = Peer::new(application_service, fake.endpoint.clone()).await;
+        let mut peer = peer;
         let approvals = Arc::new(
             ApprovalCollector::new(
                 approval_config(&base, &fake.endpoint, peer.peer.anchor()),
@@ -376,6 +401,9 @@ impl Fixture {
             server,
             handle,
             fleet,
+            application_service,
+            service_mode,
+            address,
         };
         {
             let cancel = CancellationToken::new();
@@ -396,6 +424,40 @@ impl Fixture {
             .await
             .unwrap();
         f
+    }
+    /// The process restarts: every in-memory owner is closed and rebuilt over
+    /// the same state, and the domain repository is reopened the way a real
+    /// start reopens it. The fake homeserver and the owner's device keep their
+    /// state, as the real ones would.
+    pub async fn restart(mut self) -> Self {
+        if let Some(fleet) = &mut self.fleet {
+            fleet.close().await.unwrap();
+        }
+        if let Some(owner) = self.peer.owner_job.take() {
+            owner.await.unwrap();
+        }
+        self.collector.close_provisioned_agents().await.unwrap();
+        self.collector.close().await.unwrap();
+        self.approvals.close().await.unwrap();
+        self.handle.stop_graceful(Some(Duration::from_secs(1)));
+        self.server.await.unwrap();
+        self.base.store.shutdown().await.unwrap();
+        self.custody.shutdown().await.unwrap();
+        assert!(self.foreign.is_none());
+        let Self {
+            mut base,
+            fake,
+            peer,
+            application_service,
+            service_mode,
+            ..
+        } = self;
+        base.store = hagency_store::DomainStore::start(
+            hagency_store::DomainRepository::open(&base.root.path().join("domain")).unwrap(),
+            32,
+        )
+        .unwrap();
+        Self::assemble(base, fake, peer, application_service, false, service_mode).await
     }
     pub async fn provision(&mut self) {
         let plan = HostIntakePlan::new(vec!["root".into()]).unwrap();
@@ -903,8 +965,10 @@ impl Peer {
                     .expect("original SDK request")
             }
         };
+        // The owner joins the new DM once; after a restart they are already in it.
         let invite_owner = request.target.ends_with("/state")
             && request.target.contains("factory_owner_dm")
+            && !self.owner
             && self.owner_job.is_none();
         request.json(response.0, response.1);
         if invite_owner {

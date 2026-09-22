@@ -183,6 +183,215 @@ async fn native_configured_fleet_recurring_driver() {
 }
 use serde_json::json;
 
+async fn queue_service_task(f: &Fixture, n: u32) {
+    let task = format!("service_task_{n}");
+    f.base
+        .store
+        .create_canonical_task(
+            task.clone(),
+            format!("session_{}", f.engagement()),
+            format!("Service task {n}"),
+            now(),
+        )
+        .await
+        .unwrap();
+    f.base
+        .store
+        .enqueue_dispatch(DispatchInput {
+            id: format!("service_dispatch_{n}"),
+            session_id: format!("session_{}", f.engagement()),
+            task_id: Some(task),
+            resources: vec![ResourceLease {
+                id: format!("work_{}", f.engagement()),
+                exclusive: true,
+            }],
+            payload: json!({"instruction":"offline actual helper heartbeat/readback"}),
+        })
+        .await
+        .unwrap();
+}
+/// Run the fleet until `done(completed dispatches, this agent's fleet row)`,
+/// then stop and close it cleanly. Returns the last fleet snapshot.
+async fn run_fleet_until(
+    f: &mut Fixture,
+    label: &str,
+    engagement: &str,
+    done: impl Fn(u64, &serde_json::Value) -> bool,
+) -> serde_json::Value {
+    let mut fleet = f.fleet.take().unwrap();
+    let cancel = CancellationToken::new();
+    let (notices, mut receiver) = tokio::sync::mpsc::channel(1);
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(Duration::from_secs(3))
+        .build()
+        .unwrap();
+    let url = format!("http://{}/api/native/v1/capabilities", f.address);
+    let last = {
+        let mut runner = Box::pin(fleet.run(notices, &cancel));
+        let mut seen = serde_json::Value::Null;
+        let last = tokio::time::timeout(Duration::from_secs(30), async {
+            loop {
+                tokio::select! {
+                    result=&mut runner=>panic!("service stopped early: {result:?}"),
+                    request=f.fake.next()=>f.peer.respond(request,&f.base).await,
+                    Some(_)=receiver.recv()=>{},
+                    _=tokio::time::sleep(Duration::from_millis(10))=>{},
+                }
+                let response = client
+                    .get(&url)
+                    .bearer_auth("fixture_operator_token_32_bytes_minimum")
+                    .send()
+                    .await
+                    .unwrap();
+                let value: serde_json::Value =
+                    serde_json::from_str(&response.text().await.unwrap()).unwrap();
+                let snapshot = value["factory_service"].clone();
+                seen = snapshot.clone();
+                let agent = snapshot["agents"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|a| a["engagement_id"] == engagement)
+                    .cloned()
+                    .unwrap_or_default();
+                if done(
+                    f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='completed'"),
+                    &agent,
+                ) {
+                    break snapshot;
+                }
+            }
+        })
+        .await;
+        let Ok(last) = last else {
+            let states = f.base.store.clone();
+            drop(states);
+            let receipts: Vec<String> = fs::read_dir(f.work())
+                .unwrap()
+                .filter_map(|e| e.ok())
+                .map(|e| e.file_name().to_string_lossy().into_owned())
+                .filter(|n| n.starts_with("owned-mcp."))
+                .collect();
+            panic!(
+                "{label}: timed out; snapshot={seen}; completed={} queued={} leased={} started={} unknown={}; \
+                 account_posts={} key_writes={} probe_requests={} receipts={receipts:?}",
+                f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='completed'"),
+                f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='queued'"),
+                f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='leased'"),
+                f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='started'"),
+                f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='outcome_unknown'"),
+                f.peer.account_posts,
+                f.peer.peer.writes.len(),
+                f.requests().len(),
+            );
+        };
+        cancel.cancel();
+        runner.await.unwrap();
+        last
+    };
+    // A clean close, serving any refresh already admitted before the cancel.
+    {
+        let closing = fleet.close();
+        tokio::pin!(closing);
+        loop {
+            tokio::select! {result=&mut closing=>{result.unwrap();break;},request=f.fake.next()=>f.peer.respond(request,&f.base).await}
+        }
+    }
+    last
+}
+/// After a restart the service brings back the agents its inline factory
+/// completed, from what their provision left on disk (task
+/// rust-factory-agent-reattach). It registers nothing and uploads no keys.
+/// An agent that cannot come back is shown as `not_attached` and fails
+/// neither the fleet nor readiness.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[tokio::test]
+async fn native_configured_fleet_reattaches_after_restart() {
+    for case in ["reattached", "home_tampered"] {
+        let mut f = Fixture::new_service(false).await;
+        f.provision().await;
+        f.original_owner().await;
+        let engagement = f.engagement();
+        // The restarted process launches no warm child: its first launch for
+        // this agent is a follow-up, which the offline probe accepts with this marker.
+        fs::write(f.work().join("owned-mcp.sequential"), b"offline probe only").unwrap();
+        fs::write(
+            f.work().join("owned-mcp.fleet-files"),
+            b"offline probe only",
+        )
+        .unwrap();
+        queue_service_task(&f, 1).await;
+        run_fleet_until(&mut f, "before restart", &engagement, |completed, _| {
+            completed == 1
+        })
+        .await;
+        assert_eq!(f.receipt("readback")["task"]["id"], "service_task_1");
+        let account_posts = f.peer.account_posts;
+        let key_writes = f.peer.peer.writes.len();
+        if case == "home_tampered" {
+            fs::write(
+                f.work().parent().unwrap().join("state/home-binding"),
+                "0".repeat(64),
+            )
+            .unwrap();
+        }
+        let mut f = f.restart().await;
+        queue_service_task(&f, 2).await;
+        if case == "reattached" {
+            let snapshot = run_fleet_until(&mut f, "after restart", &engagement, |completed, _| {
+                completed == 2
+            })
+            .await;
+            assert_eq!(snapshot["failed"], false);
+            let agent = snapshot["agents"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["engagement_id"] == engagement)
+                .expect("the re-attached agent is listed");
+            assert_ne!(agent["status"]["state"], "not_attached");
+            assert_eq!(f.receipt("readback")["task"]["id"], "service_task_2");
+            assert_eq!(
+                f.requests()
+                    .iter()
+                    .filter(|r| r["method"] == "initialize")
+                    .count(),
+                2,
+                "one warm launch before the restart, one follow-up after it"
+            );
+            assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
+        } else {
+            let snapshot = run_fleet_until(
+                &mut f,
+                "after restart, tampered",
+                &engagement,
+                |_, agent| agent["status"]["state"] == "not_attached",
+            )
+            .await;
+            assert_eq!(
+                snapshot["failed"], false,
+                "one missing agent does not fail the fleet"
+            );
+            assert_eq!(
+                f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='queued'"),
+                1,
+                "its work waits; nothing else takes it"
+            );
+        }
+        assert_eq!(
+            f.peer.account_posts, account_posts,
+            "a restart registers no account"
+        );
+        assert_eq!(
+            f.peer.peer.writes.len(),
+            key_writes,
+            "a restart uploads no keys"
+        );
+        f.close().await;
+    }
+}
+
 #[tokio::test]
 async fn native_provisioning_effect_completed() {
     for application_service in [false, true] {

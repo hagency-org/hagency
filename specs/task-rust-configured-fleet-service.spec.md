@@ -23,12 +23,17 @@ real client approval, two-agent/live soak, parity or release requirements.
   ADR016 deployment profile; do not advertise those before their remaining gates.
 - Construct the configured approval collector once, then attach that same Arc
   and the same eight-live/two-parked ApprovalHost to the original provisioner.
-  Do not reconstruct credentials, account, SDK, home, runtime or readiness.
+  Do not reconstruct credentials, account, SDK, home, runtime or readiness
+  while provisioning. After a restart, an agent this factory completed is
+  brought back read-only from what its provision left
+  (task-rust-factory-agent-reattach); an agent that cannot come back is shown
+  as not_attached and fails nothing else.
 - Use the verified fixed executable/helper and private retained context root.
   Unmanaged factory agents use their own materialized home, not the coordinator's
   shared HOME. Managed-account launch still supplies its original private home.
 - Discover only actual successful retained jobs. Take each original agent once;
-  never derive owners from Active rows or retry failed/unknown provisioning.
+  never retry failed/unknown provisioning. The only owner derived from an Active
+  row is a re-attach after a restart, proven by the completion's own receipt.
   Discovery is bounded by the existing16-job non-evicting registry and does not
   wait for a later intake batch to finish before observing an earlier result.
 - Each agent uses its original claim profile, session and workspace. Dispatch

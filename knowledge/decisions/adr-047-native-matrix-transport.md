@@ -276,7 +276,11 @@ nothing was sent, so the last complete collection stands, as it would after a
 crash at that instant. Every other error on those paths still fences. A path
 that may have a write in flight (sends, uploads, enrollment, provisioning) keeps
 fencing on cancellation, because there a lost acknowledgement is real
-uncertainty; `native_matrix_enrollment_custody` pins that.
+uncertainty; `native_matrix_enrollment_custody` pins that. The same rule holds
+for the per-room fence: a cancelled room-state read retires no room (2026-09-22).
+Retiring the shared project room there made every agent of the NEXT process
+fail its first collection with Generation, a genuine error that fenced all three
+transports, so a stop timed during a refresh still refused the next start.
 
 **Unchanged.** A fenced generation stays unavailable, and startup still must not
 rotate a generation by itself. A close still fails with the SDK shutdown's own

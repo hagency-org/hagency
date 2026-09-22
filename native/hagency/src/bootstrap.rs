@@ -509,6 +509,14 @@ impl StatusHandle {
             .unwrap_or_else(|e| e.into_inner())
             .awaiting_operator = true;
     }
+    /// A known factory agent a restart did not bring back. It is shown, with
+    /// the Matrix cause when there is one, and is deliberately not an `error`:
+    /// one missing agent does not make the fleet or readiness fail.
+    fn not_attached(&self, cause: Option<&hagency_matrix::Error>) {
+        let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        status.state = "not_attached";
+        status.matrix_error = cause.map(matrix_error_label);
+    }
     fn begin_attempt(&self) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
         status.state = "refreshing";
@@ -1513,7 +1521,7 @@ impl Bootstrap {
             _=shutdown.cancelled()=>None,
             result=async {
                 match &mut self.fleet {
-                    Some(fleet)=>fleet.run(self.approval_sender.clone().ok_or(Failure::Config)?,shutdown).await,
+                    Some(fleet)=>fleet::Service::run(fleet,self.approval_sender.clone().ok_or(Failure::Config)?,shutdown).await,
                     None=>std::future::pending::<Result<(),Failure>>().await,
                 }
             }=>result.err(),

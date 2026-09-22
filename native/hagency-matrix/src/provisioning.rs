@@ -193,6 +193,101 @@ impl TokenProvisioningHost {
     }
     /// Called only inside the Collector's accepted owned intake job, AFTER
     /// representative verification and canonical approve. No effect worker.
+    /// After a restart: bring back one agent this service's inline factory
+    /// already completed. Nothing is claimed, registered, created or activated;
+    /// every step reads what the original provision left and refuses when it is
+    /// missing or changed. A failure here concerns this agent only and leaves
+    /// its durable state exactly as it was, except that genuine negative Matrix
+    /// evidence still fences as everywhere else.
+    pub(crate) async fn reattach_completed(
+        &self,
+        domain: &DomainStore,
+        engagement: &str,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        if self.closed.load(std::sync::atomic::Ordering::Acquire) {
+            return Err(Error::Generation);
+        }
+        if self.warm.is_none() || self.homes.is_none() || self.rooms.is_none() {
+            return Err(Error::Config);
+        }
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let (effect, registration, scope) = domain
+            .reattach_provision_scope(engagement.to_owned())
+            .await?;
+        if canonical::digest(&serde_json::to_value(&registration).map_err(|_| Error::Config)?)
+            .map_err(|_| Error::Config)?
+            != self.fingerprint
+        {
+            return Err(Error::Generation);
+        }
+        let job = {
+            let mut jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
+            if jobs.contains_key(&effect.id) {
+                return Err(Error::Busy);
+            }
+            if jobs.len() >= MAX_JOBS {
+                return Err(Error::Capacity);
+            }
+            let job = Arc::new(Job {
+                factory: Some(Arc::new(factory::Custody::new())),
+                home: Mutex::new(None),
+                account: Mutex::new(None),
+                result: Mutex::new(None),
+            });
+            jobs.insert(effect.id.clone(), job.clone());
+            job
+        };
+        let result = async {
+            let home =
+                self.homes
+                    .as_ref()
+                    .ok_or(Error::Config)?
+                    .reopen(&scope, &effect, &registration)?;
+            *job.home.lock().map_err(|_| Error::OutcomeUnknown)? = Some(home);
+            let mut operation = if let Some(namespace) = &self.as_namespace {
+                TokenAccountProvision::application_service(
+                    &registration,
+                    &effect,
+                    self.endpoint.as_str(),
+                    crate::ApplicationServiceCredential::new(&self.token, namespace)?,
+                    self.state.clone(),
+                    self.key,
+                    self.limits.clone(),
+                )
+            } else {
+                TokenAccountProvision::new(
+                    &registration,
+                    &effect,
+                    self.endpoint.as_str(),
+                    &self.token,
+                    self.state.clone(),
+                    self.key,
+                    self.limits.clone(),
+                )
+            }?
+            .for_reattach()
+            .with_domain(domain.clone(), effect.clone(), registration.clone());
+            operation.factory_rooms = Some(self.factory_rooms.clone());
+            operation.roots = self.roots.clone();
+            let account = Arc::new(operation.execute(cancel).await?);
+            *job.account.lock().map_err(|_| Error::OutcomeUnknown)? = Some(account.clone());
+            self.reattach_factory(domain, &effect, scope, &account, &job, cancel)
+                .await?;
+            Ok(account)
+        }
+        .await;
+        if result.is_err()
+            && let Some(custody) = &job.factory
+        {
+            custody.cancel().await;
+        }
+        let response = result.as_ref().map(|_| ()).map_err(Clone::clone);
+        *job.result.lock().map_err(|_| Error::OutcomeUnknown)? = Some(result);
+        response
+    }
     pub(crate) async fn account(
         &self,
         domain: &DomainStore,

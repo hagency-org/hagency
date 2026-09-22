@@ -216,6 +216,7 @@ impl Service {
         &mut self,
         agent: ProvisionedAgent,
         notices: tokio::sync::mpsc::Sender<hagency_execution::ApprovalRequests>,
+        reattached: bool,
     ) -> Result<(), Failure> {
         if self.agents.len() >= 16 || self.routes.closed.load(Ordering::Acquire) {
             return Err(Failure::Registration);
@@ -290,10 +291,67 @@ impl Service {
         .await;
         if let Err(error) = start {
             owner.quiesce();
-            owner.status.fail(error);
-            self.routes.failed.store(true, Ordering::Release);
+            if reattached {
+                // An agent a restart could not bring back is skipped and shown;
+                // it fails neither the fleet nor the agents that did come back.
+                owner.status.not_attached(None);
+            } else {
+                owner.status.fail(error);
+                self.routes.failed.store(true, Ordering::Release);
+            }
         }
         start
+    }
+    /// After a restart: bring back every agent this service's inline factory
+    /// already completed, from what their provision left on disk. One agent that
+    /// cannot come back is skipped and published as `not_attached`; it never
+    /// stops the others, the coordinator or readiness.
+    async fn reattach_known_agents(
+        &mut self,
+        notices: &tokio::sync::mpsc::Sender<hagency_execution::ApprovalRequests>,
+        cancel: &CancellationToken,
+    ) {
+        let known = match self.coordinator.provisioned_engagements().await {
+            Ok(known) => known,
+            Err(error) => {
+                tracing::warn!(?error, "factory agents could not be listed for re-attach");
+                return;
+            }
+        };
+        for engagement in known {
+            if cancel.is_cancelled() || self.routes.closed.load(Ordering::Acquire) {
+                return;
+            }
+            let attached = match self
+                .coordinator
+                .reattach_provisioned_agent(&engagement, cancel)
+                .await
+            {
+                Ok(()) => self.coordinator.take_provisioned_agent(&engagement),
+                Err(error) => Err(error),
+            };
+            match attached {
+                Ok(agent) => {
+                    if self.admit(agent, notices.clone(), true).await.is_ok() {
+                        tracing::info!(%engagement, "factory agent re-attached");
+                    } else {
+                        tracing::warn!(%engagement, "re-attached factory agent did not start");
+                    }
+                }
+                Err(hagency_matrix::Error::Busy) => {
+                    // This process already owns the provision (the coordinator
+                    // completed it before the fleet started): ordinary
+                    // discovery takes it, exactly once, as it always did.
+                    tracing::debug!(%engagement, "factory agent already owned here; left to discovery");
+                }
+                Err(error) => {
+                    tracing::warn!(%engagement, ?error, "factory agent not re-attached");
+                    let status = StatusHandle::for_mode(DriverMode::Continuous);
+                    status.not_attached(Some(&error));
+                    let _ = self.register_root(engagement, None, None, status);
+                }
+            }
+        }
     }
     /// The actual service keeps discovery independent of the coordinator's
     /// potentially long inline intake. No job is replayed or reconstructed.
@@ -314,6 +372,7 @@ impl Service {
             }
         }
         let _running = Running(self.routes.running.clone());
+        self.reattach_known_agents(&notices, cancel).await;
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         tick.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
         loop {
@@ -324,7 +383,7 @@ impl Service {
                 .map_err(|_| Failure::OutcomeUnknown);
             match next {
                 Ok(Some(agent)) => {
-                    self.admit(agent, notices.clone()).await?;
+                    self.admit(agent, notices.clone(), false).await?;
                 }
                 Ok(None) => {}
                 Err(error) => {

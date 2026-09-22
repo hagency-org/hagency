@@ -584,3 +584,70 @@ custody before closing factory/coordinator SDKs and the original writer.
   provisioning; (b) is confirmed by it.
 - specs/task-r...[credential-redacted].spec.md — the ingress this ADR's second
   half completes.
+
+## Amendment: a restart brings back the agents this factory completed (operator decision, 2026-09-22)
+
+**Reverses**, for a provision this inline factory completed: the sentence above
+"consume actual successful original factory agents exactly once" as the ONLY
+way an agent enters the fleet; in `task-rust-configured-fleet-service` "Do not
+reconstruct credentials, account, SDK, home, runtime or readiness" and "never
+derive owners from Active rows"; and in `task-rust-token-account-provision` "A
+valid retained successful response may be reopened only to inspect the same
+credential with fresh whoami". Each keeps its meaning for provisioning; the
+reversal is a second, read-only way in, after a restart.
+
+**What was wrong.** Measured live on 2026-09-20: after any restart, clean or
+not, the fleet listed one worker instead of three and reported healthy. The
+two factory agents existed only as in-memory jobs of the process that made
+them. Everything they need had survived: the token in encrypted account
+custody, the SDK store (whose binding excludes the token and the generations
+by design), the rooms custody, the home, and the domain rows (engagement
+Active, effect Complete with this factory's receipt, transport, rooms,
+session, workspace, approval binding). The retained product brings its agents
+back at startup: stored credential first, whoami, never register again; an
+agent that cannot come back is skipped and shown, never fatal.
+
+**Decision.** At fleet start, before discovery, the service brings back each
+engagement whose provision effect is Complete with this factory's receipt and
+whose engagement is Active (`inline_factory_engagements`). For each one:
+
+1. The store rebuilds the ORIGINAL claimed scope from the Complete row and
+   proves it by recomputing the receipt digest the original completion stored
+   (`reattach_provision_scope`). An account another path adopted, a revoked
+   engagement or a changed payload yields no scope.
+2. The home is reopened without a write; its recorded binding and manifest
+   must agree with a binding recomputed now (`ManagedHomePlan::reopen`).
+3. The account custody is read in re-attach mode: empty custody refuses before
+   any request, the one register/login path refuses, and the stored token is
+   confirmed by one GET whoami.
+4. The rooms custody is replayed; create, invite and join refuse.
+5. The enrolled SDK store is opened, never bootstrapped; an incomplete
+   enrollment ledger is refused rather than enrolled (`Jobs::reattach_enrolled`).
+6. The runtime is re-attached with no warm child and no retained task context:
+   the agent's next task launches as an ordinary follow-up
+   (`WarmHostPlan::reattach_runtime`).
+7. The approval membership is re-admitted; workspace registration and session
+   resolution are idempotent.
+
+Nothing claims, completes, activates, registers, uploads keys or rotates a
+generation. A provision this process already owns is left to ordinary
+discovery, which still takes each new agent exactly once.
+
+**One agent's failure is that agent's only.** It is registered in the fleet
+as `not_attached`, with the Matrix cause where there is one; the fleet is not
+failed, readiness is unchanged, and its queued work waits. A fenced generation
+still refuses, as before.
+
+**Unchanged.** A restarted host cannot claim a Started or Uncertain effect
+again. Genuine negative Matrix evidence during a re-attach fences as it does
+everywhere else.
+
+**Known limits, both fail closed:** a home's binding covers the task-client
+binary's length and modification time, so a home does not reopen after a
+binary upgrade; a scope that requires a provider-managed account is not
+re-attached yet.
+
+Pinned by `native_configured_fleet_reattaches_after_restart` (an agent comes
+back and runs its next task through a follow-up; a tampered home leaves it
+`not_attached` with the fleet running and its work queued), and by the store
+and transport pins named in `task-rust-factory-agent-reattach`.

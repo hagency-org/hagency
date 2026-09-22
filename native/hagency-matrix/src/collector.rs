@@ -471,7 +471,13 @@ impl Inner {
         if let Err(error) = &result {
             observation::primary(error.clone());
         }
-        if result.is_err()
+        // The caller's own cancellation of this read is not evidence about the
+        // room, as it is not about the transport: nothing was refused and
+        // nothing was sent. Retiring the shared project room here made every
+        // agent's next collection fail with Generation and fence its transport.
+        if result
+            .as_ref()
+            .is_err_and(|error| *error != Error::Cancelled)
             && let Some(prior) = prior
             && prior.available
         {

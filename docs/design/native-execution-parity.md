@@ -1042,3 +1042,50 @@ only and do not come back, clean stop or crash alike. The retained product
 persists each agent's record, credential and sync position and re-attaches them at
 startup, skipping (not failing on) an agent that cannot come back. That is the
 next slice.
+
+### A restart brings the factory agents back (2026-09-22)
+
+Operator decision: follow the retained product. It brings its agents back at
+startup from what it persisted, stored credential first, never registering
+again, and skips an agent that cannot come back. The native port had kept
+everything an agent needs across a restart (token in encrypted custody, SDK
+store, rooms custody, home, domain rows) and then refused to use any of it,
+because each piece was gated on "only while provisioning". The fleet listed one
+worker of three and reported healthy.
+
+What landed (ADR147 amendment, task rust-factory-agent-reattach): at fleet
+start, before discovery, each engagement whose provision this factory completed
+is rebuilt read-only. The store rebuilds the original claimed scope and proves
+it by recomputing the completion's receipt digest; the home is reopened without
+a write; the account custody is read in a mode whose single register/login path
+refuses; the rooms custody is replayed with create, invite and join refusing;
+the enrolled SDK is opened, never bootstrapped; the runtime is re-attached with
+no warm child, the next task launching as an ordinary follow-up. Nothing
+claims, completes, activates, uploads keys or rotates a generation. An agent
+that cannot come back is shown as `not_attached` with its Matrix cause and
+fails neither the fleet nor readiness; a provision this process already owns
+is left to discovery.
+
+The first live cycle found the last shutdown fence: a stop timed during a
+refresh cancelled a room-state read, and the collector retired the room
+("Matrix full-state observation failed"). Nothing was fenced in the stopping
+process, but in the next one every agent's first collection found the shared
+project room gone, a genuine `Generation` that fenced all three transports and
+refused every re-attach. The caller's own cancellation of a read-only room
+observation now retires nothing, as for the transport (ADR047 amendment).
+
+Live, working-tree binary, official model: one round, then two stop/start
+cycles on the same state directory, each stop timed while an agent was
+refreshing. Each start was ready in two seconds with three of three agents
+re-attached and every transport available, and a full task round passed after
+each restart. Offline, `native_configured_fleet_reattaches_after_restart`
+restarts the fixture over the same state with the domain repository reopened:
+the agent comes back, registers nothing, uploads no keys and runs its next task
+through a follow-up; with its home binding tampered it is `not_attached`, the
+fleet keeps running and its work stays queued.
+
+Known limits, both fail closed: a home does not reopen after a task-client
+binary upgrade (its binding covers the binary's length and mtime); an agent on
+a provider-managed account is not re-attached yet. Still open from the restart
+list: the retained product's thread notice for dispatches a restart settled as
+unknown, and the owner-join wait.

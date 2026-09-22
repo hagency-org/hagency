@@ -154,7 +154,7 @@ impl WarmHostPlan {
     /// task context: that file belongs to the original first task. The same
     /// per-agent Host is built as in `start`, and the agent's next task launches
     /// through the ordinary follow-up binding. One runtime per scope per process.
-    pub async fn reattach(
+    pub async fn reattach_runtime(
         &self,
         domain: DomainStore,
         scope: OwnedProvisionScope,

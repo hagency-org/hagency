@@ -32,7 +32,9 @@ engagement-scoped namespace and device, refusing a mapped/substituted account.
 Before any registration POST, persist original private context and
 WritePossible custody. A lost response, deadline, dropped receiver or process
 loss never permits another registration. A valid retained successful response
-may be reopened only to inspect the same credential with fresh whoami.
+may be reopened only to inspect the same credential with fresh whoami, or, after
+a restart, to run that same agent again in a re-attach mode that can never
+register or log in (task-rust-factory-agent-reattach).
 Persist authenticated bounded response custody before reading it as usable.
 Bind every encrypted record to the original registration/effect/fence/identity
 and credential profile; wrong bindings, corruption, partial bootstrap and

@@ -449,6 +449,91 @@ impl TokenProvisioningHost {
         *custody.binding.lock().map_err(|_| Error::OutcomeUnknown)? = Some(binding);
         Ok(())
     }
+    /// The re-attach counterpart of `finish_factory` for a provision that is
+    /// already Complete. It starts no warm child and never activates: the scope
+    /// and the home were rebuilt and reopened by the store, the rooms and the
+    /// enrolled SDK are replayed and reopened by the account. Everything it
+    /// writes to the domain is idempotent (workspace, session resolution).
+    pub(super) async fn reattach_factory(
+        &self,
+        domain: &DomainStore,
+        effect: &Effect,
+        scope: hagency_store::OwnedProvisionScope,
+        account: &Arc<ProvisionedTokenAccount>,
+        job: &Arc<Job>,
+        cancel: &CancellationToken,
+    ) -> Result<(), Error> {
+        let plan = self.warm.as_ref().ok_or(Error::Config)?;
+        let approvals = self.factory_approvals.as_ref().ok_or(Error::Config)?;
+        approvals
+            .inner
+            .domain
+            .validate_warm_runtime_scope(scope.clone())
+            .await?;
+        let home = job
+            .home
+            .lock()
+            .map_err(|_| Error::OutcomeUnknown)?
+            .as_ref()
+            .cloned()
+            .ok_or(Error::Config)?;
+        let custody = job.factory.as_ref().ok_or(Error::Config)?;
+        let runtime = plan
+            .reattach_runtime(domain.clone(), scope.clone(), home)
+            .await
+            .map_err(|_| Error::OutcomeUnknown)?;
+        *custody.runtime.lock().await = Some(runtime);
+        let rooms = self.rooms.as_ref().ok_or(Error::Config)?;
+        let collector = account
+            .reattach_collector(
+                &rooms.representative,
+                1,
+                self.key,
+                rooms.anchors.clone(),
+                cancel,
+            )
+            .await?;
+        {
+            let _turn = approvals.service_turn(cancel).await?;
+            approvals
+                .observe_factory_engagement(scope.clone(), cancel)
+                .await?;
+        }
+        let room_id = account.created_agent_dm()?.ok_or(Error::Recipients)?;
+        if !collector.inner.config.rooms.iter().any(|room| {
+            room.room_id == room_id && matches!(room.privacy, RoomPrivacy::Direct { .. })
+        }) {
+            return Err(Error::Recipients);
+        }
+        *custody
+            .collector
+            .lock()
+            .map_err(|_| Error::OutcomeUnknown)? = Some(collector);
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        domain
+            .register_workspace(format!("work_{}", effect.engagement_id))
+            .await?;
+        let binding = SessionBinding {
+            id: format!("session_{}", effect.engagement_id),
+            engagement_id: effect.engagement_id.clone(),
+            room_id,
+            thread_root: None,
+        };
+        let resolved = domain
+            .resolve_verified_matrix_session(binding.clone())
+            .await?;
+        if resolved.id != binding.id
+            || resolved.engagement_id != binding.engagement_id
+            || resolved.room_id != binding.room_id
+            || resolved.thread_root != binding.thread_root
+        {
+            return Err(Error::Conflict);
+        }
+        *custody.binding.lock().map_err(|_| Error::OutcomeUnknown)? = Some(binding);
+        Ok(())
+    }
     pub(super) fn take_agent(&self, engagement: &str) -> Result<ProvisionedAgent, Error> {
         let job = self
             .jobs
@@ -496,6 +581,10 @@ impl TokenProvisioningHost {
             workspace: format!("work_{engagement}"),
         })
     }
+    /// Discovery of a NEW agent. An agent a restart brings back enters through
+    /// `reattach`, which rebuilds it from the completion's own receipt and the
+    /// custody on disk; discovery itself still never derives an owner from a
+    /// canonical Active row.
     fn take_next_agent(&self) -> Result<Option<ProvisionedAgent>, Error> {
         if self.closed.load(Ordering::Acquire) {
             return Err(Error::Generation);
@@ -596,6 +685,40 @@ impl Collector {
             .as_ref()
             .ok_or(Error::Config)?
             .take_agent(engagement)
+    }
+    /// The engagements this coordinator's inline factory completed and that a
+    /// restart should bring back, in id order. Read-only.
+    pub async fn provisioned_engagements(&self) -> Result<Vec<String>, Error> {
+        if self.inner.config.provisioning.is_none() {
+            return Ok(Vec::new());
+        }
+        Ok(self.inner.domain.inline_factory_engagements().await?)
+    }
+    /// Bring back one such agent after a restart. It concerns that agent only:
+    /// a refusal leaves the coordinator and every other agent as they were. On
+    /// success the agent is taken with `take_provisioned_agent` like a new one.
+    /// It never uses the coordinator's own SDK, so it does not hold the
+    /// coordinator's permit: a refresh that found it Busy would end the
+    /// coordinator. The Host's job table is what excludes a second owner.
+    pub async fn reattach_provisioned_agent(
+        &self,
+        engagement: &str,
+        cancel: &crate::CancellationToken,
+    ) -> Result<(), Error> {
+        let inner = self.inner.clone();
+        let engagement = engagement.to_owned();
+        let cancel = cancel.clone();
+        tokio::spawn(async move {
+            inner
+                .config
+                .provisioning
+                .as_ref()
+                .ok_or(Error::Config)?
+                .reattach_completed(&inner.domain, &engagement, &cancel)
+                .await
+        })
+        .await
+        .map_err(|_| Error::OutcomeUnknown)?
     }
     pub async fn close_provisioned_agents(&self) -> Result<(), Error> {
         let permit = self

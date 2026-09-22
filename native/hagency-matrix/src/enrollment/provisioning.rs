@@ -204,6 +204,31 @@ impl Activation {
         }
     }
 }
+/// A failed final Active read must fence a positive collect already committed
+/// by this job. CAS never revives or retires another owner.
+async fn fence_failed_activation(inner: &Inner, result: Result<(), Error>) -> Result<(), Error> {
+    match result {
+        Ok(()) => Ok(()),
+        Err(error) => {
+            match inner
+                .domain
+                .matrix_transport_state(inner.config.identity.transport.engagement_id.clone())
+                .await
+            {
+                Ok(Some(state))
+                    if state.available && state.observation == inner.config.identity.transport =>
+                {
+                    inner.fence_observation(state.observation, error).await
+                }
+                Ok(_)
+                | Err(hagency_store::Error::RunnerAuthority | hagency_store::Error::NotFound) => {
+                    Err(error)
+                }
+                Err(_) => Err(Error::OutcomeUnknown),
+            }
+        }
+    }
+}
 impl Jobs {
     pub(crate) fn admitted(&self) -> Result<bool, Error> {
         Ok(self.0.lock().map_err(|_| Error::OutcomeUnknown)?.is_some())
@@ -321,6 +346,107 @@ impl Jobs {
             inner: job.collector.inner.clone(),
         })
     }
+    /// A restart re-attaching an account whose enrollment this custody already
+    /// completed. The existing SDK store is opened, never bootstrapped, and an
+    /// incomplete enrollment ledger is refused rather than enrolled.
+    pub(crate) async fn reattach_enrolled(
+        &self,
+        config: HostConfig,
+        domain: DomainStore,
+        scope: Scope,
+        cancel: &CancellationToken,
+    ) -> Result<Collector, Error> {
+        if cancel.is_cancelled() {
+            return Err(Error::Cancelled);
+        }
+        let profile = canonical::transport_digest(&json!({
+            "binding":config.binding()?, "identity":config.identity, "rooms":config.rooms,
+            "enrollment":config.enrollment, "key":project::hash(&config.key),
+            "provision":[scope.effect,scope.registration],
+        }))
+        .map_err(|_| Error::Config)?;
+        let job = {
+            let mut guard = self.0.lock().map_err(|_| Error::OutcomeUnknown)?;
+            if guard.is_some() {
+                return Err(Error::Busy);
+            }
+            let job = Arc::new(Job {
+                profile,
+                scope: Arc::new(scope),
+                collector: Collector::new(config, domain)?,
+                result: Mutex::new(None),
+                closed: AtomicBool::new(false),
+                closure: Mutex::new(None),
+                activation: Mutex::new(Activation::Running),
+            });
+            *guard = Some(job.clone());
+            job
+        };
+        let permit = job
+            .collector
+            .inner
+            .busy
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| Error::Busy)?;
+        let deadline = Instant::now() + job.collector.inner.config.limits.sdk;
+        let cancel = cancel.clone();
+        let operation = job.clone();
+        tokio::spawn(async move {
+            let _permit = permit;
+            let inner = &operation.collector.inner;
+            let result = timeout_at(deadline, async {
+                let users = operation.scope.current_at(inner, &cancel, true).await?;
+                checkpoint(&cancel, deadline)?;
+                {
+                    let mut owner = inner.owner.lock().await;
+                    if owner.is_none() {
+                        *owner = Some(crate::sdk::Owner::open_existing(&inner.config).await?);
+                    }
+                    if !matches!(
+                        owner
+                            .as_ref()
+                            .ok_or(Error::Storage)?
+                            .enrollment_handle_for(crate::sdk::enrollment::Purpose::Agent)
+                            .command(crate::sdk::enrollment::Command::Status)
+                            .await?,
+                        super::state::View::Complete
+                    ) {
+                        return Err(Error::Storage);
+                    }
+                }
+                checkpoint(&cancel, deadline)?;
+                inner.collect(&cancel).await?;
+                inner
+                    .enroll(EnrollmentScope::Agent, &cancel, deadline)
+                    .await?;
+                if operation.scope.current_at(inner, &cancel, true).await? != users {
+                    return Err(Error::Recipients);
+                }
+                checkpoint(&cancel, deadline)
+            })
+            .await
+            .unwrap_or(Err(Error::Timeout));
+            let result = fence_failed_activation(inner, result).await;
+            if let Ok(mut slot) = operation.result.lock() {
+                *slot = Some(result.clone());
+            }
+            let mut phase = operation
+                .activation
+                .lock()
+                .map_err(|_| Error::OutcomeUnknown)?;
+            *phase = match &result {
+                Ok(()) => Activation::Ready,
+                Err(error) => Activation::Failed(error.clone()),
+            };
+            result
+        })
+        .await
+        .map_err(|_| Error::OutcomeUnknown)??;
+        Ok(Collector {
+            inner: job.collector.inner.clone(),
+        })
+    }
     /// The one enrolled owner moves forward only after genuine current Active
     /// evidence. A lost waiter cannot discard its job/permit/negative result.
     pub(crate) async fn active(&self, cancel: &CancellationToken) -> Result<Collector, Error> {
@@ -398,32 +524,7 @@ impl Jobs {
             })
             .await
             .unwrap_or(Err(Error::Timeout));
-            // A failed final Active read must fence a positive collect already
-            // committed by this job. CAS never revives or retires another owner.
-            let result = match result {
-                Ok(()) => Ok(()),
-                Err(error) => {
-                    match inner
-                        .domain
-                        .matrix_transport_state(
-                            inner.config.identity.transport.engagement_id.clone(),
-                        )
-                        .await
-                    {
-                        Ok(Some(state))
-                            if state.available
-                                && state.observation == inner.config.identity.transport =>
-                        {
-                            inner.fence_observation(state.observation, error).await
-                        }
-                        Ok(_)
-                        | Err(
-                            hagency_store::Error::RunnerAuthority | hagency_store::Error::NotFound,
-                        ) => Err(error),
-                        Err(_) => Err(Error::OutcomeUnknown),
-                    }
-                }
-            };
+            let result = fence_failed_activation(inner, result).await;
             let mut phase = operation
                 .activation
                 .lock()
