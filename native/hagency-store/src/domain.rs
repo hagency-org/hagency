@@ -727,7 +727,7 @@ impl DomainRepository {
         graphs::reconcile(&tx, graphs::now_ms()?)?;
         replies::reconcile(&tx, graphs::now_ms()?, true)?;
         notice_custody::reconcile(&tx, graphs::now_ms()?, true)?;
-        execution::recover_all(&tx)?;
+        execution::recover_all(&tx, graphs::now_ms()?)?;
         approvals::recover(&tx)?;
         tx.execute("UPDATE approval_responses SET state='outcome_unknown' WHERE state IN ('authorized','response_may_send')", [])?;
         tx.execute("UPDATE received_files SET state='outcome_unknown',failure='outcome_unknown' WHERE state IN ('reserved','write_possible')", [])?;

@@ -81,3 +81,13 @@ product also answers later requests in a quarantined session with "Waiting: …a
 operator must inspect and resolve that outcome…"; here the waiting worker does
 not take in new requests until it is resolved.
 
+
+### Said after a restart too (2026-09-22)
+
+The reopened repository settles every started or parked run as unknown
+(`recover_all`), and the sweep does the same for an expired capability. Both
+now queue the same thread notice the reported failure queues, best effort in
+their own savepoint, once per task; the retained product's `reconcileOnStart`
+goes through `settleUnknownInternal`, notice included. The agent that comes
+back after the restart (ADR147 re-attach) posts it on its first turn. Pinned by
+`native_outcome_unknown_is_said_in_the_thread_after_a_restart`.

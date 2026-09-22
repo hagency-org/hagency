@@ -1089,6 +1089,78 @@ fn native_outcome_unknown_is_said_in_the_thread_once() {
 }
 
 #[test]
+fn native_outcome_unknown_is_said_in_the_thread_after_a_restart() {
+    // The retained product settles a started run a restart interrupted through
+    // the same path as a reported failure, notice included
+    // (`reconcileOnStart` -> `settleUnknownInternal`). So does the reopened
+    // repository here, and the sweep that expires a capability.
+    fn notices(f: &Fixture) -> Vec<(String, String, String, bool)> {
+        f.sql()
+            .prepare("SELECT json_extract(config,'$.kind'),json_extract(config,'$.body'),state,verified_route IS NOT NULL FROM task_notices ORDER BY rowid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+    fn state(f: &Fixture, dispatch: &str) -> String {
+        f.sql()
+            .query_row(
+                "SELECT state FROM runner_dispatches WHERE id=?1",
+                [dispatch],
+                |r| r.get(0),
+            )
+            .unwrap()
+    }
+    for how in ["restart", "expiry"] {
+        let mut f = Fixture::new(1);
+        let (dispatch_id, _) = discussion_fixture(&mut f);
+        let _cap = f.start_selected(&dispatch_id, "runner_agent", 3100);
+        assert_eq!(state(&f, &dispatch_id), "started");
+        assert!(notices(&f).is_empty());
+        let f = if how == "restart" {
+            f.reopen()
+        } else {
+            f.db.reconcile_dispatches(3100 + 7 * 86_400_000).unwrap();
+            f
+        };
+        assert_eq!(state(&f, &dispatch_id), "outcome_unknown", "{how}");
+        assert_eq!(
+            notices(&f),
+            vec![(
+                "outcome_unknown".to_owned(),
+                "Result uncertain: the runner stopped after work may have started. Inspect the workspace before retrying; this dispatch will not be run again automatically.".to_owned(),
+                "pending".to_owned(),
+                true
+            )],
+            "{how}"
+        );
+        // Said once: another reopen and another sweep add nothing.
+        let mut f = f.reopen();
+        f.db.reconcile_dispatches(3100 + 8 * 86_400_000).unwrap();
+        assert_eq!(notices(&f).len(), 1, "{how}");
+        // The agent's own pump claims it after the restart, nobody else's. The
+        // reopened repository stamps the notice with the wall clock, so the
+        // claim is due after that, not after the fixture's synthetic clock.
+        let due: u64 = f
+            .sql()
+            .query_row("SELECT MAX(not_before) FROM task_notices", [], |r| r.get(0))
+            .unwrap();
+        assert!(
+            f.db.claim_verified_task_notice_for("en_someone_else", due + 1, 60_000)
+                .unwrap()
+                .is_none()
+        );
+        let engagement = f.engagement.clone();
+        let claim =
+            f.db.claim_verified_task_notice_for(&engagement, due + 2, 60_000)
+                .unwrap()
+                .expect("the agent's own pump claims its outcome notice");
+        assert_eq!(claim.claim.notice.kind, "outcome_unknown");
+    }
+}
+
+#[test]
 fn native_agent_conversation_releases_what_was_never_read() {
     let mut f = Fixture::new(1);
     let (dispatch_id, sequences) = discussion_fixture(&mut f);

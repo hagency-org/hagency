@@ -178,7 +178,7 @@ fn authorize_attempt(
     }
     Ok(d)
 }
-fn lose(tx: &Transaction<'_>, id: &str) -> Result<(), Error> {
+fn lose(tx: &Transaction<'_>, id: &str, now: u64) -> Result<(), Error> {
     let d = dispatch(tx, id)?;
     if !["leased", "started", "parked"].contains(&d.state.as_str()) {
         return Ok(());
@@ -206,6 +206,18 @@ fn lose(tx: &Transaction<'_>, id: &str) -> Result<(), Error> {
             [&d.session_id],
         )?;
         tx.execute("UPDATE workspace_resources SET dirty=1 WHERE id IN (SELECT resource_id FROM dispatch_resources WHERE dispatch_id=?1 AND exclusive=1)",[id])?;
+        // The retained product says this in the thread for a run a restart
+        // settled as unknown too (`reconcileOnStart` ->
+        // `settleUnknownInternal`), not only for one the runner reported.
+        // Best effort, as for the reported failure: the settlement itself
+        // never fails because its notice could not be addressed.
+        tx.execute_batch("SAVEPOINT lost_outcome_notice")?;
+        match super::task_intents::outcome_unknown_notice(tx, id, now) {
+            Ok(()) => tx.execute_batch("RELEASE lost_outcome_notice")?,
+            Err(_) => {
+                tx.execute_batch("ROLLBACK TO lost_outcome_notice; RELEASE lost_outcome_notice")?
+            }
+        }
     } else {
         // Only an unstarted attempt can relinquish custody without inspection.
         // Unknown shared readers must still exclude a new exclusive writer.
@@ -214,20 +226,20 @@ fn lose(tx: &Transaction<'_>, id: &str) -> Result<(), Error> {
     tx.execute("UPDATE runner_dispatches SET state=?2,capability_hash=NULL,lease_until=NULL,capability_until=NULL WHERE id=?1",params![id,next])?;
     Ok(())
 }
-pub(super) fn recover_all(tx: &Transaction<'_>) -> Result<(), Error> {
+pub(super) fn recover_all(tx: &Transaction<'_>, now: u64) -> Result<(), Error> {
     let ids = tx
         .prepare("SELECT id FROM runner_dispatches WHERE state IN ('leased','started','parked')")?
         .query_map([], |r| r.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     for id in ids {
-        lose(tx, &id)?;
+        lose(tx, &id, now)?;
     }
     Ok(())
 }
 fn expire(tx: &Transaction<'_>, now: u64) -> Result<(), Error> {
     let ids=tx.prepare("SELECT id FROM runner_dispatches WHERE state IN ('leased','started','parked') AND (lease_until<=?1 OR capability_until<=?1)")?.query_map([now],|r|r.get::<_,String>(0))?.collect::<Result<Vec<_>,_>>()?;
     for id in ids {
-        lose(tx, &id)?;
+        lose(tx, &id, now)?;
     }
     Ok(())
 }
@@ -940,7 +952,7 @@ impl DomainRepository {
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         authorize_attempt(&tx, cap, now, &["leased"])?;
-        lose(&tx, &cap.dispatch_id)?;
+        lose(&tx, &cap.dispatch_id, now)?;
         tx.execute(
             "UPDATE runner_dispatches SET not_before=?2 WHERE id=?1",
             params![cap.dispatch_id, now + retry_ms],

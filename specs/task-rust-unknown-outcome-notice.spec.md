@@ -18,7 +18,10 @@ worker's wait for the operator's resolution.
 ## Constraints
 
 - Queue one notice, in the retained product's words, when the failure of a
-  started run is recorded: for a verified session only, rooted at the request the
+  started run is recorded, and when the reopened repository or the capability
+  sweep settles a started run as unknown (the retained product's
+  `reconcileOnStart` goes through the same settlement, notice included): for a
+  verified session only, rooted at the request the
   dispatch was answering, once per task. A dispatch with no task, no request or
   no verified session says nothing. Never queue it in the fence itself: a
   successful completion retires its dispatch through the same fence.
@@ -65,6 +68,13 @@ Scenario: An unknown outcome is said in the thread once, by the agent it belongs
   Then one pending verified notice carries the retained product's words
   And the task has no delegation record, yet the notice is current and only its own agent's pump can claim it
   And observing the same failure again adds no second notice
+
+Scenario: A run a restart or an expired capability settled as unknown is said in the thread once
+  Test: native_outcome_unknown_is_said_in_the_thread_after_a_restart
+  Given a started dispatch on a verified session
+  When the repository is reopened, or the sweep finds its capability expired
+  Then the dispatch is outcome_unknown and one pending verified notice carries the retained product's words
+  And another reopen or sweep adds no second notice, and only the agent's own pump claims it
 
 Scenario: A recoverable agent is visible as waiting and is not counted as lost
   Test: native_factory_failure_diagnostics
