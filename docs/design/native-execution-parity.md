@@ -1086,7 +1086,10 @@ fleet keeps running and its work stays queued.
 
 Known limits, both fail closed: a home does not reopen after a task-client
 binary upgrade (its binding covers the binary's length and mtime); an agent on
-a provider-managed account is not re-attached yet. Still open from the restart
+a provider-managed account is not re-attached yet (lifted 2026-09-22: the
+re-attach now carries the reopened registry's own account binding under the
+launch's current-facts gate, `native_reattach_scope_carries_its_managed_account`;
+not proven live). Still open from the restart
 list: the retained product's thread notice for dispatches a restart settled as
 unknown, and the owner-join wait.
 

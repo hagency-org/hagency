@@ -335,4 +335,24 @@ impl DomainRepository {
         tx.commit()?;
         Ok(())
     }
+    /// The provider-managed account of a scope a restart rebuilt: the same
+    /// current-facts gate as `provision_runtime_account`, on the completed
+    /// provision, and the binding the reopened registry loaded from its own
+    /// durable rows, never caller metadata. None for a scope on the
+    /// operator's own login; a lapsed login observation refuses.
+    pub fn reattach_runtime_account(
+        &mut self,
+        scope: &OwnedProvisionScope,
+    ) -> Result<Option<crate::ManagedAccount>, Error> {
+        let tx = self
+            .db
+            .transaction_with_behavior(TransactionBehavior::Immediate)?;
+        current(&tx, scope, &self.accounts, &self.approval_owner, true)?;
+        tx.commit()?;
+        scope
+            .account
+            .as_ref()
+            .map(|association| self.managed_account(accounts::provision_account_id(association)))
+            .transpose()
+    }
 }

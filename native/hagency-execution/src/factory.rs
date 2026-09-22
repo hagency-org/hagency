@@ -152,8 +152,10 @@ impl WarmHostPlan {
     /// The runtime of an agent a restart re-attached, from a scope and a home
     /// the store rebuilt and reopened. It starts no child and reads no retained
     /// task context: that file belongs to the original first task. The same
-    /// per-agent Host is built as in `start`, and the agent's next task launches
-    /// through the ordinary follow-up binding. One runtime per scope per process.
+    /// per-agent Host is built as in `start`, its provider-managed account
+    /// included (the reopened registry's own binding, gated on the same
+    /// current facts), and the agent's next task launches through the
+    /// ordinary follow-up binding. One runtime per scope per process.
     pub async fn reattach_runtime(
         &self,
         domain: DomainStore,
@@ -162,15 +164,10 @@ impl WarmHostPlan {
     ) -> Result<FactoryRuntime, Failure> {
         let until = Instant::now() + Duration::from_millis(self.limits.initialize.operation_ms);
         let account =
-            tokio::time::timeout_at(until, domain.validate_warm_runtime_scope(scope.clone()))
+            tokio::time::timeout_at(until, domain.reattach_runtime_account(scope.clone()))
                 .await
                 .map_err(|_| Failure::Deadline)?
-                .map_err(|_| Failure::LostAuthority)
-                .map(|()| scope.requires_managed_account())?;
-        if account {
-            // A provider-account launch is prepared per provision; not re-attached yet.
-            return Err(Failure::Admission);
-        }
+                .map_err(|_| Failure::LostAuthority)?;
         let guardian = self.guardian.clone();
         let executable = self.executable.clone();
         let environment = self.environment.clone();
@@ -189,6 +186,10 @@ impl WarmHostPlan {
             let work = home.workdir_path().map_err(|_| Failure::Admission)?;
             let mut environment = environment;
             if let Some(local) = &local_codex {
+                // Explicit provider selection, never arbitrary coordinator HOME.
+                if account.is_some() {
+                    return Err(Failure::Admission);
+                }
                 local.admit_provision(&scope)?;
                 local.separate_from(&work)?;
                 local.apply(&mut environment)?;
@@ -216,6 +217,9 @@ impl WarmHostPlan {
             }
             if coordination {
                 host = host.with_coordination_tools()?;
+            }
+            if let Some(account) = account {
+                host = host.with_managed_account(account)?;
             }
             if let Some(local) = local_codex.clone() {
                 host = host.with_retained_local_codex(local)?;

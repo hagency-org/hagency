@@ -261,6 +261,65 @@ fn native_reattach_scope_rebuilds_only_what_the_factory_completed() {
         );
     }
 }
+/// A scope on a provider-managed account comes back with that account after
+/// a restart: the reopened registry's own binding, gated on the same current
+/// facts as the original launch, so a refused login refuses the re-attach the
+/// way it refuses a launch. A scope on the operator's own login carries none.
+#[test]
+fn native_reattach_scope_carries_its_managed_account() {
+    for case in ["managed", "seat"] {
+        let root = tempfile::tempdir().unwrap();
+        let state = root.path().join("state");
+        let mut db = DomainRepository::open(&state).unwrap();
+        db.register(&registration()).unwrap();
+        let (account, pool) = if case == "managed" {
+            let (account, pool) = managed(&mut db);
+            login(&mut db, &account, LoginOutcome::Observed, now() + 60_000);
+            (Some(account), pool)
+        } else {
+            (None, resource("pool", "seat", 1000))
+        };
+        db.put_resource(&pool).unwrap();
+        let approved = proof(&request("warm", "Worker", &pool, 100));
+        db.admit(&approved, 1000).unwrap();
+        db.approve("approve", &approved, 1000).unwrap();
+        let effect = db.claim_effect().unwrap().unwrap();
+        let scope = db
+            .provision_runtime_scope(&effect, &registration())
+            .unwrap();
+        assert_eq!(
+            db.provision_runtime_account(&scope)
+                .unwrap()
+                .map(|a| a.id().to_owned()),
+            account.as_ref().map(|a| a.id().to_owned()),
+            "{case}"
+        );
+        scope.claim_warm().unwrap();
+        db.complete_original_provision(&scope).unwrap();
+        // A restart: the registry reopens from its durable rows alone.
+        drop(db);
+        let mut db = DomainRepository::open(&state).unwrap();
+        let (_, _, scope) = db.reattach_provision_scope(&effect.engagement_id).unwrap();
+        assert_eq!(scope.requires_managed_account(), case == "managed");
+        let reattached = db.reattach_runtime_account(&scope).unwrap();
+        assert_eq!(
+            reattached.as_ref().map(|a| a.id().to_owned()),
+            account.as_ref().map(|a| a.id().to_owned()),
+            "{case}"
+        );
+        if let Some(reattached) = &reattached {
+            // The binding is live and bound to this provision's seat.
+            reattached.prepare_provision_launch(&scope).unwrap();
+            // A refused login observation refuses the re-attach like a launch.
+            login(&mut db, reattached, LoginOutcome::Refused, now() + 60_000);
+            assert!(matches!(
+                db.reattach_runtime_account(&scope),
+                Err(Error::LocalAuthority)
+            ));
+        }
+    }
+}
+
 #[tokio::test]
 async fn native_managed_home_reopens_after_a_restart() {
     use hagency_store::agent_home::{HomeProject, ManagedHomePlan, ProjectMode};

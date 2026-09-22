@@ -647,6 +647,16 @@ binary's length and modification time, so a home does not reopen after a
 binary upgrade; a scope that requires a provider-managed account is not
 re-attached yet.
 
+*Amended 2026-09-22:* a scope on a provider-managed account is re-attached the
+way it is started: `reattach_runtime_account` applies the same current-facts
+gate as the original launch on the completed provision and hands back the
+binding the reopened registry loaded from its own durable rows; the per-agent
+Host carries it, so the next follow-up launch runs in the account's namespace,
+and a lapsed login observation refuses the re-attach as it refuses a launch.
+Pinned by `native_reattach_scope_carries_its_managed_account`; not proven live
+(the live rig runs on the operator's own login). The binary-upgrade limit
+stands.
+
 Pinned by `native_configured_fleet_reattaches_after_restart` (an agent comes
 back and runs its next task through a follow-up; a tampered home leaves it
 `not_attached` with the fleet running and its work queued), and by the store

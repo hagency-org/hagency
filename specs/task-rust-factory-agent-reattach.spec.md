@@ -80,6 +80,14 @@ Scenario: The rebuilt scope is the original claim, proven by its receipt
   When the repository is reopened and asked for the scope
   Then only the factory's own completion yields a scope, equal to the original claim, warm-claimable once and never completable again
 
+Scenario: A scope on a provider-managed account comes back with that account
+  Test: native_reattach_scope_carries_its_managed_account
+  Production caller: hagency_execution::factory::Factory::reattach_runtime
+  Given a provision the factory completed on a provider-managed account with a current login, and one on the operator's own login
+  When the repository is reopened and the rebuilt scope is asked for its account
+  Then the managed scope yields the registry's own binding for its seat and the seat scope yields none
+  And a lapsed login observation refuses the re-attach the way it refuses a launch
+
 Scenario: A completed home reopens without a write and refuses when changed
   Test: native_managed_home_reopens_after_a_restart
   Production caller: hagency::bootstrap::fleet::Service::reattach_known_agents
@@ -104,6 +112,7 @@ Scenario: A cancelled read retires neither the transport nor the room
 
 ## Out of scope
 
-A home whose task-client binary changed (its binding fails closed), agents on
-provider-managed accounts, and the retained product's thread notice on
-restart-settled dispatches remain separate.
+A home whose task-client binary changed (its binding fails closed) remains
+separate. Agents on provider-managed accounts are re-attached since 2026-09-22
+(scenario below); the retained product's thread notice on restart-settled
+dispatches landed with task rust-unknown-outcome-notice.

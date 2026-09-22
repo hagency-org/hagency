@@ -3249,6 +3249,14 @@ impl DomainStore {
         self.call(size, move |db| db.validate_warm_runtime_scope(&scope))
             .await
     }
+    pub async fn reattach_runtime_account(
+        &self,
+        scope: crate::OwnedProvisionScope,
+    ) -> Result<Option<crate::ManagedAccount>, Error> {
+        let size = weight(&scope.queue_value())?;
+        self.call(size, move |db| db.reattach_runtime_account(&scope))
+            .await
+    }
     pub async fn retry_cleanup(&self, command: String, id: String) -> Result<Engagement, Error> {
         self.call(weight(&(&command, &id))?, move |db| {
             db.retry_cleanup(&command, &id)
