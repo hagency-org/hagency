@@ -20,6 +20,9 @@ routes, not a substitute for either deployment profile or full M0–M9 gates.
 - Only Host configuration selects existing private home root, canonical project
   roots and native task-client binary. Retain directory objects and detect
   replacement/alias/nesting; never import credentials from workdir or docs.
+  The recorded home binding names the binary's path, not its length or mtime
+  (those are checked in-process only), so a home reopens after an in-place
+  upgrade (operator decision 2026-09-22, task rust-factory-agent-reattach).
 - Both explicit copy and symlink project modes remain supported. Bound copies
   by total bytes/entries/depth/per-file, preserve safe in-tree relative links,
   and refuse external links/special files rather than following them.

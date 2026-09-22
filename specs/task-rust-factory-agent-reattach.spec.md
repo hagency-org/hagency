@@ -82,7 +82,7 @@ Scenario: The rebuilt scope is the original claim, proven by its receipt
 
 Scenario: A scope on a provider-managed account comes back with that account
   Test: native_reattach_scope_carries_its_managed_account
-  Production caller: hagency_execution::factory::Factory::reattach_runtime
+  Production caller: hagency::bootstrap::fleet::Service::reattach_known_agents
   Given a provision the factory completed on a provider-managed account with a current login, and one on the operator's own login
   When the repository is reopened and the rebuilt scope is asked for its account
   Then the managed scope yields the registry's own binding for its seat and the seat scope yields none
@@ -95,6 +95,7 @@ Scenario: A completed home reopens without a write and refuses when changed
   When the plan reopens it after a restart
   Then the same workdir is returned and nothing on disk changes
   And a changed binding or a missing custody record refuses
+  And a task-client binary upgraded in place reopens the home while one at another path refuses
 
 Scenario: A re-attach reads the stored credential and can never register
   Test: native_token_account_reattach_only_reads
@@ -112,7 +113,9 @@ Scenario: A cancelled read retires neither the transport nor the room
 
 ## Out of scope
 
-A home whose task-client binary changed (its binding fails closed) remains
-separate. Agents on provider-managed accounts are re-attached since 2026-09-22
-(scenario below); the retained product's thread notice on restart-settled
-dispatches landed with task rust-unknown-outcome-notice.
+Agents on provider-managed accounts are re-attached since 2026-09-22
+(scenario below), and a home reopens after a task-client binary upgrade since
+the same day (operator decision: the binding names the binary's path, as the
+retained product binds a home to nothing about its backend binary); the
+retained product's thread notice on restart-settled dispatches landed with
+task rust-unknown-outcome-notice.

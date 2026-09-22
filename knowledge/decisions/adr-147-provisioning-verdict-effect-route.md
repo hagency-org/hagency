@@ -654,8 +654,17 @@ binding the reopened registry loaded from its own durable rows; the per-agent
 Host carries it, so the next follow-up launch runs in the account's namespace,
 and a lapsed login observation refuses the re-attach as it refuses a launch.
 Pinned by `native_reattach_scope_carries_its_managed_account`; not proven live
-(the live rig runs on the operator's own login). The binary-upgrade limit
-stands.
+(the live rig runs on the operator's own login).
+
+*Amended 2026-09-22 (operator decision, "follow TS"):* the recorded home
+binding names the task-client binary's path and no longer its length and
+modification time, which `Binary::check` still verifies in-process. The
+retained product binds a home to nothing about its backend binary and keeps
+every home across an upgrade; natively a binary replaced at the same path is
+the upgrade and the service running it is the authority, while a binary at
+another path still refuses. Homes recorded under the old digest cannot be
+recomputed and need one re-provision. Pinned in
+`native_managed_home_reopens_after_a_restart`.
 
 Pinned by `native_configured_fleet_reattaches_after_restart` (an agent comes
 back and runs its next task through a follow-up; a tampered home leaves it

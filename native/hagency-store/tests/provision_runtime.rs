@@ -2,6 +2,7 @@ mod common;
 use common::*;
 use hagency_core::{authority::Registration, project::Resource};
 use hagency_store::*;
+use std::io::Write;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 fn now() -> u64 {
     SystemTime::now()
@@ -330,6 +331,17 @@ async fn native_managed_home_reopens_after_a_restart() {
     let project = root.path().join("source-project");
     hagency_store::private::directory(&project).unwrap();
     std::fs::write(project.join("source.txt"), b"offline source").unwrap();
+    // The task-client binary is a private copy, so the test can upgrade it.
+    let bin = root.path().join("bin");
+    hagency_store::private::directory(&bin).unwrap();
+    let binary = bin.join("hagency");
+    std::fs::copy(std::env::current_exe().unwrap(), &binary).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&binary, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let binary = binary.canonicalize().unwrap();
     let plan = || {
         ManagedHomePlan::new(
             homes.canonicalize().unwrap(),
@@ -338,7 +350,7 @@ async fn native_managed_home_reopens_after_a_restart() {
                 source: project.canonicalize().unwrap(),
                 mode: ProjectMode::Copy,
             }],
-            std::env::current_exe().unwrap().canonicalize().unwrap(),
+            binary.clone(),
         )
         .unwrap()
     };
@@ -386,6 +398,41 @@ async fn native_managed_home_reopens_after_a_restart() {
     assert!(plan().reopen(&scope, &rebuilt, &registered).is_err());
     std::fs::write(&binding, original).unwrap();
     plan().reopen(&scope, &rebuilt, &registered).unwrap();
+    // A task-client binary upgraded in place (new length and mtime at the same
+    // path) is the service's own; the home reopens, as the retained product
+    // keeps every home across an upgrade. A binary at another path does not.
+    let before = std::fs::metadata(&binary).unwrap();
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&binary)
+        .unwrap()
+        .write_all(b"\n# upgraded\n")
+        .unwrap();
+    let after = std::fs::metadata(&binary).unwrap();
+    assert_ne!(before.len(), after.len());
+    let upgraded = plan();
+    upgraded.reopen(&scope, &rebuilt, &registered).unwrap();
+    let moved = bin.join("hagency-moved");
+    std::fs::copy(&binary, &moved).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&moved, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    let elsewhere = ManagedHomePlan::new(
+        homes.canonicalize().unwrap(),
+        vec![HomeProject {
+            project_id: "project_one".into(),
+            source: project.canonicalize().unwrap(),
+            mode: ProjectMode::Copy,
+        }],
+        moved.canonicalize().unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        elsewhere.reopen(&scope, &rebuilt, &registered),
+        Err(Error::Conflict)
+    ));
     std::fs::remove_file(homes.join(format!("custody/home-{}/complete", effect.engagement_id)))
         .unwrap();
     assert!(plan().reopen(&scope, &rebuilt, &registered).is_err());

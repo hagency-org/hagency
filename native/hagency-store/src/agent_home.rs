@@ -112,6 +112,25 @@ impl Binary {
         Ok(())
     }
 }
+/// The recorded binding of a home: the provision, the roots and the
+/// task-client binary's path. Its length and modification time are checked
+/// in-process (`Binary::check`) but stay out of the record, as the retained
+/// product binds a home to nothing about its backend binary: a replaced
+/// binary at the same path is an upgrade, and the service running it is the
+/// authority (operator decision 2026-09-22; task rust-factory-agent-reattach).
+fn home_binding(
+    effect: &Effect,
+    registration: &Registration,
+    root: &Root,
+    source: &Source,
+    binary: &Binary,
+) -> Result<String, Error> {
+    canonical::transport_digest(
+        &json!({"kind":"native-agent-home-v1","effect":effect,"registration":registration,
+        "root":root.path,"source":source.root.path,"mode":source.mode,"binary":binary.path}),
+    )
+    .map_err(Into::into)
+}
 /// Immutable private Host configuration. No serde/debug/clone or proof callback.
 pub struct ManagedHomePlan {
     root: Arc<Root>,
@@ -320,11 +339,7 @@ impl ManagedHomePlan {
             .cloned()
             .ok_or(Error::NotFound)?;
         let provision = canonical::transport_digest(&json!([effect, registration]))?;
-        let binding = canonical::transport_digest(
-            &json!({"kind":"native-agent-home-v1","effect":effect,"registration":registration,
-            "root":self.root.path,"source":source.root.path,"mode":source.mode,"binary":self.binary.path,
-            "binary_length":self.binary.length,"binary_modified":self.binary.modified}),
-        )?;
+        let binding = home_binding(effect, registration, &self.root, &source, &self.binary)?;
         let mut jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
         if jobs.contains_key(&effect.id) {
             return Err(Error::Busy);
@@ -401,11 +416,7 @@ impl ManagedHomePlan {
             .cloned()
             .ok_or(Error::NotFound)?;
         let provision = canonical::transport_digest(&json!([effect, registration]))?;
-        let binding = canonical::transport_digest(
-            &json!({"kind":"native-agent-home-v1","effect":effect,"registration":registration,
-            "root":self.root.path,"source":source.root.path,"mode":source.mode,"binary":self.binary.path,
-            "binary_length":self.binary.length,"binary_modified":self.binary.modified}),
-        )?;
+        let binding = home_binding(&effect, &registration, &self.root, &source, &self.binary)?;
         let job = {
             let mut jobs = self.jobs.lock().map_err(|_| Error::OutcomeUnknown)?;
             if let Some(job) = jobs.get(&effect.id) {
