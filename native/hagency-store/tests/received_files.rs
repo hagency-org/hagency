@@ -1161,6 +1161,112 @@ fn native_outcome_unknown_is_said_in_the_thread_after_a_restart() {
 }
 
 #[test]
+fn native_request_into_a_quarantined_session_is_answered_with_waiting() {
+    // The retained product answers a request into a session whose previous run
+    // ended unknown with "Waiting: …" and runs nothing until an operator
+    // resolves it (`claimDispatch`); the request is kept and runs after.
+    let mut f = Fixture::new(1);
+    let (dispatch_id, _) = discussion_fixture(&mut f);
+    let _cap = f.start_selected(&dispatch_id, "runner_agent", 3100);
+    let task_id: String = f
+        .sql()
+        .query_row(
+            "SELECT task_id FROM runner_dispatches WHERE id=?1",
+            [&dispatch_id],
+            |r| r.get(0),
+        )
+        .unwrap();
+    // A restart settles the started run as unknown and quarantines the session.
+    let mut f = f.reopen();
+    fn notices(f: &Fixture) -> Vec<(String, String)> {
+        f.sql()
+            .prepare("SELECT json_extract(config,'$.kind'),json_extract(config,'$.body') FROM task_notices ORDER BY rowid")
+            .unwrap()
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap()
+    }
+    let request = |f: &mut Fixture, event_id: &str, origin_ts: u64| {
+        let observation = MatrixEventObservation {
+            scope: f.db.matrix_ingress_scope("s0").unwrap(),
+            event: InboundMessage {
+                server_name: "example.test".into(),
+                room_id: "!project:example.test".into(),
+                event_id: event_id.into(),
+                sender_mxid: "@owner:example.test".into(),
+                thread_root: Some("$thread_s0".into()),
+                body: "@worker:example.test please try again.".into(),
+                kind: "m.text".into(),
+                origin_ts,
+            },
+            mentions: BTreeSet::from(["@worker:example.test".into()]),
+            encrypted: true,
+        };
+        f.db.admit_matrix_event(&observation, origin_ts + 1)
+            .unwrap();
+    };
+    request(&mut f, "$again", 3200);
+    let plan = AgentInboxPlan {
+        session_id: "s0".into(),
+        workspace_id: "work0".into(),
+    };
+    assert!(matches!(
+        f.db.select_agent_inbox(&plan, 3210).unwrap(),
+        AgentInboxSelection::NoWake
+    ));
+    let waiting = "Waiting: a previous runner in this session stopped after work may have started. An operator must inspect and resolve that outcome before another turn can run.";
+    assert_eq!(
+        notices(&f)
+            .iter()
+            .filter(|(kind, _)| kind == "session_quarantined")
+            .map(|(_, body)| body.as_str())
+            .collect::<Vec<_>>(),
+        vec![waiting]
+    );
+    // Said once: another request and another selection add nothing.
+    request(&mut f, "$again_2", 3300);
+    assert!(matches!(
+        f.db.select_agent_inbox(&plan, 3310).unwrap(),
+        AgentInboxSelection::NoWake
+    ));
+    assert_eq!(
+        notices(&f)
+            .iter()
+            .filter(|(kind, _)| kind == "session_quarantined")
+            .count(),
+        1
+    );
+    // The operator resolves the unknown outcome; the kept requests run next.
+    f.db.recover_dispatch(
+        &dispatch_id,
+        &DispatchInput {
+            id: "recovery_s0".into(),
+            session_id: "s0".into(),
+            task_id: Some(task_id.clone()),
+            resources: vec![ResourceLease {
+                id: "work0".into(),
+                exclusive: true,
+            }],
+            payload: serde_json::json!({"instruction":"Inspect the workspace, then continue."}),
+        },
+        "Fixture adapter inspected the stopped runner; no process was launched",
+        3400,
+    )
+    .unwrap();
+    let AgentInboxSelection::Selected {
+        task_id: selected,
+        count,
+        ..
+    } = f.db.select_agent_inbox(&plan, 3410).unwrap()
+    else {
+        panic!("the kept requests were not selected after the resolution")
+    };
+    assert_eq!(count, 1, "one request per dispatch; the second follows it");
+    assert_ne!(selected, task_id, "a new request opens its own task");
+}
+
+#[test]
 fn native_agent_conversation_releases_what_was_never_read() {
     let mut f = Fixture::new(1);
     let (dispatch_id, sequences) = discussion_fixture(&mut f);

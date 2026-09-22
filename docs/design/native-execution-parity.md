@@ -1175,3 +1175,20 @@ owner followed up in the delegated thread mentioning agent 2; a second intent
 dispatch for the same task ran; agent 2 appended the second line, read the
 file back and completed with the follow-up's reply; the task is done and the
 file holds both lines.
+
+### A request into a quarantined session is answered with Waiting (2026-09-22)
+
+The retained product answers a request into a session whose previous run
+ended unknown with "Waiting: a previous runner in this session stopped after
+work may have started. An operator must inspect and resolve that outcome
+before another turn can run." and runs nothing until an operator resolves it
+(`claimDispatch`); the native selectors refused such a session silently, so
+after a restart that settled a run as unknown the room saw the "Result
+uncertain…" notice and then an agent that ignored every new request without a
+word. Both selectors now queue that notice once per unresolved task, rooted at
+the request, best effort; the request stays unread and the selection after the
+operator's resolution takes it (ADR162 amendment, task
+rust-unknown-outcome-notice). Pinned by
+`native_request_into_a_quarantined_session_is_answered_with_waiting`.
+
+Live, working-tree binary: kill -9 mid-round, restart ready in two seconds, both Result uncertain notices posted; the next round posted two requests and both agents answered Waiting within six seconds, no dispatch was minted, no reply was sent, the fleet was not failed. Rig: tools/waiting-live.py after tools/restart-kill.py.

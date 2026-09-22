@@ -91,3 +91,15 @@ their own savepoint, once per task; the retained product's `reconcileOnStart`
 goes through `settleUnknownInternal`, notice included. The agent that comes
 back after the restart (ADR147 re-attach) posts it on its first turn. Pinned by
 `native_outcome_unknown_is_said_in_the_thread_after_a_restart`.
+
+### Waiting is said too (2026-09-22)
+
+A request into a session whose previous run ended unknown now gets the
+retained product's answer (`claimDispatch`): "Waiting: a previous runner in
+this session stopped after work may have started. An operator must inspect and
+resolve that outcome before another turn can run.", once per unresolved task,
+rooted at the request, best effort in its own savepoint. Nothing else changes:
+no dispatch is minted, the request stays unread, and the selection that follows
+the operator's resolution takes it. Both the agent inbox and the delegated
+intent selector say it. Pinned by
+`native_request_into_a_quarantined_session_is_answered_with_waiting`.

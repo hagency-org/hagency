@@ -1031,6 +1031,13 @@ pub(super) fn select_agent(
     let Some(trigger) = trigger else {
         return Ok(AgentInboxSelection::NoWake);
     };
+    // A session whose previous run ended unknown runs nothing until an
+    // operator resolves it. The retained product says "Waiting: …" in the
+    // thread and keeps the request; so does this, leaving the request unread
+    // for the selection that follows the resolution.
+    if super::task_intents::quarantined_waiting_notice(tx, &plan.session_id, trigger, now)? {
+        return Ok(AgentInboxSelection::NoWake);
+    }
     let rows: Vec<(u64, bool)> = tx
         .prepare(
             "SELECT message_sequence,wake FROM session_inputs WHERE session_id=?1 AND processed_at IS NULL AND dispatch_id IS NULL AND message_sequence<=?2 AND json_extract(config,'$.origin_ts')>=?3 ORDER BY message_sequence DESC LIMIT 100",
@@ -1171,6 +1178,9 @@ pub(super) fn select_intent(
     let Some(trigger) = trigger else {
         return Ok(AgentInboxSelection::NoWake);
     };
+    if super::task_intents::quarantined_waiting_notice(tx, &plan.session_id, trigger, now)? {
+        return Ok(AgentInboxSelection::NoWake);
+    }
     let dispatch_id = format!(
         "intent_dispatch_{}",
         &canonical::digest(&serde_json::json!([

@@ -27,6 +27,67 @@ fn notice_id(task_id: &str, kind: &str) -> Result<String, Error> {
 /// (`router/src/store.ts` `settleUnknownInternal`).
 pub(super) const OUTCOME_UNKNOWN_NOTICE: &str = "Result uncertain: the runner stopped after work may have started. Inspect the workspace before retrying; this dispatch will not be run again automatically.";
 
+/// The retained product's words for a request into a session whose previous
+/// run ended unknown (`router/src/store.ts` `claimDispatch`).
+pub(super) const SESSION_QUARANTINED_NOTICE: &str = "Waiting: a previous runner in this session stopped after work may have started. An operator must inspect and resolve that outcome before another turn can run.";
+
+/// A request into a quarantined session runs nothing until an operator
+/// resolves the unknown outcome; the retained product says so in the thread
+/// and keeps the request queued. Here the request stays where it is, unread,
+/// and is selected once the quarantine is lifted. Said once per unresolved
+/// task, rooted at the request; best effort in its own savepoint. Returns
+/// whether the session is quarantined.
+pub(super) fn quarantined_waiting_notice(
+    tx: &Transaction<'_>,
+    session: &str,
+    request: u64,
+    now: u64,
+) -> Result<bool, Error> {
+    let quarantined: bool = tx.query_row(
+        "SELECT quarantined FROM runner_sessions WHERE id=?1",
+        [session],
+        |r| r.get(0),
+    )?;
+    if !quarantined {
+        return Ok(false);
+    }
+    let unresolved: Option<Option<String>> = tx
+        .query_row(
+            "SELECT task_id FROM runner_dispatches WHERE session_id=?1 AND state='outcome_unknown' ORDER BY rowid DESC LIMIT 1",
+            [session],
+            |r| r.get(0),
+        )
+        .optional()?;
+    let Some(Some(task_id)) = unresolved else {
+        return Ok(true);
+    };
+    let id = notice_id(&task_id, "session_quarantined")?;
+    if tx.query_row(
+        "SELECT EXISTS(SELECT 1 FROM task_notices WHERE id=?1)",
+        [&id],
+        |r| r.get::<_, bool>(0),
+    )? {
+        return Ok(true);
+    }
+    tx.execute_batch("SAVEPOINT waiting_notice")?;
+    let queued = execution::task(tx, &task_id).and_then(|task| {
+        let root = super::verified_ingress::input_message(tx, session, request)?;
+        add_notice(
+            tx,
+            &task,
+            &root,
+            "session_quarantined",
+            SESSION_QUARANTINED_NOTICE.into(),
+            now,
+        )
+    });
+    match queued {
+        Ok(_) => tx.execute_batch("RELEASE waiting_notice")?,
+        Err(_) => tx.execute_batch("ROLLBACK TO waiting_notice; RELEASE waiting_notice")?,
+    }
+    Ok(true)
+}
+
 /// Tell the thread when a dispatch is fenced with an unknown outcome, as the
 /// retained product does. Before this the room only saw an agent that stopped
 /// answering (live 2026-09-20: one transient provider failure, and silence).

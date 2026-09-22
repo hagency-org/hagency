@@ -40,8 +40,11 @@ worker's wait for the operator's resolution.
   the next attempt. The fleet counts an agent as lost only when it failed and is
   not waiting.
 - No new recovery authority. The operator's resolution, the stop inspection and
-  the quarantine are unchanged. Later requests in a waiting session are not
-  answered with the retained product's "Waiting…" notice in this slice.
+  the quarantine are unchanged. A request into a quarantined session is
+  answered once, per unresolved task, with the retained product's "Waiting: a
+  previous runner in this session stopped after work may have started…"
+  notice, rooted at the request; the request stays unread and is selected
+  after the resolution.
 
 ## Allowed changes
 
@@ -75,6 +78,13 @@ Scenario: A run a restart or an expired capability settled as unknown is said in
   When the repository is reopened, or the sweep finds its capability expired
   Then the dispatch is outcome_unknown and one pending verified notice carries the retained product's words
   And another reopen or sweep adds no second notice, and only the agent's own pump claims it
+
+Scenario: A request into a quarantined session is answered with Waiting and runs after the resolution
+  Test: native_request_into_a_quarantined_session_is_answered_with_waiting
+  Given a session whose started run was recorded as an unknown outcome
+  When the owner posts new requests into it before an operator resolves that outcome
+  Then no dispatch is minted and one verified notice carries the retained product's Waiting words, once
+  And after the operator resolves the outcome the kept requests are selected
 
 Scenario: A recoverable agent is visible as waiting and is not counted as lost
   Test: native_factory_failure_diagnostics
