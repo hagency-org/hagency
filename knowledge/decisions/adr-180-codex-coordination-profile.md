@@ -168,3 +168,18 @@ dispatch now marks an entry this agent read from its own room as `follow_up`
 and when one is present the instruction says to carry the follow-ups out as
 part of the task while the delegator's words stay context only. The mark is
 absent from every other payload.
+
+### The delegator reads what it created (2026-09-22, operator decision)
+
+The retained product's `get_task(id)` and `list_tasks` show a runner every
+task bound to its own session's dispatches, so an agent that delegated reads
+the task it created. Natively the service already exposed that (`visible`,
+`runner_tasks`: the assigned task and the ones whose `creator_session_id` is
+the session's), but the helper refused any id but the assigned one and served
+no list. On the operator's "follow TS": `get_task` takes an optional id (the
+assigned task when omitted) and `list_tasks` pages the visible set by id;
+both read-only, both in the fixed task-tool set every runtime is configured
+with, the helper naming the id and the service deciding visibility. No new
+mutation, no completion report. Pinned in
+`native_mcp_coordination_delegation`; the offline Codex and Claude peers
+enumerate the widened set.

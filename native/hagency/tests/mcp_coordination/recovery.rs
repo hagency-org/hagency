@@ -131,6 +131,7 @@ async fn native_mcp_coordination_catalog() {
         names,
         std::collections::BTreeSet::from([
             "get_task",
+            "list_tasks",
             "accept_task",
             "transition_task",
             "comment_task",

@@ -106,6 +106,7 @@ fn helper(params: &Value, turn: &Value, progress: &mut impl Write) -> io::Result
         || table["enabled_tools"]
             != json!([
                 "get_task",
+                "list_tasks",
                 "update_task_execution",
                 "transition_task",
                 "complete_task_with_reply",

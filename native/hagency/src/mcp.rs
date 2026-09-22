@@ -335,7 +335,43 @@ impl Session {
         let Some(mut args) = args.as_object().cloned() else {
             return Ok(tool_error("Tool arguments must be an object"));
         };
-        if args.remove("id").as_ref().and_then(Value::as_str) != Some(self.context.task_id()) {
+        // Parity with the retained get_task(id) and list_tasks: a task this
+        // session's dispatches created is readable by id and listed beside the
+        // assigned one. The helper names the id; the service decides
+        // visibility, so a foreign id is refused there, before any read.
+        if name == "list_tasks" {
+            return self.list_tasks(args).await;
+        }
+        if name == "get_task"
+            && let Some(Value::String(id)) = args.get("id")
+            && id.as_str() != self.context.task_id()
+        {
+            let id = id.clone();
+            args.remove("id");
+            if !args.is_empty() {
+                return Ok(tool_error("Read tools take a task id only"));
+            }
+            return Ok(
+                match task_client::read_task(&self.context, &id, task_client::DEFAULT_DEADLINE)
+                    .await
+                {
+                    Ok(task) => {
+                        let structured = serde_json::to_value(task_client::Output {
+                            task,
+                            call_id: None,
+                            replayed: false,
+                        })
+                        .map_err(|_| Error::Protocol("task tool projection failed"))?;
+                        json!({"content":[{"type":"text","text":structured.to_string()}],"structuredContent":structured,"isError":false})
+                    }
+                    Err(e) => tool_error(&e.to_string()),
+                },
+            );
+        }
+        let named = args.remove("id");
+        if named.as_ref().and_then(Value::as_str) != Some(self.context.task_id())
+            && !(name == "get_task" && named.is_none())
+        {
             // Live 2026-09-20: a model did its work, named the wrong task on
             // completion, read only "differs" and gave up, so a finished task never
             // replied. The check is unchanged; the refusal now says which ID it
@@ -488,6 +524,45 @@ impl Session {
         }
     }
 }
+impl Session {
+    /// The visible tasks in id order: the assigned task and the ones this
+    /// session's dispatches created. Read-only; no id, no call_id.
+    async fn list_tasks(&self, mut args: serde_json::Map<String, Value>) -> Result<Value, Error> {
+        let after = match args.remove("after") {
+            None => String::new(),
+            Some(Value::String(v)) if v.is_empty() || identifier(&v, 128).is_ok() => v,
+            Some(_) => return Ok(tool_error("Invalid task page cursor")),
+        };
+        let limit = match args.remove("limit") {
+            None => 20,
+            Some(Value::Number(n)) => match n.as_u64() {
+                Some(limit) if (1..=100).contains(&limit) => limit as usize,
+                _ => return Ok(tool_error("Invalid task page limit")),
+            },
+            Some(_) => return Ok(tool_error("Invalid task page limit")),
+        };
+        if !args.is_empty() {
+            return Ok(tool_error("list_tasks takes after and limit only"));
+        }
+        Ok(
+            match task_client::list_tasks(
+                &self.context,
+                &after,
+                limit,
+                task_client::DEFAULT_DEADLINE,
+            )
+            .await
+            {
+                Ok(tasks) => {
+                    let structured = serde_json::to_value(json!({"tasks":tasks}))
+                        .map_err(|_| Error::Protocol("task tool projection failed"))?;
+                    json!({"content":[{"type":"text","text":structured.to_string()}],"structuredContent":structured,"isError":false})
+                }
+                Err(e) => tool_error(&e.to_string()),
+            },
+        )
+    }
+}
 fn empty(value: &Option<Value>) -> bool {
     value.as_ref().is_none_or(|v| {
         v.as_object()
@@ -510,6 +585,7 @@ fn valid_call(params: Option<&Value>, file_tools: bool, receive_tools: bool) -> 
         p.get("name").and_then(Value::as_str),
         Some(
             "get_task"
+                | "list_tasks"
                 | "accept_task"
                 | "transition_task"
                 | "comment_task"

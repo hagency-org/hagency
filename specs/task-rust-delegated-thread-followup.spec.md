@@ -34,7 +34,10 @@ reading the thread later. None is added here.
 - After the delegated task is done, only the sender of its root message wakes
   it again, as the retained product allows only the original requester to
   reopen a completed task.
-- No completion report to the delegator; no new tool.
+- No completion report to the delegator. The delegator reads the task it
+  created through `get_task` by id and `list_tasks` (read-only; the service's
+  existing visibility decides, the helper selects nothing) — the retained
+  product's own two tools, added 2026-09-22 on the operator's "follow TS".
 
 ## Allowed changes
 
@@ -43,6 +46,13 @@ reading the thread later. None is added here.
 - native/hagency-store/src/domain_worker.rs
 - native/hagency-store/tests/delegated_intents.rs
 - native/hagency/src/bootstrap/driver.rs
+- native/hagency/src/mcp.rs
+- native/hagency/src/mcp/catalog.rs
+- native/hagency/src/task_client.rs
+- native/hagency/src/task_client/transport.rs
+- native/hagency-runtime/src/task_mcp.rs
+- native/hagency/tests/**
+- native/hagency-runtime/tests/claude_task_mcp.rs
 - knowledge/decisions/adr-180-codex-coordination-profile.md
 - specs/task-rust-delegated-thread-followup.spec.md
 - docs/**
@@ -56,6 +66,13 @@ Scenario: A follow-up in the delegated thread continues the delegated task
   Then the follow-up belongs to the delegated session, addresses the assignee, and is attached to the delegated task
   And the delegated session waits for a dispatch again and the next intent selection carries the same task and the follow-up
   And the follow-up entry is marked follow_up and the instruction says to carry it out, while the first dispatch keeps the handed-over instruction
+
+Scenario: The delegator reads the task it created
+  Test: native_mcp_coordination_delegation
+  Production caller: hagency::runner::list_tasks
+  Given a delegation this session's dispatch created
+  When the delegator calls get_task with the new task's id and list_tasks
+  Then the created task is returned by id, the list holds the assigned task and the created one in id order, and a task id outside the session is refused
 
 ## Out of scope
 

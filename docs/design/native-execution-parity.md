@@ -1217,3 +1217,16 @@ an unauthenticated post was refused 401 and a replayed recovery 409. The
 replay carried the resources page's `resource_revision_conflict`; the route
 now says `recovery_conflict`, pinned in
 `native_console_agent_recover_dispatch_recovers_orphan`.
+
+### The delegator reads the task it created (2026-09-22)
+
+TS parity gap closed on the operator's decision: the retained `get_task(id)`
+and `list_tasks` show a runner every task bound to its own dispatches (a
+created task is bound to the creating dispatch), so a delegator can read its
+delegations. The native service already decided that visibility
+(`visible`, `runner_tasks`); the helper now passes an optional id to
+`get_task` and serves `list_tasks` (after/limit, id order), both read-only
+and both in the fixed task-tool set. Pinned in
+`native_mcp_coordination_delegation`; catalog and configuration pins
+updated (24 tools; the Codex config and Claude allow rules name six task
+tools).

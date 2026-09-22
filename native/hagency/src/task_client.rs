@@ -295,6 +295,38 @@ pub(crate) async fn run_operation(
     })
 }
 
+/// A task by id: the assigned one or one this session's dispatches created
+/// (parity with the retained get_task(id)). The service decides visibility;
+/// the response must name the task that was asked for.
+pub(crate) async fn read_task(
+    context: &Context,
+    id: &str,
+    deadline: Duration,
+) -> Result<Task, Error> {
+    identifier(id, 128).map_err(|_| Error::Invalid)?;
+    let bytes = transport::request(context, transport::Operation::Read { id }, deadline).await?;
+    let task = serde_json::from_slice::<Task>(&bytes).map_err(|_| Error::Response)?;
+    if task.id != id {
+        return Err(Error::Response);
+    }
+    Ok(task)
+}
+/// The visible tasks in id order, paged (parity with the retained list_tasks).
+pub(crate) async fn list_tasks(
+    context: &Context,
+    after: &str,
+    limit: usize,
+    deadline: Duration,
+) -> Result<Vec<Task>, Error> {
+    let bytes = transport::request(
+        context,
+        transport::Operation::Tasks { after, limit },
+        deadline,
+    )
+    .await?;
+    serde_json::from_slice::<Vec<Task>>(&bytes).map_err(|_| Error::Response)
+}
+
 #[cfg(test)]
 mod retained_tests {
     use super::*;

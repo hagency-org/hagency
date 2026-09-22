@@ -9,6 +9,34 @@ async fn native_mcp_coordination_delegation() {
     let result = c.ok("delegate_task", args.clone()).await;
     assert_eq!(result["activation"], "pending");
     assert_eq!(f.count("canonical_tasks"), 2);
+    // The delegator reads what it created (parity with the retained
+    // get_task(id) and list_tasks): the new task by id, both tasks listed,
+    // and a task outside this session refused by the service.
+    let created = c.ok("get_task", json!({"id":result["task_id"]})).await;
+    assert_eq!(created["task"]["id"], result["task_id"]);
+    assert_eq!(created["replayed"], false);
+    let listed = c.ok("list_tasks", json!({})).await;
+    let ids: Vec<&str> = listed["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert!(ids.contains(&f.parent.task_id.as_str()));
+    assert!(ids.contains(&result["task_id"].as_str().unwrap()));
+    assert!(
+        c.ok("list_tasks", json!({"after":f.parent.task_id,"limit":1}))
+            .await["tasks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|t| t["id"].as_str().unwrap() > f.parent.task_id.as_str())
+    );
+    c.refused("get_task", json!({"id":"not_this_sessions_task"}))
+        .await;
+    c.refused("list_tasks", json!({"id":f.parent.task_id}))
+        .await;
     assert_eq!(c.ok("delegate_task", args.clone()).await["replayed"], true);
     let mut changed = args.clone();
     changed["definition"]["title"] = json!("Changed content");

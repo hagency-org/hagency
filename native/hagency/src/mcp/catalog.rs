@@ -12,8 +12,14 @@ pub(super) fn list(file_tools: bool, receive_tools: bool) -> Value {
         ),
         (
             "get_task",
-            "Read the assigned canonical task",
+            "Read the assigned canonical task, or by id a task this session's dispatches created",
             json!({}),
+            vec![],
+        ),
+        (
+            "list_tasks",
+            "List the assigned task and the tasks this session's dispatches created (delegations), read-only, in id order; page with after and limit",
+            json!({"after":{"type":"string","maxLength":128,"description":"Return tasks whose id sorts after this one; omit for the first page"},"limit":{"type":"integer","minimum":1,"maximum":100,"description":"Page size, 20 when omitted"}}),
             vec![],
         ),
         (
@@ -60,9 +66,22 @@ pub(super) fn list(file_tools: bool, receive_tools: bool) -> Value {
         ),
     ] {
         let mut properties = extra.as_object().unwrap().clone();
-        properties.insert("id".into(), id.clone());
-        let mut fields = vec!["id"];
-        let read = matches!(name, "get_task" | "get_approval" | "read_conversation");
+        let mut fields = vec![];
+        match name {
+            // The list names no task; a read by id defaults to the assigned task.
+            "list_tasks" => {}
+            "get_task" => {
+                properties.insert("id".into(), json!({"type":"string","minLength":1,"maxLength":128,"description":"Task ID; the assigned task when omitted, or a task this session's dispatches created"}));
+            }
+            _ => {
+                properties.insert("id".into(), id.clone());
+                fields.push("id");
+            }
+        }
+        let read = matches!(
+            name,
+            "get_task" | "list_tasks" | "get_approval" | "read_conversation"
+        );
         if !read {
             properties.insert("call_id".into(), call.clone());
             fields.push("call_id");

@@ -106,6 +106,7 @@ fn helper(params: &Value) -> io::Result<()> {
         || table["enabled_tools"]
             != json!([
                 "get_task",
+                "list_tasks",
                 "update_task_execution",
                 "transition_task",
                 "complete_task_with_reply",
@@ -119,6 +120,7 @@ fn helper(params: &Value) -> io::Result<()> {
         || table["tools"]
             != json!({
                 "get_task":{"approval_mode":"approve"},
+                "list_tasks":{"approval_mode":"approve"},
                 "update_task_execution":{"approval_mode":"approve"},
                 "transition_task":{"approval_mode":"approve"},
                 "complete_task_with_reply":{"approval_mode":"approve"},

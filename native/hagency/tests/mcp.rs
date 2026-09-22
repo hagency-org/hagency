@@ -48,7 +48,7 @@ async fn native_mcp_protocol() {
     )
     .await
     .unwrap();
-    assert_eq!(catalog["result"]["tools"].as_array().unwrap().len(), 23);
+    assert_eq!(catalog["result"]["tools"].as_array().unwrap().len(), 24);
     for tool in catalog["result"]["tools"].as_array().unwrap() {
         assert_eq!(tool["inputSchema"]["additionalProperties"], false);
         assert!(!tool.to_string().contains("secret"));
@@ -235,7 +235,7 @@ async fn native_mcp_receive_presentation() {
         let tools = replies[1]["result"]["tools"].as_array().unwrap();
         assert_eq!(
             tools.len(),
-            23 + 2 * usize::from(send) + 2 * usize::from(receive)
+            24 + 2 * usize::from(send) + 2 * usize::from(receive)
         );
         for name in ["list_received_files", "receive_file"] {
             let tool = tools.iter().find(|tool| tool["name"] == name);
@@ -417,7 +417,7 @@ async fn native_mcp_file_presentation() {
     assert_eq!(replies.len(), 2 + invalid_count);
     assert_eq!(replies[1]["id"], "catalog");
     let tools = replies[1]["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 25);
+    assert_eq!(tools.len(), 26);
     let send = tools
         .iter()
         .find(|tool| tool["name"] == "send_file")

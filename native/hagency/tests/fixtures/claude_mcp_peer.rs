@@ -125,7 +125,6 @@ fn inner() -> io::Result<()> {
         "comment_task",
         "get_approval",
         "consume_approval",
-        "list_tasks",
     ]
     .iter()
     .enumerate()
@@ -179,13 +178,31 @@ fn inner() -> io::Result<()> {
     {
         return Err(invalid());
     }
+    // The list is served too (ADR-158 names it among the task tools): here
+    // it holds exactly the assigned task.
+    let listed = rpc(
+        &mut read_helper,
+        &mut write,
+        30,
+        "tools/call",
+        json!({"name":"list_tasks","arguments":{}}),
+    )?;
+    if listed["isError"] != false
+        || listed["structuredContent"]["tasks"]
+            .as_array()
+            .map(Vec::len)
+            != Some(1)
+        || listed["structuredContent"]["tasks"][0]["id"] != "task"
+    {
+        return Err(invalid());
+    }
     drop(write);
     if !child.0.wait()?.success() {
         return Err(invalid());
     }
     receipt(
         "claude-task",
-        json!({"heartbeat":true,"readback":true,"helper_exit":true,"tools":tools.len(),"outside_profile_refused":5,"foreign_task_refused":true}),
+        json!({"heartbeat":true,"readback":true,"helper_exit":true,"tools":tools.len(),"outside_profile_refused":4,"foreign_task_refused":true}),
     )?;
     send(
         &mut out,

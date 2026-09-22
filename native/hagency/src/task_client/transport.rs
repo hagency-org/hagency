@@ -20,6 +20,15 @@ pub(super) enum Operation<'a> {
     Discussion {
         offset: u64,
     },
+    /// A task by id: the service decides whether this session may see it.
+    Read {
+        id: &'a str,
+    },
+    /// The visible tasks, paged by id.
+    Tasks {
+        after: &'a str,
+        limit: usize,
+    },
 }
 struct Prepared {
     path: String,
@@ -120,6 +129,35 @@ pub(super) async fn request(
             (
                 Prepared {
                     path: format!("/api/native/v1/runner/conversation?offset={offset}"),
+                    body: vec![],
+                    method: "GET",
+                    mutation: false,
+                },
+                16 * 1024,
+            )
+        }
+        Operation::Read { id } => {
+            identifier(id, 128).map_err(|_| Error::Invalid)?;
+            (
+                Prepared {
+                    path: format!("/api/native/v1/runner/tasks/{id}"),
+                    body: vec![],
+                    method: "GET",
+                    mutation: false,
+                },
+                16 * 1024,
+            )
+        }
+        Operation::Tasks { after, limit } => {
+            if !after.is_empty() {
+                identifier(after, 128).map_err(|_| Error::Invalid)?;
+            }
+            if !(1..=100).contains(&limit) {
+                return Err(Error::Invalid);
+            }
+            (
+                Prepared {
+                    path: format!("/api/native/v1/runner/tasks?after={after}&limit={limit}"),
                     body: vec![],
                     method: "GET",
                     mutation: false,
