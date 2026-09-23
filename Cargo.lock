@@ -1138,6 +1138,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
@@ -1319,6 +1320,7 @@ dependencies = [
  "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
  "windows-sys 0.61.2",
 ]
 
