@@ -265,7 +265,7 @@ fn native_approval_response_recovery() {
     // Rewinding below 33 also rebuilds runner_attempts to its pre-033 shape:
     // park_reason (MA-S2) existed only from schema 33 on, and its ALTER does
     // not replay idempotently over a still-present column.
-    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; PRAGMA user_version=21;")
+    sql.execute_batch("DROP TABLE IF EXISTS ceiling_alerts; DROP TABLE approval_responses; ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; PRAGMA user_version=21;")
         .unwrap();
     let mut db = DomainRepository::open(&path).unwrap();
     assert_eq!(count(&sql, "approval_responses"), 0);

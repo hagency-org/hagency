@@ -167,7 +167,7 @@ impl WarmHostPlan {
             tokio::time::timeout_at(until, domain.reattach_runtime_account(scope.clone()))
                 .await
                 .map_err(|_| Failure::Deadline)?
-                .map_err(|_| Failure::LostAuthority)?;
+                .map_err(|error| Failure::lost(crate::AuthoritySite::FactoryAccount, &error))?;
         let guardian = self.guardian.clone();
         let executable = self.executable.clone();
         let environment = self.environment.clone();
@@ -252,7 +252,7 @@ impl WarmHostPlan {
             tokio::time::timeout_at(until, domain.provision_runtime_account(scope.clone()))
                 .await
                 .map_err(|_| Failure::Deadline)?
-                .map_err(|_| Failure::LostAuthority)?;
+                .map_err(|error| Failure::lost(crate::AuthoritySite::FactoryAccount, &error))?;
         let held = self
             .bridge
             .context_dir

@@ -526,6 +526,12 @@ impl DomainRepository {
             "UPDATE runner_dispatches SET lease_until=MIN(?2,capability_until) WHERE id=?1",
             params![cap.dispatch_id, now + lease_ms],
         )?;
+        // The renewal's own mark (ADR-181 point 6): what a later loss says
+        // it was judged from.
+        tx.execute(
+            "UPDATE runner_attempts SET last_renew_at=?3 WHERE dispatch_id=?1 AND fence=?2",
+            params![cap.dispatch_id, cap.fence, now],
+        )?;
         tx.commit()?;
         Ok(value.task)
     }

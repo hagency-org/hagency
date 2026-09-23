@@ -24,24 +24,23 @@ impl Directory {
         Ok(value)
     }
     fn check(&self) -> Result<(), Failure> {
+        let lost = || Failure::lost_io(crate::AuthoritySite::LocalCodexCheck);
         if self.path.canonicalize().ok().as_ref() != Some(&self.path) {
-            return Err(Failure::LostAuthority);
+            return Err(lost());
         }
         let current = Dir::open_ambient_dir(&self.path, ambient_authority())
-            .map_err(|_| Failure::LostAuthority)?
+            .map_err(|_| lost())?
             .into_std_file();
-        if !hagency_platform::same_directory(&self.file, &current)
-            .map_err(|_| Failure::LostAuthority)?
-        {
-            return Err(Failure::LostAuthority);
+        if !hagency_platform::same_directory(&self.file, &current).map_err(|_| lost())? {
+            return Err(lost());
         }
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
-            let metadata = self.file.metadata().map_err(|_| Failure::LostAuthority)?;
+            let metadata = self.file.metadata().map_err(|_| lost())?;
             if metadata.uid() != rustix::process::geteuid().as_raw() || metadata.mode() & 0o022 != 0
             {
-                return Err(Failure::LostAuthority);
+                return Err(lost());
             }
             Ok(())
         }
@@ -246,7 +245,7 @@ mod tests {
             tokio::time::timeout(std::time::Duration::from_secs(2), binding.watch(changed))
                 .await
                 .unwrap(),
-            Err(Failure::LostAuthority)
+            Err(Failure::lost_io(crate::AuthoritySite::LocalCodexCheck))
         );
         // Keep the original provider sentinel unchanged; only fixture teardown
         // restores read permission before the temporary directory is removed.

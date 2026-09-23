@@ -421,14 +421,15 @@ async fn native_owned_dispatch_cancel_and_unknown() {
                 _ => unreachable!(),
             }
             let report = operation.wait().await.unwrap();
-            assert_eq!(
-                report.failure,
-                Some(if mode == "cancel-wait" {
-                    Failure::Cancelled
-                } else {
-                    Failure::LostAuthority
-                })
-            );
+            if mode == "cancel-wait" {
+                assert_eq!(report.failure, Some(Failure::Cancelled));
+            } else {
+                assert!(
+                    matches!(report.failure, Some(Failure::LostAuthority { .. })),
+                    "{:?}",
+                    report.failure
+                );
+            }
             drop(report);
         }
         f.quarantined();

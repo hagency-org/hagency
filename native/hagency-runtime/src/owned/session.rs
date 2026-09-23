@@ -71,11 +71,14 @@ impl OwnedSession {
             )
         })();
         match session {
-            Ok(session) => Ok(Self {
-                session,
-                owner,
-                cleanup: Cleanup::Pending,
-            }),
+            Ok(session) => {
+                tracing::info!(pid = owner.id(), "owned runner spawned");
+                Ok(Self {
+                    session,
+                    owner,
+                    cleanup: Cleanup::Pending,
+                })
+            }
             Err(error) => {
                 let cleanup = observe_stop(&mut owner);
                 Err(StartError::Uncertain {
@@ -159,6 +162,38 @@ impl OwnedSession {
     }
     pub fn stderr_snapshot(&self) -> transport::StderrSnapshot {
         self.session.stderr_snapshot()
+    }
+    /// The leader's exit as the guardian reaped it, `code:N` or `signal:N`,
+    /// decoded from the observed report's raw wait status. `None` before a
+    /// report, when the guardian never reaped the leader, or on a platform
+    /// that does not carry the status. Evidence for the attempt record only.
+    pub fn exit_identity(&self) -> Option<String> {
+        let Cleanup::Observed(report) = self.cleanup else {
+            return None;
+        };
+        exit_identity(report.leader_status?)
+    }
+    /// The last `max` bytes of the retained runtime stderr (ADR-040's 16 KiB
+    /// tail), cut on a character boundary, with control characters other than
+    /// newline replaced. Private diagnostic text: no projection reads it.
+    pub fn stderr_tail(&self, max: usize) -> String {
+        let snapshot = self.session.stderr_snapshot();
+        let text = String::from_utf8_lossy(&snapshot.tail);
+        let start = text.ceil_char_boundary(text.len().saturating_sub(max));
+        text[start..]
+            .chars()
+            .map(|c| {
+                if c.is_control() && c != '\n' {
+                    '\u{FFFD}'
+                } else {
+                    c
+                }
+            })
+            .collect()
+    }
+    /// The guardian's own stderr tail as the platform collected it (ADR-181).
+    pub fn guardian_stderr_tail(&self) -> String {
+        self.owner.guardian_stderr_tail()
     }
 
     /// Stop through the retained owner. A false whole_tree_stopped or an IO
@@ -269,10 +304,38 @@ impl Drop for OwnedSession {
     }
 }
 fn observe_stop(owner: &mut SupervisedProcess) -> Cleanup {
+    tracing::info!(pid = owner.id(), "owned runner stop requested");
     match owner.stop(STOP_TIMEOUT) {
-        Ok(report) => Cleanup::Observed(report),
-        Err(error) => Cleanup::Unknown { kind: error.kind() },
+        Ok(report) => {
+            tracing::info!(
+                pid = owner.id(),
+                cause = ?report.cause,
+                refusal = ?report.refusal,
+                guardian_exit = ?report.guardian_exit,
+                whole_tree_stopped = report.scope.whole_tree_stopped,
+                "owned runner stop reported"
+            );
+            Cleanup::Observed(report)
+        }
+        Err(error) => {
+            tracing::warn!(pid = owner.id(), kind = ?error.kind(), "owned runner cleanup unknown");
+            Cleanup::Unknown { kind: error.kind() }
+        }
     }
+}
+#[cfg(unix)]
+fn exit_identity(status: i32) -> Option<String> {
+    use std::os::unix::process::ExitStatusExt;
+    let status = std::process::ExitStatus::from_raw(status);
+    if let Some(code) = status.code() {
+        Some(format!("code:{code}"))
+    } else {
+        status.signal().map(|signal| format!("signal:{signal}"))
+    }
+}
+#[cfg(not(unix))]
+fn exit_identity(_status: i32) -> Option<String> {
+    None
 }
 struct Operation<'a> {
     runner: &'a mut OwnedSession,

@@ -41,12 +41,50 @@ pub enum StopDetail {
     /// The retained leader's own identity could not be read.
     LeaderUnreadable,
 }
+/// Fixed categories naming why a stop after the leader exited did not prove the
+/// tree gone. Diagnostic only: never authorizes anything and never strengthens
+/// `StopReport`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StopRefusal {
+    /// A whole-system census during the stop could not be completed.
+    CensusError,
+    /// The tracker refused a census, or had already refused before the stop.
+    TrackerGap,
+    /// A stop or kill signal to an owned process was rejected by the kernel.
+    SignalError,
+    /// Owned processes were still live when the stop budget ran out.
+    LiveDescendants,
+    /// The leader itself could not be reaped inside the stop budget.
+    RootUnreaped,
+}
+/// One owned process that kept a stop unproven. `exe` is the executable's file
+/// name only, at most 64 bytes with control characters replaced; a guardian
+/// carries at most eight rows. Evidence, never a signal target.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LiveRow {
+    pub pid: u32,
+    pub ppid: u32,
+    pub exe: String,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SupervisedReport {
     pub cause: StopCause,
     /// Present when the guardian could name a fixed refusal category.
     pub detail: Option<StopDetail>,
     pub scope: StopReport,
+    /// Why a stop after the leader exited stayed unproven, when the guardian
+    /// could name it. Never load-bearing.
+    pub refusal: Option<StopRefusal>,
+    /// Rows the guardian reported as still live, saturating at 255.
+    pub live_count: u8,
+    /// The leader's raw wait status as the guardian's `waitpid` returned it;
+    /// `None` when the guardian never reaped it or the platform does not read it.
+    pub leader_status: Option<i32>,
+    /// The guardian process's own exit as the host read it after the `Stopped`
+    /// frame or channel loss: its exit code, or the negated signal number when a
+    /// signal ended it. `None` until the host reaped it.
+    pub guardian_exit: Option<i32>,
 }
 pub struct SupervisedProcess {
     inner: Supervisor,
@@ -118,6 +156,13 @@ impl SupervisedProcess {
     pub fn stop(&mut self, timeout: Duration) -> io::Result<SupervisedReport> {
         check_timeout(timeout)?;
         self.inner.stop(timeout)
+    }
+    /// The last 4 KiB the guardian wrote to its own stderr, as collected so far,
+    /// with control characters other than newline replaced. Diagnostic text
+    /// only: it authorizes nothing and never strengthens a report. Empty on
+    /// Windows, which owns the job directly and has no guardian.
+    pub fn guardian_stderr_tail(&self) -> String {
+        self.inner.guardian_stderr_tail()
     }
 }
 fn check_timeout(timeout: Duration) -> io::Result<()> {

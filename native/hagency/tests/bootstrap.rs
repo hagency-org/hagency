@@ -935,6 +935,56 @@ async fn native_continuous_driver_operator_resolution() {
     .await;
     tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
     assert_eq!(f.attempts(), 1, "stopped proof alone cannot rerun work");
+    // ADR-181: the failed attempt left its record — the uncollapsed status as
+    // the `failed` event, and the retained product's terminal_reason shape,
+    // `<failure>:<exit identity>:<stderr tail>`, with the clock set.
+    {
+        let sql = f.sql();
+        let failed: String = sql
+            .query_row(
+                "SELECT detail FROM runner_attempt_events WHERE dispatch_id='dispatch' AND fence=1 AND phase='failed'",
+                [],
+                |r| r.get(0),
+            )
+            .expect("the failed attempt is recorded");
+        let failed: serde_json::Value = serde_json::from_str(&failed).unwrap();
+        assert_eq!(failed["status"]["owned_failure"], "protocol", "{failed}");
+        assert_eq!(failed["status"]["state"], "outcome_unknown");
+        let (reason, started_at, settled_at): (String, Option<u64>, Option<u64>) = sql
+            .query_row(
+                "SELECT terminal_reason, started_at, settled_at FROM runner_attempts WHERE dispatch_id='dispatch' AND fence=1",
+                [],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .unwrap();
+        // The host ends the refused runtime itself, so the exit identity is
+        // the stop signal; a runtime that exits on its own reads `code:N`.
+        assert!(
+            reason.starts_with("protocol:signal:") || reason.starts_with("protocol:code:"),
+            "{reason}"
+        );
+        assert!(
+            started_at.is_some() && settled_at >= started_at,
+            "{started_at:?} {settled_at:?}"
+        );
+        let phases: Vec<String> = sql
+            .prepare("SELECT phase FROM runner_attempt_events WHERE dispatch_id='dispatch' AND fence=1 ORDER BY seq")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<_, _>>()
+            .unwrap();
+        assert_eq!(
+            phases.first().map(String::as_str),
+            Some("claimed"),
+            "{phases:?}"
+        );
+        assert_eq!(
+            phases.last().map(String::as_str),
+            Some("failed"),
+            "{phases:?}"
+        );
+    }
     std::fs::remove_file(f.work.join("owned-mcp.fail-notification")).unwrap();
     post(&client,&origin,&format!("/console/api/agents/{engagement}/resolve-stopped-dispatch"),json!({
         "original":"dispatch","requestId":"reviewed_resolution","inspectionId":inspection["inspectionId"],"inspectionToken":inspection["inspectionToken"],

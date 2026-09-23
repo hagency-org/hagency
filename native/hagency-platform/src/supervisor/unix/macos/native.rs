@@ -269,8 +269,14 @@ impl Drop for Actions {
 pub(super) struct Root {
     pub pid: i32,
     reaped: bool,
+    /// The raw wait status `waitpid` returned when this root was reaped.
+    /// Evidence for the host; nothing here reads it.
+    status: Option<i32>,
 }
 impl Root {
+    pub fn status(&self) -> Option<i32> {
+        self.status
+    }
     pub fn cancel_startup(&mut self) -> io::Result<bool> {
         if self.reaped {
             return Ok(true);
@@ -300,6 +306,7 @@ impl Root {
         let n = unsafe { libc::waitpid(self.pid, &mut status, libc::WNOHANG) };
         if n == self.pid {
             self.reaped = true;
+            self.status = Some(status);
             Ok(true)
         } else if n == 0 {
             Ok(false)
@@ -417,8 +424,35 @@ pub(super) fn spawn(launch: &Launch, pipes: Option<ChildPipes>) -> io::Result<Ro
         if pid <= 1 {
             return Err(invalid());
         }
-        Ok(Root { pid, reaped: false })
+        Ok(Root {
+            pid,
+            reaped: false,
+            status: None,
+        })
     }
+}
+/// The executable's file name for a stop-evidence row, or empty when the
+/// kernel refused or the process is already gone. Bounded and rendered here so
+/// no path and no control character ever reaches a frame. Diagnostic only: a
+/// name is never a signal target and never an ownership verdict.
+pub(super) fn executable_name(pid: i32) -> String {
+    const EXE_BYTES: usize = 64;
+    let mut buffer = [0u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+    // SAFETY: The buffer is initialized and its exact byte size is passed;
+    // libproc writes a NUL-terminated path into it and returns its length.
+    let n =
+        unsafe { libc::proc_pidpath(pid, buffer.as_mut_ptr().cast(), size_of_val(&buffer) as u32) };
+    if n <= 0 || n as usize >= buffer.len() {
+        return String::new();
+    }
+    let path = &buffer[..n as usize];
+    let name = path.rsplit(|&b| b == b'/').next().unwrap_or(path);
+    let rendered = String::from_utf8_lossy(name)
+        .chars()
+        .map(|c| if c.is_control() { '\u{FFFD}' } else { c })
+        .collect::<String>();
+    let end = rendered.floor_char_boundary(EXE_BYTES);
+    rendered[..end].to_owned()
 }
 
 #[cfg(test)]

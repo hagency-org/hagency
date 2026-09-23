@@ -132,21 +132,25 @@ impl Binding {
         if let Some(local) = &self.local_codex {
             local.admit_provision(&self.scope)?;
         }
-        self.root.check().map_err(|_| Failure::LostAuthority)?;
+        self.root
+            .check()
+            .map_err(|_| Failure::lost_io(crate::AuthoritySite::WarmRoot))?;
         self.home
             .check_provision_scope(&self.scope)
-            .map_err(|_| Failure::LostAuthority)?;
+            .map_err(|error| Failure::lost(crate::AuthoritySite::WarmScope, &error))?;
         bounded(
             domain.validate_warm_runtime_scope(self.scope.clone()),
             cancel,
             until,
         )
         .await?
-        .map_err(|_| Failure::LostAuthority)?;
-        self.root.check().map_err(|_| Failure::LostAuthority)?;
+        .map_err(|error| Failure::lost(crate::AuthoritySite::WarmProvision, &error))?;
+        self.root
+            .check()
+            .map_err(|_| Failure::lost_io(crate::AuthoritySite::WarmRoot))?;
         self.home
             .check_provision_scope(&self.scope)
-            .map_err(|_| Failure::LostAuthority)?;
+            .map_err(|error| Failure::lost(crate::AuthoritySite::WarmScope, &error))?;
         if let Some(local) = &self.local_codex {
             local.admit_provision(&self.scope)?;
         }
@@ -331,7 +335,7 @@ impl WarmRuntime {
             let (reply, receive) = oneshot::channel();
             self.command
                 .try_send(Command::Activate { until, reply })
-                .map_err(|_| Failure::LostAuthority)?;
+                .map_err(|_| Failure::lost_io(crate::AuthoritySite::CommandChannel))?;
             self.activation = Some(Activation {
                 until,
                 reply: receive,
@@ -341,7 +345,7 @@ impl WarmRuntime {
         let until = activation.until;
         let mut result = match tokio::time::timeout_at(until, &mut activation.reply).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(Failure::LostAuthority),
+            Ok(Err(_)) => Err(Failure::lost_io(crate::AuthoritySite::CommandChannel)),
             Err(_) => Err(Failure::Deadline),
         };
         if result.is_ok() {
@@ -382,7 +386,7 @@ impl WarmRuntime {
             let (reply, receive) = oneshot::channel();
             self.command
                 .try_send(Command::Observe { until, reply })
-                .map_err(|_| Failure::LostAuthority)?;
+                .map_err(|_| Failure::lost_io(crate::AuthoritySite::CommandChannel))?;
             self.inspection = Some(Inspection {
                 until,
                 reply: receive,
@@ -394,7 +398,7 @@ impl WarmRuntime {
         let until = inspection.until;
         let mut result = match tokio::time::timeout_at(until, &mut inspection.reply).await {
             Ok(Ok(result)) => result,
-            Ok(Err(_)) => Err(Failure::LostAuthority),
+            Ok(Err(_)) => Err(Failure::lost_io(crate::AuthoritySite::CommandChannel)),
             Err(_) => Err(Failure::Deadline),
         };
         if result.is_ok() {
@@ -467,7 +471,7 @@ impl WarmRuntime {
         }
         self.command
             .try_send(Command::Dispatch { work, until })
-            .map_err(|_| Failure::LostAuthority)?;
+            .map_err(|_| Failure::lost_io(crate::AuthoritySite::WarmDispatch))?;
         drop(current);
         operation.adopt_worker(self.worker.take().ok_or(Failure::Worker)?);
         // With no worker left, Drop must not cancel the transferred owner.
@@ -497,7 +501,7 @@ async fn initialized<F: Future<Output = Result<(), session::Error>>>(
         tokio::select! {
             biased;
             _=tokio::time::sleep_until(until)=>return Err(Failure::Deadline),
-            _=tick.tick()=>{binding.current(domain,cancel,until).await?;if let Some(account)=account {account.check().map_err(|_|Failure::LostAuthority)?;}},
+            _=tick.tick()=>{binding.current(domain,cancel,until).await?;if let Some(account)=account {account.check().map_err(|error|Failure::lost(crate::AuthoritySite::AccountCheck,&error))?;}},
             result=&mut future=>return result.map_err(|_|Failure::Protocol),
         }
     }
@@ -517,7 +521,9 @@ async fn qualify(
 ) -> Result<(), Failure> {
     binding.current(domain, cancel, until).await?;
     if let Some(account) = account {
-        account.check().map_err(|_| Failure::LostAuthority)?;
+        account
+            .check()
+            .map_err(|error| Failure::lost(crate::AuthoritySite::AccountCheck, &error))?;
     }
     let remaining = until
         .checked_duration_since(Instant::now())
@@ -525,11 +531,13 @@ async fn qualify(
         .ok_or(Failure::Deadline)?;
     owner
         .qualify_ready_owner(remaining.min(Duration::from_secs(5)))
-        .map_err(|_| Failure::LostAuthority)?;
+        .map_err(|_| Failure::lost_io(crate::AuthoritySite::WarmQualify))?;
     // Actual physical IO precedes the final original writer observation.
     binding.current(domain, cancel, until).await?;
     if let Some(account) = account {
-        account.check().map_err(|_| Failure::LostAuthority)?;
+        account
+            .check()
+            .map_err(|error| Failure::lost(crate::AuthoritySite::AccountCheck, &error))?;
     }
     if cancel.load(Ordering::Acquire) {
         return Err(Failure::Cancelled);
@@ -589,7 +597,9 @@ async fn retain(
     .await??;
     binding.current(domain, cancel, until).await?;
     if let Some(account) = &report.account {
-        account.check().map_err(|_| Failure::LostAuthority)?;
+        account
+            .check()
+            .map_err(|error| Failure::lost(crate::AuthoritySite::AccountCheck, &error))?;
     }
     let idle_until = Instant::now() + Duration::from_millis(limits.idle_ms);
     owner
@@ -620,7 +630,7 @@ async fn retain(
                         let result=async {
                             qualify(domain,binding,owner,report.account.as_ref(),cancel,until).await?;
                             let acknowledgment=bounded(domain.complete_original_provision(binding.scope.clone()),cancel,until).await?
-                                .map_err(|_|Failure::LostAuthority)?;
+                                .map_err(|error|Failure::lost(crate::AuthoritySite::WarmProvision,&error))?;
                             qualify(domain,binding,owner,report.account.as_ref(),cancel,until).await?;
                             Ok(acknowledgment)
                         }.await;

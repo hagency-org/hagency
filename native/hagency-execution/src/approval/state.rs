@@ -360,7 +360,10 @@ pub(super) fn matches(
         || application.item_id != entry.request.item_id()
         || entry.selected != Some(application.allow)
     {
-        return Err(Failure::LostAuthority);
+        return Err(Failure::LostAuthority {
+            site: crate::AuthoritySite::ApprovalApplication,
+            cause: crate::AuthorityCause::State,
+        });
     }
     Ok(())
 }

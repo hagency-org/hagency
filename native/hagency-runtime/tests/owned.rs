@@ -244,6 +244,50 @@ async fn native_owned_runner_failures_eof_timeout_and_noisy_stderr() {
     cleanup(&runner);
 }
 
+/// ADR-181, the runtime half: the leader's exit identity and the bounded,
+/// rendered stderr tail are readable from the session once cleanup was
+/// observed. Only the macOS guardian carries the leader's wait status today;
+/// the other arms keep `None`. The store half of the scenario lives elsewhere.
+#[tokio::test]
+async fn native_runtime_exit_and_stderr_tail_persist() {
+    let root = tempfile::tempdir().unwrap();
+    let marker = root.path().join("boom");
+    let mut runner = spawn(root.path(), "boom", &marker);
+    assert_eq!(runner.exit_identity(), None, "no report before cleanup");
+    assert_eq!(
+        runner.initialize().await.err(),
+        Some(Error::Transport(TransportError::PeerEof))
+    );
+    cleanup(&runner);
+    #[cfg(target_os = "macos")]
+    assert_eq!(runner.exit_identity().as_deref(), Some("code:1"));
+    #[cfg(not(target_os = "macos"))]
+    assert_eq!(runner.exit_identity(), None);
+    let tail = runner.stderr_tail(512);
+    assert!(tail.contains("boom\u{FFFD}line"), "{tail:?}");
+    assert_eq!(runner.stderr_tail(4), "line");
+    assert_eq!(runner.stderr_tail(0), "");
+    #[cfg(unix)]
+    {
+        let Cleanup::Observed(report) = runner.cleanup() else {
+            unreachable!()
+        };
+        assert_eq!(report.guardian_exit, Some(0));
+        assert_eq!((report.refusal, report.live_count), (None, 0));
+    }
+    assert_eq!(runner.guardian_stderr_tail(), "");
+    let marker = root.path().join("eof");
+    let mut runner = spawn(root.path(), "eof", &marker);
+    assert_eq!(
+        runner.initialize().await.err(),
+        Some(Error::Transport(TransportError::PeerEof))
+    );
+    cleanup(&runner);
+    #[cfg(target_os = "macos")]
+    assert_eq!(runner.exit_identity().as_deref(), Some("code:0"));
+    assert_eq!(runner.stderr_tail(512), "");
+}
+
 #[tokio::test]
 async fn native_owned_runner_failures_mid_write_cancel_retains_cleanup() {
     let root = tempfile::tempdir().unwrap();

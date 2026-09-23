@@ -11,6 +11,7 @@ serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
 tokio = { workspace = true, features = ["io-util", "net"] }
+tracing = "0.1.44"
 hagency-platform = { path = "../hagency-platform" }
 
 [target.'cfg(windows)'.dependencies]

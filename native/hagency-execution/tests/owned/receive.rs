@@ -177,7 +177,7 @@ async fn close(f: &Fixture, operation: &mut Operation) {
     let report = operation.wait().await.unwrap();
     assert!(matches!(
         report.failure,
-        Some(Failure::Cancelled | Failure::LostAuthority)
+        Some(Failure::Cancelled | Failure::LostAuthority { .. })
     ));
     drop(report);
     f.domain.shutdown().await.unwrap();

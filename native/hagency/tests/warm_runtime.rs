@@ -428,7 +428,10 @@ async fn native_warm_owned_runtime_current_owner() {
     })
     .await
     .unwrap();
-    assert_eq!(failure, Failure::LostAuthority);
+    assert!(
+        matches!(failure, Failure::LostAuthority { .. }),
+        "{failure:?}"
+    );
     assert_eq!(warm.ready().await.err(), Some(failure));
     f.no_task_io();
     assert_eq!(f.count("SELECT COUNT(*) FROM canonical_tasks"), 0);
@@ -701,7 +704,10 @@ async fn native_warm_owned_runtime_refusals() {
                 .await
                 .unwrap();
             fs::write(f.work.join("owned-mcp.warm-release"), b"released").unwrap();
-            assert_eq!(warm.ready().await.err(), Some(Failure::LostAuthority));
+            assert!(matches!(
+                warm.ready().await.err(),
+                Some(Failure::LostAuthority { .. })
+            ));
             drop(warm);
             f.no_task_io();
             assert_eq!(f.count("SELECT COUNT(*) FROM canonical_tasks"), 0);
@@ -852,13 +858,13 @@ async fn native_warm_local_codex_custody() {
                 fs::rename(&codex, codex.with_file_name("original-provider")).unwrap();
                 fs::create_dir(&codex).unwrap();
             }
-            assert_eq!(
+            assert!(matches!(
                 tokio::time::timeout(Duration::from_secs(3), warm.ready())
                     .await
                     .unwrap()
                     .err(),
-                Some(Failure::LostAuthority)
-            );
+                Some(Failure::LostAuthority { .. })
+            ));
             drop(warm);
             assert!(
                 !f.requests()

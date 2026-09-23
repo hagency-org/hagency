@@ -420,6 +420,18 @@ async fn native_configured_fleet_handoff_diagnostics() {
     f.until("both original handoffs refused", Fixture::handoffs_refused)
         .await;
     f.assert_handoff_failures().await;
+    // ADR-181: the refusal is kept with each attempt, uncollapsed — the check
+    // that lost the authority and what it said, not just "lost_authority".
+    assert_eq!(
+        f.count(
+            "SELECT COUNT(*) FROM runner_attempt_events WHERE phase='failed' \
+             AND json_extract(detail,'$.status.owned_failure')='lost_authority' \
+             AND json_extract(detail,'$.status.authority_site')='local_codex_check' \
+             AND json_extract(detail,'$.status.authority_cause')='io'"
+        ),
+        2,
+        "both refusals name their site and cause"
+    );
     assert_eq!(f.count("SELECT COUNT(*) FROM runner_dispatches"), 2);
     assert_eq!(
         f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='started'"),

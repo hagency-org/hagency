@@ -320,6 +320,15 @@ fn fake(mode: &str, marker: &Path) -> io::Result<()> {
     if mode == "eof" {
         return Ok(());
     }
+    if mode == "boom" {
+        // ADR-181 exit identity and stderr tail: one diagnostic line holding a
+        // control byte, left on the pipe long enough for the host to read it
+        // while it still awaits the initialize response, then exit status 1.
+        io::stderr().write_all(b"boom\x01line")?;
+        io::stderr().flush()?;
+        std::thread::sleep(Duration::from_millis(200));
+        std::process::exit(1);
+    }
     if mode == "noisy" {
         io::stderr().write_all(&vec![b'e'; 256 * 1024])?;
         io::stderr().flush()?;

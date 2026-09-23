@@ -219,6 +219,24 @@ fn main() -> io::Result<()> {
             Ok(())
         }
         #[cfg(unix)]
+        Some("exit-leaving-trap") => {
+            // ADR-181 stop evidence: the leader exits at once, leaving one
+            // descendant that ignores TERM inside its sleep. Whether the
+            // guardian's stop budget ends it is the guardian's fact to report;
+            // the test reads that report and ends the sleep itself.
+            let child = std::process::Command::new("/bin/sh")
+                .arg("-c")
+                .arg("trap '' TERM; exec /bin/sleep 30")
+                .stdin(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .spawn()?;
+            fs::write(marker.with_extension("child"), child.id().to_string())?;
+            fs::write(marker.with_extension("entered"), b"entered")?;
+            // No wait and no destructor: the kernel adopts the sleep.
+            std::process::exit(0);
+        }
+        #[cfg(unix)]
         Some("exec-on-command") => {
             use std::os::unix::process::CommandExt;
             let mut file = OpenOptions::new()

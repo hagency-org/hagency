@@ -212,10 +212,13 @@ impl Drive<'_> {
                 .domain
                 .request_owner_approval(self.cap.clone(), input)
                 .await
-                .map_err(|_| Failure::LostAuthority)?;
+                .map_err(|error| Failure::lost(crate::AuthoritySite::ApprovalRequest, &error))?;
             #[cfg(test)]
             if callbacks.fault == Some(super::Fault::RequestAck) {
-                return Err(Failure::LostAuthority);
+                return Err(Failure::LostAuthority {
+                    site: crate::AuthoritySite::ApprovalRequest,
+                    cause: crate::AuthorityCause::Other,
+                });
             }
             callbacks.acknowledged(&key, summary)?;
         }

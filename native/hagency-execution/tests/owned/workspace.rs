@@ -128,7 +128,11 @@ async fn native_workspace_binding_scope() {
         Err(WorkspaceError::Current | WorkspaceError::Retired)
     ));
     let report = operation.wait().await.unwrap();
-    assert_eq!(report.failure, Some(Failure::LostAuthority));
+    assert!(
+        matches!(report.failure, Some(Failure::LostAuthority { .. })),
+        "{:?}",
+        report.failure
+    );
     assert!(matches!(
         snapshot(&binding, &f.cap, "owned-dispatch.entered"),
         Err(WorkspaceError::Retired)

@@ -319,9 +319,48 @@ async fn roundtrip(done: bool, retained: bool) {
     assert_eq!(task.execution_epoch, initial_epoch + u64::from(done));
     assert_eq!(report.canonical_status, Some(task.status));
     assert_eq!(f.count("SELECT COUNT(*) FROM final_replies"), 0);
+    // ADR-181: the attempt's phases were kept with it, in visit order, with
+    // the guardian's verdict and exit in the stop record.
+    let events: Vec<(u64, String, String)> = f
+        .sql()
+        .prepare(
+            "SELECT seq, phase, detail FROM runner_attempt_events WHERE dispatch_id='dispatch' ORDER BY seq",
+        )
+        .unwrap()
+        .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+    let phases: Vec<&str> = events.iter().map(|e| e.1.as_str()).collect();
+    assert!(
+        phases.starts_with(&["spawn_started", "spawn_done", "initialized", "turn_started"]),
+        "{phases:?}"
+    );
+    assert!(
+        events
+            .iter()
+            .zip(events.iter().skip(1))
+            .all(|(a, b)| a.0 < b.0)
+    );
+    let stop = events
+        .iter()
+        .find(|e| e.1 == "stop_reported")
+        .expect("the stop is recorded");
+    let detail: serde_json::Value = serde_json::from_str(&stop.2).unwrap();
+    assert!(detail.get("stop_cause").is_some(), "{detail}");
+    assert!(detail.get("guardian_exit").is_some(), "{detail}");
+    assert_eq!(
+        phases.contains(&"settled"),
+        !done,
+        "a completed attempt settles, a lost one does not: {phases:?}"
+    );
     if done {
         assert_eq!(task.status, TaskState::Done);
-        assert_eq!(report.failure, Some(Failure::LostAuthority));
+        assert!(
+            matches!(report.failure, Some(Failure::LostAuthority { .. })),
+            "{:?}",
+            report.failure
+        );
         assert_eq!(report.protocol, Protocol::Unknown);
         assert_eq!(
             report.settlement,
@@ -431,6 +470,67 @@ async fn native_owned_mcp_real_heartbeat() {
 #[tokio::test]
 async fn native_owned_mcp_real_done_epoch() {
     roundtrip(true, false).await;
+}
+/// ADR-181: the same real roundtrip, read back from `runner_attempt_events`
+/// (asserted inside `roundtrip`): every phase in visit order with its clock,
+/// and the stop record naming the guardian's cause and exit.
+#[tokio::test]
+async fn native_attempt_events_record_every_phase() {
+    roundtrip(false, false).await;
+}
+/// ADR-181: the executing crates say what they do — one INFO line per phase
+/// with the dispatch and the phase's fixed label, captured from the service
+/// subscriber's own writer.
+#[tokio::test]
+async fn native_execution_phases_are_traced() {
+    use std::sync::{Arc, Mutex};
+    #[derive(Clone)]
+    struct Sink(Arc<Mutex<Vec<u8>>>);
+    impl std::io::Write for Sink {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Sink {
+        type Writer = Sink;
+        fn make_writer(&'a self) -> Sink {
+            self.clone()
+        }
+    }
+    let sink = Sink(Arc::new(Mutex::new(Vec::new())));
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(sink.clone())
+        .with_ansi(false)
+        .with_max_level(tracing::Level::INFO)
+        .finish();
+    // The operation runs on its own worker thread, so a thread-scoped default
+    // would see nothing; the process-wide default is what the service uses.
+    let _ = tracing::subscriber::set_global_default(subscriber);
+    roundtrip(false, false).await;
+    let text = String::from_utf8(sink.0.lock().unwrap().clone()).unwrap();
+    for phase in [
+        "spawn_started",
+        "spawn_done",
+        "initialized",
+        "turn_started",
+        "stop_requested",
+        "stop_reported",
+        "settled",
+    ] {
+        assert!(
+            text.contains(&format!("phase=\"{phase}\"")),
+            "{phase} is traced:\n{text}"
+        );
+    }
+    assert!(text.contains("dispatch_id=dispatch"), "{text}");
+    assert!(
+        !text.contains("secret"),
+        "no capability material in the log"
+    );
 }
 
 #[tokio::test]

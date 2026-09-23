@@ -178,3 +178,14 @@ the original launch and all current domain authority. No default request behavio
 process privileges, platform containment or live-provider qualification changes.
 The offline owned regression cancels the new pump while the actual original child
 waits at its existing usage gate and checks its unchanged cleanup report.
+
+### The stderr tail reaches the attempt's record (2026-09-22, ADR-181)
+
+"Stderr is private diagnostic state, without automatic console or log
+projection" stands for every projection but one: at settlement or failure the
+last 512 bytes of the retained tail, control characters replaced, are written
+once into the private store's `runner_attempts.terminal_reason` beside the
+failure word and the leader's exit identity, as the retained product keeps
+500 characters in the same place (`router/src/runner.ts`). The 16 KiB
+retained tail, its counter and the no-unbounded-task rules are unchanged;
+nothing reads the stored bytes to decide anything.

@@ -66,6 +66,10 @@ impl Supervisor {
                     // The Job Object reports population, not a tracker refusal.
                     detail: None,
                     scope: self.process.stop(remaining.min(Duration::from_secs(2)))?,
+                    refusal: None,
+                    live_count: 0,
+                    leader_status: None,
+                    guardian_exit: None,
                 };
                 if report.scope.whole_tree_stopped {
                     self.report = Some(report);
@@ -87,10 +91,18 @@ impl Supervisor {
             cause: StopCause::Requested,
             detail: None,
             scope: self.process.stop(timeout)?,
+            refusal: None,
+            live_count: 0,
+            leader_status: None,
+            guardian_exit: None,
         };
         if report.scope.whole_tree_stopped {
             self.report = Some(report);
         }
         Ok(report)
+    }
+    /// No guardian process exists on Windows, so there is nothing to collect.
+    pub(super) fn guardian_stderr_tail(&self) -> String {
+        String::new()
     }
 }

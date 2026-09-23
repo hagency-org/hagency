@@ -7,7 +7,7 @@ use super::{
 };
 use hagency_execution::{ApprovalRequests, Operation, Report, SharedHost};
 use hagency_matrix::{CancellationToken, Collector, HostIntakePlan};
-use hagency_store::{DomainStore, OwnedClaimProfile};
+use hagency_store::{AttemptClock, AttemptEvent, AttemptPhase, DomainStore, OwnedClaimProfile};
 use std::{
     sync::mpsc::{self, SyncSender, TrySendError},
     thread::JoinHandle,
@@ -619,6 +619,15 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
         status.phase("no_work");
         return Ok(None);
     };
+    // The attempt's first record (ADR-181): the claim, with the budgets it
+    // was given. Best effort, like every phase record after it.
+    record_phase(
+        domain,
+        &capability,
+        AttemptPhase::Claimed,
+        serde_json::json!({"runner": runner, "capability_ms": capability_ms, "max_live": max_live}),
+    )
+    .await;
     if cancel.is_cancelled() {
         domain
             .observe_owned_failure(capability, hagency_store::OwnedFailure::Cancelled)
@@ -626,15 +635,34 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
             .map_err(|_| Failure::OutcomeUnknown)?;
         return Err(Failure::Cancelled);
     }
-    let mut operation=match owner {
-        RuntimeOwner::Ordinary(host)=>Operation::start_requiring_workspace_shared(domain.clone(),capability.clone(),host.clone(),limits),
-        RuntimeOwner::Factory(agent)=>agent.dispatch(capability.clone(),limits).await,
-    }.map_err(|error| {
-        status.handoff_refusal(&error);
-        tracing::warn!(dispatch_id = %capability.dispatch_id, failure = super::owned_failure_label(&error),
-            "original dispatch handoff refused; owner retained");
-        Failure::Worker
-    })?;
+    let operation = match owner {
+        RuntimeOwner::Ordinary(host) => Operation::start_requiring_workspace_shared(
+            domain.clone(),
+            capability.clone(),
+            host.clone(),
+            limits,
+        ),
+        RuntimeOwner::Factory(agent) => agent.dispatch(capability.clone(), limits).await,
+    };
+    let mut operation = match operation {
+        Ok(operation) => operation,
+        Err(error) => {
+            status.handoff_refusal(&error);
+            // A refusal before any Operation exists is still this attempt's
+            // failure record (ADR-181): the same fixed labels, uncollapsed.
+            record_phase(
+                domain,
+                &capability,
+                AttemptPhase::Failed,
+                serde_json::json!({"handoff": super::owned_failure_label(&error),
+                    "status": serde_json::to_value(status.get()).expect("fixed status serializes")}),
+            )
+            .await;
+            tracing::warn!(dispatch_id = %capability.dispatch_id, failure = super::owned_failure_label(&error),
+                "original dispatch handoff refused; owner retained");
+            return Err(Failure::Worker);
+        }
+    };
     // PC-C0 (plan v4 Q1): the one `&mut` window — immediately after the
     // operation exists, before `wait_boxed()` pins it for the whole run. The
     // single-consumer value is taken once and forwarded to the pump, which
@@ -675,6 +703,17 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
         tokio::time::sleep(Duration::from_millis(5)).await;
     }
     status.phase("running");
+    if let Err(error) = domain
+        .set_attempt_clock(
+            capability.dispatch_id.clone(),
+            capability.fence,
+            AttemptClock::Started,
+            now_ms(),
+        )
+        .await
+    {
+        tracing::warn!(dispatch_id = %capability.dispatch_id, error = ?error, "attempt start clock not recorded");
+    }
     let mut wait = Box::pin(operation.wait_boxed());
     let report = tokio::select! {
             value = &mut wait => value.map_err(|_| Failure::Worker)?,
@@ -691,6 +730,36 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
         .map(Some)
 }
 
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+        .unwrap_or_default()
+}
+/// One phase record of the attempt (ADR-181): the same fixed labels go to
+/// the service log; the store keeps it in its own savepoint; a refused
+/// record changes nothing here.
+async fn record_phase(
+    domain: &DomainStore,
+    capability: &hagency_core::tasks::RunnerCapability,
+    phase: AttemptPhase,
+    detail: serde_json::Value,
+) {
+    tracing::info!(dispatch_id = %capability.dispatch_id, fence = capability.fence, phase = phase.as_str(),
+        detail = %detail, "owned attempt phase");
+    let event = AttemptEvent {
+        dispatch_id: capability.dispatch_id.clone(),
+        fence: capability.fence,
+        phase,
+        detail,
+    };
+    if let Err(error) = domain.record_attempt_event(event, now_ms()).await {
+        tracing::warn!(dispatch_id = %capability.dispatch_id, phase = phase.as_str(), error = ?error,
+            "owned attempt phase not recorded");
+    }
+}
+
 async fn finish_attempt(
     domain: &DomainStore,
     capability: hagency_core::tasks::RunnerCapability,
@@ -700,8 +769,52 @@ async fn finish_attempt(
     status: &StatusHandle,
 ) -> Result<Completed, Failure> {
     status.result(&report);
+    // The attempt's last records (ADR-181): the full status, uncollapsed, as
+    // the `failed` or `settled` event; the clock; and the retained product's
+    // `terminal_reason` shape, `<failure>:<exit identity>:<stderr tail>`.
+    let projected = serde_json::to_value(status.get()).expect("fixed status serializes");
+    let failure_label = report.failure.as_ref().map(super::owned_failure_label);
+    record_phase(
+        domain,
+        &capability,
+        if report.failure.is_some() {
+            AttemptPhase::Failed
+        } else {
+            AttemptPhase::Settled
+        },
+        serde_json::json!({"status": projected, "exit_identity": report.exit_identity, "stderr_tail": report.stderr_tail,
+            "guardian_stderr_tail": report.guardian_stderr_tail}),
+    )
+    .await;
+    let reason = format!(
+        "{}:{}:{}",
+        failure_label.unwrap_or("completed"),
+        report.exit_identity.as_deref().unwrap_or("none"),
+        if report.failure.is_some() {
+            report.stderr_tail.as_str()
+        } else {
+            ""
+        }
+    );
+    for outcome in [
+        domain
+            .set_attempt_clock(
+                capability.dispatch_id.clone(),
+                capability.fence,
+                AttemptClock::Settled,
+                now_ms(),
+            )
+            .await,
+        domain
+            .set_attempt_terminal_reason(capability.dispatch_id.clone(), capability.fence, reason)
+            .await,
+    ] {
+        if let Err(error) = outcome {
+            tracing::warn!(dispatch_id = %capability.dispatch_id, error = ?error, "attempt record not written");
+        }
+    }
     if report.failure.is_some() {
-        tracing::warn!(dispatch_id = %capability.dispatch_id, status = %serde_json::to_value(status.get()).expect("fixed status serializes"),
+        tracing::warn!(dispatch_id = %capability.dispatch_id, status = %projected,
             "original owned attempt failed; owner retained");
     }
     // An operation result is not stopped-owner/workspace-inspection authority

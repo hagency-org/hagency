@@ -78,7 +78,15 @@ async fn native_local_codex_host() {
                 assert_eq!(report.canonical_status, Some(TaskState::InProgress));
             }
             "during" => {
-                assert_eq!(report.failure, Some(Failure::LostAuthority));
+                // ADR-181: the check that lost the authority and its cause are
+                // named, not discarded: the provider directory was replaced.
+                assert_eq!(
+                    report.failure,
+                    Some(Failure::LostAuthority {
+                        site: hagency_execution::AuthoritySite::LocalCodexCheck,
+                        cause: hagency_execution::AuthorityCause::Io,
+                    })
+                );
                 f.quarantined();
             }
             _ => {
@@ -187,7 +195,11 @@ async fn native_account_host_consumer() {
     f.entered().await;
     retirement.retire();
     let report = operation.wait().await.unwrap();
-    assert_eq!(report.failure, Some(Failure::LostAuthority));
+    assert!(
+        matches!(report.failure, Some(Failure::LostAuthority { .. })),
+        "{:?}",
+        report.failure
+    );
     assert_eq!(report.protocol, Protocol::Unknown);
     if !cfg!(any(target_os = "linux", target_os = "macos", windows)) {
         assert!(report.retains_process_custody());

@@ -102,7 +102,7 @@ impl Host {
         match &self.managed_account {
             Some(account) => account
                 .bind_claim_profile(profile)
-                .map_err(|_| super::Failure::LostAuthority),
+                .map_err(|error| super::Failure::lost(super::AuthoritySite::HostClaim, &error)),
             None => Ok(profile),
         }
     }

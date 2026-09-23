@@ -454,3 +454,79 @@ fn native_execution_prune_receipt_is_bounded_and_logs_its_cost() {
     // never trips it.
     assert_eq!(EXECUTION_RETENTION_ROWS, 100_000);
 }
+
+/// ADR-181: the attempt's event log is pruned with its dispatch. An
+/// over-window settled dispatch loses its events alongside its outputs; a
+/// settled dispatch carrying ONLY events is still evidence-carrying, so it
+/// is a candidate rather than a permanent survivor; the attempt rows they
+/// hang off stay (D-7).
+#[test]
+fn native_execution_prune_drains_attempt_events_with_the_dispatch() {
+    let mut f = Fixture::new();
+    let sql = f.sql();
+    plant_dispatch(&sql, "dispatch_old", "completed", false, 0, 1);
+    plant_dispatch(&sql, "dispatch_events_only", "completed", false, 0, 0);
+    // Strip the receipt family the planter always writes, leaving the
+    // events below as this dispatch's only evidence.
+    for table in [
+        "task_operation_receipts",
+        "graph_commands",
+        "conversation_operations",
+    ] {
+        sql.execute(
+            &format!("DELETE FROM {table} WHERE dispatch_id='dispatch_events_only'"),
+            [],
+        )
+        .unwrap();
+    }
+    sql.execute(
+        "DELETE FROM usage_receipts WHERE source_id='usage_dispatch_events_only'",
+        [],
+    )
+    .unwrap();
+    for (dispatch, seq) in [
+        ("dispatch_old", 1),
+        ("dispatch_old", 2),
+        ("dispatch_events_only", 1),
+    ] {
+        sql.execute(
+            "INSERT INTO runner_attempt_events(dispatch_id,fence,seq,at_ms,phase,detail) \
+             VALUES(?1,1,?2,?2,'settled','{}')",
+            params![dispatch, seq],
+        )
+        .unwrap();
+    }
+    for i in 0..EXECUTION_RETENTION_DISPATCHES {
+        plant_dispatch(
+            &sql,
+            &format!("dispatch_recent_{i}"),
+            "completed",
+            false,
+            0,
+            1,
+        );
+    }
+    let outcome = f.db.prune_execution_corpus(9_000, 64).unwrap();
+    assert_eq!(outcome.pruned, 2, "both over-window dispatches drain");
+    let events = |dispatch: &str| {
+        sql.query_row(
+            "SELECT COUNT(*) FROM runner_attempt_events WHERE dispatch_id=?1",
+            [dispatch],
+            |r| r.get::<_, u64>(0),
+        )
+        .unwrap()
+    };
+    assert_eq!(events("dispatch_old"), 0);
+    assert_eq!(events("dispatch_events_only"), 0);
+    for dispatch in ["dispatch_old", "dispatch_events_only"] {
+        let attempts: u64 = sql
+            .query_row(
+                "SELECT COUNT(*) FROM runner_attempts WHERE dispatch_id=?1",
+                [dispatch],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(attempts, 1, "{dispatch}: the attempt row is never pruned");
+    }
+    assert_eq!(outcome.remaining, 0, "a drained dispatch is over nothing");
+}

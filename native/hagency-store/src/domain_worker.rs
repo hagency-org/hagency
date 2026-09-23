@@ -1584,6 +1584,63 @@ impl DomainStore {
         })
         .await
     }
+    /// ADR-181 host observation, best effort in the store's own savepoint:
+    /// the caller counts a refusal, never retries it and never lets it
+    /// change the attempt's outcome. No runtime or console route writes it.
+    pub async fn record_attempt_event(
+        &self,
+        event: crate::AttemptEvent,
+        now: u64,
+    ) -> Result<u64, Error> {
+        self.call(weight(&(&event, now))?, move |db| {
+            db.record_attempt_event(&event, now)
+        })
+        .await
+    }
+    pub async fn set_attempt_clock(
+        &self,
+        dispatch_id: String,
+        fence: u64,
+        clock: crate::AttemptClock,
+        at_ms: u64,
+    ) -> Result<(), Error> {
+        self.call(weight(&(&dispatch_id, fence, clock, at_ms))?, move |db| {
+            db.set_attempt_clock(&dispatch_id, fence, clock, at_ms)
+        })
+        .await
+    }
+    pub async fn set_attempt_terminal_reason(
+        &self,
+        dispatch_id: String,
+        fence: u64,
+        reason: String,
+    ) -> Result<(), Error> {
+        self.call(weight(&(&dispatch_id, fence, &reason))?, move |db| {
+            db.set_attempt_terminal_reason(&dispatch_id, fence, &reason)
+        })
+        .await
+    }
+    /// Operator-private evidence reads; no runtime route projects them.
+    pub async fn attempt_events(
+        &self,
+        dispatch_id: String,
+        fence: u64,
+    ) -> Result<Vec<crate::AttemptEventRow>, Error> {
+        self.call(weight(&(&dispatch_id, fence))?, move |db| {
+            db.attempt_events(&dispatch_id, fence)
+        })
+        .await
+    }
+    pub async fn attempt_clock(
+        &self,
+        dispatch_id: String,
+        fence: u64,
+    ) -> Result<crate::AttemptClockRow, Error> {
+        self.call(weight(&(&dispatch_id, fence))?, move |db| {
+            db.attempt_clock(&dispatch_id, fence)
+        })
+        .await
+    }
     /// The caller must hold an actually stopped owner. This host API does not
     /// manufacture that process observation and has no runner HTTP equivalent.
     pub async fn complete_owned_dispatch(

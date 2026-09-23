@@ -1646,10 +1646,10 @@ async fn native_owned_approval_expiry_deny_uncertain_sends_nothing() {
         .unwrap();
     // Nobody answers; the expiry fires and its reply is lost.
     let report = op.wait().await.unwrap();
-    assert_eq!(
+    assert!(
+        matches!(report.failure, Some(Failure::LostAuthority { .. })),
+        "an uncertain decision is not authority: {:?} {:?}",
         report.failure,
-        Some(Failure::LostAuthority),
-        "an uncertain decision is not authority: {:?}",
         report.runtime_observation()
     );
 

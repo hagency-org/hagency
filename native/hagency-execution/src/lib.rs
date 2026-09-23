@@ -18,8 +18,8 @@ pub use host::{Host, Limits, SharedHost};
 pub use inspection::StopInspectionStatus;
 pub use local_codex::LocalCodex;
 pub use operation::{
-    Failure, Operation, Protocol, Report, RuntimeObservation, RuntimeStage,
-    RuntimeWriteObservation, Settlement, SettlementCause,
+    AuthorityCause, AuthoritySite, Failure, Operation, Protocol, Report, RuntimeObservation,
+    RuntimeStage, RuntimeWriteObservation, Settlement, SettlementCause,
 };
 pub use registration::{LaunchAck, RegistrationError, WorkspaceRegistration};
 pub use usage::{UsageFailure, UsageStatus};

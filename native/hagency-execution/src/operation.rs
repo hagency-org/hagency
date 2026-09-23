@@ -22,6 +22,119 @@ use tokio::{
     time::{Instant, MissedTickBehavior, interval},
 };
 
+/// The check whose refusal produced a lost authority. Fixed labels only
+/// (ADR-175); diagnostic, never authority.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthoritySite {
+    LeaseRenew,
+    DispatchCheck,
+    AccountCheck,
+    LocalCodexCheck,
+    TaskMcpBind,
+    WarmRoot,
+    WarmScope,
+    WarmProvision,
+    WarmQualify,
+    WarmReady,
+    WarmActivate,
+    WarmDispatch,
+    CommandChannel,
+    ApprovalBind,
+    ApprovalExpiry,
+    ApprovalMaintain,
+    ApprovalRequest,
+    ApprovalResponse,
+    ApprovalBegin,
+    ApprovalCheck,
+    ApprovalApplication,
+    FactoryAccount,
+    HostClaim,
+}
+impl AuthoritySite {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::LeaseRenew => "lease_renew",
+            Self::DispatchCheck => "dispatch_check",
+            Self::AccountCheck => "account_check",
+            Self::LocalCodexCheck => "local_codex_check",
+            Self::TaskMcpBind => "task_mcp_bind",
+            Self::WarmRoot => "warm_root",
+            Self::WarmScope => "warm_scope",
+            Self::WarmProvision => "warm_provision",
+            Self::WarmQualify => "warm_qualify",
+            Self::WarmReady => "warm_ready",
+            Self::WarmActivate => "warm_activate",
+            Self::WarmDispatch => "warm_dispatch",
+            Self::CommandChannel => "command_channel",
+            Self::ApprovalBind => "approval_bind",
+            Self::ApprovalExpiry => "approval_expiry",
+            Self::ApprovalMaintain => "approval_maintain",
+            Self::ApprovalRequest => "approval_request",
+            Self::ApprovalResponse => "approval_response",
+            Self::ApprovalBegin => "approval_begin",
+            Self::ApprovalCheck => "approval_check",
+            Self::ApprovalApplication => "approval_application",
+            Self::FactoryAccount => "factory_account",
+            Self::HostClaim => "host_claim",
+        }
+    }
+}
+/// The store's own word for the refusal, or the host's for a physical check:
+/// revoked, timed out and busy are different facts and were one word before.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthorityCause {
+    Revoked,
+    Generation,
+    Quarantined,
+    State,
+    Busy,
+    Unavailable,
+    TimedOut,
+    NotFound,
+    Conflict,
+    Locked,
+    Io,
+    Other,
+}
+impl AuthorityCause {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Revoked => "revoked",
+            Self::Generation => "generation",
+            Self::Quarantined => "quarantined",
+            Self::State => "state",
+            Self::Busy => "busy",
+            Self::Unavailable => "unavailable",
+            Self::TimedOut => "timed_out",
+            Self::NotFound => "not_found",
+            Self::Conflict => "conflict",
+            Self::Locked => "locked",
+            Self::Io => "io",
+            Self::Other => "other",
+        }
+    }
+}
+impl From<&hagency_store::Error> for AuthorityCause {
+    fn from(error: &hagency_store::Error) -> Self {
+        use hagency_store::Error::*;
+        match error {
+            RunnerAuthority | LocalAuthority => Self::Revoked,
+            Generation => Self::Generation,
+            Quarantined => Self::Quarantined,
+            State => Self::State,
+            Busy => Self::Busy,
+            Unavailable | PlatformUnavailable => Self::Unavailable,
+            OutcomeUnknown => Self::TimedOut,
+            NotFound => Self::NotFound,
+            Conflict => Self::Conflict,
+            Locked => Self::Locked,
+            _ => Self::Other,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum Failure {
     #[error("host dispatch admission refused")]
@@ -34,8 +147,13 @@ pub enum Failure {
     UsageBinding,
     #[error("owned native child startup failed")]
     SpawnFailed,
-    #[error("dispatch authority expired, changed or was revoked")]
-    LostAuthority,
+    /// Which check failed and what the store (or the host) said: kept beside
+    /// the unchanged verdict so the reason is no longer discarded (ADR-181).
+    #[error("dispatch authority expired, changed or was revoked ({site:?}: {cause:?})")]
+    LostAuthority {
+        site: AuthoritySite,
+        cause: AuthorityCause,
+    },
     #[error("native runner protocol failed")]
     Protocol,
     #[error("owned approval application is unavailable")]
@@ -60,13 +178,27 @@ pub enum Failure {
     UnsupportedRunner { framework: String },
 }
 impl Failure {
+    /// A lost authority named by the check and the store's own refusal.
+    pub(crate) fn lost(site: AuthoritySite, error: &hagency_store::Error) -> Self {
+        Self::LostAuthority {
+            site,
+            cause: AuthorityCause::from(error),
+        }
+    }
+    /// A lost authority from a physical or channel check with no store word.
+    pub(crate) fn lost_io(site: AuthoritySite) -> Self {
+        Self::LostAuthority {
+            site,
+            cause: AuthorityCause::Io,
+        }
+    }
     fn observation(&self) -> OwnedFailure {
         match self {
             Self::Admission | Self::UsageBinding => OwnedFailure::Admission,
             Self::Cancelled => OwnedFailure::Cancelled,
             Self::StartUnknown => OwnedFailure::StartUnknown,
             Self::SpawnFailed => OwnedFailure::SpawnFailed,
-            Self::LostAuthority => OwnedFailure::LostAuthority,
+            Self::LostAuthority { .. } => OwnedFailure::LostAuthority,
             Self::Protocol | Self::Worker => OwnedFailure::Protocol,
             Self::UnsupportedApproval | Self::ApprovalCapacity | Self::ApprovalCancelled => {
                 OwnedFailure::UnsupportedApproval
@@ -269,6 +401,13 @@ pub struct Report {
     /// never used for authority, retry, reply or lease decisions.
     pub settlement_cause: Option<SettlementCause>,
     pub failure: Option<Failure>,
+    /// The leader's exit identity (`code:N` / `signal:N`) as the guardian
+    /// reported it, and the bounded tails of the runtime's and the guardian's
+    /// stderr, captured at stop for the attempt's record (ADR-181). Evidence
+    /// only: nothing reads them to decide anything.
+    pub exit_identity: Option<String>,
+    pub stderr_tail: String,
+    pub guardian_stderr_tail: String,
     /// Fixed original startup diagnostics, never authority or child-stop proof.
     startup_error: Option<StartError>,
     runtime_observation: Option<RuntimeObservation>,
@@ -301,6 +440,9 @@ impl Report {
         Self {
             protocol: Protocol::NotStarted,
             cleanup: Cleanup::Pending,
+            exit_identity: None,
+            stderr_tail: String::new(),
+            guardian_stderr_tail: String::new(),
             canonical_status: None,
             settlement: Settlement::Pending,
             settlement_cause: None,
@@ -814,6 +956,44 @@ fn checkpoint(cancel: &AtomicBool, until: Instant) -> Result<(), Failure> {
         Ok(())
     }
 }
+fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+        .unwrap_or_default()
+}
+/// One phase of the attempt, kept with it (ADR-181). Best effort: the store
+/// records it in its own savepoint, a refused record changes nothing here,
+/// and the same fixed labels go to the service log.
+pub(crate) async fn note(
+    domain: &DomainStore,
+    cap: &RunnerCapability,
+    phase: hagency_store::AttemptPhase,
+    detail: serde_json::Value,
+) {
+    tracing::info!(
+        dispatch_id = %cap.dispatch_id,
+        fence = cap.fence,
+        phase = phase.as_str(),
+        detail = %detail,
+        "owned attempt phase"
+    );
+    let event = hagency_store::AttemptEvent {
+        dispatch_id: cap.dispatch_id.clone(),
+        fence: cap.fence,
+        phase,
+        detail,
+    };
+    if let Err(error) = domain.record_attempt_event(event, now_ms()).await {
+        tracing::warn!(
+            dispatch_id = %cap.dispatch_id,
+            phase = phase.as_str(),
+            error = ?error,
+            "owned attempt phase not recorded"
+        );
+    }
+}
 pub(crate) async fn bounded<F: Future>(
     future: F,
     cancel: &AtomicBool,
@@ -851,7 +1031,7 @@ async fn watched<F: Future<Output = Result<T, session::Error>>, T>(
             _ = tokio::time::sleep_until(until) => return Err(Failure::Deadline),
             _ = tick.tick() => {
                 let current = bounded(domain.renew_owned_dispatch(cap.clone(), expected.into(), 5_000), cancel, until).await?
-                    .map_err(|_| Failure::LostAuthority)?;
+                    .map_err(|error| Failure::lost(AuthoritySite::LeaseRenew, &error))?;
                 *status = Some(current.status);
             },
             result = &mut future => return result.map_err(|error| if error == session::Error::UnsupportedRequest { Failure::UnsupportedApproval } else { Failure::Protocol }),
@@ -1110,12 +1290,14 @@ async fn execute(
             until,
         )
         .await?
-        .map_err(|_| Failure::LostAuthority)?;
+        .map_err(|error| Failure::lost(AuthoritySite::DispatchCheck, &error))?;
         checkpoint(cancel, until)?;
     }
     workspace.check_root().map_err(|_| Failure::Admission)?;
     if let Some(account) = &report.account {
-        account.check().map_err(|_| Failure::LostAuthority)?;
+        account
+            .check()
+            .map_err(|error| Failure::lost(AuthoritySite::AccountCheck, &error))?;
     }
     if let Some(local) = &report.local_codex {
         local.check()?;
@@ -1126,6 +1308,13 @@ async fn execute(
         live.possible();
     }
     if report.owner.is_none() {
+        note(
+            domain,
+            cap,
+            hagency_store::AttemptPhase::SpawnStarted,
+            serde_json::json!({}),
+        )
+        .await;
         spawn_prepared(
             host.clone(),
             NativeStartup {
@@ -1149,6 +1338,13 @@ async fn execute(
     }
     // The actual child owner is retained before initialize or any startup await.
     let runner = report.owner.as_mut().ok_or(Failure::SpawnFailed)?;
+    note(
+        domain,
+        cap,
+        hagency_store::AttemptPhase::SpawnDone,
+        serde_json::json!({"pid": runner.id(), "warm": report.warm.is_some()}),
+    )
+    .await;
     let runtime_stage = &mut report.runtime_stage;
     let initialized = report.warm.is_some();
     let local_codex = report.local_codex.clone();
@@ -1165,6 +1361,13 @@ async fn execute(
             )
             .await?;
         }
+        note(
+            domain,
+            cap,
+            hagency_store::AttemptPhase::Initialized,
+            serde_json::json!({}),
+        )
+        .await;
         if let Some(helper) = late_helper {
             let context = host.task_context.as_ref().ok_or(Failure::Admission)?;
             // Await the original retained physical job through return. Do not
@@ -1181,7 +1384,7 @@ async fn execute(
             checkpoint(cancel, until)?;
             binding.map_err(|error| match error {
                 hagency_store::Error::RunnerAuthority | hagency_store::Error::Quarantined => {
-                    Failure::LostAuthority
+                    Failure::lost(AuthoritySite::TaskMcpBind, &error)
                 }
                 _ => Failure::Admission,
             })?;
@@ -1211,6 +1414,13 @@ async fn execute(
             &mut report.canonical_status,
         )
         .await?;
+        note(
+            domain,
+            cap,
+            hagency_store::AttemptPhase::TurnStarted,
+            serde_json::json!({"thread_id": thread_id, "turn_id": turn_id}),
+        )
+        .await;
         let usage = report.usage.as_mut().ok_or(Failure::UsageBinding)?;
         usage.attach(runner);
         if let Some(approvals) = &mut report.approvals {
@@ -1322,7 +1532,30 @@ async fn execute(
     if matches!(drive, Err(Failure::SettlementUnknown)) && report.protocol == Protocol::Completed {
         report.protocol = Protocol::Unknown;
     }
+    note(
+        domain,
+        cap,
+        hagency_store::AttemptPhase::StopRequested,
+        serde_json::json!({}),
+    )
+    .await;
     report.cleanup = runner.stop();
+    // The guardian's verdict, the leader's exit and both stderr tails are
+    // kept with the attempt before any verdict is drawn from them (ADR-181).
+    report.exit_identity = runner.exit_identity();
+    report.stderr_tail = runner.stderr_tail(512);
+    report.guardian_stderr_tail = runner.guardian_stderr_tail();
+    note(
+        domain,
+        cap,
+        hagency_store::AttemptPhase::StopReported,
+        stop_detail(
+            report.cleanup,
+            &report.exit_identity,
+            &report.guardian_stderr_tail,
+        ),
+    )
+    .await;
     // F3 (macOS-reachable): release the deferred approval entries as soon as
     // the leader stopped on every OS; the live reservation and owner release
     // still wait on the full `whole_tree_stopped` proof below.
@@ -1405,6 +1638,13 @@ async fn execute(
         report.settlement = Settlement::CanonicalReplyReady;
         report.text = None; // Stored explicit content is the sole final body.
         report.owner.take();
+        note(
+            domain,
+            cap,
+            hagency_store::AttemptPhase::Settled,
+            serde_json::json!({"settlement": "canonical_reply_ready"}),
+        )
+        .await;
         return Ok(());
     }
     drive?;
@@ -1429,7 +1669,52 @@ async fn execute(
     report.canonical_status = Some(task.status);
     report.settlement = Settlement::Completed;
     report.owner.take();
+    note(
+        domain,
+        cap,
+        hagency_store::AttemptPhase::Settled,
+        serde_json::json!({"settlement": "completed"}),
+    )
+    .await;
     Ok(())
+}
+/// The fixed-label record of a stop, for the attempt's `stop_reported` event:
+/// what the guardian reported, how the leader and the guardian exited, and
+/// the guardian's own last words. Never free text beyond the bounded tail.
+fn stop_detail(
+    cleanup: Cleanup,
+    exit_identity: &Option<String>,
+    guardian_stderr_tail: &str,
+) -> serde_json::Value {
+    let mut detail = serde_json::json!({
+        "exit_identity": exit_identity,
+        "guardian_stderr_tail": guardian_stderr_tail,
+    });
+    match cleanup {
+        Cleanup::Pending => detail["cleanup"] = "pending".into(),
+        Cleanup::Unknown { kind } => {
+            detail["cleanup"] = "unknown".into();
+            detail["cleanup_error"] = format!("{kind:?}").into();
+        }
+        Cleanup::Observed(report) => {
+            detail["cleanup"] = if report.scope.whole_tree_stopped {
+                "whole_tree_stopped"
+            } else {
+                "unproven"
+            }
+            .into();
+            detail["stop_cause"] = serde_json::to_value(report.cause).unwrap_or_default();
+            detail["stop_detail"] = serde_json::to_value(report.detail).unwrap_or_default();
+            detail["leader_exited"] = report.scope.leader_exited.into();
+            detail["signals_accepted"] = report.scope.signals_accepted.into();
+            detail["whole_tree_stopped"] = report.scope.whole_tree_stopped.into();
+            detail["refusal"] = serde_json::to_value(report.refusal).unwrap_or_default();
+            detail["live_count"] = report.live_count.into();
+            detail["leader_status"] = report.leader_status.into();
+            detail["guardian_exit"] = report.guardian_exit.into();
+        }
+    }
+    detail
 }
 
 #[cfg(test)]

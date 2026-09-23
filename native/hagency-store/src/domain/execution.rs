@@ -178,7 +178,43 @@ fn authorize_attempt(
     }
     Ok(d)
 }
-fn lose(tx: &Transaction<'_>, id: &str, now: u64) -> Result<(), Error> {
+/// ADR-181 point 6: the `lost` event names the writer call that settled the
+/// attempt and what the loss was judged from — read before the settlement
+/// clears `lease_until`. Inserted through the log's one insert helper inside
+/// the settlement's own transaction; the caller bounds it with a savepoint.
+fn lost_event(
+    tx: &Transaction<'_>,
+    id: &str,
+    fence: u64,
+    writer: &'static str,
+    now: u64,
+) -> Result<(), Error> {
+    let lease_until: Option<u64> = tx.query_row(
+        "SELECT lease_until FROM runner_dispatches WHERE id=?1",
+        [id],
+        |r| r.get(0),
+    )?;
+    let last_renew_at: Option<u64> = tx
+        .query_row(
+            "SELECT last_renew_at FROM runner_attempts WHERE dispatch_id=?1 AND fence=?2",
+            params![id, fence],
+            |r| r.get(0),
+        )
+        .optional()?
+        .flatten();
+    super::attempt_events::insert(
+        tx,
+        id,
+        fence,
+        super::attempt_events::AttemptPhase::Lost,
+        &json!({"writer":writer,"lease_until":lease_until,"now":now,"last_renew_at":last_renew_at}),
+        now,
+    )?;
+    Ok(())
+}
+/// `writer` is the writer call settling the lease (`claim`, `reconcile`,
+/// `restart`), kept only in the `lost` event of a started or parked attempt.
+fn lose(tx: &Transaction<'_>, id: &str, now: u64, writer: &'static str) -> Result<(), Error> {
     let d = dispatch(tx, id)?;
     if !["leased", "started", "parked"].contains(&d.state.as_str()) {
         return Ok(());
@@ -218,6 +254,15 @@ fn lose(tx: &Transaction<'_>, id: &str, now: u64) -> Result<(), Error> {
                 tx.execute_batch("ROLLBACK TO lost_outcome_notice; RELEASE lost_outcome_notice")?
             }
         }
+        // The evidence of the loss (ADR-181 point 6), best effort like the
+        // notice: a refused event never fails the settlement it describes.
+        tx.execute_batch("SAVEPOINT lost_attempt_event")?;
+        match lost_event(tx, id, d.fence, writer, now) {
+            Ok(()) => tx.execute_batch("RELEASE lost_attempt_event")?,
+            Err(_) => {
+                tx.execute_batch("ROLLBACK TO lost_attempt_event; RELEASE lost_attempt_event")?
+            }
+        }
     } else {
         // Only an unstarted attempt can relinquish custody without inspection.
         // Unknown shared readers must still exclude a new exclusive writer.
@@ -232,14 +277,14 @@ pub(super) fn recover_all(tx: &Transaction<'_>, now: u64) -> Result<(), Error> {
         .query_map([], |r| r.get::<_, String>(0))?
         .collect::<Result<Vec<_>, _>>()?;
     for id in ids {
-        lose(tx, &id, now)?;
+        lose(tx, &id, now, "restart")?;
     }
     Ok(())
 }
-fn expire(tx: &Transaction<'_>, now: u64) -> Result<(), Error> {
+fn expire(tx: &Transaction<'_>, now: u64, writer: &'static str) -> Result<(), Error> {
     let ids=tx.prepare("SELECT id FROM runner_dispatches WHERE state IN ('leased','started','parked') AND (lease_until<=?1 OR capability_until<=?1)")?.query_map([now],|r|r.get::<_,String>(0))?.collect::<Result<Vec<_>,_>>()?;
     for id in ids {
-        lose(tx, &id, now)?;
+        lose(tx, &id, now, writer)?;
     }
     Ok(())
 }
@@ -795,7 +840,7 @@ impl DomainRepository {
         }
         super::graphs::reconcile(&tx, now)?;
         super::matrix_routes::reconcile(&tx, now)?;
-        expire(&tx, now)?;
+        expire(&tx, now, "claim")?;
         // A stopped process can leave an unresolved task/workspace behind.
         // Only the original exact-attempt host receipt distinguishes that
         // state from an unknown physical owner. This changes occupancy only:
@@ -935,6 +980,12 @@ impl DomainRepository {
             "UPDATE runner_dispatches SET lease_until=?2 WHERE id=?1",
             params![cap.dispatch_id, (now + lease_ms).min(d.expiry)],
         )?;
+        // The renewal's own mark (ADR-181 point 6): what a later loss says
+        // it was judged from.
+        tx.execute(
+            "UPDATE runner_attempts SET last_renew_at=?3 WHERE dispatch_id=?1 AND fence=?2",
+            params![cap.dispatch_id, cap.fence, now],
+        )?;
         tx.commit()?;
         Ok(())
     }
@@ -952,7 +1003,9 @@ impl DomainRepository {
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
         authorize_attempt(&tx, cap, now, &["leased"])?;
-        lose(&tx, &cap.dispatch_id, now)?;
+        // A leased attempt requeues without a `lost` event (nothing started),
+        // so this word is never persisted; it names the call for the reader.
+        lose(&tx, &cap.dispatch_id, now, "fail_before_start")?;
         tx.execute(
             "UPDATE runner_dispatches SET not_before=?2 WHERE id=?1",
             params![cap.dispatch_id, now + retry_ms],
@@ -1019,7 +1072,7 @@ impl DomainRepository {
         let tx = self
             .db
             .transaction_with_behavior(TransactionBehavior::Immediate)?;
-        expire(&tx, now)?;
+        expire(&tx, now, "reconcile")?;
         tx.commit()?;
         Ok(())
     }
@@ -1417,6 +1470,7 @@ const CARRIES_EVIDENCE: &str = "(
     OR EXISTS(SELECT 1 FROM final_reply_calls fr WHERE fr.dispatch_id=d.id)
     OR EXISTS(SELECT 1 FROM conversation_operations co WHERE co.dispatch_id=d.id)
     OR EXISTS(SELECT 1 FROM usage_receipts ur JOIN usage_sources us ON us.id=ur.source_id WHERE us.dispatch_id=d.id)
+    OR EXISTS(SELECT 1 FROM runner_attempt_events ev WHERE ev.dispatch_id=d.id)
 )";
 
 impl DomainRepository {
@@ -1435,7 +1489,9 @@ impl DomainRepository {
     /// `owned_task_completions` row names (the composite FK makes the pin
     /// load-bearing), and its receipt-family rows (`graph_commands`,
     /// `final_reply_calls`, `conversation_operations`, and `usage_receipts`
-    /// through `usage_sources`). `runner_attempts` is NEVER pruned (D-7:
+    /// through `usage_sources`), and the attempt's event log
+    /// (`runner_attempt_events`, ADR-181: pruned with the dispatch, never on
+    /// its own clock). `runner_attempts` is NEVER pruned (D-7:
     /// both late paths authenticate against the attempt row with no clock)
     /// and `task_outbox` is out of scope (D-6: `delivered` is never set, so
     /// a bound prune is indistinguishable from a quiet period). The whole
@@ -1474,6 +1530,7 @@ impl DomainRepository {
             "final_reply_calls",
             "conversation_operations",
             "usage_receipts",
+            "runner_attempt_events",
         ]
         .iter()
         .map(|table| {
@@ -1577,6 +1634,12 @@ impl DomainRepository {
             tx.execute(
                 "DELETE FROM usage_receipts WHERE source_id IN (\
                  SELECT id FROM usage_sources WHERE dispatch_id=?1)",
+                [dispatch],
+            )?;
+            // ADR-181: the attempt's event log goes with its dispatch; the
+            // attempt row it hangs off stays (D-7).
+            tx.execute(
+                "DELETE FROM runner_attempt_events WHERE dispatch_id=?1",
                 [dispatch],
             )?;
             pruned += 1;

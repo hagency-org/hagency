@@ -315,7 +315,7 @@ impl Fixture {
                 .unwrap(),
         )
     }
-    fn sql(&self) -> rusqlite::Connection {
+    pub fn sql(&self) -> rusqlite::Connection {
         rusqlite::Connection::open(self.state_dir.join("domain.sqlite3")).unwrap()
     }
     pub fn state(&self) -> String {

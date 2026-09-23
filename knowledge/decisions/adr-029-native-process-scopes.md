@@ -429,3 +429,19 @@ Owned handles and native observations constrain signalling and cleanup claims. P
 ## Alternatives Considered
 
 Assigning a Windows job after process creation leaves an unowned startup interval. Numeric-PID fallback or treating a POSIX group signal as whole-tree cleanup would discard the identity and descendant limitations documented below.
+
+### The guardian is heard (2026-09-22, ADR-181)
+
+Three live occurrences of an unexplained `cleanup unknown` after a completed
+task, and a fourth on 2026-09-22, had one cause in common: the guardian's
+stderr was `/dev/null` by construction, its exit status was never read, and
+its `Stopped` frame said nothing about why a stop after `LeaderExited` had not
+proved the tree gone. ADR-181 decides the evidence: `Reply::Stopped` gains a
+fixed `refusal` (census_error, tracker_gap, signal_error, live_descendants,
+root_unreaped) with at most eight rows of what kept it live (pid, parent pid,
+executable file name) and the leader's raw wait status; the guardian's stderr
+is a pipe to the host, sealed CLOEXEC so the work never inherits it, kept as
+a 4 KiB tail; and the host reads the guardian's exit status after the frame.
+The rule of this record is unchanged: none of it authorizes anything or
+strengthens `StopReport`; an older guardian's frame still parses with the
+fields absent.

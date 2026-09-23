@@ -18,7 +18,8 @@ pub use domain::resource_publication::{
 };
 pub use domain::uploads::UploadSettlement;
 pub use domain::{
-    ALERT_STATUSES, AgentRosterRow, AlertTransition, AttachmentTicket, CeilingAlert, CeilingReport,
+    ALERT_STATUSES, AgentRosterRow, AlertTransition, AttachmentTicket, AttemptClock,
+    AttemptClockRow, AttemptEvent, AttemptEventRow, AttemptPhase, CeilingAlert, CeilingReport,
     CorpusSweepOutcome, DomainRepository, ENDED_LIMIT, EXECUTION_RETENTION_BATCH,
     EXECUTION_RETENTION_DISPATCHES, EXECUTION_RETENTION_ROWS, Effect, EffectOutcome, EffectState,
     EngagementPruneOutcome, EngagementRetentionStatus, ExecutionPruneOutcome, KnownTokens,

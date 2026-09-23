@@ -21,8 +21,12 @@ mod approvals;
 mod engagement_retention;
 pub use approvals::card::PrivateApprovalCard;
 mod attachments;
+mod attempt_events;
 mod catalog_publication;
 pub use attachments::AttachmentTicket;
+pub use attempt_events::{
+    AttemptClock, AttemptClockRow, AttemptEvent, AttemptEventRow, AttemptPhase,
+};
 pub use catalog_publication::PublishedCatalog;
 mod ceiling_alerts;
 pub use ceiling_alerts::{
@@ -609,7 +613,7 @@ impl DomainRepository {
                 name: "domain.sqlite3",
                 lock: "domain.lock",
                 application_id: 0x48414732,
-                version: 36,
+                version: 37,
                 migrations: &[
                     (2, include_str!("migrations/002-role-publication.sql")),
                     (3, include_str!("migrations/003-task-dispatch.sql")),
@@ -665,9 +669,15 @@ impl DomainRepository {
                     ),
                     (35, include_str!("migrations/035-outcome-resolutions.sql")),
                     (36, include_str!("migrations/036-dispatch-discussion.sql")),
+                    (
+                        37,
+                        include_str!("migrations/037-runner-attempt-evidence.sql"),
+                    ),
                 ],
                 sql: include_str!("domain.sql"),
                 verify: &[
+                    "SELECT dispatch_id,fence,seq,at_ms,phase,detail FROM runner_attempt_events LIMIT 0",
+                    "SELECT dispatch_id,fence,started_at,parked_at,last_renew_at,settled_at,terminal_reason FROM runner_attempts LIMIT 0",
                     "SELECT dispatch_id,message_sequence,addressed FROM dispatch_inputs LIMIT 0",
                     "SELECT dispatch_id,read_parts FROM dispatch_conversation_reads LIMIT 0",
                     "SELECT id,dispatch_id,fence,receipt_digest,snapshot_digest,token_hash,created_at,expires_at,consumed_at FROM outcome_inspections LIMIT 0",

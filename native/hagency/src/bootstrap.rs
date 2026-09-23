@@ -309,7 +309,7 @@ fn owned_failure_label(error: &hagency_execution::Failure) -> &'static str {
         StartUnknown => "start_unknown",
         UsageBinding => "usage_binding",
         SpawnFailed => "spawn_failed",
-        LostAuthority => "lost_authority",
+        LostAuthority { .. } => "lost_authority",
         Protocol => "protocol",
         UnsupportedApproval => "unsupported_approval",
         ApprovalCapacity => "approval_capacity",
@@ -461,6 +461,12 @@ pub struct Status {
     #[serde(skip_serializing_if = "Option::is_none")]
     matrix_error: Option<&'static str>,
     owned_failure: Option<&'static str>,
+    /// Which check lost the authority and what the store said, beside the
+    /// unchanged `lost_authority` word (ADR-181): fixed labels, never text.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authority_site: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authority_cause: Option<&'static str>,
     settlement_cause: Option<&'static str>,
     runtime: Option<RuntimeStatus>,
 }
@@ -493,6 +499,8 @@ impl StatusHandle {
             error: None,
             matrix_error: None,
             owned_failure: None,
+            authority_site: None,
+            authority_cause: None,
             settlement_cause: None,
             runtime: None,
         })))
@@ -543,6 +551,8 @@ impl StatusHandle {
         status.error = None;
         status.matrix_error = None;
         status.owned_failure = None;
+        status.authority_site = None;
+        status.authority_cause = None;
         status.settlement_cause = None;
         status.runtime = None;
     }
@@ -559,10 +569,14 @@ impl StatusHandle {
             .matrix_error = Some(matrix_error_label(error));
     }
     fn handoff_refusal(&self, error: &hagency_execution::Failure) {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .owned_failure = Some(owned_failure_label(error));
+        let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        status.owned_failure = Some(owned_failure_label(error));
+        (status.authority_site, status.authority_cause) = match error {
+            hagency_execution::Failure::LostAuthority { site, cause } => {
+                (Some(site.as_str()), Some(cause.as_str()))
+            }
+            _ => (None, None),
+        };
     }
     fn fail(&self, failure: Failure) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -587,6 +601,12 @@ impl StatusHandle {
         use hagency_runtime::owned::Cleanup;
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
         status.owned_failure = report.failure.as_ref().map(owned_failure_label);
+        (status.authority_site, status.authority_cause) = match &report.failure {
+            Some(hagency_execution::Failure::LostAuthority { site, cause }) => {
+                (Some(site.as_str()), Some(cause.as_str()))
+            }
+            _ => (None, None),
+        };
         status.settlement_cause = report.settlement_cause.map(settlement_cause_label);
         status.runtime = report.runtime_observation().map(RuntimeStatus::from);
         status.protocol = Some(match report.protocol {

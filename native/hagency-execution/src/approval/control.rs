@@ -106,7 +106,7 @@ impl ApprovalRun {
                     expires_at,
                 )
                 .await
-                .map_err(|_| Failure::LostAuthority)?,
+                .map_err(|error| Failure::lost(crate::AuthoritySite::ApprovalBind, &error))?,
         );
         runner
             .enable_approval_control(self.callbacks.host.policy())
@@ -191,7 +191,9 @@ impl ApprovalRun {
                 // is still refused there.
                 match outcome {
                     Ok(_) | Err(hagency_store::Error::State) => {}
-                    Err(_) => return Err(Failure::LostAuthority),
+                    Err(error) => {
+                        return Err(Failure::lost(crate::AuthoritySite::ApprovalExpiry, &error));
+                    }
                 }
                 if denied.terminal? {
                     return Ok(());
@@ -217,7 +219,9 @@ impl ApprovalRun {
                 }
             };
             let observed = drive.pump(&mut self.callbacks, runner, maintenance).await;
-            let current = observed.output.map_err(|_| Failure::LostAuthority)?;
+            let current = observed
+                .output
+                .map_err(|error| Failure::lost(crate::AuthoritySite::ApprovalMaintain, &error))?;
             *drive.status = Some(current.task.status);
             if observed.terminal? {
                 return Ok(());
@@ -271,11 +275,16 @@ impl ApprovalRun {
                     .await;
                 // Positive consumption is retained even if a cancellation was
                 // observed while the original writer receipt was pending.
-                let grant = authorized.output.map_err(|_| Failure::LostAuthority)?;
+                let grant = authorized.output.map_err(|error| {
+                    Failure::lost(crate::AuthoritySite::ApprovalResponse, &error)
+                })?;
                 #[cfg(test)]
                 if self.callbacks.fault == Some(super::Fault::ConsumeAck) {
                     drop(grant);
-                    return Err(Failure::LostAuthority);
+                    return Err(Failure::LostAuthority {
+                        site: crate::AuthoritySite::ApprovalResponse,
+                        cause: crate::AuthorityCause::Other,
+                    });
                 }
                 let entry = self
                     .callbacks
@@ -346,10 +355,15 @@ impl ApprovalRun {
                     let begun = drive.pump(&mut self.callbacks, runner, begin).await;
                     // Original grants stay in the retained batch on every
                     // failure or unwind; begin is never reconstructed/rearmed.
-                    begun.output.map_err(|_| Failure::LostAuthority)?;
+                    begun.output.map_err(|error| {
+                        Failure::lost(crate::AuthoritySite::ApprovalBegin, &error)
+                    })?;
                     #[cfg(test)]
                     if self.callbacks.fault == Some(super::Fault::BeginAck) {
-                        return Err(Failure::LostAuthority);
+                        return Err(Failure::LostAuthority {
+                            site: crate::AuthoritySite::ApprovalBegin,
+                            cause: crate::AuthorityCause::Other,
+                        });
                     }
                     for (key, grant) in self.batch.ids.drain(..).zip(self.batch.grants.drain(..)) {
                         let entry = self
@@ -442,7 +456,9 @@ impl ApprovalRun {
                     checked.terminal?;
                     continue;
                 }
-                checked.output.map_err(|_| Failure::LostAuthority)?;
+                checked
+                    .output
+                    .map_err(|error| Failure::lost(crate::AuthoritySite::ApprovalCheck, &error))?;
                 // Deliberate decision (ADR-046 amendment 2026-09-12), revised
                 // by the approval-loss verdicts: a turn end on this pump is
                 // classified by the turn-end rule, not by this site. When the

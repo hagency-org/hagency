@@ -1230,3 +1230,22 @@ and both in the fixed task-tool set. Pinned in
 `native_mcp_coordination_delegation`; catalog and configuration pins
 updated (24 tools; the Codex config and Claude allow rules name six task
 tools).
+
+### Every owned attempt leaves evidence (2026-09-22, ADR-181, review gap G6)
+
+First slice of the closing order in
+`docs/reviews/2026-09-22-native-codex-architecture-review.md`. The port now
+records what the retained product records per dispatch (`runner_activity`,
+`started_at`/`parked_at`/`settled_at`, `terminal_reason` with exit identity
+and stderr tail, guardian stderr on a pipe): `runner_attempt_events` with one
+row per phase from `claimed` to `settled`/`failed`/`lost`; the attempt's clock
+and `terminal_reason` on `runner_attempts`; the failure persisted uncollapsed
+(`Failure` variant, settlement cause, protocol, cleanup with its error kind,
+stop cause/detail/report, runtime observation); `LostAuthority { site, cause }`
+at every producer, with `authority_site`/`authority_cause` in the status; the
+guardian's `refusal` category and live rows in its `Stopped` frame, its exit
+status read by the host, and its stderr on a sealed pipe kept as a 4 KiB tail;
+the leader's exit identity; lease loss naming its writer; and `tracing` in the
+executing crates. No verdict changed. Pinned by the scenarios of
+`task-rust-owned-attempt-evidence`. Not yet run live: the next lost agent is
+the first that will be diagnosable from the store.
