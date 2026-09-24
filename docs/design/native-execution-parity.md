@@ -1,0 +1,1308 @@
+# TS → Rust execution parity working map
+
+Operator direction, 2026-09-16: **make it work, make it right, make it fast**.
+Trace working TS/JS behavior, port its missing Rust equivalent against existing
+tests, run the same complete Palpo/Robrix path, and fix observed differences.
+Adapter-only successes support a path; they do not substitute for it. This file
+is coordination, not canonical task state or a completed migration claim.
+
+## Target path
+
+Local Codex, Claude Code and OctosCode with the real local Octos backend; mini3
+supplies Palpo at `https://crew.ominix.io:19443/`. Use the existing real Robrix2
+profile and preserve services/SDK stores. No remote model substitution, credential
+copying or mock backend counts.
+
+`Robrix message → Palpo → authenticated intake → canonical task/claim → local
+runner → scoped tools/owner approval when needed → canonical completion →
+original reply route → encrypted Palpo send → Robrix observation`.
+
+Repeat the shared-room/separate-DM, files, approval, usage and recovery scenarios
+in [the qualification runbook](two-agent-qualification-runbook.md), then soak.
+Compare task state, actual runner activity and what Robrix receives separately.
+Keep failed attempts; a narrower diagnostic cannot replace their acceptance.
+
+## Source-inspected path map
+
+Paths are relative to the repository root. TS includes its JS production callers.
+Source presence is not a claim that the complete path passes.
+
+| TS/JS reference and existing tests | Rust equivalent | Specific gap / next acceptance |
+| --- | --- | --- |
+| `bridge-matrix.js`, `backend-v2.js::routeMatrixMessageToThreadSession`; `tests/bridge-representative-intake.test.js`, `tests/bridge-group-isolation.test.js` | `hagency-matrix::{sdk,intake,event_batch}`, store `verified_ingress` | Intake exists. Re-run actual Robrix DM and mention-gated group requests with local runners; old remote soaks are historical only. |
+| `backend-v2.js::enqueueThreadSessionDispatch/pumpRouterDispatches`, `router/src/store.ts`; `tests/router-runner.test.js` | `hagency/src/bootstrap/driver.rs::run`, store `owned_dispatch` | Claim/Started exist. Continuous/factory dispatch must select the actual local family/account, not merely exercise a fixture claim. |
+| `backend-v2.js::launchClaimedThreadSessionRunner`, `router/src/runner.ts::runnerEnv` | execution `host.rs`, `local_codex.rs`, bootstrap profiles/accounts | ADR159 joins existing local Codex directories to one unmanaged preset/seat. Two real Robrix → Palpo → local Codex → canonical Done → encrypted Robrix reply paths pass, including actual workspace command/readback. Host still refuses Claude; Octos is not a native family. |
+| `backend-v2.js::claudeThreadSessionArgs`, `lib/claude-thread-runtime.js`; `tests/claude-thread-runtime.test.js` | runtime `claude::{arguments,task_arguments}` | Ported model grammar, auto with write lease / plan without it, and gh/git-push ask rules. Native isolated settings do not prove all TS configuration/customization parity. |
+| `router/src/runner.ts::runCodexDispatch`; `tests/router-runner.test.js`, `tests/router-codex-mcp-approval.test.js` | runtime `codex`, execution `Operation` | Real local 0.154.0 command/readback and message completion pass through Palpo/Robrix. File delivery exposed missing MCP elicitation handling; ADR160 ports exact active-item/arguments correlation and Once/Deny to the existing owner coordinator. ADR166 fixes reused approval sync cursors; Robrix accepts exact native 40-hex approval IDs. ADR167 admits Palpo nullable blurhash upload metadata. A fresh isolated live file task now passes approval, encrypted delivery, canonical Done and final Robrix reply. Previous unknown attempts remain preserved. Outside-workspace qualification remains unproven. |
+| `router/src/runner.ts::runClaudeDispatch`; `tests/router-runner.test.js` | runtime `OwnedClaudeSession`, `claude::SessionDriver` | Actual CLI initialize/task-helper binding work. Execution Prepared/spawn/drive/report and approval coordination remain Codex-specific. Join the existing path with original domain ownership. |
+| `lib/runtime/acp.js`, `lib/frameworks/octos.json`; `tests/acp-runtime.test.js`, `tests/acp-permission-requests.test.js` | No native Octos adapter yet | Port initialize/session/new/session/prompt and streamed updates. Verify installed OctosCode protocol mode, actual Octos backend and config-MCP behavior; do not infer them from mocks or a newer source checkout. |
+| `router/src/runner.ts::buildPrompt`, `mcp-server.js`, `lib/mcp-server-core.js`; `tests/ephemeral-session-tools.test.js` | runtime `task_mcp`, native `mcp/task_client/runner` | Actual helper reads/heartbeats the assigned task. The four-tool owned profile is NOT full TS coordination parity: task comments and paged room discussion still need mapping/porting. Confirmed live 2026-09-19: asked to delegate, a Codex agent answered that `delegate_task` is unavailable. The helper declares comment, accept, heartbeat, delegation, conversation, peer-message and graph tools, but Codex `enabled_tools` admits only `TASK_MCP_TOOLS` plus the capability-gated file tools (ADR101/105 show the gating pattern). ADR180 now adds an opt-in gate for delegation, task comments and the conversation and peer-message tools, owner-approved per call except comment_task; live, a delegation was approved by the owner and accepted by the store, and was then never delivered because the task-notice lane has no production caller in the fleet service. |
+| `backend-v2.js::requestThreadSessionOwnerApproval`, `lib/runtime-approval-client.js`; `tests/bridge-matrix-approval.test.js` | execution `approval`, Matrix `approval_delivery/approval_intake` | Codex MCP file approvals now join the same coordinator (ADR160), without widening the four task-tool exceptions. Startup owner wait is explicitly configurable within the original operation budget. Actual private Robrix Approve once now reaches an authenticated verdict and write-accepted native response; the subsequent send_file succeeds. The pinned provider still supplies no separate application acknowledgement. Claude has one-shot wire replies but no joined durable owner-grant path. |
+| `lib/session-file.js`, `router/src/files.ts`, `lib/matrix-file.js`; `tests/matrix-file-bridge.test.js` | native runner `files/received`, Matrix `upload/publication.rs`, file/media-store crates | Local Codex send_file now delivers a 34-byte encrypted attachment and final reply rendered in actual Robrix. Independent authenticated media download verifies exact plaintext bytes. Robrix native Save dialog blocks the headless harness, so its save-to-disk workflow remains unqualified. Encrypted native receive-file now passes exact bytes, owner approval, Done and rendered reply; native attachment-picker UI and other runner families remain open. |
+| TS runner result/settleAndRelease, task transitions and final replies | execution `operation.rs`, store `owned_dispatch/replies`, bootstrap `finish_attempt` | Two local successes meet distinct Done/stop/delivery checks. File failure retains an unsettled `owned_runner_failure` stop row despite observed whole-tree stop; generic orphan recovery correctly refuses it. ADR164 now joins an existing ADR162 receipt to explicit continuation through the shared stop-settlement kernel. This cannot retrofit the missing proof in the historical failure. Do not clear custody manually or erase the failure. Historical gen11 remains failed. |
+| `router/src/store.ts::{beginOutcomeInspection,resolveOutcomeUnknown}`, Dashboard/AgentOps routes; `tests/router-core.test.js`, `tests/router-backend.test.js` | store `recover_dispatch`, conversation stop settlement, ADR162 receipt | TS explicitly supports operator inspection followed by continue-with-new-instruction, accept-completed or keep-blocked. ADR148's earlier claim that TS only recovers orphan homes is superseded. ADR164 adds lifecycle-scoped receipt inspection and explicit continuation for original receipt-bearing stopped failures, with a distinct instruction/dispatch and atomic input/custody transfer. ADR165 adds expiring inspection credentials and atomic continue/accept_completed/keep_blocked decisions. ADR170 now exposes original stopped-task discovery, inspection and all three decisions in the lifecycle console. Terminal graph actions remain open. The historical failure has no receipt and remains refused. |
+| `router/src/store.ts::claimDispatchObserved`, backend live-runner cleanup | store `execution.rs::claim_clock` | ADR163 excludes only exact proven-stopped attempts from physical occupancy, retaining all task/workspace custody and claim gates. Missing proof still counts. Offline real-process and store regressions pass; the old live failure has no receipt and remains blocking. |
+| `router/src/runner-guardian.ts`, `router/src/owned-process-tree.ts`; `tests/runner-guardian-process-tree.test.js` | platform `supervisor/unix.rs`, `supervisor/unix/macos{.rs,/native.rs,/tracking.rs}` | Ported native suspended launch, retained ancestry and identity-checked stop. Actual detached/reparented/early-leader cases stop while a foreign process survives; observation loss stays unknown. Sampled ancestry is not adversarial/crash containment; existing unsupported fast-double-fork cases remain unsupported. |
+| `router/src/runner-activity.ts`, `lib/metering`; `tests/router-activity.test.js`, `tests/runner-metering.test.js` | progress-runtime, metering, execution `usage` | Claude usage capture exists but production Host cannot reach it. Match actual dispatch activity and durable attribution, not only normalization fixtures. |
+| TS final reply routing / Matrix delivery journal; `tests/bridge-appservice-send.test.js`, `tests/matrix-delivery-journal.test.js` | bootstrap `finish_attempt`, Matrix `outgoing::send_final` | Send path exists. Confirm correct room/thread/privacy in Robrix and no duplicate delivery after interruption. |
+| `router/src/runner.ts` executionTimeoutMs / approvalTimeoutMs | execution `Limits`, bootstrap claim, store owned approval context | ADR161 allows explicit execution up to the retained twenty-minute allowance and owner waits within the durable ten-minute ceiling. Capability lifetime covers configuration; leases still renew for only five seconds and cannot outlive capability expiry. Existing configured defaults and RPC/write bounds stay unchanged. Live long-task acceptance PASSES (2026-09-19): a seven-step task under an explicit fifteen-minute operation budget ran 470 s post to reply, past the five-minute default, with exact output, canonical Done and no leases, while the other agent completed a DM task. |
+
+## Work order
+
+1. Finish the existing **Codex** local message-to-reply path. Native macOS
+   descendant stop and real local command execution now pass their focused
+   checks. Explicit local provider selection is now wired through the native
+   host and startup. Basic text and workspace execution pass live. Finish native
+   stopped-failure recovery and restart route-generation
+   handoff, then validate the new MCP approval adapter and encrypted file delivery
+   in the same setup. Complete Codex groups/DMs, recovery and sustained soaking
+   before beginning Claude, as explicitly directed by the operator.
+2. Join **Claude** to the same Host/driver/completion/approval path, reusing its
+   implemented session, helper and usage capture. Run the identical real flow.
+3. Last, port **Octos/OctosCode** from the working ACP/backend implementation and actual
+   installed protocol; run the identical flow using the real local backend.
+4. Run cross-runner groups/DMs, files, approvals, restart and sustained soaking.
+   Then measure latency/memory/throughput and optimize observed bottlenecks.
+
+Safety and recovery preserve each path's existing contract and identify concrete
+differences. They are not a separate substitute program. Broader parity/release
+requirements in [the migration plan](hagency-rust-migration-plan.md) remain open.
+
+## Evidence checkpoint, 2026-09-16
+
+- TS router build succeeds; existing Claude-configuration, runner-dispatch and
+  guardian suites pass **47 tests** locally. These are fixtures, not providers.
+- Rust runtime after launch-policy parity fixes passes **92 tests**. Native
+  MCP/task-client integration passes **21**, including actual helper/loopback
+  read/heartbeat/readback and delayed retained-context handoff.
+- Installed local Claude Code **2.1.270** accepts native task MCP binding and its
+  exact catalog. No prompt, tool call or API connection was sent. The synthetic
+  discovery context grants no account/task authority. Leader exit was observed;
+  whole-tree stop remained false. This is not a completed vertical path.
+- Current platform/runtime suite passes **122 tests**; downstream execution,
+  CLI-pin and launch suites pass **78** after ADR159. These are offline tests. Real local
+  Codex **0.154.0** separately completed one matching in-workspace command and
+  file readback with whole-tree cleanup. Outside and symlink-outside cases made
+  no tool attempt: no file creation is not sandbox-denial evidence, and the
+  qualification exits **1**. The older pinned qualification gates remain red.
+- A separate local qualification fleet uses three Matrix accounts and four
+  rooms on the same Palpo, with fresh SDK stores and the existing exact owner
+  master-key anchor. The original remote service/stores were not reused.
+- Actual Robrix UI sent two local tasks: exact reply, then a workspace shell
+  write/readback. Both reached canonical Done and one delivered encrypted reply,
+  rendered in actual Robrix captures. Both released their leases before the next
+  test. Measured claim-to-delivery was **14,114 ms** and **22,553 ms**; these two
+  samples are a baseline, not throughput or soak qualification.
+- File test3 failed before any file admission or approval. Original report:
+  protocol/malformed, whole_tree_stopped, negative settlement, canonical
+  InProgress. No retry/file was sent. ADR160 ports the missing TS MCP path;
+  TS reference12, focused Rust MCP4, and owned approval1 pass. Full runtime95
+  passes serially. Execution80 non-qualification checks pass; its existing
+  pinned sandbox qualification remains1 pass/2 failures. One earlier parallel
+  runtime run had an uncertain process-start failure; isolated and serial reruns
+  passed without diagnosing its cause. Preserve that evidence, not a flaky label.
+- Native restart first refused fenced generation1. Explicit generation2
+  re-observation restored approval startup, but ordinary intake refused Domain
+  and the session route remained generation1. Generic operator recovery returned
+  409 because the original has an unsettled stop record. No raw DB edit,
+  fabricated cleanup grant, replacement SDK store or fresh-task bypass was used.
+  The diagnostic service is available but its agent driver is **unavailable**.
+  Repair these actual joins before claiming restart/file/approval acceptance.
+
+- ADR162 now preserves original stopped-owner content inspection for future
+  failures (store352/execution83/strict Clippy pass). It grants no automatic
+  resume and cannot backfill the old failure's missing proof. Authenticated
+  generation3 re-adoption restores intake on the same account/device/room and
+  SDK stores; new task004 remains queued because the old unresolved attempt
+  consumes the ordinary single execution slot. No file/approval acceptance or
+  soak passed. Keep that capacity refusal separate from the stale-route gap.
+- ADR163's occupancy distinction passes execution84 and store45; strict Clippy
+  passes. The rebuilt current TS router-core/backend reference passes88. The old
+  failure is preserved and the live service is not restarted for this change,
+  because it cannot supply the missing original receipt. Explicit TS-compatible
+  operator resolution and the live file/approval path remain open. The subsequent
+  ADR164 continuation slice below applies only where original proof exists.
+- The existing native orphan recovery route now binds its addressed agent to
+  the original dispatch inside the recovery transaction. A wrong-target HTTP
+  regression first returned200; it now returns404 without changing custody.
+  This does not widen the route to stopped attempts or resolve legacy proof loss.
+
+### Local Codex startup selection
+
+Private `agent-driver.json` / `development-driver.json` may explicitly select:
+
+```json
+"local_codex": {
+  "profile": "provider_owned_codex_v1",
+  "preset": "<existing-unmanaged-preset>",
+  "seat": "<that-preset-seat>",
+  "home": "<existing-absolute-provider-home>",
+  "codex_home": "<existing-absolute-codex-directory>"
+}
+```
+
+This is not a credential import or readiness record. Leave `managed_account`
+and `factory_service` absent. The configured pinned executable still runs through
+the original guardian and task helper. Selection and admission require the exact
+resource; replacement of either retained directory stops the original operation.
+Unix provider-directory policy is qualified offline; Windows is not enabled.
+Create a separate local qualification Matrix device/state instead of sharing a
+running remote service's SDK store/device or letting both consume the same inbox.
+- `approval_owner_wait_ms` optionally replaces the prior fixed1000 ms wait.
+  It and the response reserve must fit the original operation budget. The local
+  qualification originally chose10000 ms within30000 ms. ADR161 now supports
+  explicit longer operations; generation3 uses120000 ms within300000 ms.
+  The new queued task has not yet exercised that configuration with a model.
+- Original evidence is retained in the private qualification cache. No fresh
+  local three-runner Palpo/Robrix soak has passed. Keep gen10 success and gen11
+  failure with their original remote-run scope.
+
+## Receipt-bound Codex continuation, 2026-09-17
+
+The native console now exposes lifecycle-scoped inspection at
+`GET /console/api/agents/{agent}/stopped-dispatches/{dispatch}/inspection`
+and explicit continuation at
+`POST /console/api/agents/{agent}/continue-stopped-dispatch`. The body contains
+`original`, `fence`, `inspectionDigest`, `replacement` (the existing DispatchInput
+shape with a distinct nonempty `payload.instruction`), and `evidence` (the
+operator's review note). The replacement preserves task/session/resources.
+
+Only a matching original ADR162 host receipt and owned_runner_failure stop can
+enter this transaction. Inspection is private; both routes enforce lifecycle
+scope and the addressed agent. Exact replay, including after reopen, is a read
+of the original commit; changed content conflicts. Inputs move without being
+marked processed and the failed dispatch remains outcome_unknown. Active or
+unknown conflicting owners, stale routes and unsettled file receives, uploads or
+delivery refuse.
+
+This is an offline-qualified continuation slice, not live recovery, full TS
+resolution parity or a completed Codex E2E gate. The old live file failure has
+no original receipt and remains blocked; services and accounts were untouched.
+ADR165 below extends this with the TS inspection-token workflow.
+See ADR164 and task-rust-stopped-dispatch-continuation for the compatibility API boundaries.
+
+
+## Operator outcome resolution, 2026-09-17
+
+Schema35 adds lifecycle-scoped inspection credentials and durable operator
+resolution receipts. The API is available for user testing without deploying or
+restarting the current live fleet:
+
+1. `POST /console/api/agents/{agent}/stopped-dispatches/{dispatch}/inspect`
+   with `{}` or `{"ttlMs":60000}`. Lifetime is 1..60 minutes, default15 minutes.
+   The private response includes `inspectionId`, one-use `inspectionToken`,
+   `expiresAt`, and the original receipt/task/route snapshot. Only the token hash
+   persists. The historical GET inspection route still does not mint authority.
+2. Review the historical inventory against current workspace and external
+   effects. The API does not infer semantic safety or scan a new physical owner.
+3. `POST /console/api/agents/{agent}/resolve-stopped-dispatch` with:
+
+```json
+{
+  "original": "original-dispatch-id",
+  "requestId": "unique-operator-decision-id",
+  "inspectionId": "inspection-id-from-step-1",
+  "inspectionToken": "private-token-from-step-1",
+  "action": "accept_completed",
+  "operatorNote": "Reviewed the retained workspace and external effects"
+}
+```
+
+Actions are `continue`, `accept_completed`, and `keep_blocked`. Continue also
+requires `replacement` in the existing DispatchInput shape, preserving task,
+session and resources with a distinct nonempty `payload.instruction`. It enqueues
+one new attempt and transfers frozen inputs atomically. Acceptance marks the
+canonical task Done once; blocking marks it Blocked and starts no process. Neither
+creates a graph result, accepted runner output, processed-input receipt, or final
+message delivery. Original unknown attempt evidence survives all three decisions.
+Terminal graph actions refuse until their separate graph-resolution contract is
+ported; graph continuation retains existing recovery checks.
+
+Retry an uncertain HTTP response with exactly the same body/requestId. Its durable
+receipt survives token expiry and restart; changed content conflicts. New requests
+with expired or consumed credentials, changed scope/task, missing original proof,
+conflicting owners or unsettled media effects refuse without mutation. Time is
+read after acquiring the writer transaction. Issuance is bounded to16 retained
+inspections per dispatch and40000 total, reclaiming expired unused credentials.
+
+The old live file failure still lacks its original owner receipt and cannot use
+this workflow. Independent file/approval qualification needs the separately
+requested fleet/state. Current services and the failed attempt remain intact.
+
+
+## Isolated Codex file and restart qualification (2026-09-17)
+
+The operator authorized an isolated test fleet. The first new instance uses
+`local-native-palpo-approved-20260917T180452Z` under the private qualification
+cache; three accounts/four rooms were created without modifying earlier fleets.
+Text001 completed with the exact encrypted Robrix reply. File001 exposed two
+protocol mismatches: approval receipt identity treated a Matrix next_batch cursor
+as a unique body, and Robrix accepted only legacy 32-hex approval IDs while native
+IDs have 40 hex digits. ADR166 now keys receipts by exact (cursor, digest), including
+reopen validation. Robrix's pure parser accepts exactly both lowercase profiles
+and preserves all verdict bindings; no new UI labels/i18n keys were needed.
+
+File002 then reached actual Robrix Approve once, authenticated encrypted verdict,
+and native write-accepted response. It failed during upload and retains unknown
+custody. Read-only decryption of protected SQLite values finds WritePossible and
+no accepted response. The original failure reason was not retained, so its exact
+HTTP response cannot be reconstructed. Graceful shutdown intentionally retained
+its original owner, PID 20841, instead of discarding uncertainty. A proposed third
+session was refused at custody_open; no third task ran there. Its unapplied config
+is retained separately and the actual session002 config restored. Do not kill or
+reuse that original SDK owner to bypass the failure.
+
+One separately recorded 34-byte opaque diagnostic upload returned HTTP 200 with
+content_uri and blurhash:null. Local Palpo source serializes that Option<String>.
+The native parser rejected this reproducible response, including its protected
+reopen validator. ADR167 shares strict upload parsing across both boundaries and
+admits only optional null/string blurhash beside content_uri. Duplicate keys,
+wrong types, unknown fields, body/header/EOF bounds and no-retry rules remain.
+File-service diagnostics now retain the Matrix error variant before the existing
+one historical inspection. No previous response or receipt was synthesized.
+
+A second independent test instance, `local-native-palpo-upload-fixed-20260917T184629Z`,
+uses three fresh accounts/four fresh rooms and the original retained Robrix owner
+profile/trust anchor. File003 passed the complete actual path: local Codex shell
+write/readback, send_file with matching owner card, actual Approve once click,
+authenticated verdict, accepted media upload, delivered encrypted file event,
+canonical Done, whole-tree completion/lease release, and final encrypted reply
+`ISO_CODEX_20260917_FILE_003_OK` rendered in Robrix. The attachment is 34 bytes.
+An authenticated owner media GET, checked against the protected publication
+ciphertext digest and decrypted with its exact descriptor, matches original SHA256
+`82440d1dd5c9d5fefb79afde494688ad47cb99bf7fa104d42bd0afe8b12c025f`.
+This independent byte check is not a Robrix Save-dialog pass: that native dialog
+blocks the headless stdin loop without an accessible panel. The test-owned UI was
+restarted with its original profile; no SDK/profile reset was performed.
+
+The successful service closed cleanly with exit 0. Fresh authenticated provisioning
+advanced transport/approval generations to 2 and created local_codex_dm_002 with
+its own workspace. The same SDK stores reopened successfully. Restart001 wrote
+and read the new workspace marker, reached canonical Done, released all leases,
+and rendered `ISO_CODEX_20260917_RESTART_OK` in Robrix. The earlier file remains
+one delivered operation; no upload/publication was repeated. This is explicit
+fresh-session restart qualification, not seamless resume of the retired route.
+The successful test service remains on 127.0.0.1:19431; Robrix automation on 19401.
+The earlier retained unknown owner remains preserved separately.
+
+Evidence stays private: per-effect intent/result files, both failure reports,
+protected read-only snapshots, approval/delivery/restart captures, binary hashes,
+`file-003-completion-evidence.json`, `file-003-media-byte-evidence.json` and
+`restart-001-evidence.json`. Read-only before/after comparison confirms unchanged
+original legacy dispatch/stop/lease/inspection rows: completed 2, unknown 1, queued 1.
+No provider credentials were copied, no existing remote service changed, and no
+formatter, commit or PR was run. Automated setup retried only explicit 429 refusal
+after its cooldown; uncertain upload effects were never retried.
+
+Validation: the new custody test first failed with Transport(Wire) on the Palpo
+fixture; after the fix full Matrix lib 190 and media-upload 7 pass. Earlier ADR166
+approval intake 19/full lib 189 runs passed before the additional upload test.
+Robrix octos_actions 38 pass, including native wire fixture and property grammar;
+the property failed before the parser fix. Strict all-target Clippy for
+hagency-matrix/hagency and locked native build pass; actual headless Robrix build
+passes. agent-spec parse/lint were attempted but the executable is absent, so no
+agent-spec lifecycle pass is claimed. Existing broader qualification failures
+are not overwritten by this narrower result.
+
+Remaining: outside-workspace sandbox qualification, group/DM
+isolation with multiple agents, original-owner recovery after uncertain media,
+seamless restart policy, sustained soak, and the native Save-dialog workflow.
+Codex remains first; Claude and Octos joins are not yet qualified. The Rust
+migration is still incomplete and production cutover remains unauthorized.
+
+## Receive-file, repeated-run failure and recovery join (2026-09-17)
+
+Receive001 passes on the second isolated fleet. A private Rust probe used the
+same pinned Matrix SDK and exclusively reopened the original owner profile while
+the test Robrix process was closed. It sent one encrypted 37-byte attachment;
+the original profile was then reopened in Robrix. The actual receive_file owner
+card rendered there and Approve once produced an authenticated verdict. Native
+receive `receive_30a737107e3eb97758b0bbadabed05f4` reached Ready in workspace002,
+canonical task Done, completed dispatch and zero leases. Independent byte checking
+matches SHA256 `2a1ee0f2d3e6b342ffa33e79e6e324e10b1881547dd4a68b7ca2087a8f43b2fc`;
+the final `ISO_CODEX_20260917_RECEIVE_OK` rendered in Robrix. Evidence is
+`receive-001-evidence.json` plus actual approval/result captures. This qualifies
+the native encrypted receive path and Robrix approval/result, not the headless
+native attachment-picker dialog. No owner credentials or SDK state were cloned.
+
+The first pulse of a separately recorded 12-pulse owner-DM soak failed with
+`unsupported_event`, before creating its workspace marker. The original host
+recorded whole-tree stop and the original inventory receipt; the failed dispatch
+`matrix_dispatch_f9789ea4e56d351531f44e7437250799` remains outcome_unknown. The
+soak stopped immediately and sent no second pulse. Its exact rejected category
+was absent from the original report. ADR168 now carries the runtime's existing
+fixed refusal category through the authenticated native diagnostics; it cannot
+reconstruct the historical lost category or turn this failure into success.
+
+An authenticated lifecycle inspection and exact current file-hash comparison
+then authorized a distinct continuation using the ADR165 API. The transaction
+settled only this original stop and queued
+`iso_codex_20260917_recovery_dispatch_001`. The old live worker had already left
+its dispatch loop, so no replacement process started. This is an observed live
+recovery integration failure, not a successful recovery. ADR169 retains the
+continuous worker/report until exact explicit resolution is observed, then
+releases that workspace entry and resumes ordinary claiming. It does not patch
+the already-running old binary or grant restart recovery over retired routes.
+The original unknown upload owner PID20841 remains separate and untouched.
+
+A separate sandbox qualification rerun still passes actual inside-workspace
+command/write/readback and whole-tree cleanup. Outside and symlink-outside
+turns emitted no command attempt, so both remain unqualified. Original and new
+evidence/logs are preserved separately (`sandbox-before-20260917.json` and
+`sandbox-after-20260917.*`). No retry or broader permission was granted.
+
+
+## Continuous recovery and console workflow (2026-09-17)
+
+ADR169 passes the real-process offline continuous-driver scenario: the original
+stopped receipt is reviewed through authenticated HTTP, explicit continuation
+commits, and the same worker claims and completes the new instruction. The store
+observation binds the original capability, fence, stop receipt and consumed
+inspection/resolution; it grants no authority by itself. Full owned-completion
+16, bootstrap20, bootstrap library18, strict all-target Clippy and locked build
+pass. The production-caller check also passes. The historical live queued
+continuation was subsequently superseded by explicit route-generation3/session003
+provisioning; it never executed and is not successful recovery evidence.
+
+The isolated service then ran ADR168/169 with the original SDK stores. A new
+12-task owner-DM run completed over 1,018.689 seconds at 90-second cadence. All
+12 canonical tasks are Done, their dispatches completed, exact workspace bytes
+match, one final encrypted reply each is delivered, and leases return to zero.
+The original per-pulse UI substring check also matched owner prompt text; its
+UI claim was insufficient. A separate bounded timeline audit subsequently found
+all12 exact whole-message agent replies inside visible Robrix bounds, excluding
+prompt substrings, and retained seven snapshots/captures. Private evidence is
+`soak-002/completion-evidence.json`, `observations.jsonl` and `rendered-audit.json`.
+This is a bounded single-agent run, not multi-agent or sustained qualification.
+The earlier unsupported-event failure remains unexplained and preserved.
+
+ADR170 adds a lifecycle-scoped sixteen-row stopped-dispatch list without changing
+the roster projection. The native console displays the original task, inventory
+hashes and inspection expiry, requires an operator note, and offers continue with
+a distinct instruction, accept-completed and keep-blocked. One-use credentials
+stay in memory. A lost response retains the exact pending request for explicit
+retry; no automatic mutation retry occurs. English and Chinese labels are included.
+
+Validation: new projection test passes; five focused UI tests pass; the actual
+static Next build and real Chromium lifecycle walk pass, including commit then
+lost-response then exact explicit replay. Full console60 passes serially and
+strict all-target Clippy with the browser feature passes. An earlier parallel
+console run had59 pass/1 real-agent startup failure (outcome_unknown before native
+entry); the isolated selector passed. Cause remains unproven; preserve both logs.
+No production origin check was weakened: the browser fixture explicitly supplies
+same-origin Fetch Metadata to Playwright's intercepted-request HTTP client.
+The rebuilt service/UI is being qualified live on the isolated fleet; source and
+offline success alone do not close the live recovery gate.
+
+
+### Live browser continuation passed
+
+On generation4/session004, a controlled long-command task wrote its before-file
+then failed unsupported_event before the operation deadline. Original host cleanup
+proved whole-tree stop and preserved a one-file inventory. The actual native
+Chromium UI listed and inspected this dispatch, displayed the original hash,
+accepted an explicit note/new instruction, and rendered the committed receipt.
+The same service PID93924 claimed `continuation_09bdfede-eb25-4650-ac03-3270c0a4fb5f`
+without restart. Local Codex wrote/read exact recovery bytes, completed the same
+canonical task, released all leases and delivered `ISO_CODEX_20260917_RECOVERY2_OK`
+as an encrypted final reply, independently observed as an exact visible Robrix
+message. The original dispatch remains outcome_unknown. Evidence is
+`recovery-002-{inspection-evidence,resolution.result,completion-evidence}.json`
+and actual console/Robrix captures. This passes explicit stopped-task continuation;
+it does not qualify the intended timeout, uncertain media recovery or old routes.
+
+A separate private probe of the pinned binary identified terminal interaction as
+one missing progress notification; the original report's unknown category remains
+unchanged. ADR171 correlates it to the current active command and treats it only
+as bounded progress. Live regression qualification follows the offline red/green
+case; the first historical soak failure still has no recoverable exact category.
+
+
+### ADR171 live command polling regression passed
+
+The opt-in original-owner probe refused terminal_interaction before the change
+(13.272s, whole-tree stopped). With ADR171 it completed the same20-second command
+(25.938s, no refused notification, whole-tree stopped). These private diagnostic
+runs are separate from live acceptance and never enter ordinary test execution.
+
+After clean close and explicit generation5/session005 provisioning, the isolated
+fleet ran the new binary and final console assets against the original SDK stores.
+Actual Robrix sent a20-second shell command with repeated empty-stdin polling.
+Dispatch `matrix_dispatch_becee36542d5d22164f888fd8f73a879` completed the canonical
+task, preserved exact35-byte before/34-byte after files, released every lease and
+delivered `ISO_CODEX_20260917_TERMINAL_OK`, visibly rendered in Robrix. End-to-end
+observation took58.2s; this is a single regression sample, not a throughput claim.
+Evidence is `terminal-001-evidence.json`, its intent and actual Robrix capture.
+A first harness preflight refused the driver's ordinary refreshing state before
+sending any message; it was corrected to accept refreshing/no_work with no error.
+
+Final ADR171 validation: runtime96 passed serially (session43 included), strict
+all-target runtime/native Clippy including browser features and locked native
+build pass. Final static console build includes the existing padded table style
+for readable inventory columns. Production-caller check passes45 wired plus the
+unchanged tracked G8; no missing/ambiguous/unresolved/unknown gaps. Whitespace
+check passes. agent-spec/task-writer are absent; no lifecycle pass is claimed.
+
+Current successful isolated service: PID15469, port19431, generation5,
+local_codex_dm_005, binary `bin/hagency-adr171`, console assets
+`native-console-adr170-3`. Original unknown media owner PID20841 stays retained.
+Historical unknown dispatches, explicit resolution receipts, superseded earlier
+continuation, accepted file delivery and ready receive are all preserved. No
+formatter, commit, PR or production cutover was performed.
+
+Next Codex gates are multi-agent shared-room/separate-DM isolation, sustained
+qualification across those routes, positive outside-workspace sandbox-denial
+witnesses, uncertain-media recovery/seamless restart and native file-dialog UI.
+The successful explicit stopped-task continuation and long-command progress now
+close their specific gaps. Claude's Host/approval join and Octos's native adapter
+remain after Codex under the operator's requested order. The overall Rust port
+is incomplete; no percentage or cross-runner success is inferred from these runs.
+
+
+### Actual five-minute deadline and UI continuation passed
+
+Timeout003 on the unchanged generation5/session005 service wrote its before-file
+then ran a360-second command against the300000ms host operation budget. The
+original dispatch `matrix_dispatch_539908d9247376eea355f0ba64d4aa75` stopped at
+300043ms from claim to original stopped-inventory receipt, with owned_failure
+`deadline`, cancellation recorded and whole-tree cleanup proved. The exact
+before-file remains; the after-file does not exist. Its three-entry original
+inventory also includes the earlier terminal regression files.
+
+Actual Chromium displayed the stopped dispatch and hashes in English and Chinese,
+with no horizontal document overflow. After an explicit note and new instruction,
+the same PID15469 claimed `continuation_c8dd3eea-d4e8-499d-86ba-6732b49f1bb8`.
+Local Codex wrote/read `timeout-003-proof.txt` with SHA256
+`4c64602c7191bbe6ff0f2fbc9015792e3ab2bdf8cb74343a58409c57abf05ce6`, completed the
+canonical task, released all leases and delivered the encrypted final reply
+`ISO_CODEX_20260917_TIMEOUT3_OK`, independently matched as an exact visible Robrix
+message. The original dispatch remains outcome_unknown; no restart was needed.
+
+Private evidence under the successful isolated root is
+`timeout-003-{stop-evidence,inspection-evidence,resolution.result,completion-evidence}.json`,
+its original intent, actual English/Chinese console captures and the Robrix
+`scene_timeout003_complete.png`. This closes the actual operation-deadline and
+explicit UI continuation case. It grants no unknown-media settlement or seamless
+restart; original PID20841 and all historical failures remain preserved.
+
+
+### Current checkpoint: local factory source and rate-limit interruption
+
+ADR172 optional project-inbox adoption passes authenticated TLS fixtures and live
+root3 adoption. ADR173 provider-owned local Codex factory joins pass actual offline
+two-agent/two-round task, private approval, encrypted file and final reply tests.
+Each agent keeps its workspace/context; the original provider directories stay
+shared only through the explicit retained LocalCodex selection. No managed login
+is fabricated. All warm8 selectors pass across suite/focused runs. The two
+historical configured-fleet regressions also pass when explicitly run on macOS.
+Strict Clippy and library42/bootstrap20/CLI8 pass. The factory still exposes only
+its DM to task intake; shared-project routing remains a separate implementation
+gap and is not covered by those private-DM successes.
+
+The new root3 `local-native-palpo-fleet-20260917T212730Z` created three accounts
+and four rooms; its original registration429 was retried only after cooldown.
+PID95426/port19432 then reached ready. Both it and root2 PID15469 hit Remote(429)
+at21:33:15 UTC and stopped intake with transport/DM scopes unavailable. Their
+exact failing endpoints are unknown. Root2 preserved18 completed/3 unknown/
+1 superseded dispatches; root3 had zero dispatches, before target1 could admit.
+Both services closed exit0, original SDK stores intact. Preserve these failures.
+
+ADR174 adds bounded retries only for complete429 JSON GET responses, keeping one
+original request deadline and all mutation/unknown-custody rules. Focused TLS3
+pass; broader validation is underway. Recovery is staged with root2 transport6,
+root3 transport2, new sessions/workspaces and fresh DM scope generation3. No
+unavailable scope is revived at its old incarnation. PID20841 stays retained.
+These stages are not live two-agent qualification or completed migration.
+
+
+### ADR174 validation and live two-agent DM rounds passed
+
+Final Matrix validation passes224 tests: library193 (including rate-limit3),
+transport9, token-provision9, upload7 and download6. The serial library run took
+733.80s; all original test handles completed. Strict all-target native/Matrix/
+execution Clippy with browser features and locked native build pass. Initial
+commands used nonexistent feature/test-target names; those command failures are
+retained and not test failures or passes. No ordinary tests contacted live services.
+
+Both isolated services were re-adopted under fresh transport/session authority,
+with their original SDK stores and a restored DM generation3 after unavailable2.
+They run the same retained `bin/hagency-adr174`, SHA256
+`58e215add042a2b150221dd14df42413bbb604ba42471a0472c102af05a8282b`.
+Root2 is PID17433, port19431, transport6/session006; root3 is PID18059, port19432,
+transport2/session002. Both report ready. Previous failed instances and their
+clean-close receipts remain. The original unknown-upload PID20841 stays retained.
+
+Root3's real native factory created two agents in the same project, each with its
+own encrypted DM, SDK owner, original local Codex process, home and workspace.
+The retained target1 request was processed after restart without resending it.
+The actual owner joined both new DMs, and actual Robrix submitted two tasks per
+agent. Four dispatches completed with canonical Done, exact different bytes at
+the same relative isolation-marker.txt path, encrypted delivered replies bound to
+the correct sender/DM and zero leases. Round2 observed both original tasks Started
+concurrently. The authenticated unencrypted project history reaches m.room.create
+and contains none of the private markers; no group task was submitted.
+
+The initial UI audit clicked sidebar coordinates but captured the other selected
+room and failed. Preserve this harness failure; its two completed tasks were not
+resent. Stable named tabs, whole-message equality and actual selected-room captures
+then establish all four final replies. Snapshots also contain hidden-tab widgets,
+so their coordinates alone are insufficient. The round1 resumed observation took
+6.18s and round2 52.08s; the former is not original task latency and neither is a
+throughput claim. Evidence is `two-dm-completion-evidence.json`, per-round receipts,
+original/resumed scripts and logs, actual Robrix frames and
+`project-private-marker-audit-complete.json`. The first short-page audit alone did
+not prove history exhaustion; the final audit explicitly reaches room creation.
+
+These results qualify the bounded two-agent private-DM task path. Factory
+shared-room task intake, multi-agent file/approval interaction, sustained soak,
+positive sandbox-denial witnesses, unknown-media recovery, seamless restart and
+native picker UI remain. Codex remains first, then Claude, then Octos. No formatter,
+commit, PR, production cutover or unavailable agent-spec lifecycle pass.
+
+
+ADR175 follow-up (2026-09-17): the four passing root3 DM tasks do not qualify
+multi-agent files. The next file test retains a protocol failure on agent2 and
+an uncertain room publication on agent1 after accepted Robrix approval/upload.
+Both original tasks remain unknown, leases2, PID18059 retained; do not resend the
+file or reconstruct an SDK owner. Per-agent bounded diagnostics now reach the
+protected operator surface; fixed failure logs preserve future causes. Offline
+library44/configured-local-fleet1 and strict Clippy pass. Root2 session006 passes
+an actual new Robrix task. A separate authorized diagnostic fleet is in progress
+on port19433; see the latest progress entry and ADR175 for evidence and limits.
+
+
+ADR176 current checkpoint (2026-09-17): shared optional Matrix request pacing is
+offline-qualified (TLS3, native45, configured-local-fleet1, strict Clippy/build).
+The intermediate diagnostic fleet's coordinator hit429 during target2 provision;
+its uncertain effect is preserved and original PID62001 closed0 with no tasks.
+Completed root2 PID17433 also closed0 to reduce test traffic. Preserve unknown
+owners PID20841/PID18059. The fresh paced fleet is PID83315/port19434 under
+`local-native-palpo-paced-20260917T223343Z`, with one250ms shared request cadence.
+Live qualification is in progress; see progress for exact evidence and limits.
+
+
+Current live checkpoint after ADR177: root5 PID83315/port19434 has four passing
+concurrent DM tasks on the selected pair1&3, plus working actual approve/deny
+isolation. Agent3's approved file002 has independently verified34-byte plaintext,
+but its final reply incorrectly claimed failure from a nonterminal unknown view.
+Agent1's denied task created no upload. The project history reaches room creation
+with no private qualification markers. Preserve these separate verdicts; this is
+not a fully passing file workflow or shared-room task qualification. Agent2's
+original pre-operation Worker failure and Queued input remain untouched, so
+fleet readiness remains degraded. Root6 hit429 before any dispatch and closed0;
+its uncertain provisioning effect remains preserved.
+
+ADR177 adds bounded read-only polling guidance without changing receipt status,
+authority, retry or completion semantics. Native library45/file-service7/MCP6,
+strict Clippy, build and caller audit pass. Root2's prior session006 closed0;
+explicit session007/transport7/DM-generation5 passed a fresh actual Robrix file
+task with exact31-byte delivered content and correct final reply. Original
+PID56393 then closed with observed exit0. Intermediate provider tool outputs
+were not retained; the deterministic MCP test covers the unknown polling boundary.
+Unknown owners PID20841/PID18059/PID83315 remain retained. Continue
+Codex qualification before Claude, then Octos; see progress for exact evidence.
+
+
+ADR178 factory project inbox (2026-09-18): resolve main-room sessions per original
+transport/room generation from the factory collector's own authenticated Group
+observation plus the matching available writer row. Refresh only room metadata;
+retain provider/account/workspace bindings. Plaintext project execution requires
+an explicit host-only Group selection and exact registered-project writer check.
+Private DMs remain encrypted and each agent retains its original workspace.
+Exact mentions pass the real two-agent configured fixture, followed by private
+DM tasks with no project leakage. Matrix197, owned-claim12, native library45,
+configured fleet5, and both corrected macOS cleanup fixtures pass; strict Clippy,
+locked build and caller audit pass. Earlier newly enabled fleet runs intermittently
+failed (peer EOF; one initial Domain refusal), still unresolved and retained in
+progress. Synthetic method/receipt diagnostics now aid further reproduction.
+Live root7 with pinned ADR178 binary and1s Matrix pacing is in progress; no live
+project success or automatic thread discovery claim yet. Preserve original unknown
+owners20841/18059/83315. Continue Codex, then Claude, then Octos.
+
+
+ADR179 adds optional matrix_sdk_timeout_ms (existing10..60000ms bounds, default20s)
+selected before startup. The same frozen Limits.sdk reaches approval/coordinator/
+factory; running deadlines, HTTP limits and task budgets do not change. Root7
+at1s pacing reproduced fresh approval enrollment cancellation at20s and exited1
+with zero tasks; preserve its partial SDK. The synthetic configured regression
+retains that negative case and proves a separate original60s enrollment/close.
+Native46/configured fleet5/CLI8 and strict Clippy/build/caller audit pass; bootstrap
+plaintext roundtrip was intermittent under concurrent load, then passed alone.
+Fresh authorized root8 PID49126/port19437 is starting with60s SDK budget and1s
+pacing. This is not a live qualification pass; see progress for original evidence.
+
+
+Native private configuration for a paced fresh fleet may select
+`"matrix_request_interval_ms": 1000` and `"matrix_sdk_timeout_ms": 60000` before
+starting the service. The first value is a shared per-process request cadence;
+the second is each original SDK/enrollment job's fixed maximum duration. The
+20s SDK default remains when omitted. Both must fit the actual startup and
+operation flow; neither setting guarantees server quota or permits a running
+job to extend its deadline. Do not apply the settings to revive incomplete
+SDK custody. The read-only `provision existing` adoption command uses its own
+bounded HTTP client; these driver fields do not configure that command.
+
+
+Latest root8 live evidence: ADR179 approval/coordinator startup passed and both
+factory targets became Active. Agent1 stopped pre-task with generic unknown;
+agent2 admitted unaddressed project text with wake0, then selected its exact
+project mention but lost warm-runtime authority before Started. No project reply,
+no file/model replay, zero leases; PID49126 and original SDK/runtime state remain
+retained. This is not a full project or two-agent qualification pass. Progress
+records exact task/dispatch and private evidence. Investigate retained runtime
+and guardian observations before another live attempt; no historical cause is
+asserted. Preserve older unknown owners20841/18059/83315 too.
+
+### Root8 lost authority explained; macOS tracker amended (2026-09-18)
+
+The project-room failure is not specific to project rooms. Any process on the
+host whose parent exits between two guardian censuses stopped the owned tree, and
+the warm idle loop recorded it as LostAuthority; the longer root8 idle and the
+concurrent builds made it near certain. ADR029's session-scoped group evidence
+amendment classifies such newcomers soundly and keeps the refusal for the rest.
+Offline reproduction and regression tests pass; see docs/progress.md. Next for
+Codex end to end: repeat the two-agent project-room run on a fresh isolated
+instance built from this change, then groups/DMs, uncertain-media recovery,
+outside-workspace sandbox qualification and the sustained soak.
+
+### Live two-agent runs after the tracker change (2026-09-18)
+
+The tracker change holds live: a warm runtime survived ten idle minutes under
+load and its project-room task reached `running`. Two further defects surfaced
+and are fixed: a factory inbox plan superseded inside one poll ended the earlier
+agent (ADR178 amendment, validated live), and the `systemError` thread status
+hid a provider refusal as an unsupported event (ADR036 amendment). The blocker
+for a completed live Codex task is now external: the operator's provider usage
+limit is exhausted until 2026-09-24. Still open for Codex end to end once it is
+lifted: a completed two-agent project-room reply, groups/DMs, uncertain-media
+recovery, outside-workspace sandbox qualification and the sustained soak; and the
+shared Palpo rate-limit bucket, which ended one coordinator with a Matrix timeout.
+
+### Two-agent project-room path passes live (2026-09-18)
+
+Coordinator and two factory agents healthy together; unaddressed input admitted
+without wake; exact mentions to both agents executed concurrently on local Codex
+and completed: canonical Done, exact files, delivered replies visible on the
+homeserver, zero leases. Conditions, recorded in docs/progress.md: a private
+`gpt-reserve` policy overlay (provider quota), the homeserver's registration and
+general limiters disabled, and no shared request pacing, which starves inline
+provisioning of a second agent while the first is alive. Remaining for Codex end
+to end: a sustained multi-round soak on this setup, groups/DMs beyond this case,
+uncertain-media recovery, and outside-workspace sandbox qualification.
+
+### Codex functional tests before the soak (2026-09-19)
+
+Run on isolated two-agent instances against the existing homeserver, with the
+private qualification model overlay; details in docs/progress.md.
+
+Passing: encrypted DM task through Robrix; outside-workspace sandbox refusal,
+including the other agent's workdir; `send_file` with a real owner Approve once and
+with Deny; DM isolation from the plaintext project room; a second agent's DM task
+during the first agent's long task; the long task itself (above). Receive-file was
+qualified on 2026-09-17; only the headless attachment picker is unavailable.
+
+Mitigated, NOT fixed: cross-agent context bleed. A request addressed to another
+participant rode along in the frozen inbox as unlabelled context and was carried
+out instead of the waking request. The ADR178 instruction names the waking entry
+as the request; it held through a live rerun and about fifty soak rounds, and then
+failed once on the identical inbox shape with the new instruction present. An
+instruction is not a control. The TypeScript product never put a message addressed
+to another participant into this agent's task at all; that structural rule is
+still owed here.
+
+Open, product: (1) coordination tools are unreachable by a live Codex agent (row
+above). (2) Restart and recovery: a plain restart ends at Startup because the
+generation is fenced; only explicit fresh-generation provisioning is qualified
+(2026-09-17, single adopted engagement). (3) Fleet lifetime against a real homeserver endpoint. Three fleets ended after
+6, 10 and 16 minutes: one connection-level failure ends its worker for good
+(ADR174 retries only a complete 429), and in one fleet a single worker's Transport
+failure took the other two with Generation within 240 ms. Cause of the Transport
+failures, from a private diagnostic build that prints what the product discards:
+`ConnectError("tcp connect error", TimedOut)` -- the 5 s connect budget elapsing
+with no TCP handshake. An independent once-a-second probe caught the same instant:
+the homeserver port timed out while the same host answered on two other ports and
+an unrelated host answered too. So it is port-level reachability of that one
+endpoint: not the client machine, not the product's requests, and -- the server's
+kernel counted no listen-queue overflow -- not the listener's accept queue.
+Earlier, a probe of 7,500 fresh connections saw 8 such connect timeouts in two
+bursts, one stalling three parallel loops for at least 16 s. Which device or rule
+in front of the port loses the SYNs is NOT established (it needs root on the rig),
+and one fleet's failure had no matching probe event, so a second, per-connection
+mode is not excluded. The TypeScript product retried with backoff; whether to
+extend ADR174 to connection-phase failures of idempotent reads, or to qualify a
+resumable fence, is an operator decision. Until then a sustained run is bounded by
+the endpoint, not by the task machinery, and the soak runs as fresh-fleet cycles.
+
+### Codex soak as fresh-fleet cycles (2026-09-19)
+
+Because a fleet's lifetime is bounded by the endpoint (above), the soak ran as
+fresh two-agent fleets of eight rounds each -- both agents addressed at once in
+the shared project room, every round verified for exact files, delivered replies
+visible on the homeserver, canonical Done and zero leases -- on a build carrying
+the ADR178 inbox instruction, the private qualification model overlay and a
+private transport diagnostic (neither committed).
+
+Result: 11 fleets, 50 rounds, 100 tasks passed with no wrong result; round time
+24-48 s, mean 38 s. With the ten-round fleet run before it, 60 rounds and 120
+tasks. From the second round on, each agent's frozen inbox carried the other
+agent's previous request as context; none was carried out.
+
+It was not a clean soak. Five fleets completed and closed cleanly. Four were ended
+by the endpoint: `Error(Connect, TimedOut)` each time, a single failed connect
+ending its worker (agent once, coordinator three times). Two were ended by the
+product:
+
+- A refused command approval ends the agent. Codex asked for
+  `item/commandExecution/requestApproval` during a plain file task; the adapter
+  answered `Policy`, the host closed the session (`host_closed`, whole tree
+  stopped) and the dispatch became outcome-unknown with its owner retained. The
+  TypeScript product denied and carried on. One occurrence in 100 tasks; which
+  validation refused it is not recorded by the product.
+- Both agents' Codex peers reached end-of-file within 6 ms (`peer_eof`, stage
+  update, cleanup unknown). Cause NOT established: the provider answered a ping,
+  no crash report, nothing in the system log, one occurrence. The service then
+  refused SIGTERM ("shutdown incomplete; original owner retained") although its
+  only children were two defunct processes it had not reaped.
+
+Also seen while bringing fleets up, and recorded as a probable concern rather than
+a traced defect: inline provisioning requires the owner to have joined the new
+agent's DM (`enrollment/provisioning.rs`) inside the 60 s SDK budget. When the
+test rig's owner-join helper failed, provisioning timed out and the coordinator
+was fenced for good -- a human owner would routinely take longer than that. (Seven
+fleets were lost to that helper, a rig defect: its unfiltered owner sync had grown
+past its own bounds. Those fleets are excluded from the soak counts.)
+
+### After the operator decisions (2026-09-19)
+
+Three decisions were taken and implemented; each has offline tests, and the whole
+workspace passes (147 suites, 1233 tests).
+
+1. Connection failures (ADR174 amendment). A JSON request whose dial failed before
+   any connection existed is redialled inside its original deadline, and JSON GETs
+   reuse connections; every write still dials a fresh connection and is sent at
+   most once; uploads, downloads and a lost response are unchanged, and a TLS
+   verification failure is never redialled. It landed GET-only and was widened the
+   same day: live, one failed dial of `POST keys/query` stopped the approval pump
+   and ended the coordinator and an agent. Live since then: one fleet ran sixteen
+   rounds in twelve minutes with no transport failure and no redial needed, so the
+   redial itself has not yet been observed live.
+2. Coordination tools (ADR180), above.
+3. A Codex approval request the adapter refuses by policy is declined instead of
+   ending the turn (ADR046 amendment). Not observed live again: the request is
+   model-initiated and was seen once.
+
+What now ends a live fleet, in the order met:
+
+- Both agents' guardians exit together. Third occurrence: both owned attempts fail
+  within 2 ms (`peer_eof`, cleanup unknown); the service's two children are defunct
+  with exit code 1, which the unix guardian returns only after a stop whose
+  whole-tree cleanup is unproven. The guardian's stderr is discarded, so its stop
+  cause is lost. The macOS whole-system census is the one cause two independent
+  guardians share; that is a reading of the evidence, not a proof. The service then
+  refuses to shut down over the two unreaped children.
+- An owner approval that is not answered ends the agent when the owner wait
+  expires (outcome-unknown, owner retained). Seen three times while qualifying
+  coordination.
+- The context bleed, above.
+
+Also open: delegated work is never delivered (no task-notice pump in the fleet
+service); no tool tells an agent a peer's engagement ID; a refused argument shape
+returns only "invalid native command or runner context"; peer messages have no
+production wake lane; restart and recovery are unchanged. The official model is
+unavailable until 2026-09-24, so every live run here used the private qualification
+overlay and nothing has been qualified on the unmodified binary.
+
+### Live validation of the 2026-09-19/20 batch, and the first passing soak (2026-09-20)
+
+Heads c52b4ed1 to 1427fbf7. Every gap the previous section lists as what ends a
+live fleet was closed offline first and then met live; the live runs found five
+more defects the offline suites could not, and each was fixed and pushed the same
+day. The official model became available again during the session, so the last
+qualification ran on the unmodified binary.
+
+Passed live:
+
+- Delegation end to end, four times (ADR180 delivery): the delegator is approved
+  once, the assignee posts its own task notice, the intent activates, and the
+  assignee writes the exact file in its own workdir and replies. It used to stay
+  pending forever.
+- An owner approval nobody answers is denied by the host at the owner bound with
+  its own durable reason, the agent replies and carries on, and the fleet stays up
+  (ADR046 amendment), three times.
+- 175 detached unrelated survivors spawned during a live delegation: no guardian
+  refusal (ADR029 session evidence).
+- The connect redial rescued a request live for the first time: one timed-out dial
+  of `POST keys/query`, redialled, no failure. It cannot rescue two consecutive
+  5 s connect timeouts, which spend the whole 10 s request budget.
+- Qualification on the unmodified binary 1427fbf7 with the official model and no
+  policy overlay: three verified two-agent rounds, one delegation, one expiry, and
+  a clean one-second shutdown.
+- Soak: one fleet, 100 rounds, 200 tasks, 200 replies delivered and present on the
+  homeserver, no wrong answer, no lease, 63 minutes, through an hourly updater
+  wake, zero guardian refusals, zero failed census rows, zero redials needed. It
+  ran on the tracing build with the official model. The same soak on the
+  unmodified binary reached 28 rounds and lost an agent to
+  `ancestry_unconfirmed`; see below.
+
+Defects only the live runs found:
+
+1. The host's expiry deny was a second writer the approval pump did not expect:
+   the pump read a request as pending, the deny landed during its service turn,
+   the intake's target read refused, the pump stopped and every agent ended. A
+   planned request that is durably decided now leaves the plan (ADR046).
+2. A delegation was delivered and then done wrong: the assignee's payload held the
+   owner's message to the delegator but not the task, and it carried out the
+   message. The payload now carries `task` and `delegated_by` (ADR180); nothing
+   was removed from the inbox.
+3. The recorded stop cause named the first soak's killer on its first use:
+   `observation_failure:ancestry_unconfirmed`, four daemons of an hourly launchd
+   updater, each alone in a session of its own. Coalition evidence, negative only,
+   now classifies them (ADR029); two later soaks ran through that wake untouched.
+4. `observation_failure:census_failed` thirty rounds into the next soak: one
+   unrelated row read mid-exec failed the whole sweep. The row is re-read, bounded
+   (ADR029). Reproduced offline within a few hundred sweeps.
+5. A model finished its work, named the wrong task on completion, read only that
+   the ID differed and gave up. The refusal now names the assigned task ID.
+
+Still open, in the order they limit a long run:
+
+- A process in the service's OWN coalition that daemonizes through a parent no
+  census saw still stops every guardian. Seen three times: once it was the
+  operator's own `ssh` leaving a background master from the terminal that had
+  started the service, twice the process was never named. A service started by
+  launchd has a coalition of its own, which would leave this to the owned tree.
+- A provider refusal (usage limit) surfaces as `session_error: scope` and ends
+  the agent instead of failing the task. That is what ended one 77-round soak.
+- The context bleed is reduced, not closed: once in about 450 live tasks an agent
+  whose payload named it correctly still carried out the other agent's
+  near-identical request. None in the last 300.
+- A service holding a retained owner after an owned-attempt failure ignores
+  SIGTERM; a healthy one closes in a second.
+- Hosted Ubuntu was red on three of five runs on three different fixtures, none
+  touched by these commits; macOS is green.
+- Unchanged: restart and recovery, the owner-join wait, follow-ups in a delegated
+  thread, a completion report to the delegator, peer ID discovery, a peer-message
+  wake lane. The policy decline of a refused command approval has still not been
+  seen live.
+
+### Two parity gaps the operator pointed at, and what the retained product does (2026-09-20)
+
+Both were found by treating a live failure as a new problem. The retained product
+had already answered each; read it first next time.
+
+**Who a room message is for.** The retained product separates listening from
+being asked. A room member may read every message (`messageVisibleToAgent`), but
+its inbox holds only direct messages and room messages that @mention its name
+(`messageTargetsAgent`, `getUnreadInboxMessages`). A dispatch's `inbox` is only
+those targeting messages, and the rest of the room is a frozen per-dispatch
+window the agent reads on demand through `read_conversation`, with speaker
+identities, in order, eight parts at a time, at most two hundred parts; its room
+position advances only as far as it actually read (`router/src/conversations.ts`,
+`router/src/store.ts` payload, `lib/mcp-server-core.js`). The migration inventory
+lists `read_conversation` as to be ported and it never was. The native agent
+inbox (ADR178) instead embedded the whole window in the payload with a `wake`
+flag and an instruction naming the last entry as the request; live, an agent
+carried out the other agent's near-identical request that sat earlier in that
+list. Hiding the other message was rejected by the operator, and telling the
+agent who it is only reduced the rate. The port of the retained design is in
+progress: nothing is hidden, and nothing that is not addressed to the agent is
+put in front of it as a request.
+
+**What a failed turn does.** The retained product settles the DISPATCH as
+outcome-unknown with the provider's text as the reason, blocks the task, marks a
+written workspace dirty, posts a notice in the thread ("Result uncertain: the
+runner stopped after work may have started. Inspect the workspace before
+retrying; this dispatch will not be run again automatically."), and quarantines
+that one session: later requests in it are answered with "Waiting: a previous
+runner in this session stopped… An operator must inspect and resolve that outcome
+before another turn can run", until an operator inspects and resolves it
+(`settleUnknownInternal`, `beginOutcomeInspection`, `resolveOutcomeUnknown`). The
+agent's runner loop stays alive throughout. The native store has the same
+quarantine and a `recover-dispatch` console route, but the continuous driver
+returns the attempt's failure and the agent's worker ends for good, silently:
+nothing is posted to the room, later requests get no answer, and resuming needs a
+service restart, which is its own open problem. The native port also turns every
+turn that did not complete into a protocol failure, where the retained product
+records the provider's own words. Closing this gap is the first slice of the
+recovery work and wants the operator's decisions on restart alongside it.
+
+### Both parity ports landed and soaked on the unmodified binary (2026-09-20, later)
+
+Heads 19896506 (an agent listens to the whole room but is only asked what
+addresses it, ADR178) and fa2fbba6 (a process nobody can place is not owned,
+ADR029). Hosted CI is green on both, Ubuntu included.
+
+Live, on the unmodified binary with the official model and no overlay: one fleet,
+84 rounds, 168 tasks, 168 replies, no wrong answer, no lease, 56 minutes, and no
+guardian stop. With the inbox port alone the previous soak had reached 94 rounds
+before the other agent's `rustup` stopped a guardian; that cause is gone. Checked
+in the live store during the run: every dispatch inbox held exactly one entry, the
+one mentioning its own agent; the frozen discussion held the rest of the room;
+and every dispatch called `read_conversation`.
+
+What ended this soak is the one item that had never been seen live: a Codex
+command approval the adapter refuses by policy. `session_error: policy`,
+`server_request: command_approval`, one server request left pending, host closed.
+The adapter accepts a command approval's `availableDecisions` only when it offers
+both `accept` and `decline`, and answers a policy refusal with the family's own
+decline only when `decline` is offered; otherwise the session ends, and a failed
+turn still ends the agent. The retained product refuses nothing here: every
+command, file-change and permissions approval is parked and sent to the owner,
+and the answer is `accept` or `decline` whatever list the request carried
+(`router/src/runner.ts`, `approvalResponse`). Which requests reach the owner is
+the operator's policy, so this is recorded, not changed. Seen twice in about 650
+live tasks.
+
+Still open, in the order they limit a long run: that approval policy; a failed
+turn ending the agent's worker instead of only its session (above); a service
+holding a retained owner ignoring SIGTERM; restart and recovery; the owner-join
+wait; follow-ups in a delegated thread and a completion report to the delegator.
+
+### Approval parity landed; what now ends a soak is a single failed turn (2026-09-20, night)
+
+Head 059b50d3: no approval is refused by its shape (ADR046), as the retained
+runner does. With the inbox, guardian and approval parity ports together, the
+unmodified binary ran 28 clean rounds (56 tasks) and then stopped on one turn the
+provider failed. The model answered again seconds later, so it was transient.
+The status is now truthful, `protocol: failed` with no session error (it used to
+read `scope`), the process tree was proven stopped, and no approval, guardian or
+wrong-agent problem occurred in any of the three soaks since the ports: 94, 84
+and 28 rounds, 412 tasks, no wrong answer.
+
+So the next limit is the one recorded above under "What a failed turn does". Two
+facts narrow it. The continuous driver already waits for an operator's resolution
+after a failed attempt whose tree is proven stopped and whose stop inspection is
+recorded, and carries on afterwards; that is the retained product's session
+quarantine in another shape. But the fleet snapshot reports `failed` as soon as
+any agent's status carries an error, so an agent that is alive and waiting is
+indistinguishable from a dead one, and nothing is said in the thread. The notice
+lane cannot say it yet either: it is built for delegated-task notices only, and a
+notice for a task with no delegation record is retired at the next reconcile.
+Closing this means a status that tells waiting from dead, a thread notice in the
+retained product's words, and a notice lane that admits an ordinary task. The
+last is a custody rule change and wants the operator's wording first.
+
+### The soak passes on the unmodified binary (2026-09-21)
+
+Head be8481f3, unmodified binary, official model, no overlay, no tracing: one
+two-agent fleet, 100 rounds, 200 dispatches completed, 200 tasks done, 200 replies
+delivered and present on the homeserver, no wrong answer, no wrong-agent
+execution, no lease, fleet never failed, 65 minutes, through two hourly updater
+wakes. The service then closed by itself after SIGTERM, in more than 90 seconds.
+
+What it took since the first passing soak on a tracing build, each found by a live
+run and each already answered by the retained product once it was read: the inbox
+holds only what addresses the agent and the room is read on demand (ADR178); a
+process nobody can place is not owned (ADR029); no approval is refused by its
+shape (ADR046); an unknown outcome is said in the thread and a waiting agent is
+seen to wait (ADR162, ADR045). The last was proved live by forcing failed turns
+on an exhausted model: both agents reported `protocol: failed` with
+`awaiting_operator`, the fleet stayed up, and the room showed both "Result
+uncertain…" notices.
+
+Open, none of which a soak exercises: an agent that waits for the operator takes
+in nothing until the operator resolves it, and the retained product's "Waiting…"
+answer to later requests is not ported; the operator's resolution is the console
+recover route, which no rig drives yet; restart and recovery; the owner-join wait;
+follow-ups in a delegated thread and a completion report to the delegator; a clean
+close that takes over 90 seconds after a long run.
+
+### A clean stop no longer bricks the next start (2026-09-21)
+
+Operator decision: a clean stop fences nothing, as in the retained product, which
+invalidates nothing at shutdown and whose standing grants and queued work survive
+a restart. Two rules landed, both as an amendment to ADR047 (with pointers in
+ADR064 and ADR096).
+
+1. A clean close writes nothing to the domain. The collector and the approval
+   collector still stop uploads, wait for the SDK shutdown and report its error;
+   they no longer invalidate the transport incarnation or fence the approval
+   room. Until now an orderly stop was more destructive than a crash: it made the
+   configured generation unavailable, so the next start was refused, and in the
+   same transaction it retired sessions, cancelled queued dispatches and pending
+   replies and revoked every standing approval grant.
+2. A cancelled read is not negative evidence. The first live check found the
+   second cause: the service's own shutdown token cancelled a refresh whose whoami
+   was in flight, and the collector fenced "after any incomplete collection". An
+   idle agent spends most of its time in that refresh. On paths that only read
+   the homeserver (collection, intake staging, the intake status whoami, the
+   approval room refresh) the caller's cancellation now fences nothing. A path
+   that may have a write in flight still fences on cancellation.
+
+Live, working-tree binary, official model: one two-agent round passed, then six
+clean stop and start cycles on the same state directory. Every stop took about a
+second, every start was ready in two seconds, all three transports and the
+approval room stayed available at the same generation, and the coordinator came
+back healthy each time. Three of the six stops were timed to land while the
+coordinator's own refresh was in flight (each log records one cancelled
+refresh); before rule 2 that fenced the coordinator and refused the next start.
+
+What a restart still does not do: the inline factory agents are held in memory
+only and do not come back, clean stop or crash alike. The retained product
+persists each agent's record, credential and sync position and re-attaches them at
+startup, skipping (not failing on) an agent that cannot come back. That is the
+next slice.
+
+### A restart brings the factory agents back (2026-09-22)
+
+Operator decision: follow the retained product. It brings its agents back at
+startup from what it persisted, stored credential first, never registering
+again, and skips an agent that cannot come back. The native port had kept
+everything an agent needs across a restart (token in encrypted custody, SDK
+store, rooms custody, home, domain rows) and then refused to use any of it,
+because each piece was gated on "only while provisioning". The fleet listed one
+worker of three and reported healthy.
+
+What landed (ADR147 amendment, task rust-factory-agent-reattach): at fleet
+start, before discovery, each engagement whose provision this factory completed
+is rebuilt read-only. The store rebuilds the original claimed scope and proves
+it by recomputing the completion's receipt digest; the home is reopened without
+a write; the account custody is read in a mode whose single register/login path
+refuses; the rooms custody is replayed with create, invite and join refusing;
+the enrolled SDK is opened, never bootstrapped; the runtime is re-attached with
+no warm child, the next task launching as an ordinary follow-up. Nothing
+claims, completes, activates, uploads keys or rotates a generation. An agent
+that cannot come back is shown as `not_attached` with its Matrix cause and
+fails neither the fleet nor readiness; a provision this process already owns
+is left to discovery.
+
+The first live cycle found the last shutdown fence: a stop timed during a
+refresh cancelled a room-state read, and the collector retired the room
+("Matrix full-state observation failed"). Nothing was fenced in the stopping
+process, but in the next one every agent's first collection found the shared
+project room gone, a genuine `Generation` that fenced all three transports and
+refused every re-attach. The caller's own cancellation of a read-only room
+observation now retires nothing, as for the transport (ADR047 amendment).
+
+Live, working-tree binary, official model: one round, then two stop/start
+cycles on the same state directory, each stop timed while an agent was
+refreshing. Each start was ready in two seconds with three of three agents
+re-attached and every transport available, and a full task round passed after
+each restart. Offline, `native_configured_fleet_reattaches_after_restart`
+restarts the fixture over the same state with the domain repository reopened:
+the agent comes back, registers nothing, uploads no keys and runs its next task
+through a follow-up; with its home binding tampered it is `not_attached`, the
+fleet keeps running and its work stays queued.
+
+Known limits, both fail closed: a home does not reopen after a task-client
+binary upgrade (its binding covers the binary's length and mtime); an agent on
+a provider-managed account is not re-attached yet. Both lifted 2026-09-22: the
+re-attach now carries the reopened registry's own account binding under the
+launch's current-facts gate (`native_reattach_scope_carries_its_managed_account`;
+not proven live), and the home binding names the binary's path only, so an
+in-place upgrade reopens the home while a binary at another path refuses
+(operator decision, follow TS; `native_managed_home_reopens_after_a_restart`;
+homes recorded under the old digest need one re-provision). Still open from the restart
+list: the retained product's thread notice for dispatches a restart settled as
+unknown, and the owner-join wait.
+
+### The owner's join has no deadline (2026-09-22)
+
+Operator decisions: no deadline; the agent is not active until the owner
+joins; status only, no reminder. A new agent's DM is encrypted, so the agent's
+keys can only be shared once the owner has joined it; that wait was bounded by
+a single request's budget (at most sixty seconds), a slower human left the
+provision uncertain forever, its rooms custody could never resume, and because
+provisioning runs inline in the coordinator's intake the refusal ended the
+coordinator. The retained product never waited for the owner at all (its DMs
+were plaintext), so this was a genuine design question rather than a parity
+port.
+
+What landed (ADR147 amendment, task rust-owner-join-wait): an attempt whose
+rooms exist and whose owner has not joined within its own budget ends as
+`AwaitingOwner`, not a failure. No room is retired, the effect stays Started,
+and the rooms custody (every POST accepted, no `complete`) resumes GET-only.
+The intake counts it as success and, before every later read of the room,
+gives each waiting provision one look; the turn after the join finishes rooms,
+enrollment and the factory with nothing created, invited, joined or registered
+again. The fleet shows the wait as `awaiting_owner` with the millisecond it
+began, replaces the row with the agent on admission, and is not failed by it.
+
+Pinned offline by the tail of `native_provisioning_inline_rooms_refusals` and
+by `native_provisioning_waits_for_the_owner_without_a_deadline`, where the
+fixture's owner joins only after the first attempt's whole budget and the agent
+still finishes and runs its first task. Known limit: a restart during the wait
+leaves that provision Started, which a restarted host cannot claim; it is the
+operator's, as any Started effect is today.
+
+### An unknown outcome is said in the thread after a restart too (2026-09-22)
+
+The retained product settles a started run a restart interrupted through the
+same path as a reported failure, notice included (`reconcileOnStart` ->
+`settleUnknownInternal`). The native reopen matched it on state only: started
+and parked runs became outcome_unknown, the session quarantined, the workspace
+dirty, and the thread heard nothing; the sweep that expires a capability was
+silent in the same way. `lose()` now queues the same "Result uncertain…"
+notice the reported failure queues, best effort in its own savepoint, once per
+task, and the agent that comes back after the restart (ADR147 re-attach) posts
+it on its first turn.
+
+Live, working-tree binary: a round posted, kill -9 with both agents' dispatches
+started, restart ready in two seconds, both agents re-attached, both notices
+delivered and both "Result uncertain…" messages in the project room within
+seconds; the fleet not failed and both agents back at work. Pinned offline by
+`native_outcome_unknown_is_said_in_the_thread_after_a_restart` for the reopen
+and for the expiry sweep.
+
+### Follow-ups in a delegated thread, and why there is no completion report (2026-09-22)
+
+Read first: the retained product has no automatic completion report to the
+delegator. The assignee's final reply is posted as the assignee in the shared
+thread, an agent's message never wakes another agent, and the delegator learns
+by an explicit peer reply, by reading the task it created, or by reading the
+thread later; delegation is fire-and-forget and the runner prompt says to keep
+the task open and revisit. So the "completion report" on the open list was not
+a parity gap and is dropped as such.
+
+What is parity: a thread message that mentions the assignee reaches the task
+bound to that thread (`findThreadTaskBinding` -> `attachTaskInputs`), and only
+the original requester reopens a completed one. The native store already did
+both at admission and already minted another dispatch for the same task from
+the intent selector; the offline probe showed the one missing piece. A threaded
+event is admitted only through the session bound to its thread, and the
+assignee's intake never targeted its delegated sessions, so the owner's
+follow-up in a delegated thread was refused before anything else could happen.
+A factory agent's intake plan now carries its active delegated sessions beside
+its own (task rust-delegated-thread-followup, ADR180 amendment). Pinned by
+`native_delegated_thread_followup_continues_the_delegated_task`.
+
+The first live run with the plan change found the second half: the follow-up
+was admitted and a second dispatch for the same task ran, and the assignee did
+nothing, three times, because the dispatch reused the handed-over instruction
+("addressed to the delegator and not to you: read for context only"). A
+delegated dispatch now marks an entry this agent read from its own room as
+`follow_up` and, when one is present, its instruction says to carry the
+follow-ups out as part of the task while the delegator's own words stay
+context only.
+
+Live, working-tree binary, official model, coordination tools on: agent 1
+delegated a two-step task; agent 2 did step 1 and left the task open; the
+owner followed up in the delegated thread mentioning agent 2; a second intent
+dispatch for the same task ran; agent 2 appended the second line, read the
+file back and completed with the follow-up's reply; the task is done and the
+file holds both lines.
+
+### A request into a quarantined session is answered with Waiting (2026-09-22)
+
+The retained product answers a request into a session whose previous run
+ended unknown with "Waiting: a previous runner in this session stopped after
+work may have started. An operator must inspect and resolve that outcome
+before another turn can run." and runs nothing until an operator resolves it
+(`claimDispatch`); the native selectors refused such a session silently, so
+after a restart that settled a run as unknown the room saw the "Result
+uncertain…" notice and then an agent that ignored every new request without a
+word. Both selectors now queue that notice once per unresolved task, rooted at
+the request, best effort; the request stays unread and the selection after the
+operator's resolution takes it (ADR162 amendment, task
+rust-unknown-outcome-notice). Pinned by
+`native_request_into_a_quarantined_session_is_answered_with_waiting`.
+
+Live, working-tree binary: kill -9 mid-round, restart ready in two seconds, both Result uncertain notices posted; the next round posted two requests and both agents answered Waiting within six seconds, no dispatch was minted, no reply was sent, the fleet was not failed. Rig: tools/waiting-live.py after tools/restart-kill.py.
+
+### Operator recovery of an orphaned dispatch, live (2026-09-22)
+
+The console route `POST /console/api/agents/{id}/recover-dispatch` (ADR148)
+was driven against a live instance whose two agents' dispatches were orphaned
+by a `kill -9` mid-turn and a restart. The operator path was the real one: a
+lifecycle ticket from `hagency console-access --manage-agent-lifecycle`,
+exchanged at `/console/session` for the console cookie, the agent workdir
+listed before the post and that listing written into the evidence, the
+replacement carrying the original's resource and a new instruction. Both
+recoveries cleared the quarantine, the leases and the dirty flags; the
+re-attached agents claimed the replacements (the original inbox re-attached
+as `recoveryInbox`) and completed them with the round's expected replies in
+about 50 s; the two requests kept unread during the quarantine (the ones the
+"Waiting…" notice answered) were selected next and answered in about 106 s;
+an unauthenticated post was refused 401 and a replayed recovery 409. The
+replay carried the resources page's `resource_revision_conflict`; the route
+now says `recovery_conflict`, pinned in
+`native_console_agent_recover_dispatch_recovers_orphan`.
+
+### The delegator reads the task it created (2026-09-22)
+
+TS parity gap closed on the operator's decision: the retained `get_task(id)`
+and `list_tasks` show a runner every task bound to its own dispatches (a
+created task is bound to the creating dispatch), so a delegator can read its
+delegations. The native service already decided that visibility
+(`visible`, `runner_tasks`); the helper now passes an optional id to
+`get_task` and serves `list_tasks` (after/limit, id order), both read-only
+and both in the fixed task-tool set. Pinned in
+`native_mcp_coordination_delegation`; catalog and configuration pins
+updated (24 tools; the Codex config and Claude allow rules name six task
+tools).
+
+### Every owned attempt leaves evidence (2026-09-22, ADR-181, review gap G6)
+
+First slice of the closing order in
+`docs/reviews/2026-09-22-native-codex-architecture-review.md`. The port now
+records what the retained product records per dispatch (`runner_activity`,
+`started_at`/`parked_at`/`settled_at`, `terminal_reason` with exit identity
+and stderr tail, guardian stderr on a pipe): `runner_attempt_events` with one
+row per phase from `claimed` to `settled`/`failed`/`lost`; the attempt's clock
+and `terminal_reason` on `runner_attempts`; the failure persisted uncollapsed
+(`Failure` variant, settlement cause, protocol, cleanup with its error kind,
+stop cause/detail/report, runtime observation); `LostAuthority { site, cause }`
+at every producer, with `authority_site`/`authority_cause` in the status; the
+guardian's `refusal` category and live rows in its `Stopped` frame, its exit
+status read by the host, and its stderr on a sealed pipe kept as a 4 KiB tail;
+the leader's exit identity; lease loss naming its writer; and `tracing` in the
+executing crates. No verdict changed. Pinned by the scenarios of
+`task-rust-owned-attempt-evidence`. Not yet run live: the next lost agent is
+the first that will be diagnosable from the store.
+
+### One fact, one blast radius (2026-09-23, ADR-182, review gaps G1 and G2)
+
+Second slice of the closing order. The host now keeps the retained product's
+failure model where the store already did: a failed, unsettled or negative
+attempt ends its dispatch (the store's `outcome_unknown`, quarantine, dirty
+workspace and thread notice, unchanged) and the worker goes on to its next
+claim; a refused handoff is that attempt's failure (`spawn_failed`, the
+dispatch requeued with the 5 s launch backoff, `RUNNER_LAUNCH_RETRY_MS`);
+`wait_for_resolution` is gone and `awaiting_operator` became the count of the
+agent's unresolved dispatches. The one agent-scoped fact is the one the
+retained product has (`runner-cleanup-unconfirmed` → `manualDown`): a stop
+the guardian could not prove writes a durable `agent_fences` row, the host
+claim and both selectors return no work for that engagement, the fleet status
+reads `fenced`, re-attach honours it, and only the operator's resolution of
+the fenced dispatch (`recover_dispatch`, `resolve_stopped_dispatch`,
+`continue_stopped_dispatch`) clears it — the retained product's operator
+start. Once the fence is written the in-memory owner is dropped, so shutdown
+always completes: `Driver::close` returns `Ok` on a durable fence,
+`drain_agents` no longer withholds the factory close, `serve` reaches
+`stop_graceful`, `main` no longer parks on `pending()`. The status keeps
+`last_failure` across attempts. ADR-163's occupancy rule stays: a proven stop
+leaves the host's own inventory receipt (ADR-162) and frees the runner slot at
+once, so the agent's other sessions proceed with no operator act; a fenced
+attempt has no receipt, so the stopped-dispatch inspection stands on the
+attempt's own ADR-181 stop evidence instead, and the operator's settlement
+(`keep_blocked` / `accept_completed`) is what clears the fence; `continue`
+and the orphan recovery stay refused (the operator's choice of 2026-09-23;
+the owner-facing DM card follows in the fleet/approval slice).
+Pinned by the scenarios of `task-rust-attempt-containment`; the unproven stop
+is produced by a diagnostics-build pin in the runtime session, since no
+offline tree can outlive SIGKILL for the guardian's whole budget. Run live the same day; see below.
+
+**Live run of this slice's binary, 2026-09-23 (instance
+`local-native-palpo-live-20260923T063338Z`, 2 rounds + owner-driven tasks, console
+restart = first live re-attach, clean stop in 1 s).** Three gaps surfaced, all in
+the fleet/approval area the next slice owns, now confirmed live rather than on
+paper:
+
+1. A transient Matrix refresh timeout (13:52:39 UTC, all three agents in the
+   same second) ends every worker for good (`error=refresh`,
+   `matrix_error=timeout`); the fleet reads failed and readiness 503 until a
+   restart. The retained product retries its sync.
+2. The approval bot pins a digest of the owner's whole `/keys/query` device
+   list (`approval_delivery.rs:455-470`, ADR-137 fail-closed): the owner
+   logging in on a second Matrix client (Robrix) adds an unverified device,
+   and the next startup refuses `Recipients`. The retained product pins the
+   owner's cross-signing master key and accepts devices that key has signed.
+3. That refusal fences the approval room (`available=0`), and the store lets a
+   fenced room come back only under a new observation generation
+   (`approvals.rs:237-262`), which no operator command produces — every later
+   startup refuses `Generation`. The review's G5 "persisted Matrix fence",
+   seen live: the instance is unrecoverable without re-provisioning.
+
+Not fixed in this slice; the operator asked on 2026-09-23 for all three to be
+fixed next.
+

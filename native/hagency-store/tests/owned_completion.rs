@@ -1,0 +1,1003 @@
+mod common;
+#[path = "outcome_resolution/mod.rs"]
+mod outcome_resolution;
+use common::*;
+use hagency_core::completions::*;
+use hagency_core::{replies::*, tasks::*};
+use hagency_store::{DomainRepository, EffectOutcome, Error, OwnedDispatchScope, OwnedFailure};
+use serde_json::json;
+use std::collections::BTreeSet;
+
+struct Fixture {
+    root: tempfile::TempDir,
+    db: DomainRepository,
+    engagement: String,
+    room: MatrixRoomObservation,
+    transport: MatrixTransportObservation,
+    cap: RunnerCapability,
+    admission: OwnedDispatchScope,
+    started: OwnedDispatchScope,
+}
+fn dispatch(id: &str, session: &str, task: Option<&str>) -> DispatchInput {
+    DispatchInput {
+        id: id.into(),
+        session_id: session.into(),
+        task_id: task.map(str::to_owned),
+        resources: vec![ResourceLease {
+            id: "workspace".into(),
+            exclusive: true,
+        }],
+        payload: json!({"instruction":"Verify result"}),
+    }
+}
+impl Fixture {
+    fn new(direct: bool, root: Option<&str>) -> Self {
+        Self::named(direct, root, "dispatch")
+    }
+    fn named(direct: bool, root: Option<&str>, dispatch_id: &str) -> Self {
+        Self::configured(direct, root, dispatch_id, false)
+    }
+    fn configured(direct: bool, root: Option<&str>, dispatch_id: &str, message: bool) -> Self {
+        let temp = tempfile::tempdir().unwrap();
+        let mut db = DomainRepository::open(&temp.path().join("state")).unwrap();
+        db.register(&registration()).unwrap();
+        let pool = resource("pool", "seat", 1000);
+        db.put_resource(&pool).unwrap();
+        let p = proof(&request("one", "Worker", &pool, 100));
+        let e = db.admit(&p, 1000).unwrap();
+        db.approve("approve", &p, 1000).unwrap();
+        let effect = db.claim_effect().unwrap().unwrap();
+        db.observe_effect(
+            &effect.id,
+            effect.fence,
+            &EffectOutcome::Applied {
+                receipt: "fixture provision".into(),
+            },
+        )
+        .unwrap();
+        let transport = MatrixTransportObservation {
+            engagement_id: e.id.clone(),
+            registration_generation: 1,
+            generation: 1,
+            sender_mxid: "@worker:example.test".into(),
+            device_id: "DEVICE_1".into(),
+        };
+        db.observe_matrix_transport(&transport, 1001).unwrap();
+        let room = MatrixRoomObservation {
+            engagement_id: e.id.clone(),
+            registration_generation: 1,
+            transport_generation: 1,
+            room_id: if direct {
+                "!direct:example.test"
+            } else {
+                "!project:example.test"
+            }
+            .into(),
+            generation: 1,
+            privacy: if direct {
+                RoomPrivacy::Direct {
+                    human_mxid: "@owner:example.test".into(),
+                }
+            } else {
+                RoomPrivacy::Group {}
+            },
+            joined: BTreeSet::from(["@worker:example.test".into(), "@owner:example.test".into()]),
+            invite_only: true,
+            encrypted: direct,
+        };
+        db.observe_matrix_room(&room, 1002).unwrap();
+        let binding = SessionBinding {
+            id: "session".into(),
+            engagement_id: e.id.clone(),
+            room_id: room.room_id.clone(),
+            thread_root: root.map(str::to_owned),
+        };
+        db.resolve_verified_matrix_session(&binding, 1003).unwrap();
+        db.create_canonical_task("task", &binding.id, "Verify task", 1004)
+            .unwrap();
+        db.register_workspace("workspace").unwrap();
+        let input = dispatch(dispatch_id, &binding.id, Some("task"));
+        if message {
+            use hagency_core::{ingress::MatrixEventObservation, messages::InboundMessage};
+            let event = MatrixEventObservation {
+                scope: db.matrix_ingress_scope(&binding.id).unwrap(),
+                event: InboundMessage {
+                    server_name: "example.test".into(),
+                    room_id: room.room_id.clone(),
+                    event_id: "$original_input".into(),
+                    sender_mxid: "@owner:example.test".into(),
+                    thread_root: root.map(str::to_owned),
+                    body: "Original authenticated input".into(),
+                    kind: "m.text".into(),
+                    origin_ts: 1004,
+                },
+                mentions: BTreeSet::new(),
+                encrypted: room.encrypted,
+            };
+            let receipt = db.admit_matrix_event(&event, 1004).unwrap();
+            db.enqueue_inbox_dispatch(&input, &[receipt.sequence])
+                .unwrap();
+        } else {
+            db.enqueue_dispatch(&input).unwrap();
+        }
+        let cap = db
+            .claim_dispatch("runner", 1005, 60_000, 120_000, 8)
+            .unwrap()
+            .unwrap();
+        let admission = db.owned_dispatch_scope(&cap, 1006).unwrap();
+        let started = db
+            .start_owned_dispatch(&cap, admission.fingerprint(), 1006)
+            .unwrap();
+        Self {
+            root: temp,
+            db,
+            engagement: e.id,
+            room,
+            transport,
+            cap,
+            admission,
+            started,
+        }
+    }
+    fn finish(&mut self) -> CompletionReceipt {
+        self.db
+            .complete_task_with_reply(&self.cap, &content(), 1007)
+            .unwrap()
+    }
+    fn count(&self, query: &str) -> u64 {
+        self.sql().query_row(query, [], |r| r.get(0)).unwrap()
+    }
+    fn sql(&self) -> rusqlite::Connection {
+        rusqlite::Connection::open(self.root.path().join("state/domain.sqlite3")).unwrap()
+    }
+}
+fn content() -> CompleteTaskWithReply {
+    CompleteTaskWithReply {
+        id: "task".into(),
+        call_id: "finish".into(),
+        body: "Verified **中文 private final result**".into(),
+    }
+}
+
+fn publish_first(f: &mut Fixture) -> String {
+    f.finish();
+    let held =
+        f.db.observe_owned_completion(&f.cap, &f.started)
+            .unwrap()
+            .unwrap();
+    let ready =
+        f.db.publish_owned_completion(&f.cap, &f.started, &held, 1009)
+            .unwrap();
+    published_reply(f, &ready)
+}
+fn published_reply(f: &Fixture, receipt: &CompletionReceipt) -> String {
+    assert_eq!(receipt.state, CompletionState::Ready);
+    // Completion receipts intentionally expose no transport identifiers. Read
+    // the actual fixture row without leasing or inventing a reply.
+    f.sql()
+        .query_row(
+            "SELECT reply_id FROM owned_task_completions WHERE id=?1",
+            [&receipt.id],
+            |row| row.get(0),
+        )
+        .unwrap()
+}
+fn completed_second(f: &mut Fixture) -> (RunnerCapability, String) {
+    let pool = resource("pool", "seat", 1000);
+    let proof = proof(&request("second", "Second", &pool, 100));
+    let engagement = f.db.admit(&proof, 1010).unwrap();
+    f.db.approve("second_approve", &proof, 1010).unwrap();
+    let effect = f.db.claim_effect().unwrap().unwrap();
+    f.db.observe_effect(
+        &effect.id,
+        effect.fence,
+        &EffectOutcome::Applied {
+            receipt: "independent store fixture only".into(),
+        },
+    )
+    .unwrap();
+    let transport = MatrixTransportObservation {
+        engagement_id: engagement.id.clone(),
+        registration_generation: 1,
+        generation: 1,
+        sender_mxid: "@second:example.test".into(),
+        device_id: "SECOND_DEVICE".into(),
+    };
+    f.db.observe_matrix_transport(&transport, 1011).unwrap();
+    f.db.observe_matrix_room(
+        &MatrixRoomObservation {
+            engagement_id: engagement.id.clone(),
+            registration_generation: 1,
+            transport_generation: 1,
+            room_id: "!second:example.test".into(),
+            generation: 1,
+            privacy: RoomPrivacy::Direct {
+                human_mxid: "@owner:example.test".into(),
+            },
+            joined: BTreeSet::from(["@second:example.test".into(), "@owner:example.test".into()]),
+            invite_only: true,
+            encrypted: true,
+        },
+        1012,
+    )
+    .unwrap();
+    f.db.resolve_verified_matrix_session(
+        &SessionBinding {
+            id: "second_session".into(),
+            engagement_id: engagement.id,
+            room_id: "!second:example.test".into(),
+            thread_root: None,
+        },
+        1013,
+    )
+    .unwrap();
+    f.db.create_canonical_task("second_task", "second_session", "Independent reply", 1014)
+        .unwrap();
+    f.db.register_workspace("second_workspace").unwrap();
+    let mut work = dispatch("second_dispatch", "second_session", Some("second_task"));
+    work.resources[0].id = "second_workspace".into();
+    f.db.enqueue_dispatch(&work).unwrap();
+    let cap =
+        f.db.claim_dispatch("second_runner", 1015, 60_000, 120_000, 8)
+            .unwrap()
+            .unwrap();
+    let admission = f.db.owned_dispatch_scope(&cap, 1016).unwrap();
+    let started =
+        f.db.start_owned_dispatch(&cap, admission.fingerprint(), 1016)
+            .unwrap();
+    f.db.complete_task_with_reply(
+        &cap,
+        &CompleteTaskWithReply {
+            id: "second_task".into(),
+            call_id: "finish".into(),
+            body: "Second private result".into(),
+        },
+        1017,
+    )
+    .unwrap();
+    let held =
+        f.db.observe_owned_completion(&cap, &started)
+            .unwrap()
+            .unwrap();
+    let ready =
+        f.db.publish_owned_completion(&cap, &started, &held, 1018)
+            .unwrap();
+    let reply = published_reply(f, &ready);
+    (cap, reply)
+}
+
+#[test]
+fn native_final_reply_dispatch_claim_isolation() {
+    let mut f = Fixture::new(true, None);
+    let first = publish_first(&mut f);
+    let (second_cap, second) = completed_second(&mut f);
+    // The later owner must not take the global queue's older pending reply.
+    let claim =
+        f.db.claim_final_reply_for_dispatch(&second_cap, 1020, 1000)
+            .unwrap()
+            .unwrap();
+    assert_eq!(claim.id, second);
+    let send = f.db.preview_final_reply(&claim, 1021).unwrap();
+    assert_eq!(send.route.sender_mxid, "@second:example.test");
+    assert_eq!(send.route.room_id, "!second:example.test");
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM final_replies WHERE state='pending' AND fence=0"),
+        1
+    );
+    assert!(
+        f.db.claim_final_reply_for_dispatch(&second_cap, 1021, 1000)
+            .unwrap()
+            .is_none(),
+        "no foreign fallback"
+    );
+    let renewed =
+        f.db.claim_final_reply_for_dispatch(&second_cap, 2020, 1000)
+            .unwrap()
+            .unwrap();
+    assert_eq!(renewed.id, second);
+    assert_eq!(renewed.fence, claim.fence + 1);
+    assert!(f.db.preview_final_reply(&claim, 2021).is_err());
+    let sending = f.db.begin_final_reply_send(&renewed, 2021).unwrap();
+    assert_eq!(sending.transaction_id, send.transaction_id);
+    assert!(
+        f.db.claim_final_reply_for_dispatch(&second_cap, 3020, 1000)
+            .unwrap()
+            .is_none(),
+        "uncertain send is not a retry or foreign fallback"
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM final_replies WHERE state='uncertain' AND source_dispatch_id='second_dispatch'"),1);
+    let own =
+        f.db.claim_final_reply_for_dispatch(&f.cap, 3021, 1000)
+            .unwrap()
+            .unwrap();
+    assert_eq!(own.id, first);
+    assert_eq!(
+        f.db.preview_final_reply(&own, 3022)
+            .unwrap()
+            .route
+            .sender_mxid,
+        "@worker:example.test"
+    );
+    assert!(f.db.runner_task(&f.cap, "task", 3022).is_err());
+    assert!(f.db.runner_task(&second_cap, "second_task", 3022).is_err());
+}
+
+#[test]
+fn native_final_reply_dispatch_claim_refusals() {
+    let mut f = Fixture::new(true, None);
+    assert!(
+        f.db.claim_final_reply_for_dispatch(&f.cap, 1007, 1000)
+            .is_err(),
+        "Started is not completed"
+    );
+    f.finish();
+    assert!(
+        f.db.claim_final_reply_for_dispatch(&f.cap, 1008, 1000)
+            .is_err(),
+        "held completion is not published"
+    );
+    let held =
+        f.db.observe_owned_completion(&f.cap, &f.started)
+            .unwrap()
+            .unwrap();
+    let ready =
+        f.db.publish_owned_completion(&f.cap, &f.started, &held, 1009)
+            .unwrap();
+    let first = published_reply(&f, &ready);
+    let (second_cap, _) = completed_second(&mut f);
+    for field in ["secret", "runner", "fence", "dispatch"] {
+        let mut foreign = f.cap.clone();
+        match field {
+            "secret" => foreign.secret = second_cap.secret.clone(),
+            "runner" => foreign.runner_id = second_cap.runner_id.clone(),
+            "fence" => foreign.fence += 1,
+            "dispatch" => foreign.dispatch_id = second_cap.dispatch_id.clone(),
+            _ => unreachable!(),
+        }
+        assert!(
+            f.db.claim_final_reply_for_dispatch(&foreign, 1020, 1000)
+                .is_err()
+        );
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM final_replies WHERE state='pending' AND fence=0"),
+            2
+        );
+    }
+    // Original execution deadlines have elapsed. Only current existing reply
+    // custody may be claimed; execution must remain revoked.
+    let claim =
+        f.db.claim_final_reply_for_dispatch(&f.cap, 121_006, 1000)
+            .unwrap()
+            .unwrap();
+    assert_eq!(claim.id, first);
+    assert!(f.db.runner_task(&f.cap, "task", 121_007).is_err());
+    f.db.revoke("retire_first", &f.engagement).unwrap();
+    assert!(f.db.preview_final_reply(&claim, 121_009).is_err());
+    assert!(
+        f.db.claim_final_reply_for_dispatch(&f.cap, 122_006, 1000)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM final_replies WHERE state='pending' AND source_dispatch_id='second_dispatch' AND fence=0"),1);
+}
+
+#[test]
+fn native_owned_completion_atomic_finish() {
+    for direct in [false, true] {
+        let mut f = Fixture::new(direct, if direct { None } else { Some("$thread") });
+        for bad in [
+            CompleteTaskWithReply {
+                body: "".into(),
+                ..content()
+            },
+            CompleteTaskWithReply {
+                body: "x".repeat(32769),
+                ..content()
+            },
+            CompleteTaskWithReply {
+                id: "foreign".into(),
+                ..content()
+            },
+        ] {
+            assert!(f.db.complete_task_with_reply(&f.cap, &bad, 1007).is_err());
+            assert_eq!(
+                f.db.canonical_task("task").unwrap().status,
+                TaskState::InProgress
+            );
+            assert_eq!(f.count("SELECT COUNT(*) FROM owned_task_completions"), 0);
+        }
+        let held = f.finish();
+        assert_eq!(held.state, CompletionState::Held);
+        assert_eq!(held.execution_epoch, 1);
+        assert_eq!(f.db.canonical_task("task").unwrap().status, TaskState::Done);
+        assert_eq!(f.count("SELECT COUNT(*) FROM final_replies"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 1);
+        assert_eq!(f.count("SELECT dirty FROM workspace_resources"), 1);
+        assert_eq!(f.count("SELECT quarantined FROM runner_sessions"), 1);
+        assert!(
+            f.db.check_owned_dispatch(&f.cap, f.started.fingerprint(), 1008)
+                .is_err()
+        );
+        assert!(f.db.runner_task(&f.cap, "task", 1008).is_err());
+        assert!(
+            f.db.mutate_task(&f.cap, "task", "next", &TaskMutation::Accept, 1008)
+                .is_err()
+        );
+        let replay =
+            f.db.complete_task_with_reply(&f.cap, &content(), 1008)
+                .unwrap();
+        assert_eq!(replay.id, held.id);
+        assert!(replay.replayed);
+        assert!(matches!(
+            f.db.complete_task_with_reply(
+                &f.cap,
+                &CompleteTaskWithReply {
+                    body: "changed".into(),
+                    ..content()
+                },
+                1008
+            ),
+            Err(Error::Conflict)
+        ));
+        assert_eq!(f.count("SELECT COUNT(*) FROM task_operation_receipts"), 1);
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM task_outbox WHERE kind='transition'"),
+            1
+        );
+        let r =
+            f.db.observe_owned_completion(&f.cap, &f.started)
+                .unwrap()
+                .unwrap();
+        // Store-level trusted host seam test. This does not manufacture process
+        // evidence: actual retained-owner qualification is in owned_mcp.rs.
+        let ready =
+            f.db.publish_owned_completion(&f.cap, &f.started, &r, 1009)
+                .unwrap();
+        assert_eq!(ready.state, CompletionState::Ready);
+        assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
+        assert_eq!(f.count("SELECT dirty FROM workspace_resources"), 0);
+        assert_eq!(f.count("SELECT quarantined FROM runner_sessions"), 0);
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM dispatch_stops WHERE settled_at IS NOT NULL"),
+            1
+        );
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM runner_outputs WHERE accepted=1"),
+            0
+        );
+        let claim = f.db.claim_final_reply(1010, 1000).unwrap().unwrap();
+        let preview = f.db.preview_final_reply(&claim, 1011).unwrap();
+        assert_eq!(preview.body, content().body);
+        assert_eq!(preview.route.encrypted, direct);
+        assert_eq!(
+            preview.route.thread_root,
+            if direct { None } else { Some("$thread".into()) }
+        );
+        assert_eq!(preview.route.room_id, f.room.room_id);
+    }
+}
+
+#[test]
+fn native_owned_completion_scope_and_custody() {
+    let mut f = Fixture::new(false, Some("$thread"));
+    f.finish();
+    let r =
+        f.db.observe_owned_completion(&f.cap, &f.started)
+            .unwrap()
+            .unwrap();
+    assert!(f.db.observe_owned_completion(&f.cap, &f.admission).is_err());
+    assert!(
+        f.db.publish_owned_completion(&f.cap, &f.admission, &r, 1008)
+            .is_err()
+    );
+    let mut g = Fixture::named(false, Some("$thread"), "different_attempt");
+    g.finish();
+    let foreign_ref =
+        g.db.observe_owned_completion(&g.cap, &g.started)
+            .unwrap()
+            .unwrap();
+    assert!(
+        f.db.publish_owned_completion(&f.cap, &f.started, &foreign_ref, 1008)
+            .is_err()
+    );
+    assert!(
+        f.db.publish_owned_completion(&f.cap, &g.started, &r, 1008)
+            .is_err()
+    );
+    let wrong = RunnerCapability {
+        fence: f.cap.fence + 1,
+        ..f.cap.clone()
+    };
+    assert!(
+        f.db.publish_owned_completion(&wrong, &f.started, &r, 1008)
+            .is_err()
+    );
+    assert!(
+        f.db.publish_owned_completion(&f.cap, &f.started, &r, 31007)
+            .is_err()
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 1);
+    assert_eq!(f.count("SELECT COUNT(*) FROM final_replies"), 0);
+    // A separate stop for the same session must not be retired by this owner.
+    f.sql().execute("INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state,fence,not_before) SELECT 'other',session_id,task_id,json_set(input,'$.id','other'),digest,'outcome_unknown',1,0 FROM runner_dispatches WHERE id='dispatch'",[]).unwrap();
+    f.sql().execute("INSERT INTO dispatch_stops(dispatch_id,fence,reason,created_at) VALUES('other',1,'unrelated',1008)",[]).unwrap();
+    assert!(matches!(
+        f.db.publish_owned_completion(&f.cap, &f.started, &r, 1009),
+        Err(Error::Quarantined)
+    ));
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM dispatch_stops WHERE settled_at IS NULL"),
+        2
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 1);
+    // Move the unrelated attempt into a distinct session; shared resource custody
+    // alone must still block release/publication by the original owner.
+    f.sql().execute("INSERT INTO runner_sessions(id,engagement_id,binding) SELECT 'other_session',engagement_id,json_set(binding,'$.id','other_session','$.room_id','!other:example.test') FROM runner_sessions WHERE id='session'",[]).unwrap();
+    f.sql()
+        .execute(
+            "UPDATE runner_dispatches SET session_id='other_session' WHERE id='other'",
+            [],
+        )
+        .unwrap();
+    f.sql().execute("INSERT INTO dispatch_resources(dispatch_id,resource_id,exclusive) VALUES('other','workspace',1)",[]).unwrap();
+    f.sql().execute("INSERT INTO resource_leases(dispatch_id,resource_id,exclusive) VALUES('other','workspace',1)",[]).unwrap();
+    assert!(matches!(
+        f.db.publish_owned_completion(&f.cap, &f.started, &r, 1010),
+        Err(Error::Quarantined)
+    ));
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM dispatch_stops WHERE settled_at IS NULL"),
+        2
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 2);
+}
+
+#[test]
+fn native_owned_completion_retirement_and_receipt_namespace() {
+    for mode in ["cancel", "epoch", "revoke", "promotion", "transport"] {
+        let mut f = Fixture::new(true, None);
+        f.finish();
+        let r =
+            f.db.observe_owned_completion(&f.cap, &f.started)
+                .unwrap()
+                .unwrap();
+        match mode {
+            "cancel" => {
+                f.db.observe_owned_failure(&f.cap, OwnedFailure::Cancelled, 1008)
+                    .unwrap();
+            }
+            "epoch" => {
+                f.sql()
+                    .execute(
+                        "UPDATE canonical_tasks SET config=json_set(config,'$.execution_epoch',2)",
+                        [],
+                    )
+                    .unwrap();
+            }
+            "revoke" => {
+                f.db.revoke("revoke", &f.engagement).unwrap();
+            }
+            "promotion" => {
+                let mut room = f.room.clone();
+                room.privacy = RoomPrivacy::Group {};
+                room.generation += 1;
+                room.joined.insert("@third:example.test".into());
+                f.db.observe_matrix_room(&room, 1008).unwrap();
+            }
+            "transport" => {
+                let mut transport = f.transport.clone();
+                transport.generation += 1;
+                transport.device_id = "NEW_DEVICE".into();
+                f.db.observe_matrix_transport(&transport, 1008).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        assert!(
+            f.db.publish_owned_completion(&f.cap, &f.started, &r, 1009)
+                .is_err(),
+            "{mode}"
+        );
+        assert_eq!(f.count("SELECT COUNT(*) FROM final_replies"), 0);
+        assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 1);
+        assert_eq!(f.db.canonical_task("task").unwrap().status, TaskState::Done);
+    }
+    let mut f = Fixture::new(false, None);
+    f.db.mutate_task(
+        &f.cap,
+        "task",
+        "finish",
+        &TaskMutation::Execution {
+            heartbeat: true,
+            waiting_reason: TextPatch::Missing,
+            waiting_until: TextPatch::Missing,
+        },
+        1007,
+    )
+    .unwrap();
+    assert!(matches!(
+        f.db.complete_task_with_reply(&f.cap, &content(), 1008),
+        Err(Error::Conflict)
+    ));
+    assert_eq!(
+        f.db.canonical_task("task").unwrap().status,
+        TaskState::InProgress
+    );
+    f.db.mutate_task(
+        &f.cap,
+        "task",
+        "task_only",
+        &TaskMutation::Transition {
+            status: TaskState::Done,
+            waiting_reason: None,
+            waiting_until: None,
+        },
+        1008,
+    )
+    .unwrap();
+    assert!(
+        f.db.complete_task_with_reply(
+            &f.cap,
+            &CompleteTaskWithReply {
+                call_id: "too_late".into(),
+                ..content()
+            },
+            1009
+        )
+        .is_err()
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM owned_task_completions"), 0);
+}
+
+#[test]
+fn native_owned_completion_restart_has_no_reconstructed_owner() {
+    let mut f = Fixture::new(false, None);
+    f.finish();
+    let state = f.root.path().join("state");
+    drop(f.db);
+    let mut db = DomainRepository::open(&state).unwrap();
+    assert!(db.owned_dispatch_scope(&f.cap, 1008).is_err());
+    assert!(
+        db.start_owned_dispatch(&f.cap, f.started.fingerprint(), 1008)
+            .is_err()
+    );
+    assert!(db.claim_final_reply(1008, 1000).unwrap().is_none());
+    let replay = db
+        .complete_task_with_reply(&f.cap, &content(), 1009)
+        .unwrap();
+    assert_eq!(replay.state, CompletionState::Held);
+    assert!(replay.replayed);
+    assert_eq!(db.canonical_task("task").unwrap().status, TaskState::Done);
+}
+
+#[test]
+fn native_owned_completion_migration() {
+    let f = Fixture::new(false, None);
+    let path = f.root.path().join("state");
+    drop(f.db);
+    let sql = rusqlite::Connection::open(path.join("domain.sqlite3")).unwrap();
+    remove_owned_completion_schema(&sql);
+    // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
+    // over a receipts table that already carries the column, so strip it
+    // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
+    // Same for 033's park_reason on runner_attempts.
+    sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; DROP TABLE IF EXISTS agent_fences;")
+        .unwrap();
+    sql.pragma_update(None, "user_version", 15).unwrap();
+    drop(sql);
+    let db = DomainRepository::open(&path).unwrap();
+    drop(db);
+    let sql = rusqlite::Connection::open(path.join("domain.sqlite3")).unwrap();
+    assert_eq!(
+        sql.query_row("PRAGMA user_version", [], |r| r.get::<_, u64>(0))
+            .unwrap(),
+        38
+    );
+    assert_eq!(
+        sql.query_row("SELECT COUNT(*) FROM owned_task_completions", [], |r| r
+            .get::<_, u64>(0))
+            .unwrap(),
+        0
+    );
+    sql.execute_batch(
+        "ALTER TABLE owned_task_completions RENAME COLUMN deadline TO missing_deadline;",
+    )
+    .unwrap();
+    drop(sql);
+    assert!(matches!(DomainRepository::open(&path), Err(Error::Schema)));
+}
+
+#[test]
+fn native_owned_completion_capacity_rolls_back_done() {
+    let mut f = Fixture::new(false, None);
+    let mut sql = f.sql();
+    let tx = sql.transaction().unwrap();
+    // Seed the bounded historical storage shape, not process/cleanup evidence.
+    // The current attempt has no finish receipt and remains Started throughout.
+    for n in 1..=128 {
+        let call = format!("historical_{n}");
+        tx.execute("INSERT INTO task_operation_receipts(dispatch_id,call_id,digest,response) VALUES('dispatch',?1,'historical','{}')",[&call]).unwrap();
+        tx.execute("INSERT INTO owned_task_completions(id,dispatch_id,fence,task_id,execution_epoch,fingerprint,call_id,digest,body,route,deadline,state,created_at,updated_at) VALUES(?1,'dispatch',?2,'task',?2,'historical',?1,'historical','historical','{}',1,'cancelled',1,1)",rusqlite::params![call,n+200]).unwrap();
+    }
+    tx.commit().unwrap();
+    drop(sql);
+    assert!(matches!(
+        f.db.complete_task_with_reply(&f.cap, &content(), 1007),
+        Err(Error::Capacity)
+    ));
+    let task = f.db.canonical_task("task").unwrap();
+    assert_eq!(task.status, TaskState::InProgress);
+    assert_eq!(task.execution_epoch, 0);
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM task_operation_receipts WHERE call_id='finish'"),
+        0
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM dispatch_stops"), 0);
+    assert_eq!(f.count("SELECT dirty FROM workspace_resources"), 0);
+    assert!(
+        f.db.check_owned_dispatch(&f.cap, f.started.fingerprint(), 1008)
+            .is_ok()
+    );
+}
+
+fn stopped_fixture() -> (Fixture, String, DispatchInput) {
+    let mut f = Fixture::configured(true, None, "dispatch", true);
+    f.db.observe_owned_failure(&f.cap, OwnedFailure::Protocol, 1007)
+        .unwrap();
+    let inventory = json!({"profile":"stopped-content-inventory-v1","root":{},"entries":[]});
+    let digest =
+        f.db.record_owned_stop_inspection(&f.cap, &f.started, &inventory, 1008)
+            .unwrap();
+    let mut next = dispatch("recovery", "session", Some("task"));
+    next.payload = json!({"instruction":"Inspect previous partial output and finish only remaining work","weight":0.5,"count":1});
+    (f, digest, next)
+}
+
+#[test]
+fn native_stopped_dispatch_continuation() {
+    let (mut f, digest, next) = stopped_fixture();
+    let original = f.db.canonical_task("task").unwrap();
+    f.db.enqueue_dispatch(&next)
+        .expect_err("quarantine must block ordinary enqueue");
+    f.db.continue_stopped_dispatch(
+        &f.engagement,
+        "dispatch",
+        (f.cap.fence, &digest),
+        &next,
+        "reviewed effects",
+        1010,
+    )
+    .unwrap();
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM dispatch_stops WHERE settled_at=1010"),
+        1
+    );
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='dispatch'"),
+        0
+    );
+    assert_eq!(
+        f.count("SELECT quarantined FROM runner_sessions WHERE id='session'"),
+        0
+    );
+    assert_eq!(
+        f.count("SELECT dirty FROM workspace_resources WHERE id='workspace'"),
+        0
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM session_inputs WHERE dispatch_id='recovery' AND processed_at IS NULL"),1);
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM dispatch_inputs WHERE dispatch_id='dispatch'"),
+        1
+    );
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM dispatch_inputs WHERE dispatch_id='recovery'"),
+        1
+    );
+    let frozen: String = f
+        .sql()
+        .query_row(
+            "SELECT input FROM runner_dispatches WHERE id='recovery'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let frozen: serde_json::Value = serde_json::from_str(&frozen).unwrap();
+    assert_eq!(
+        frozen["payload"]["recoveryInbox"][0]["message"]["body"],
+        "Original authenticated input"
+    );
+    assert_eq!(
+        serde_json::to_value(f.db.canonical_task("task").unwrap()).unwrap(),
+        serde_json::to_value(original).unwrap()
+    );
+    assert_eq!(
+        f.count(
+            "SELECT COUNT(*) FROM runner_dispatches WHERE id='dispatch' AND state='outcome_unknown'"
+        ),
+        1
+    );
+    assert!(matches!(
+        f.db.recover_dispatch(
+            "dispatch",
+            &dispatch("bypass", "session", Some("task")),
+            "bypass",
+            1011
+        ),
+        Err(Error::State)
+    ));
+    let cap =
+        f.db.claim_dispatch("replacement_runner", 1011, 60_000, 120_000, 1)
+            .unwrap()
+            .unwrap();
+    assert_eq!(cap.dispatch_id, next.id);
+    let path = f.root.path().join("state");
+    drop(f.db);
+    let mut db = DomainRepository::open(&path).unwrap();
+    db.continue_stopped_dispatch(
+        &f.engagement,
+        "dispatch",
+        (f.cap.fence, &digest),
+        &next,
+        "reviewed effects",
+        1012,
+    )
+    .unwrap();
+    let mut equivalent = next.clone();
+    equivalent.payload["count"] = json!(1.0);
+    db.continue_stopped_dispatch(
+        &f.engagement,
+        "dispatch",
+        (f.cap.fence, &digest),
+        &equivalent,
+        "reviewed effects",
+        1012,
+    )
+    .unwrap();
+    let mut changed = next.clone();
+    changed.payload["instruction"] = json!("different instruction");
+    assert!(matches!(
+        db.continue_stopped_dispatch(
+            &f.engagement,
+            "dispatch",
+            (f.cap.fence, &digest),
+            &changed,
+            "reviewed effects",
+            1012
+        ),
+        Err(Error::Conflict)
+    ));
+    assert!(matches!(
+        db.continue_stopped_dispatch(
+            &f.engagement,
+            "dispatch",
+            (f.cap.fence, &digest),
+            &next,
+            "different note",
+            1012
+        ),
+        Err(Error::Conflict)
+    ));
+}
+
+#[test]
+fn native_stopped_dispatch_continuation_refusals() {
+    for case in [
+        "agent",
+        "digest",
+        "fence",
+        "missing",
+        "reason",
+        "done",
+        "task",
+        "session",
+        "resources",
+        "instruction",
+        "empty",
+        "blank",
+        "stale",
+        "payload",
+        "sibling",
+        "active",
+        "receive",
+        "upload",
+    ] {
+        let (mut f, mut digest, mut next) = stopped_fixture();
+        let mut agent = f.engagement.clone();
+        let mut fence = f.cap.fence;
+        match case {
+            "agent" => agent = "foreign".into(),
+            "digest" => digest = "0".repeat(64),
+            "fence" => fence += 1,
+            "missing" => {
+                f.sql()
+                    .execute("DELETE FROM owned_stop_inspections", [])
+                    .unwrap();
+            }
+            "reason" => {
+                f.sql()
+                    .execute("UPDATE dispatch_stops SET reason='membership_retired'", [])
+                    .unwrap();
+            }
+            "done" => {
+                f.sql().execute("UPDATE canonical_tasks SET config=json_set(config,'$.status','done') WHERE id='task'",[]).unwrap();
+            }
+            "task" => next.task_id = None,
+            "session" => next.session_id = "another".into(),
+            "resources" => next.resources[0].exclusive = false,
+            "instruction" => {
+                next.payload = json!({"instruction":"Verify result","extra":"must not bypass same instruction"})
+            }
+            "empty" => next.payload = json!({}),
+            "blank" => next.payload = json!({"instruction":"  "}),
+            "stale" => {
+                f.db.invalidate_matrix_transport(
+                    &MatrixTransportInvalidation {
+                        expected: f.transport.clone(),
+                        reason: "retired transport".into(),
+                    },
+                    1009,
+                )
+                .unwrap();
+            }
+            "payload" => next.payload = json!({"instruction":"distinct","inbox":[]}),
+            "upload" => {
+                f.sql().execute("INSERT INTO file_uploads(id,dispatch_id,call_id,request_digest,capability_digest,scope_fingerprint,route,preparation_hash,stage,stage_state,upload_state,created_at,updated_at) VALUES('pending_upload','dispatch','file','fixture','fixture','fixture','{}','fixture','{}','staged','write_possible',1007,1007)",[]).unwrap();
+            }
+            "receive" => {
+                f.sql().execute("INSERT INTO received_files(id,capability_digest,event_id,workspace_id,binding,binding_digest,byte_limit,facts,state) VALUES('pending_receive','fixture','$file','workspace','{}','fixture',1,'{}','write_possible')",[]).unwrap();
+            }
+            "active" => {
+                f.sql().execute("INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state) SELECT 'active_sibling',session_id,task_id,input,'sibling','started' FROM runner_dispatches WHERE id='dispatch'",[]).unwrap();
+            }
+            "sibling" => {
+                f.sql().execute("INSERT INTO runner_dispatches(id,session_id,task_id,input,digest,state) SELECT 'sibling',session_id,task_id,input,'sibling','outcome_unknown' FROM runner_dispatches WHERE id='dispatch'",[]).unwrap();
+            }
+            _ => unreachable!(),
+        }
+        // A reserved host input field is refused even without existing messages.
+        let before = f.db.canonical_task("task").unwrap();
+        assert!(
+            f.db.continue_stopped_dispatch(
+                &agent,
+                "dispatch",
+                (fence, &digest),
+                &next,
+                "reviewed",
+                1010
+            )
+            .is_err(),
+            "{case}"
+        );
+        assert_eq!(f.count("SELECT COUNT(*) FROM dispatch_stops WHERE dispatch_id='dispatch' AND settled_at IS NULL"),1,"{case}");
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM resource_leases WHERE dispatch_id='dispatch'"),
+            1,
+            "{case}"
+        );
+        assert_eq!(
+            f.count("SELECT dirty FROM workspace_resources WHERE id='workspace'"),
+            1,
+            "{case}"
+        );
+        assert_eq!(
+            f.count("SELECT quarantined FROM runner_sessions WHERE id='session'"),
+            1,
+            "{case}"
+        );
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM dispatch_recoveries"),
+            0,
+            "{case}"
+        );
+        assert_eq!(f.count("SELECT COUNT(*) FROM session_inputs WHERE dispatch_id='dispatch' AND processed_at IS NULL"),1,"{case}");
+        assert_eq!(
+            f.count("SELECT COUNT(*) FROM runner_dispatches WHERE id='recovery'"),
+            0,
+            "{case}"
+        );
+        assert_eq!(
+            serde_json::to_value(f.db.canonical_task("task").unwrap()).unwrap(),
+            serde_json::to_value(before).unwrap(),
+            "{case}"
+        );
+    }
+}

@@ -1,0 +1,11 @@
+-- PC-C1 fail-closed denial (ADR-137): the named reason a failed private
+-- card send denied the request. One nullable column on the receipts table
+-- PC-C3's at-most-once gate already reads; a row with denial_reason set IS
+-- the kind-deny verdict receipt minted by `deny_for_failed_delivery` (the
+-- distinct public wrapper, not the owner-verdict path), owner-verdict
+-- receipts keep it NULL. No state, no grant, no authority is added: the
+-- decision fact stays the `owner_approvals` row (state='decided',
+-- choice='deny'); this column only names why. Idempotent: recovery tests
+-- rewind user_version and replay the migration chain (ADD COLUMN on an
+-- already-upgraded table fails, matching the 025 replay posture).
+ALTER TABLE approval_verdict_receipts ADD COLUMN denial_reason TEXT;

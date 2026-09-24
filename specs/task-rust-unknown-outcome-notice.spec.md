@@ -1,0 +1,94 @@
+spec: task
+name: "Say an unknown outcome in the thread and keep a recoverable agent visible"
+inherits: project
+satisfies: [REQ-RUST-MIGRATION-EXECUTION, REQ-THREE-LAYER-COMPLETION]
+tags: [active, rust, matrix, fleet, recovery]
+---
+
+## Intent
+
+One turn the provider failed ended a live soak in silence: the dispatch was fenced
+with an unknown outcome, the room saw only an agent that stopped answering, and
+the fleet reported that agent as lost although its worker was alive and waiting
+for the operator. The retained product says so in the thread
+("Result uncertain…", `settleUnknownInternal`) and keeps the agent up. Do the same
+with what the native port already has: the fence, the verified notice lane and the
+worker's wait for the operator's resolution.
+
+## Constraints
+
+- Queue one notice, in the retained product's words, when the failure of a
+  started run is recorded, and when the reopened repository or the capability
+  sweep settles a started run as unknown (the retained product's
+  `reconcileOnStart` goes through the same settlement, notice included): for a
+  verified session only, rooted at the request the
+  dispatch was answering, once per task. A dispatch with no task, no request or
+  no verified session says nothing. Never queue it in the fence itself: a
+  successful completion retires its dispatch through the same fence.
+- Recording a failure never fails because its notice could not be addressed. The
+  attempt is its own savepoint; a refusal undoes only itself.
+- The notice lane admits an ordinary room request. A delegated task's notice still
+  lives and dies with its intent; a task with no intent at all is current on its
+  task epoch and route alone. Nothing else about notice custody changes: claims
+  stay scoped to the agent's own engagement, a stale route is never claimed, one
+  claim is never sent twice.
+- After a failed attempt the agent's own driver posts what is queued, best effort,
+  before it waits for the operator or gives up. A refused send changes nothing
+  about the failed attempt.
+- A worker that waits for the operator says so: its status carries
+  `awaiting_operator`, keeps reporting the failure beside it, and clears both with
+  the next attempt. The fleet counts an agent as lost only when it failed and is
+  not waiting.
+- No new recovery authority. The operator's resolution, the stop inspection and
+  the quarantine are unchanged. A request into a quarantined session is
+  answered once, per unresolved task, with the retained product's "Waiting: a
+  previous runner in this session stopped after work may have started…"
+  notice, rooted at the request; the request stays unread and is selected
+  after the resolution.
+
+## Allowed changes
+
+- native/hagency-store/src/domain/task_intents.rs
+- native/hagency-store/src/domain/owned_dispatch.rs
+- native/hagency-store/src/domain/notice_custody.rs
+- native/hagency-store/tests/received_files.rs
+- native/hagency/src/bootstrap.rs
+- native/hagency/src/bootstrap/driver.rs
+- native/hagency/src/bootstrap/notice.rs
+- native/hagency/src/bootstrap/fleet.rs
+- knowledge/decisions/adr-045-native-notice-custody.md
+- knowledge/decisions/adr-162-native-stopped-owner-inspection.md
+- specs/task-rust-unknown-outcome-notice.spec.md
+- docs/**
+
+## Scenarios
+
+Scenario: An unknown outcome is said in the thread once, by the agent it belongs to
+  Test: native_outcome_unknown_is_said_in_the_thread_once
+  Production caller: hagency::bootstrap::notice::deliver
+  Given an ordinary room request whose started dispatch fails
+  When the failure is recorded
+  Then one pending verified notice carries the retained product's words
+  And the task has no delegation record, yet the notice is current and only its own agent's pump can claim it
+  And observing the same failure again adds no second notice
+
+Scenario: A run a restart or an expired capability settled as unknown is said in the thread once
+  Test: native_outcome_unknown_is_said_in_the_thread_after_a_restart
+  Given a started dispatch on a verified session
+  When the repository is reopened, or the sweep finds its capability expired
+  Then the dispatch is outcome_unknown and one pending verified notice carries the retained product's words
+  And another reopen or sweep adds no second notice, and only the agent's own pump claims it
+
+Scenario: A request into a quarantined session is answered with Waiting and runs after the resolution
+  Test: native_request_into_a_quarantined_session_is_answered_with_waiting
+  Given a session whose started run was recorded as an unknown outcome
+  When the owner posts new requests into it before an operator resolves that outcome
+  Then no dispatch is minted and one verified notice carries the retained product's Waiting words, once
+  And after the operator resolves the outcome the kept requests are selected
+
+Scenario: A recoverable agent is visible as waiting and is not counted as lost
+  Test: native_factory_failure_diagnostics
+  Given a fleet with one failed agent and one healthy agent
+  When the failed agent's attempt is recoverable and it waits for the operator
+  Then its status keeps the failure and carries awaiting_operator, and the fleet is not failed
+  And an agent that failed and is not waiting still makes the fleet failed, and the next attempt clears the wait

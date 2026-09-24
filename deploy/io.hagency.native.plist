@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  launchd unit for the Hagency native service (ADR-133), a user agent.
+
+  WHY THIS SHAPE. macOS has no systemd: KeepAlive replaces Restart=,
+  ThrottleInterval replaces RestartSec, and there is no journald — logs go to
+  plain files under the install dir's logs/ that the operator must rotate.
+
+  STOP, AND THE DIFFERENCE MATTERS. The deliberate stop is
+    launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.hagency.native.plist
+  `bootout` removes the job and stops it regardless of KeepAlive. `kill` on
+  the process makes launchd start it again — which is the unit working, and
+  reads as a service that will not die. The wrapper script below does not
+  paper over this.
+
+  THE PLACEHOLDERS ARE NOT DEFAULTS. __INSTALL_DIR__ and __STATE_DIR__ are
+  rendered at install time; the loopback listen is FIXED — a refusal, not a
+  default: the service fail-closes on any non-loopback bind, so no knob here
+  could make it anything but loopback. Remote access is an SSH tunnel or
+  reverse proxy (see the runbook).
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.hagency.native</string>
+
+  <!-- The entrypoint runs in the FOREGROUND and launchd owns it. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__INSTALL_DIR__/hagency</string>
+    <string>serve</string>
+    <string>--state-dir</string>
+    <string>__STATE_DIR__</string>
+    <string>--listen</string>
+    <string>127.0.0.1:13300</string>
+  </array>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <!-- KeepAlive true restarts on ANY exit — a crash and a clean exit-0 —
+       and on a pid-kill. The only stop that stays stopped is
+         launchctl bootout gui/$(id -u) ~/Library/LaunchAgents/io.hagency.native.plist
+       which REMOVES the job, so no KeepAlive policy of any form applies.
+       {SuccessfulExit: false} is the trap the supervisor plist documents:
+       the condition is evaluated for a never-run job and never starts it. -->
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>ThrottleInterval</key>
+  <integer>10</integer>
+
+  <key>ProcessType</key>
+  <string>Background</string>
+
+  <key>StandardOutPath</key>
+  <string>__INSTALL_DIR__/logs/hagency-native.stdout.log</string>
+  <key>StandardErrorPath</key>
+  <string>__INSTALL_DIR__/logs/hagency-native.stderr.log</string>
+
+  <key>WorkingDirectory</key>
+  <string>__STATE_DIR__</string>
+</dict>
+</plist>

@@ -1,0 +1,6 @@
+{
+  "schema": "hagency-codex-sandbox-qualification-v1",
+  "placeholder": true,
+  "placeholder_reason": "no operator qualification run has been recorded yet: run `cargo run --locked -p hagency-execution --example codex_qualify` with HAGENCY_CODEX_QUALIFY_BIN pointing at the pinned Codex 0.153.4 executable, then commit the rewritten file in the same commit that changes the launch path",
+  "pinned_codex_version": "0.153.4"
+}

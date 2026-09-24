@@ -1,0 +1,23 @@
+[package]
+name = "hagency-matrix-format"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+markdown = "=1.0.0"
+linkify = "=0.10.0"
+mdurl = "=0.3.1"
+idna = "=1.1.0"
+unicode-general-category = "=0.6.0"
+
+[dev-dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true

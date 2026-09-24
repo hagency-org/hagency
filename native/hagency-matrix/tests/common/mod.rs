@@ -1,0 +1,622 @@
+#![allow(dead_code)]
+use hagency_core::replies::*;
+use hagency_matrix::{CancellationToken, HostConfig, HostIdentity, HostRoom, Limits};
+use hagency_store::{DomainRepository, DomainStore, EffectOutcome, EffectState};
+use serde_json::{Value, json};
+use std::{
+    cell::Cell,
+    collections::BTreeMap,
+    fmt::Debug,
+    future::Future,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
+    time::Duration,
+};
+use tokio::{
+    io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt},
+    net::TcpListener,
+    sync::{mpsc, oneshot},
+    task::{JoinHandle, JoinSet},
+    time::timeout,
+};
+use tokio_rustls::{
+    TlsAcceptor,
+    rustls::{
+        self,
+        pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer},
+    },
+};
+#[path = "../../../hagency-store/tests/common/mod.rs"]
+pub mod domain;
+pub mod pair;
+pub mod stall;
+pub const TOKEN: &str = "synthetic-Matrix-token-not-real";
+thread_local! {
+    /// Diagnostic round bookkeeping for `scripted()` (its panic arm reports
+    /// both). Every test owns its fixtures on its own current-thread runtime,
+    /// so a thread-local is exact for the suites that fail and adds no
+    /// cross-test synchronization. Serve tasks that hop threads read a
+    /// best-effort 0 for the round; these suites never do.
+    static SCRIPTED_ROUND: Cell<u64> = const { Cell::new(0) };
+    static SCRIPTED_PROGRESS: Cell<u64> = const { Cell::new(0) };
+}
+/// Diagnostic: a script's own progress counter (e.g. `states_served` in the
+/// two-agent bootstrap), surfaced in `scripted()`'s panic arm so a failing
+/// report says how far the script had got. Test-thread-local for the same
+/// reason as `SCRIPTED_ROUND`; never read on any passing path.
+pub fn script_progress(reached: u64) {
+    SCRIPTED_PROGRESS.with(|progress| progress.set(reached));
+}
+/// Tight fixture bounds for the transport-bound tests of this crate, which
+/// deliberately drive slow headers, idle bodies and deadlines against them.
+pub fn limits() -> Limits {
+    Limits {
+        connect: Duration::from_millis(300),
+        headers: Duration::from_millis(400),
+        request: Duration::from_millis(900),
+        body_idle: Duration::from_millis(200),
+        sdk: Duration::from_secs(10),
+        ..Limits::default()
+    }
+}
+/// Fixture orchestration bounds for the service-level tests that drive a fake
+/// peer through `scripted()` on one current-thread runtime, eight runtimes per
+/// process under the whole-package Windows probe. There the tight bounds above
+/// were reached by scheduler starvation, not by the product. Every value stays
+/// strictly below `hagency_matrix::Limits::default()`, which the production
+/// binary runs with, so a real transport refusal still fails a test. The values
+/// match the suite-local precedent in `tests/approval_delivery/fixture.rs`.
+pub fn load_limits() -> Limits {
+    Limits {
+        connect: Duration::from_secs(2),
+        headers: Duration::from_secs(2),
+        request: Duration::from_secs(4),
+        body_idle: Duration::from_secs(1),
+        sdk: Duration::from_secs(20),
+        ..Limits::default()
+    }
+}
+/// One tier above `load_limits`, for the fixtures that also fork a child process
+/// and copy a project tree on the same host as their single-threaded runtime
+/// (`inline_factory`). There a 2 s header bound measures a fork, an exec and a
+/// directory copy competing for a small hosted runner's cores, not the peer:
+/// hosted macOS answered OutcomeUnknown with the effect `uncertain` after every
+/// product step had been recorded done. Still strictly below
+/// `hagency_matrix::Limits::default()` for headers and the request, so a real
+/// transport refusal still fails a test.
+pub fn factory_limits() -> Limits {
+    Limits {
+        connect: Duration::from_secs(4),
+        headers: Duration::from_secs(4),
+        request: Duration::from_secs(12),
+        body_idle: Duration::from_secs(2),
+        sdk: Duration::from_secs(20),
+        ..Limits::default()
+    }
+}
+pub struct Fixture {
+    pub root: tempfile::TempDir,
+    pub store: DomainStore,
+    pub identity: HostIdentity,
+}
+impl Fixture {
+    pub fn new() -> Self {
+        let root = tempfile::tempdir().unwrap();
+        let mut db = DomainRepository::open(&root.path().join("domain")).unwrap();
+        db.register(&domain::registration()).unwrap();
+        let pool = domain::resource("pool", "seat", 1000);
+        db.put_resource(&pool).unwrap();
+        let p = domain::proof(&domain::request("worker", "Worker", &pool, 100));
+        let e = db.admit(&p, 1000).unwrap();
+        db.approve("approve", &p, 1000).unwrap();
+        let effect = db.claim_effect().unwrap().unwrap();
+        db.observe_effect(
+            &effect.id,
+            effect.fence,
+            &EffectOutcome::Applied {
+                receipt: "fixture account".into(),
+            },
+        )
+        .unwrap();
+        Self {
+            root,
+            store: DomainStore::start(db, 32).unwrap(),
+            identity: HostIdentity {
+                server_name: "example.test".into(),
+                registration_fingerprint: "a".repeat(64),
+                transport: MatrixTransportObservation {
+                    engagement_id: e.id,
+                    registration_generation: 1,
+                    generation: 1,
+                    sender_mxid: "@worker:example.test".into(),
+                    device_id: "DEVICE_1".into(),
+                },
+            },
+        }
+    }
+    pub fn config(&self, endpoint: &str) -> HostConfig {
+        self.config_with(endpoint, limits())
+    }
+    /// The same host configuration with the load bounds, for service-level
+    /// fixtures that share their runtime with the fake peer.
+    pub fn config_under_load(&self, endpoint: &str) -> HostConfig {
+        self.config_with(endpoint, load_limits())
+    }
+    fn config_with(&self, endpoint: &str, limits: Limits) -> HostConfig {
+        HostConfig::new(
+            self.identity.clone(),
+            endpoint,
+            TOKEN,
+            self.root.path().join("sdk"),
+            [42; 32],
+            vec![HostRoom {
+                room_id: "!direct:example.test".into(),
+                generation: 1,
+                privacy: RoomPrivacy::Direct {
+                    human_mxid: "@owner:example.test".into(),
+                },
+            }],
+            limits,
+        )
+        .unwrap()
+    }
+    pub async fn available(&self) -> bool {
+        self.store
+            .matrix_transport_state(self.identity.transport.engagement_id.clone())
+            .await
+            .unwrap()
+            .is_some_and(|s| s.available)
+    }
+}
+pub fn who() -> Value {
+    json!({"user_id":"@worker:example.test","device_id":"DEVICE_1","is_guest":false})
+}
+pub fn sync(token: &str) -> Value {
+    json!({"next_batch":token,"rooms":{"join":{}},"to_device":{"events":[]}})
+}
+pub fn state() -> Value {
+    json!([
+     {"type":"m.room.member","state_key":"@worker:example.test","content":{"membership":"join"}},
+     {"type":"m.room.member","state_key":"@owner:example.test","content":{"membership":"join"}},
+     {"type":"m.room.join_rules","state_key":"","content":{"join_rule":"invite"}},
+     {"type":"m.room.encryption","state_key":"","content":{"algorithm":"m.megolm.v1.aes-sha2"}}
+    ])
+}
+pub async fn success(fake: &mut Fake, token: &str) {
+    let request = fake.next().await;
+    assert_eq!(request.method, "GET");
+    assert_eq!(request.target, "/_matrix/client/v3/account/whoami");
+    assert_eq!(request.headers["authorization"], format!("Bearer {TOKEN}"));
+    assert!(!request.headers.contains_key("x-hagency-generation"));
+    assert!(request.body.is_empty());
+    request.json(200, who());
+    let request = fake.next().await;
+    assert!(
+        request
+            .target
+            .starts_with("/_matrix/client/v3/sync?timeout=0&full_state=true&filter=")
+    );
+    assert!(!request.target.contains(TOKEN));
+    request.json(200, sync(token));
+    let request = fake.next().await;
+    assert!(request.target.starts_with("/_matrix/client/v3/rooms/"));
+    assert!(request.target.ends_with("/state"));
+    request.json(200, state());
+}
+/// A script must finish issuing its responses before collection settles. Report
+/// an early collector failure directly instead of waiting for an HTTP request
+/// that it will never make. Prefer the completed script when both are ready.
+pub async fn scripted<C, S>(collector: C, script: S) -> (C::Output, S::Output)
+where
+    C: Future,
+    C::Output: Debug,
+    S: Future,
+{
+    // Diagnostic only: an early collector settlement is reported with its
+    // elapsed time against the fixture bounds, so a starved fake peer under
+    // whole-package load can be told from a real refusal.
+    SCRIPTED_ROUND.with(|round| round.set(round.get() + 1));
+    SCRIPTED_PROGRESS.with(|progress| progress.set(0));
+    let round = SCRIPTED_ROUND.with(|round| round.get());
+    let started = std::time::Instant::now();
+    tokio::pin!(collector, script);
+    tokio::select! {
+        biased;
+        output = &mut script => (collector.await, output),
+        output = &mut collector => {
+            let progress = SCRIPTED_PROGRESS.with(|progress| progress.get());
+            panic!(
+                "collector completed before its HTTP script: {output:?} (after {:?}; fixture request bounds {:?} tight, {:?} load; scripted round {round}, script progress {progress})",
+                started.elapsed(),
+                limits().request,
+                load_limits().request
+            );
+        }
+    }
+}
+/// Observe the original domain shutdown once. A failure stays a failure; late
+/// worker cleanup or a future reopen cannot replace this Result. A timeout is
+/// named as the stall with the `[shutdown-stall]` token and recorded in the
+/// process-wide latch so sibling witnesses can attribute their own failures.
+pub async fn shutdown_domain(store: &DomainStore, label: &'static str) {
+    let (result, snapshot) = store.shutdown_observed().await;
+    let outcome = format!("{:?}", snapshot.outcome);
+    if let Err(error) = &result {
+        if stall::timed_out(&outcome) {
+            eprintln!("[shutdown-stall] {outcome} at {label}; snapshot {snapshot:?}");
+            stall::record_if_timed_out(&outcome, label, format!("{snapshot:?}"), None);
+        }
+        panic!("domain shutdown {label} ({outcome}): {error:?}; {snapshot:?}");
+    }
+}
+struct ScriptedResponse {
+    pieces: Vec<(Duration, Vec<u8>)>,
+    clean: bool,
+    /// Write pieces[..hold_after] immediately, then await `hold` (the test's
+    /// gate) before writing the rest. `usize::MAX` never holds; the held
+    /// response lets a deadline variant make the FAKE the slow party — driven
+    /// by the test, never a sleep.
+    hold_after: usize,
+    hold: Option<oneshot::Receiver<()>>,
+}
+pub struct Request {
+    pub method: String,
+    pub target: String,
+    pub headers: BTreeMap<String, String>,
+    pub body: Vec<u8>,
+    /// Diagnostic admission ordinal: the fixture request counter's value when
+    /// this request was admitted, so `serve`'s send line and `next`'s receive
+    /// line correlate by seq. Never read by any assertion.
+    pub seq: u64,
+    response: oneshot::Sender<ScriptedResponse>,
+}
+impl Request {
+    pub fn json(self, status: u16, body: Value) {
+        self.raw(response(status, &serde_json::to_vec(&body).unwrap()));
+    }
+    pub fn raw(self, bytes: Vec<u8>) {
+        let _ = self.response.send(ScriptedResponse {
+            pieces: vec![(Duration::ZERO, bytes)],
+            clean: true,
+            hold_after: usize::MAX,
+            hold: None,
+        });
+    }
+    /// Deliberately omit TLS close_notify to exercise truncated transport EOF.
+    pub fn unclean(self, bytes: Vec<u8>) {
+        let _ = self.response.send(ScriptedResponse {
+            pieces: vec![(Duration::ZERO, bytes)],
+            clean: false,
+            hold_after: usize::MAX,
+            hold: None,
+        });
+    }
+    pub fn chunks(self, pieces: Vec<(Duration, Vec<u8>)>) {
+        let _ = self.response.send(ScriptedResponse {
+            pieces,
+            clean: true,
+            hold_after: usize::MAX,
+            hold: None,
+        });
+    }
+    /// Write the first `hold_after` pieces immediately, then await `hold` (the
+    /// test's gate) before the remaining pieces. The fake becomes the SLOW
+    /// party: the request is fully observed and asserted first, then the hold
+    /// withholds the headers/body past the client's bound so the run resolves
+    /// Timeout AFTER the request was observed — driven by the test, never a
+    /// sleep.
+    pub fn hold(
+        self,
+        pieces: Vec<(Duration, Vec<u8>)>,
+        hold_after: usize,
+        hold: oneshot::Receiver<()>,
+    ) {
+        let _ = self.response.send(ScriptedResponse {
+            pieces,
+            clean: true,
+            hold_after,
+            hold: Some(hold),
+        });
+    }
+}
+pub fn response(status: u16, body: &[u8]) -> Vec<u8> {
+    let mut wire = format!("HTTP/1.1 {status} Fixture\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", body.len()).into_bytes();
+    wire.extend_from_slice(body);
+    wire
+}
+pub struct Fake {
+    pub endpoint: String,
+    requests: mpsc::Receiver<Request>,
+    count: Arc<AtomicU64>,
+    stop: CancellationToken,
+    task: JoinHandle<()>,
+}
+impl Fake {
+    pub async fn start(tls: bool) -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!(
+            "{}://{}/",
+            if tls { "https" } else { "http" },
+            listener.local_addr().unwrap()
+        );
+        let acceptor = tls.then(|| {
+            let provider = Arc::new(rustls::crypto::ring::default_provider());
+            let config = rustls::ServerConfig::builder_with_provider(provider)
+                .with_safe_default_protocol_versions()
+                .unwrap()
+                .with_no_client_auth()
+                .with_single_cert(
+                    vec![CertificateDer::from(
+                        include_bytes!("../fixtures/server.der").to_vec(),
+                    )],
+                    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(
+                        include_bytes!("../fixtures/public-test-key.der").to_vec(),
+                    )),
+                )
+                .unwrap();
+            TlsAcceptor::from(Arc::new(config))
+        });
+        let (tx, requests) = mpsc::channel(32);
+        let stop = CancellationToken::new();
+        let token = stop.clone();
+        let count = Arc::new(AtomicU64::new(0));
+        let seen = count.clone();
+        let task = tokio::spawn(async move {
+            let mut jobs = JoinSet::new();
+            loop {
+                tokio::select! {
+                    _ = token.cancelled() => break,
+                    Some(_) = jobs.join_next(), if !jobs.is_empty() => {},
+                    result = listener.accept(), if jobs.len() < 16 => {
+                        let (stream,_) = result.unwrap();
+                        // Diagnostic accept line, mirroring the send/recv pair
+                        // below: before any admission seq exists this is the
+                        // only witness that a connection was established at
+                        // all. One stderr write per accepted connection, no
+                        // behavior change.
+                        eprintln!("[fake] accept");
+                        let tx = tx.clone(); let acceptor = acceptor.clone();
+                        let seen = seen.clone();
+                        jobs.spawn(async move {
+                            if let Some(acceptor) = acceptor {
+                                if let Ok(Ok(stream)) = timeout(Duration::from_secs(5), acceptor.accept(stream)).await { serve(stream, tx, &seen).await; }
+                                else { eprintln!("[fake] drop phase=tls_handshake reason=timeout_or_error"); }
+                            } else { serve(stream, tx, &seen).await; }
+                        });
+                    }
+                }
+            }
+            jobs.abort_all();
+            while jobs.join_next().await.is_some() {}
+        });
+        Self {
+            endpoint,
+            requests,
+            count,
+            stop,
+            task,
+        }
+    }
+    pub async fn next(&mut self) -> Request {
+        self.next_phase(None).await
+    }
+    /// A request already admitted, or None, without waiting. A harness that also
+    /// polls state between requests drains these first, so a request's latency
+    /// is the peer's work and never the harness's own polling.
+    pub fn try_next(&mut self) -> Option<Request> {
+        let request = self.requests.try_recv().ok()?;
+        eprintln!(
+            "[fake] recv round={} seq={} {} {}",
+            SCRIPTED_ROUND.with(|round| round.get()),
+            request.seq,
+            request.method,
+            request.target
+        );
+        Some(request)
+    }
+    pub async fn next_phase(&mut self, phase: Option<&'static str>) -> Request {
+        // An SDK bootstrap or committed sync runs between HTTP requests. This
+        // is a fixture orchestration bound, not an HTTP/production deadline.
+        let result = timeout(
+            load_limits().sdk + load_limits().request,
+            self.requests.recv(),
+        )
+        .await;
+        if (result.is_err() || matches!(&result, Ok(None)))
+            && let Some(phase) = phase
+        {
+            eprintln!("scripted HTTP phase: {phase}");
+        }
+        if let Ok(Some(request)) = &result {
+            eprintln!(
+                "[fake] recv round={} seq={} {} {}",
+                SCRIPTED_ROUND.with(|round| round.get()),
+                request.seq,
+                request.method,
+                request.target
+            );
+        }
+        result
+            .expect("scripted HTTP request missing after SDK plus HTTP budget")
+            .expect("scripted HTTP peer closed")
+    }
+    /// Total admitted requests, counted once per request when the fixture
+    /// accepts it — before any response is written — from every connection.
+    pub fn requests(&self) -> u64 {
+        self.count.load(Ordering::SeqCst)
+    }
+    /// Observe that the transport stays quiet AFTER a sequencing point the
+    /// test drove to completion itself. The caller passes the Limits of the
+    /// client it built against this fake — the drain window is that value's
+    /// own admission horizon (connect + headers), never a fixture default:
+    /// a send decided before the sequencing point finishes admitting inside
+    /// that horizon, so the counter moving inside the window fails the
+    /// sequenced assert, while the no-resend claim itself is carried by the
+    /// sequenced observation the caller already made, never by this
+    /// quietness check. Passing any Limits other than the ones the client
+    /// was constructed with can make the check pass vacuously.
+    pub async fn quiesced(&mut self, since: u64, limits: &Limits) {
+        let deadline = tokio::time::Instant::now() + limits.connect + limits.headers;
+        if let Ok(Some(request)) = tokio::time::timeout_at(deadline, self.requests.recv()).await {
+            panic!(
+                "transport was expected to be quiescent but admitted {} {}",
+                request.method, request.target
+            );
+        }
+        assert_eq!(self.requests(), since);
+    }
+    /// Kept verbatim from the fixture's prior API for the out-of-crate
+    /// `#[path]` includers (`hagency`'s owned_matrix, bootstrap, file_service
+    /// and received_files harnesses) whose trees this lane does not touch.
+    /// Every call site inside this crate's own tests uses `quiesced`.
+    pub async fn no_request(&mut self) {
+        assert!(
+            timeout(Duration::from_millis(80), self.requests.recv())
+                .await
+                .is_err()
+        );
+    }
+    pub async fn close(self) {
+        self.stop.cancel();
+        self.task.await.unwrap();
+    }
+}
+async fn serve<S: AsyncRead + AsyncWrite + Unpin>(
+    mut stream: S,
+    tx: mpsc::Sender<Request>,
+    seen: &Arc<AtomicU64>,
+) {
+    let mut bytes = Vec::new();
+    let headers_end = loop {
+        if let Some(n) = bytes.windows(4).position(|b| b == b"\r\n\r\n") {
+            break n + 4;
+        }
+        if bytes.len() > 32768 {
+            eprintln!(
+                "[fake] drop phase=headers reason=oversized bytes={}",
+                bytes.len()
+            );
+            return;
+        }
+        let mut part = [0; 4096];
+        let Ok(Ok(n)) = timeout(Duration::from_secs(2), stream.read(&mut part)).await else {
+            eprintln!(
+                "[fake] drop phase=headers reason=read_timeout bytes={}",
+                bytes.len()
+            );
+            return;
+        };
+        if n == 0 {
+            eprintln!("[fake] drop phase=headers reason=eof bytes={}", bytes.len());
+            return;
+        }
+        bytes.extend_from_slice(&part[..n]);
+    };
+    let text = std::str::from_utf8(&bytes[..headers_end]).unwrap();
+    let mut lines = text.split("\r\n");
+    let first: Vec<_> = lines.next().unwrap().split(' ').collect();
+    let method = first[0].to_owned();
+    let target = first[1].to_owned();
+    let headers: BTreeMap<_, _> = lines
+        .filter_map(|line| line.split_once(':'))
+        .map(|(k, v)| (k.to_lowercase(), v.trim().to_owned()))
+        .collect();
+    let length: usize = headers
+        .get("content-length")
+        .map(|s| s.parse().unwrap())
+        .unwrap_or(0);
+    if length > 1024 * 1024 {
+        eprintln!("[fake] drop phase=admission reason=body_oversized length={length}");
+        return;
+    }
+    while bytes.len() < headers_end + length {
+        let mut part = [0; 4096];
+        let Ok(Ok(n)) = timeout(Duration::from_secs(2), stream.read(&mut part)).await else {
+            eprintln!(
+                "[fake] drop phase=body reason=read_timeout have={} want={length}",
+                bytes.len() - headers_end
+            );
+            return;
+        };
+        if n == 0 {
+            eprintln!(
+                "[fake] drop phase=body reason=eof have={} want={length}",
+                bytes.len() - headers_end
+            );
+            return;
+        }
+        bytes.extend_from_slice(&part[..n]);
+    }
+    let (response, rx) = oneshot::channel();
+    let seq = seen.fetch_add(1, Ordering::SeqCst) + 1;
+    // Diagnostic send line, matched with `next`'s receive line by seq. One
+    // stderr write per admitted request: no extra await, no behavior change.
+    eprintln!(
+        "[fake] send round={} seq={} {method} {target}",
+        SCRIPTED_ROUND.with(|round| round.get()),
+        seq
+    );
+    let request = Request {
+        method,
+        target,
+        headers,
+        body: bytes[headers_end..headers_end + length].to_vec(),
+        seq,
+        response,
+    };
+    // Admission: the request bytes were received and parsed. Counting here —
+    // before any response — makes the counter insensitive to how the client
+    // reacts to the response, so a late admitted request can never slip past
+    // a later quiescence check.
+    if tx.send(request).await.is_err() {
+        eprintln!("[fake] drop phase=admission reason=receiver_dropped seq={seq}");
+        return;
+    }
+    if let Ok(ScriptedResponse {
+        pieces,
+        clean,
+        hold_after,
+        hold,
+    }) = rx.await
+    {
+        let mut remaining = pieces.into_iter();
+        for (delay, bytes) in remaining.by_ref().take(hold_after) {
+            // An immediate fixture response needs no timer tick. This also
+            // permits explicitly clocked deadline tests to keep time stationary
+            // while real TLS IO completes, without changing positive delays.
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            if stream.write_all(&bytes).await.is_err() {
+                return;
+            }
+            if stream.flush().await.is_err() {
+                return;
+            }
+        }
+        if let Some(hold) = hold
+            && hold.await.is_err()
+        {
+            return;
+        }
+        for (delay, bytes) in remaining {
+            if !delay.is_zero() {
+                tokio::time::sleep(delay).await;
+            }
+            if stream.write_all(&bytes).await.is_err() {
+                return;
+            }
+            if stream.flush().await.is_err() {
+                return;
+            }
+        }
+        if clean {
+            // TlsStream drop alone does not send close_notify. A bounded clean
+            // shutdown lets close-delimited bodies prove actual TLS EOF; the
+            // explicit unclean fixture remains a transport failure.
+            let _ = timeout(Duration::from_millis(200), stream.shutdown()).await;
+        }
+    }
+}

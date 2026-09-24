@@ -1,0 +1,88 @@
+   Compiling hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 13.11s
+     Running unittests src/lib.rs (target/debug/deps/hagency-f95bd6ec4b93de8f)
+
+running 11 tests
+test file_service::scope_tests::native_file_service_protocol_missing_failure_stays_unknown ... ok
+test file_service::shutdown_tests::native_file_service_shutdown_media_creation_requires_atomic_fresh_directory ... ok
+
+thread 'file_service::admission_tests::native_file_service_admission_network_wait_process' (88127845) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+thread 'file_service::admission_tests::native_file_service_shutdown_original_job_unwind' (88127846) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+test file_service::admission_tests::native_file_service_shutdown_original_job_unwind ... FAILED
+test file_service::admission_tests::native_file_service_admission_network_wait_process ... FAILED
+test file_service::scope_tests::native_file_service_authority_queue_retirement_and_lower_limit ... FAILED
+test file_service::admission_tests::native_file_service_replay_bounds_changed_source_after_release ... FAILED
+test file_service::shutdown_tests::native_file_service_shutdown_blocked_original_job ... FAILED
+test file_service::admission_tests::native_file_service_admission_blocked_worker_caller_loss ... FAILED
+test file_service::shutdown_tests::native_file_service_shutdown_actual_worker_receipt_loss_and_unwind ... FAILED
+test file_service::scope_tests::native_file_service_protocol_delivered_after_cancellation ... FAILED
+test file_service::scope_tests::native_file_service_authority_expired_attempt ... FAILED
+
+failures:
+
+---- file_service::admission_tests::native_file_service_shutdown_original_job_unwind stdout ----
+
+thread 'file_service::admission_tests::native_file_service_shutdown_original_job_unwind' (88127835) panicked at native/hagency/src/../tests/file_service/admission.rs:686:9:
+isolated original-unknown fixture failed
+
+---- file_service::admission_tests::native_file_service_admission_network_wait_process stdout ----
+
+thread 'file_service::admission_tests::native_file_service_admission_network_wait_process' (88127833) panicked at native/hagency/src/../tests/file_service/admission.rs:475:9:
+isolated original-unknown fixture failed
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- file_service::scope_tests::native_file_service_authority_queue_retirement_and_lower_limit stdout ----
+
+thread 'file_service::scope_tests::native_file_service_authority_queue_retirement_and_lower_limit' (88127837) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- file_service::admission_tests::native_file_service_replay_bounds_changed_source_after_release stdout ----
+
+thread 'file_service::admission_tests::native_file_service_replay_bounds_changed_source_after_release' (88127834) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- file_service::shutdown_tests::native_file_service_shutdown_blocked_original_job stdout ----
+
+thread 'file_service::shutdown_tests::native_file_service_shutdown_blocked_original_job' (88127841) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- file_service::admission_tests::native_file_service_admission_blocked_worker_caller_loss stdout ----
+
+thread 'file_service::admission_tests::native_file_service_admission_blocked_worker_caller_loss' (88127832) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- file_service::shutdown_tests::native_file_service_shutdown_actual_worker_receipt_loss_and_unwind stdout ----
+
+thread 'file_service::shutdown_tests::native_file_service_shutdown_actual_worker_receipt_loss_and_unwind' (88127840) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- file_service::scope_tests::native_file_service_protocol_delivered_after_cancellation stdout ----
+
+thread 'file_service::scope_tests::native_file_service_protocol_delivered_after_cancellation' (88127838) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+---- file_service::scope_tests::native_file_service_authority_expired_attempt stdout ----
+
+thread 'file_service::scope_tests::native_file_service_authority_expired_attempt' (88127836) panicked at native/hagency/src/../../hagency-matrix/tests/common/mod.rs:43:74:
+called `Result::unwrap()` on an `Err` value: Io(Os { code: 1, kind: PermissionDenied, message: "Operation not permitted" })
+
+
+failures:
+    file_service::admission_tests::native_file_service_admission_blocked_worker_caller_loss
+    file_service::admission_tests::native_file_service_admission_network_wait_process
+    file_service::admission_tests::native_file_service_replay_bounds_changed_source_after_release
+    file_service::admission_tests::native_file_service_shutdown_original_job_unwind
+    file_service::scope_tests::native_file_service_authority_expired_attempt
+    file_service::scope_tests::native_file_service_authority_queue_retirement_and_lower_limit
+    file_service::scope_tests::native_file_service_protocol_delivered_after_cancellation
+    file_service::shutdown_tests::native_file_service_shutdown_actual_worker_receipt_loss_and_unwind
+    file_service::shutdown_tests::native_file_service_shutdown_blocked_original_job
+
+test result: FAILED. 2 passed; 9 failed; 0 ignored; 0 measured; 14 filtered out; finished in 0.62s
+
+error: test failed, to rerun pass `-p hagency --lib`

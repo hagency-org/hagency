@@ -1,0 +1,31 @@
+[package]
+name = "hagency-runtime"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio = { workspace = true, features = ["io-util", "net"] }
+tracing = "0.1.44"
+hagency-platform = { path = "../hagency-platform" }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Threading"] }
+
+[features]
+# An offline pin for a stop the guardian could not prove (ADR-182). Enabled
+# only through hagency-execution's own test-diagnostics feature; never in a
+# production build.
+test-diagnostics = []
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
+tempfile.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,18 @@
+    Checking hagency-platform v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-platform)
+    Checking hagency-core v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-core)
+    Checking hagency-metering v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-metering)
+    Checking hagency-files v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-files)
+    Checking hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+    Checking hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+    Checking hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+error: very complex type used. Consider factoring parts into `type` definitions
+  --> native/hagency-execution/src/approval/diagnostics.rs:27:19
+   |
+27 | static CANCELLED: Mutex<Vec<(String, &'static str, String, Vec<&'static str>)>> =
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: for further information visit https://rust-lang.github.io/rust-clippy/rust-1.95.0/index.html#type_complexity
+   = note: `-D clippy::type-complexity` implied by `-D warnings`
+   = help: to override `-D warnings` add `#[allow(clippy::type_complexity)]`
+
+error: could not compile `hagency-execution` (lib) due to 1 previous error

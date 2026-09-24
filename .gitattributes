@@ -1,0 +1,7 @@
+# Golden protocol vectors must have identical bytes on native Windows and Unix.
+/native/fixtures/*.json text eol=lf
+# Same invariant, one layer deeper: the crate-local golden fixtures. The
+# oracle scripts regenerate these machine-written LF files; the pin keeps a
+# Windows checkout from smudging them to CRLF, which the raw-compare oracles
+# and any future byte-digest consumer would otherwise see as drift.
+native/**/tests/fixtures/*.json text eol=lf

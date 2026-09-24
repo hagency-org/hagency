@@ -9,6 +9,8 @@ import { bySeverityThenAge, fmtSpanSec } from '@/lib/mock-data';
 import { useT } from '@/components/Prefs';
 import { useData, Provenance } from '@/components/Data';
 import { send } from '@/lib/api';
+import { NATIVE_MODE } from '@/lib/native-api';
+import NativeAlerts from '@/components/NativeAlerts';
 
 /*
  * Alerts triage.
@@ -45,6 +47,11 @@ const ACTION_KEY = {
 };
 
 export default function AlertsPage() {
+  const data = useData();
+  return data.nativeConsole ? <NativeAlerts /> : <LegacyAlerts />;
+}
+
+function LegacyAlerts() {
   const t = useT();
   const {
     alerts: ALL, alertCounts, ALERT_STATUSES, SEVERITIES, provenance, refresh,

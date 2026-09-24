@@ -1,0 +1,9 @@
+    Checking hagency-runtime v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-runtime)
+    Checking hagency-core v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-core)
+    Checking hagency-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-store)
+    Checking hagency-execution v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-execution)
+    Checking hagency-media-store v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-media-store)
+    Checking hagency-palpo v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-palpo)
+    Checking hagency-matrix v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency-matrix)
+    Checking hagency v0.1.0 (/Users/yuechen/home/hagency-peer-glm-20260912/native/hagency)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 15.26s

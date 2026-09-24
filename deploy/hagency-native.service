@@ -1,0 +1,54 @@
+[Unit]
+Description=Hagency native service (isolated Rust migration slice)
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__STATE_DIR__
+ExecStart=__INSTALL_DIR__/hagency serve --state-dir __STATE_DIR__ --listen 127.0.0.1:13300
+Restart=on-failure
+RestartSec=5
+
+# No ExecStop, no KillMode, no KillSignal, no SendSIGKILL — the same shape as
+# the retained units (ADR-127 F2): the binary already traps SIGTERM into its
+# cancellation token and owns the drain/close/park sequence (ADR-120). systemd's
+# default SIGTERM-to-cgroup then SIGKILL-after-timeout applies; a parked
+# unknown-close is SIGKILLed at the budget holding its owner — the honest
+# terminal state, with the WAL left for the next open.
+
+# --- Sandboxing (retained units' block) ---
+NoNewPrivileges=yes
+ProtectSystem=full
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LockPersonality=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+
+# --- State ---
+StateDirectory=hagency-native
+TimeoutStopSec=20
+
+# --- Boundaries that are refusals, not defaults ---
+# The listen address is hard-coded loopback: bootstrap.rs fail-closes on any
+# non-loopback bind, so a knob here could only make the unit die-and-loop.
+# Remote access is an SSH tunnel or reverse proxy (see the runbook).
+# The ExecStart binary path carries the versioned artifact name the SR-3
+# release mints, so unit and binary cannot disagree silently.
+
+[Install]
+WantedBy=multi-user.target

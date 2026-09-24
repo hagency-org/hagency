@@ -2,6 +2,7 @@
 
 import { Fragment, useState } from 'react';
 import ResourceAgents from '@/components/ResourceAgents';
+import NativeResources from '@/components/NativeResources';
 import { ResourceExecutionPermissions } from '@/components/ExecutionPermissions';
 
 import Link from 'next/link';
@@ -48,6 +49,10 @@ import { runtimeLabel, transportLabel } from '@/lib/agent-detail';
  * can be ten million promised out of a seat that holds six.
  */
 export default function ResourcesPage() {
+  const data = useData();
+  return data.nativeConsole ? <NativeResources /> : <LegacyResourcesPage />;
+}
+function LegacyResourcesPage() {
   const t = useT();
   const {
     agents, presets, presetOf, tierOf, familyOf, committed, remaining, overBy, capability,
