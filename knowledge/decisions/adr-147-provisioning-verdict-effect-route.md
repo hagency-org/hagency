@@ -727,3 +727,9 @@ and by `native_provisioning_waits_for_the_owner_without_a_deadline` (the
 fixture's owner joins only after the first attempt's whole budget; the fleet
 shows `awaiting_owner` with its start, coordinator turns look again, the agent
 takes the row's place and runs its first task).
+
+### Amended: re-attach honours an open agent fence (2026-09-23, ADR-182)
+
+A re-attached agent whose engagement carries an open `agent_fences` row is
+registered, shows `fenced`, and claims nothing until the operator's
+resolution of the fenced dispatch clears the row.

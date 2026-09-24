@@ -297,8 +297,11 @@ async fn run(command: Command) -> Result<(), Box<dyn std::error::Error>> {
             if let Err(error) = bootstrap.serve(&cancel).await {
                 tracing::error!("native server stopped; closing retained owners");
                 if bootstrap.close().await.is_err() {
-                    tracing::error!("native shutdown remains unknown; retaining original owners");
-                    std::future::pending::<()>().await;
+                    // ADR-182: what could not be proven is in the store (an
+                    // agent fence, an unknown verdict); the process exits.
+                    tracing::error!(
+                        "native shutdown ended with an unknown verdict; see the agent fences and status"
+                    );
                 }
                 return Err(error.into());
             }

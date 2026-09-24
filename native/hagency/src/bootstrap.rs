@@ -434,6 +434,28 @@ impl From<&hagency_execution::RuntimeObservation> for RuntimeStatus {
     }
 }
 
+fn is_zero(value: &u64) -> bool {
+    *value == 0
+}
+fn wall_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .and_then(|d| u64::try_from(d.as_millis()).ok())
+        .unwrap_or_default()
+}
+#[derive(Clone, Serialize)]
+pub struct LastFailure {
+    dispatch_id: String,
+    owned_failure: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authority_site: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    authority_cause: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    stop_cause: Option<&'static str>,
+    at_ms: u64,
+}
 #[derive(Clone, Serialize)]
 pub struct Status {
     mode: &'static str,
@@ -446,11 +468,20 @@ pub struct Status {
     /// from fixed categories only (ADR-175), never free text.
     #[serde(skip_serializing_if = "Option::is_none")]
     stop_cause: Option<&'static str>,
-    /// The failed attempt is recoverable and this worker is alive, waiting for
-    /// the operator to resolve it. Never authority: the resolution itself is the
-    /// store's, and the failure it follows stays reported beside it.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
-    awaiting_operator: bool,
+    /// This agent's unresolved dispatches (ADR-182): the worker no longer
+    /// parks on them; the operator's resolution makes their sessions
+    /// claimable again. Never authority: the resolution itself is the store's.
+    #[serde(skip_serializing_if = "is_zero")]
+    unresolved_dispatches: u64,
+    /// An open agent fence (ADR-182): the dispatch whose cleanup was not
+    /// proven. The store gives a fenced engagement no work; this is the word.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    fenced: Option<String>,
+    /// The previous failed attempt, kept across the next ones (ADR-182): an
+    /// agent that failed and went on reads like one, not like one that never
+    /// failed. Fixed labels only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    last_failure: Option<LastFailure>,
     /// A provision whose rooms exist, waiting for the owner to join the
     /// agent's DM since this wall-clock millisecond. Status only: nothing
     /// reads it to decide anything, and the wait has no deadline.
@@ -493,7 +524,9 @@ impl StatusHandle {
             protocol: None,
             cleanup: None,
             stop_cause: None,
-            awaiting_operator: false,
+            unresolved_dispatches: 0,
+            fenced: None,
+            last_failure: None,
             awaiting_owner_since_ms: None,
             settlement: None,
             error: None,
@@ -517,11 +550,16 @@ impl StatusHandle {
     fn phase(&self, phase: &'static str) {
         self.0.lock().unwrap_or_else(|e| e.into_inner()).state = phase;
     }
-    fn awaiting_operator(&self) {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .awaiting_operator = true;
+    /// The agent's unresolved dispatches and its open fence, as the driver
+    /// reads them from the store on each pass (ADR-182). A fenced agent's
+    /// state word is `fenced`; nothing here decides anything.
+    fn custody(&self, unresolved: u64, fenced: Option<String>) {
+        let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        status.unresolved_dispatches = unresolved;
+        if fenced.is_some() {
+            status.state = "fenced";
+        }
+        status.fenced = fenced;
     }
     /// A known factory agent a restart did not bring back. It is shown, with
     /// the Matrix cause when there is one, and is deliberately not an `error`:
@@ -545,7 +583,6 @@ impl StatusHandle {
         status.protocol = None;
         status.cleanup = None;
         status.stop_cause = None;
-        status.awaiting_operator = false;
         status.awaiting_owner_since_ms = None;
         status.settlement = None;
         status.error = None;
@@ -568,7 +605,7 @@ impl StatusHandle {
             .unwrap_or_else(|e| e.into_inner())
             .matrix_error = Some(matrix_error_label(error));
     }
-    fn handoff_refusal(&self, error: &hagency_execution::Failure) {
+    fn handoff_refusal(&self, dispatch_id: &str, error: &hagency_execution::Failure) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
         status.owned_failure = Some(owned_failure_label(error));
         (status.authority_site, status.authority_cause) = match error {
@@ -577,6 +614,14 @@ impl StatusHandle {
             }
             _ => (None, None),
         };
+        status.last_failure = Some(LastFailure {
+            dispatch_id: dispatch_id.to_owned(),
+            owned_failure: owned_failure_label(error),
+            authority_site: status.authority_site,
+            authority_cause: status.authority_cause,
+            stop_cause: None,
+            at_ms: wall_ms(),
+        });
     }
     fn fail(&self, failure: Failure) {
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
@@ -596,10 +641,29 @@ impl StatusHandle {
             Failure::Server => "server",
         });
     }
-    fn result(&self, report: &hagency_execution::Report) {
+    fn result(&self, dispatch_id: &str, report: &hagency_execution::Report) {
         use hagency_execution::{Protocol, Settlement};
         use hagency_runtime::owned::Cleanup;
         let mut status = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(failure) = &report.failure {
+            let (site, cause) = match failure {
+                hagency_execution::Failure::LostAuthority { site, cause } => {
+                    (Some(site.as_str()), Some(cause.as_str()))
+                }
+                _ => (None, None),
+            };
+            status.last_failure = Some(LastFailure {
+                dispatch_id: dispatch_id.to_owned(),
+                owned_failure: owned_failure_label(failure),
+                authority_site: site,
+                authority_cause: cause,
+                stop_cause: match report.cleanup {
+                    Cleanup::Observed(v) => Some(stop_cause_label(v.cause, v.detail)),
+                    _ => None,
+                },
+                at_ms: wall_ms(),
+            });
+        }
         status.owned_failure = report.failure.as_ref().map(owned_failure_label);
         (status.authority_site, status.authority_cause) = match &report.failure {
             Some(hagency_execution::Failure::LostAuthority { site, cause }) => {
@@ -640,7 +704,11 @@ impl StatusHandle {
         } else {
             "outcome_unknown"
         };
-        if report.failure.is_some() {
+        // `error` is the agent-level word (the fleet's `failed`, readiness).
+        // A one-attempt driver's failed attempt is its agent's failure; a
+        // continuous worker's is that attempt's alone (ADR-182): it goes on,
+        // and `last_failure` above is what says it failed.
+        if report.failure.is_some() && status.mode != DriverMode::Continuous.label() {
             status.error = Some("owned_attempt");
         }
     }
@@ -1394,11 +1462,12 @@ impl Bootstrap {
         if let Some(fleet) = &mut self.fleet {
             children_failed |= fleet.drain_agents().await.is_err();
         }
-        if children_failed {
-            return Err(Failure::OutcomeUnknown);
-        }
+        // ADR-182: a failed child drain is reported, not obeyed. What a
+        // worker could not prove is in the store (a fence, an unknown
+        // verdict); the SDKs and the writers close after it, writing nothing
+        // (ADR-047), and the verdict is returned at the end.
         if let Some(fleet) = &mut self.fleet {
-            fleet.close().await?;
+            children_failed |= fleet.close().await.is_err();
         }
         if let Some(shared) = &self.shared {
             if let Some(result) = self.collector_closed {
@@ -1452,6 +1521,9 @@ impl Bootstrap {
             self.store_closed = true;
         }
         self.status.phase("closed");
+        if children_failed {
+            return Err(Failure::OutcomeUnknown);
+        }
         Ok(())
     }
     pub async fn serve(&mut self, shutdown: &CancellationToken) -> Result<(), Failure> {
@@ -1568,18 +1640,18 @@ impl Bootstrap {
             result=&mut serving=>{result.map_err(|_|Failure::Server)?;return Err(Failure::Server);},
             result=self.close()=>result,
         };
+        // ADR-182: shutdown always completes. An unknown verdict is in the
+        // store (an agent fence, an unknown close) and in the status; the
+        // server stops and the process exits with the verdict, never parks.
         if outcome.is_err() {
             self.status.fail(Failure::OutcomeUnknown);
-            tracing::error!("native shutdown incomplete; original owner retained");
-            // Keep the authenticated fixed status endpoint and the original
-            // owner. No automatic close/claim retry or false successful exit.
-            return serving
-                .await
-                .map_err(|_| Failure::Server)
-                .and(Err(Failure::OutcomeUnknown));
+            tracing::error!(
+                "native shutdown ended with an unknown verdict; see the agent fences and status"
+            );
         }
         handle.stop_graceful(Some(Duration::from_secs(5)));
         serving.await.map_err(|_| Failure::Server)?;
+        outcome?;
         service_error.map_or(Ok(()), Err)
     }
 }

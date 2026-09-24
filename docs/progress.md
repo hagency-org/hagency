@@ -11682,3 +11682,41 @@ docs/design/native-execution-parity.md.
   0 wrong / fleet never failed / 65 min / two updater wakes.
 - Dev Mac disk cleaned: 29 GB -> 376 GB free (stale peer build dirs, incremental
   cache, rig binary copies).
+
+## 2026-09-23 — containment slice (ADR-182): the worker outlives its attempt, the process always exits
+
+- Second slice of the closing order (G1, G2). Store: `agent_fences` (038),
+  claim/selector gates, clearing in the three resolution kernels (subagent,
+  42 targets green). Host: a failed attempt ends its dispatch, the worker goes
+  on; a refused handoff requeues with the 5 s backoff; an unproven stop writes
+  the fence and drops the owner; `Driver::close`/`drain_agents`/`serve`/`main`
+  no longer park; status keeps `last_failure`, shows `fenced` and
+  `unresolved_dispatches`; a continuous worker's failed attempt no longer sets
+  the agent-level `error`.
+- Three facts the pins found, none visible from the design alone:
+  (1) a proven stop frees the runner slot by the host's own ADR-162 receipt, so
+  decision 1 needs no operator act; (2) a refused warm handoff left the factory
+  `Spent` forever (every retry `admission`-refused every 5 s; the old driver hid
+  it by ending the worker) — fixed: the warm runtime keeps its binding and the
+  factory falls back to `Phase::Reattached`, so the retry is a follow-up launch;
+  (3) no console route reached a fenced dispatch (no receipt by ADR-162's own
+  rule, open stop row) — operator chose option 3 on 2026-09-23: the
+  stopped-dispatch inspection now stands on the attempt's ADR-181
+  `stop_reported` evidence (`fenced: true`), the settle actions clear the
+  fence, `continue`/`recover-dispatch` stay refused; the owner-facing DM card
+  goes to the fleet/approval slice.
+- The unproven stop is produced by a diagnostics-build pin in the runtime
+  session (`test-diagnostics`, marker `owned-mcp.unproven-stop`); a production
+  build compiles none of it. The bootstrap fixture gained a generic
+  homeserver responder (`serve_until`), a second session, and the operator's
+  console client.
+- Seven scenarios in `task-rust-attempt-containment`, all green on macOS.
+- Live on the slice's binary (instance 20260923T063338Z): 2 rounds green, owner
+  tasks answered in ~55 s (53 s of it Codex), console restart = first live
+  re-attach, clean stop 1 s. Then three live findings for the next slice: a
+  Matrix refresh timeout ends every worker; the owner's second Matrix client
+  breaks the approval bot's device-list pin (TS pins the master key); the
+  fenced approval room has no recovery path (G5). Operator: fix all three next.
+- Parity gap noted, not owed to this slice: the TS per-dispatch activity notice
+  (`router/src/activity.ts`, one `m.notice` edited in place with ⏳/⏸️/✅ and
+  tool counts) has no port equivalent.

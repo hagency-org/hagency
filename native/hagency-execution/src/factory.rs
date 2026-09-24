@@ -430,19 +430,40 @@ impl FactoryRuntime {
         }
         self.phase = Phase::Spent;
         let admission = &ticket.0;
-        let operation = match &admission.binding {
-            None => self
-                .warm
-                .take()
-                .ok_or(Failure::Admission)?
-                .dispatch_requiring_workspace(admission.capability.clone(), admission.limits)?,
-            Some(binding) => Operation::start_factory_followup(
-                self.domain.clone(),
-                admission.capability.clone(),
-                self.host.clone(),
-                admission.limits,
+        // A refused handoff is that attempt's failure, not the agent's
+        // (ADR-182 decision 2): the runtime keeps the follow-up root the
+        // handoff was made from — the warm child's own binding, or the one a
+        // restart rebuilt — so the next dispatch launches a follow-up, exactly
+        // as after a restart, instead of finding a spent runtime.
+        let (operation, fallback) = match &admission.binding {
+            None => {
+                let warm = self.warm.take().ok_or(Failure::Admission)?;
+                let fallback = warm.binding();
+                (
+                    warm.dispatch_requiring_workspace(
+                        admission.capability.clone(),
+                        admission.limits,
+                    ),
+                    fallback,
+                )
+            }
+            Some(binding) => (
+                Operation::start_factory_followup(
+                    self.domain.clone(),
+                    admission.capability.clone(),
+                    self.host.clone(),
+                    admission.limits,
+                    binding.clone(),
+                ),
                 binding.clone(),
-            )?,
+            ),
+        };
+        let operation = match operation {
+            Ok(operation) => operation,
+            Err(failure) => {
+                self.phase = Phase::Reattached(Box::new(fallback));
+                return Err(failure);
+            }
         };
         self.phase = Phase::Running(operation.continuation());
         Ok(operation)

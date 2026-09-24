@@ -42,11 +42,12 @@ pub(crate) struct Routes {
     closed: Arc<AtomicBool>,
 }
 
-/// An agent whose attempt failed is lost to the fleet unless it says it is alive
-/// and waiting for the operator to resolve that attempt. Its own status keeps
+/// An agent whose attempt failed is lost to the fleet unless its worker is
+/// alive with that failure in the store's hands: unresolved dispatches the
+/// operator resolves, or an open fence (ADR-182). Its own status keeps
 /// reporting the failure either way.
 fn lost(status: &super::Status) -> bool {
-    status.error.is_some() && !status.awaiting_operator
+    status.error.is_some() && status.unresolved_dispatches == 0 && status.fenced.is_none()
 }
 impl Routes {
     pub(crate) async fn select(
@@ -467,9 +468,12 @@ impl Service {
         Ok(())
     }
     pub async fn close(&mut self) -> Result<(), Failure> {
-        self.drain_agents().await?;
+        // A failed drain is reported, not obeyed (ADR-182): what a worker
+        // could not prove is in the store as a fence or an unknown verdict,
+        // and the SDKs close after it all the same, writing nothing (ADR-047).
+        let drained = self.drain_agents().await;
         if let Some(result) = self.factory_closed {
-            return result;
+            return drained.and(result);
         }
         if self.factory_close.is_none() {
             let coordinator = self.coordinator.clone();
@@ -489,7 +493,7 @@ impl Service {
         };
         self.factory_close = None;
         self.factory_closed = Some(result);
-        result
+        drained.and(result)
     }
 }
 impl Drop for Service {
@@ -548,32 +552,38 @@ mod tests {
             "receiving"
         );
         assert!(serde_json::to_vec(&value).unwrap().len() < 2048);
-        // An agent whose failed attempt is recoverable is alive and waiting for
-        // the operator. It keeps reporting its failure, says that it waits, and
+        // An agent with an unresolved dispatch is alive and the operator's
+        // (ADR-182): it keeps reporting its failure, counts the dispatch, and
         // is not what makes a fleet failed; the agent that is gone still is.
-        failed.awaiting_operator();
+        failed.custody(1, None);
         let value = fleet.routes.snapshot();
         assert_eq!(value["agents"][0]["status"]["error"], "outcome_unknown");
-        assert_eq!(value["agents"][0]["status"]["awaiting_operator"], true);
+        assert_eq!(value["agents"][0]["status"]["unresolved_dispatches"], 1);
         assert!(
             value["agents"][1]["status"]
-                .get("awaiting_operator")
+                .get("unresolved_dispatches")
                 .is_none()
         );
         assert_eq!(value["failed"], false);
         assert_eq!(fleet.routes.state(), "not_started");
+        // A fenced agent is not lost either: its state word says so.
+        failed.custody(0, Some("dispatch".into()));
+        let value = fleet.routes.snapshot();
+        assert_eq!(value["agents"][0]["status"]["state"], "fenced");
+        assert_eq!(value["agents"][0]["status"]["fenced"], "dispatch");
+        assert_eq!(value["failed"], false);
         let gone = StatusHandle::new(true);
         gone.fail(Failure::OutcomeUnknown);
         fleet
             .register_root("en_gone".into(), None, None, gone.clone())
             .unwrap();
         assert_eq!(fleet.routes.snapshot()["failed"], true);
-        // The next attempt clears the wait with everything else.
+        // The next attempt keeps the custody words: the driver re-reads them
+        // from the store on each pass, nothing else clears them.
         failed.begin_attempt();
-        assert!(
-            fleet.routes.snapshot()["agents"][0]["status"]
-                .get("awaiting_operator")
-                .is_none()
+        assert_eq!(
+            fleet.routes.snapshot()["agents"][0]["status"]["fenced"],
+            "dispatch"
         );
         drop(fleet);
         collector.close().await.unwrap();
@@ -668,6 +678,9 @@ mod tests {
         )
         .unwrap();
         fleet.agents = vec![first_owner, second_owner];
+        // ADR-182 decision 5: the unknown file job is reported as unknown and
+        // the close goes on — every agent drained, the factory closed — so
+        // the process can exit on one SIGTERM.
         assert_eq!(fleet.close().await, Err(Failure::OutcomeUnknown));
         assert_eq!(fleet.agents[0].status.state(), "outcome_unknown");
         assert_eq!(
@@ -677,8 +690,12 @@ mod tests {
         );
         assert!(second_guard.validate_current().await.is_err());
         assert!(
-            fleet.factory_close.is_none() && fleet.factory_closed.is_none(),
-            "failed child drain cannot close original SDKs"
+            fleet.factory_close.is_none()
+                && fleet
+                    .factory_closed
+                    .as_ref()
+                    .is_none_or(|closed| closed.is_ok()),
+            "the unknown drain no longer stops the factory close"
         );
         assert_eq!(fleet.routes.state(), "stopped");
         assert_eq!(std::fs::read_dir(existing).unwrap().count(), 0);

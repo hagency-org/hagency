@@ -103,3 +103,10 @@ no dispatch is minted, the request stays unread, and the selection that follows
 the operator's resolution takes it. Both the agent inbox and the delegated
 intent selector say it. Pinned by
 `native_request_into_a_quarantined_session_is_answered_with_waiting`.
+
+### Amended: the worker stays up either way (2026-09-23, ADR-182)
+
+Every failed attempt leaves the worker up. `awaiting_operator` is no longer a
+state the worker parks in; it is the count of this agent's unresolved
+dispatches, beside a `fenced` state for an unproven tree. The inspection and
+resolution rules of this record are unchanged.

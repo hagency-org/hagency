@@ -297,3 +297,11 @@ text as the reason, blocks the task, posts a notice in the thread, quarantines
 that one session until an operator resolves it, and keeps the agent running for
 its other sessions. That parity belongs to the recovery work and is not decided
 here.
+
+### Superseded: a failed turn ends the dispatch, not the worker (2026-09-23, ADR-182)
+
+"A failed turn still ends the attempt as a protocol failure with its owner
+retained, which ends the agent's worker" no longer holds. The parity this
+record deferred is decided in ADR-182: the dispatch settles `outcome_unknown`
+with its record (ADR-181), the session is quarantined, the notice is posted,
+and the worker continues to its next claim.

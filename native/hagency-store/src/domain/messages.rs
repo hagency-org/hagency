@@ -1031,6 +1031,12 @@ pub(super) fn select_agent(
     let Some(trigger) = trigger else {
         return Ok(AgentInboxSelection::NoWake);
     };
+    // ADR-182 decision 3: an engagement under an open fence is the operator's
+    // until the fenced dispatch is resolved. Nothing is minted and nothing is
+    // said; the request stays unread for the selection after the clearing.
+    if super::agent_fences::session_fenced(tx, &plan.session_id)? {
+        return Ok(AgentInboxSelection::NoWake);
+    }
     // A session whose previous run ended unknown runs nothing until an
     // operator resolves it. The retained product says "Waiting: …" in the
     // thread and keeps the request; so does this, leaving the request unread
@@ -1178,6 +1184,11 @@ pub(super) fn select_intent(
     let Some(trigger) = trigger else {
         return Ok(AgentInboxSelection::NoWake);
     };
+    // ADR-182 decision 3: as for the agent inbox, a fenced engagement mints
+    // nothing and says nothing.
+    if super::agent_fences::session_fenced(tx, &plan.session_id)? {
+        return Ok(AgentInboxSelection::NoWake);
+    }
     if super::task_intents::quarantined_waiting_notice(tx, &plan.session_id, trigger, now)? {
         return Ok(AgentInboxSelection::NoWake);
     }

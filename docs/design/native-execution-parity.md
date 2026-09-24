@@ -1249,3 +1249,60 @@ the leader's exit identity; lease loss naming its writer; and `tracing` in the
 executing crates. No verdict changed. Pinned by the scenarios of
 `task-rust-owned-attempt-evidence`. Not yet run live: the next lost agent is
 the first that will be diagnosable from the store.
+
+### One fact, one blast radius (2026-09-23, ADR-182, review gaps G1 and G2)
+
+Second slice of the closing order. The host now keeps the retained product's
+failure model where the store already did: a failed, unsettled or negative
+attempt ends its dispatch (the store's `outcome_unknown`, quarantine, dirty
+workspace and thread notice, unchanged) and the worker goes on to its next
+claim; a refused handoff is that attempt's failure (`spawn_failed`, the
+dispatch requeued with the 5 s launch backoff, `RUNNER_LAUNCH_RETRY_MS`);
+`wait_for_resolution` is gone and `awaiting_operator` became the count of the
+agent's unresolved dispatches. The one agent-scoped fact is the one the
+retained product has (`runner-cleanup-unconfirmed` → `manualDown`): a stop
+the guardian could not prove writes a durable `agent_fences` row, the host
+claim and both selectors return no work for that engagement, the fleet status
+reads `fenced`, re-attach honours it, and only the operator's resolution of
+the fenced dispatch (`recover_dispatch`, `resolve_stopped_dispatch`,
+`continue_stopped_dispatch`) clears it — the retained product's operator
+start. Once the fence is written the in-memory owner is dropped, so shutdown
+always completes: `Driver::close` returns `Ok` on a durable fence,
+`drain_agents` no longer withholds the factory close, `serve` reaches
+`stop_graceful`, `main` no longer parks on `pending()`. The status keeps
+`last_failure` across attempts. ADR-163's occupancy rule stays: a proven stop
+leaves the host's own inventory receipt (ADR-162) and frees the runner slot at
+once, so the agent's other sessions proceed with no operator act; a fenced
+attempt has no receipt, so the stopped-dispatch inspection stands on the
+attempt's own ADR-181 stop evidence instead, and the operator's settlement
+(`keep_blocked` / `accept_completed`) is what clears the fence; `continue`
+and the orphan recovery stay refused (the operator's choice of 2026-09-23;
+the owner-facing DM card follows in the fleet/approval slice).
+Pinned by the scenarios of `task-rust-attempt-containment`; the unproven stop
+is produced by a diagnostics-build pin in the runtime session, since no
+offline tree can outlive SIGKILL for the guardian's whole budget. Run live the same day; see below.
+
+**Live run of this slice's binary, 2026-09-23 (instance
+`local-native-palpo-live-20260923T063338Z`, 2 rounds + owner-driven tasks, console
+restart = first live re-attach, clean stop in 1 s).** Three gaps surfaced, all in
+the fleet/approval area the next slice owns, now confirmed live rather than on
+paper:
+
+1. A transient Matrix refresh timeout (13:52:39 UTC, all three agents in the
+   same second) ends every worker for good (`error=refresh`,
+   `matrix_error=timeout`); the fleet reads failed and readiness 503 until a
+   restart. The retained product retries its sync.
+2. The approval bot pins a digest of the owner's whole `/keys/query` device
+   list (`approval_delivery.rs:455-470`, ADR-137 fail-closed): the owner
+   logging in on a second Matrix client (Robrix) adds an unverified device,
+   and the next startup refuses `Recipients`. The retained product pins the
+   owner's cross-signing master key and accepts devices that key has signed.
+3. That refusal fences the approval room (`available=0`), and the store lets a
+   fenced room come back only under a new observation generation
+   (`approvals.rs:237-262`), which no operator command produces — every later
+   startup refuses `Generation`. The review's G5 "persisted Matrix fence",
+   seen live: the instance is unrecoverable without re-provisioning.
+
+Not fixed in this slice; the operator asked on 2026-09-23 for all three to be
+fixed next.
+

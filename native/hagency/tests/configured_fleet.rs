@@ -461,6 +461,66 @@ async fn native_configured_fleet_handoff_diagnostics() {
     // Fixture Drop tears down the deliberately refused disposable service;
     // there is no successful product shutdown or cleanup claim here.
 }
+/// ADR-182 decision 2: a refused handoff is that attempt's failure. Both
+/// workers record it, stay up through the retained product's flat launch
+/// backoff, and complete the round once the provider directory is theirs
+/// again; the fleet was never failed.
+#[cfg(unix)]
+#[tokio::test]
+async fn native_worker_outlives_a_refused_handoff() {
+    let mut f = Fixture::profile(false, false, true).await;
+    f.until("both original warm owners admitted",|f|f.count("SELECT COUNT(*) FROM current_matrix_routes r JOIN runner_sessions s ON s.id=r.session_id JOIN engagements e ON e.id=s.engagement_id WHERE e.request_id LIKE 'fleet_target_%' AND json_extract(s.binding,'$.room_id') LIKE '!fleet_dm_%'")==2
+        && (0..2).all(|i|f.work(i).join("owned-mcp.warm-initialized").is_file())).await;
+    f.wait_for_registered_agents().await;
+    f.revoke_local_provider_permissions();
+    f.peer.queue_owner_round(1).await;
+    f.until("both original handoffs refused", Fixture::handoffs_refused)
+        .await;
+    f.assert_handoff_failures().await;
+    // Nothing started, so each dispatch went back to the queue with the
+    // launch backoff, its refused attempt recorded as `spawn_failed`.
+    f.until("both refused dispatches requeued", |f| {
+        f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='queued' AND fence=1") == 2
+            && f.count("SELECT COUNT(*) FROM runner_attempts WHERE outcome='spawn_failed'") == 2
+    })
+    .await;
+    assert_eq!(f.count("SELECT COUNT(*) FROM resource_leases"), 0);
+    f.restore_local_provider_permissions();
+    // The same two workers, after their backoff: the round runs to its
+    // delivered replies, on the second attempt of each dispatch.
+    f.until("both native helpers in flight after the backoff", |f| {
+        (0..2).all(|i| f.work(i).join("owned-mcp.fleet-ready").is_file())
+    })
+    .await;
+    for index in 0..2 {
+        fs::write(
+            f.work(index).join("owned-mcp.fleet-release"),
+            b"both original helpers observed",
+        )
+        .unwrap();
+    }
+    f.until("both replies delivered after the refusal", |f| {
+        f.count("SELECT COUNT(*) FROM final_replies WHERE state='delivered'") == 2
+    })
+    .await;
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='completed' AND fence=2"),
+        2,
+        "each dispatch completed on its second attempt"
+    );
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM runner_attempt_events WHERE phase='failed'"),
+        2,
+        "the refusals stay recorded, one per worker"
+    );
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM runner_dispatches WHERE state='outcome_unknown'"),
+        0
+    );
+    f.assert_ready().await;
+    f.stop().await;
+    f.fake.close().await;
+}
 async fn qualify(media: bool) {
     qualify_profile(media, false).await;
 }

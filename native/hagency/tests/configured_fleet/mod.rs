@@ -603,9 +603,20 @@ impl Fixture {
         )
         .unwrap();
     }
+    /// The provider directory back to its private mode, so the next handoff
+    /// is admitted again (ADR-182: the refusal was that attempt's, not the
+    /// worker's).
+    pub fn restore_local_provider_permissions(&self) {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(
+            self.root.path().join("provider-codex"),
+            fs::Permissions::from_mode(0o700),
+        )
+        .unwrap();
+    }
     pub fn handoffs_refused(&self) -> bool {
         self.diagnostic()
-            .matches("original dispatch handoff refused; owner retained")
+            .matches("original dispatch handoff refused; attempt recorded, worker continues")
             .count()
             == 2
     }
@@ -656,7 +667,6 @@ impl Fixture {
                 .send()
                 .await
                 .unwrap();
-            assert_eq!(response.status(), 503);
             let public = response.text().await.unwrap();
             assert!(!public.contains("lost_authority"));
             let token = fs::read_to_string(self.state.join("operator.token")).unwrap();
@@ -672,16 +682,23 @@ impl Fixture {
                 assert_eq!(response.status(), 200);
                 let snapshot: Value =
                     serde_json::from_str(&response.text().await.unwrap()).unwrap();
-                assert_eq!(snapshot["factory_service"]["failed"], true);
+                // ADR-182 decision 2: the refusal is the attempt's, recorded
+                // and kept in the status; the worker is on its backoff, not
+                // gone, and the fleet is not failed.
+                assert_eq!(snapshot["factory_service"]["failed"], false);
                 let agents = snapshot["factory_service"]["agents"].as_array().unwrap();
                 for index in 0..2 {
                     let status = &agents
                         .iter()
                         .find(|a| a["engagement_id"] == engagement(index))
                         .unwrap()["status"];
-                    assert_eq!(status["error"], "worker");
+                    assert!(status["error"].is_null(), "{status}");
                     assert_eq!(status["owned_failure"], "lost_authority");
-                    assert_eq!(status["state"], "outcome_unknown");
+                    assert_eq!(status["last_failure"]["owned_failure"], "lost_authority");
+                    assert_eq!(
+                        status["last_failure"]["authority_site"],
+                        "local_codex_check"
+                    );
                     assert_eq!(status["workspace_registered"], false);
                     for field in ["protocol", "cleanup", "settlement", "runtime"] {
                         assert!(status[field].is_null());

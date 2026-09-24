@@ -7,7 +7,10 @@ use super::{
 };
 use hagency_execution::{ApprovalRequests, Operation, Report, SharedHost};
 use hagency_matrix::{CancellationToken, Collector, HostIntakePlan};
-use hagency_store::{AttemptClock, AttemptEvent, AttemptPhase, DomainStore, OwnedClaimProfile};
+use hagency_runtime::owned::Cleanup;
+use hagency_store::{
+    AttemptClock, AttemptEvent, AttemptPhase, DomainStore, FenceReason, OwnedClaimProfile,
+};
 use std::{
     sync::mpsc::{self, SyncSender, TrySendError},
     thread::JoinHandle,
@@ -301,9 +304,18 @@ struct Completed {
 
 async fn run_continuous(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failure> {
     let mut first = true;
+    let engagement = input.profile.engagement_id().to_owned();
     loop {
         if input.cancel.is_cancelled() {
             return Ok(None);
+        }
+        // A fenced agent claims nothing (the store's gate); say so and wait.
+        if custody(&input, &engagement).await {
+            tokio::select! {
+                _ = input.cancel.cancelled() => return Ok(None),
+                _ = tokio::time::sleep(Duration::from_secs(1)) => {}
+            }
+            continue;
         }
         let outcome = run(Attempt {
             domain: input.domain,
@@ -330,6 +342,17 @@ async fn run_continuous(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failu
         let Some(mut completed) = (match outcome {
             Ok(value) => value,
             Err(Failure::Cancelled) if input.cancel.is_cancelled() => return Ok(None),
+            // A refused handoff is that attempt's failure (ADR-182): it is
+            // recorded, and the worker goes on after the retained product's
+            // flat launch backoff.
+            Err(Failure::Worker) => {
+                input.status.phase("launch_refused");
+                tokio::select! {
+                    _ = input.cancel.cancelled() => return Ok(None),
+                    _ = tokio::time::sleep(LAUNCH_RETRY) => {}
+                }
+                continue;
+            }
             Err(error) => return Err(error),
         }) else {
             tokio::select! {
@@ -364,28 +387,73 @@ async fn run_continuous(input: Attempt<'_>) -> Result<Option<Box<Report>>, Failu
                 .await;
             }
         }
-        if completed.report.failure.is_some() || !settled || !physically_stopped {
-            // A failed attempt whose tree is proven stopped and whose stop
-            // inspection is recorded is recoverable: this worker stays up and
-            // waits for the operator to resolve it, which is the retained
-            // product's session quarantine in another shape. Say so, because the
-            // status otherwise reads exactly like a worker that is gone.
-            let recoverable = physically_stopped
-                && completed.report.stop_inspection_status()
-                    == hagency_execution::StopInspectionStatus::Recorded;
-            if recoverable {
-                input.status.awaiting_operator();
-            }
-            if !recoverable
-                || !wait_for_resolution(input.domain, &completed.capability, input.cancel).await
+        // One fact, one blast radius (ADR-182). A failed attempt ended its
+        // dispatch: the store fenced it and quarantined its session, the
+        // notice went out above, and this worker goes on to its next claim —
+        // the retained product's rule. Only a tree the guardian could not
+        // prove gone reaches further: it fences the AGENT, durably, in the
+        // store, and only then is the in-memory owner dropped (its guardian
+        // reaped, the process-group backstop ending what the stop could
+        // not prove ended). The store refusing the fence is the one case that
+        // still retains the owner: fail closed, as before.
+        if !physically_stopped {
+            let reason = match completed.report.cleanup {
+                Cleanup::Unknown { .. } => FenceReason::CleanupUnknown,
+                _ => FenceReason::CleanupUnproven,
+            };
+            match input
+                .domain
+                .write_agent_fence(
+                    engagement.clone(),
+                    completed.capability.dispatch_id.clone(),
+                    completed.capability.fence,
+                    reason,
+                    now_ms(),
+                )
+                .await
             {
-                return Ok(Some(completed.report));
+                Ok(fence) => {
+                    tracing::warn!(dispatch_id = %fence.dispatch_id, reason = reason.as_str(),
+                        "agent fenced: cleanup not proven; owner released");
+                    input.status.custody(0, Some(fence.dispatch_id));
+                }
+                Err(error) => {
+                    tracing::error!(dispatch_id = %completed.capability.dispatch_id, error = ?error,
+                        "agent fence not written; owner retained");
+                    return Ok(Some(completed.report));
+                }
             }
         }
         input.workspace.release(&completed.capability)?;
         drop(completed.report);
         input.status.phase("idle");
     }
+}
+/// The retained product's flat backoff after a launch that never started
+/// (`RUNNER_LAUNCH_RETRY_MS`): the worker's own pause and the requeued
+/// dispatch's `not_before`.
+const LAUNCH_RETRY_MS: u64 = 5_000;
+const LAUNCH_RETRY: Duration = Duration::from_millis(LAUNCH_RETRY_MS);
+/// What the store holds against this agent (ADR-182): its unresolved
+/// dispatches and any open fence. Read once per pass; the store's own gates
+/// are what refuse the work, this only says so in the status.
+async fn custody(input: &Attempt<'_>, engagement: &str) -> bool {
+    let unresolved = input
+        .domain
+        .unresolved_dispatches_for_engagement(engagement.to_owned())
+        .await
+        .unwrap_or_default();
+    let fence = input
+        .domain
+        .open_agent_fence(engagement.to_owned())
+        .await
+        .ok()
+        .flatten();
+    let fenced = fence.is_some();
+    input
+        .status
+        .custody(unresolved, fence.map(|fence| fence.dispatch_id));
+    fenced
 }
 
 /// Whether a factory agent's fresh inbox resolution has moved past `plan`.
@@ -404,34 +472,6 @@ async fn superseded(
             .iter()
             .any(|inbox| inbox.session_id == plan.session_id),
         Err(_) => false,
-    }
-}
-
-async fn wait_for_resolution(
-    domain: &DomainStore,
-    capability: &hagency_core::tasks::RunnerCapability,
-    cancel: &CancellationToken,
-) -> bool {
-    loop {
-        let resolved = tokio::select! {
-            biased;
-            _=cancel.cancelled()=>return false,
-            result=domain.owned_stop_resolution_recorded(capability.clone())=>result,
-        };
-        match resolved {
-            Ok(true) => return true,
-            Ok(false)
-            | Err(
-                hagency_store::Error::Busy
-                | hagency_store::Error::Unavailable
-                | hagency_store::Error::OutcomeUnknown,
-            ) => {}
-            Err(_) => return false,
-        }
-        tokio::select! {
-            _=cancel.cancelled()=>return false,
-            _=tokio::time::sleep(Duration::from_secs(1))=>{},
-        }
     }
 }
 
@@ -647,7 +687,7 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
     let mut operation = match operation {
         Ok(operation) => operation,
         Err(error) => {
-            status.handoff_refusal(&error);
+            status.handoff_refusal(&capability.dispatch_id, &error);
             // A refusal before any Operation exists is still this attempt's
             // failure record (ADR-181): the same fixed labels, uncollapsed.
             record_phase(
@@ -659,7 +699,19 @@ async fn run(input: Attempt<'_>) -> Result<Option<Completed>, Failure> {
             )
             .await;
             tracing::warn!(dispatch_id = %capability.dispatch_id, failure = super::owned_failure_label(&error),
-                "original dispatch handoff refused; owner retained");
+                "original dispatch handoff refused; attempt recorded, worker continues");
+            // Nothing started, so the dispatch goes back to the queue with the
+            // retained product's launch backoff (ADR-182 decision 2) instead
+            // of holding its lease for the full minute. A refused requeue
+            // leaves the lease to expire on its own; the attempt is recorded
+            // either way.
+            if let Err(error) = domain
+                .fail_before_start(capability.clone(), now_ms(), LAUNCH_RETRY_MS)
+                .await
+            {
+                tracing::warn!(dispatch_id = %capability.dispatch_id, error = ?error,
+                    "refused handoff not requeued; its lease expires on its own");
+            }
             return Err(Failure::Worker);
         }
     };
@@ -768,7 +820,7 @@ async fn finish_attempt(
     cancel: &CancellationToken,
     status: &StatusHandle,
 ) -> Result<Completed, Failure> {
-    status.result(&report);
+    status.result(&capability.dispatch_id, &report);
     // The attempt's last records (ADR-181): the full status, uncollapsed, as
     // the `failed` or `settled` event; the clock; and the retained product's
     // `terminal_reason` shape, `<failure>:<exit identity>:<stderr tail>`.
@@ -815,7 +867,7 @@ async fn finish_attempt(
     }
     if report.failure.is_some() {
         tracing::warn!(dispatch_id = %capability.dispatch_id, status = %projected,
-            "original owned attempt failed; owner retained");
+            "original owned attempt failed; recorded");
     }
     // An operation result is not stopped-owner/workspace-inspection authority
     // for every pending stop (or for its own uncertain failure). The original

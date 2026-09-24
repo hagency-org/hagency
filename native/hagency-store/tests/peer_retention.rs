@@ -837,11 +837,11 @@ fn native_retained_peer_corpus_migration_replays_after_rewind() {
         // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
         // over a receipts table that already carries the column, so strip it
         // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
-        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events;")
+        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; DROP TABLE IF EXISTS agent_fences;")
             .unwrap();
         sql.pragma_update(None, "user_version", 26).unwrap();
     }
-    // The double open: the second run is at head 37 and replays nothing.
+    // The double open: the second run is at head 38 and replays nothing.
     for _ in 0..2 {
         let db = DomainRepository::open(&state).unwrap();
         drop(db);
@@ -849,7 +849,7 @@ fn native_retained_peer_corpus_migration_replays_after_rewind() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            37
+            38
         );
         let index: u64 = sql
             .query_row("SELECT COUNT(*) FROM retained_peer_index", [], |r| r.get(0))
@@ -900,7 +900,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
     let _ = f.send_one("head_row", 2000);
     let state = f.root.path().join("state");
     drop(f.db);
-    // A fresh database opens at head 37 — and a deeper rewind (to 24, the
+    // A fresh database opens at head 38 — and a deeper rewind (to 24, the
     // ceiling-alerts fixture's shape) replays 025, 026 AND 027 over a live
     // database, proving the whole retention block replays in order.
     {
@@ -908,7 +908,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            37
+            38
         );
         // 025 is NOT idempotent (ALTER TABLE ... ADD COLUMN status): a
         // deeper rewind to 24 replays it over a table that already carries
@@ -921,7 +921,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         // 032's ADD COLUMN is not replay-idempotent: the rewind replays it
         // over a receipts table that already carries the column, so strip it
         // first (the 025 replay posture; cf. updated_at in file_delivery.rs).
-        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events;")
+        sql.execute_batch("ALTER TABLE approval_verdict_receipts DROP COLUMN denial_reason; ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; DROP TABLE IF EXISTS agent_fences;")
             .unwrap();
         sql.pragma_update(None, "user_version", 24).unwrap();
     }
@@ -932,7 +932,7 @@ fn native_retained_peer_corpus_migration_head_is_current() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            37,
+            38,
             "every reopen lands at the current head"
         );
     }

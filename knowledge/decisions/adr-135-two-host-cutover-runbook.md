@@ -230,3 +230,8 @@ actually recording the evidence rather than skipping to step 8.
   native service with the retained side drained.
 - A generic runbook not naming the ports, head, or refusal point — rejected:
   the review's findings exist precisely because those details were missing.
+
+### Superseded: no park on an unknown close (2026-09-23, ADR-182)
+
+See ADR-127's amendment of the same date: the unit's service records its
+fences and exits; nothing parks.

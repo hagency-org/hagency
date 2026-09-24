@@ -285,3 +285,13 @@ else in that paragraph stands and is what makes the reversal safe: regardless of
 persisted availability, a start authenticates its CURRENT token, account and
 device and observes full room state before claiming; an already fenced
 generation remains unavailable; startup must not rotate a generation.
+
+### Superseded: shutdown records and exits (2026-09-23, ADR-182)
+
+"One OS owner retains any unresolved report; shutdown failure cannot consume
+the last owner and pretend release" and "No macOS unknown cleanup is called a
+complete shutdown" are superseded by ADR-182: an unproven cleanup is written
+as a durable agent fence, the in-memory owner is dropped, the close proceeds
+and the process exits on one SIGTERM. The store's own shutdown verdicts are
+still reported; they no longer keep the process alive. The readiness
+vocabulary of this record is unchanged.

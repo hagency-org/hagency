@@ -27,7 +27,7 @@ impl DomainRepository {
             return Err(Error::NotFound);
         }
         let mut rows:Vec<Value>=self.db.prepare(
-            "SELECT d.id,d.session_id,d.task_id,d.fence,s.reason,EXISTS(SELECT 1 FROM owned_stop_inspections i WHERE i.dispatch_id=d.id AND i.fence=d.fence) FROM runner_dispatches d JOIN runner_sessions r ON r.id=d.session_id JOIN dispatch_stops s ON s.dispatch_id=d.id AND s.fence=d.fence WHERE r.engagement_id=?1 AND d.id>?2 AND d.state='outcome_unknown' AND s.settled_at IS NULL ORDER BY d.id LIMIT 17"
+            "SELECT d.id,d.session_id,d.task_id,d.fence,s.reason,(EXISTS(SELECT 1 FROM owned_stop_inspections i WHERE i.dispatch_id=d.id AND i.fence=d.fence) OR EXISTS(SELECT 1 FROM agent_fences af WHERE af.dispatch_id=d.id AND af.fence=d.fence AND af.cleared_at IS NULL)) FROM runner_dispatches d JOIN runner_sessions r ON r.id=d.session_id JOIN dispatch_stops s ON s.dispatch_id=d.id AND s.fence=d.fence WHERE r.engagement_id=?1 AND d.id>?2 AND d.state='outcome_unknown' AND s.settled_at IS NULL ORDER BY d.id LIMIT 17"
         )?.query_map(params![engagement,after],|r|Ok(json!({"dispatchId":r.get::<_,String>(0)?,"sessionId":r.get::<_,String>(1)?,"taskId":r.get::<_,Option<String>>(2)?,"fence":r.get::<_,u64>(3)?,"reason":r.get::<_,String>(4)?,"inspectionAvailable":r.get::<_,bool>(5)?})))?.collect::<Result<_,_>>()?;
         let next = (rows.len() > 16).then(|| rows[15]["dispatchId"].clone());
         rows.truncate(16);

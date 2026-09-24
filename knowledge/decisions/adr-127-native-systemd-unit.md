@@ -110,3 +110,9 @@ and the harness is not systemd itself.
   exceeds 20s; revisit with evidence, not speculation.
 - File-level `#![cfg]` gating — rejected: drops selectors from other legs'
   `--list` and fails the binding gate (F4).
+
+### Superseded: an unknown close records its fences and exits (2026-09-23, ADR-182)
+
+The park on an unknown close ("rather than exiting 0"; "a park is not a
+failure") is superseded by ADR-182: the service writes what it could not
+prove as agent fences and exits inside the stop budget.

@@ -105,6 +105,68 @@ fn native_owned_stop_resolution_observation() {
     assert!(!f.db.owned_stop_resolution_recorded(&f.cap).unwrap());
 }
 
+/// ADR-182 decision 3: the operator's settlement or continuation of a stopped
+/// dispatch clears the agent fence on it, with the word of the route that did;
+/// the fence stands until then.
+#[test]
+fn native_stopped_resolution_clears_the_fence() {
+    use hagency_store::FenceReason;
+    for action in [
+        OutcomeAction::Continue,
+        OutcomeAction::AcceptCompleted,
+        OutcomeAction::KeepBlocked,
+    ] {
+        let (mut f, _, next) = stopped_fixture();
+        let fence =
+            f.db.write_agent_fence(
+                &f.engagement,
+                "dispatch",
+                f.cap.fence,
+                FenceReason::CleanupUnknown,
+                1009,
+            )
+            .unwrap();
+        let (_, command) = inspect(&mut f, action, &next);
+        assert_eq!(f.db.open_agent_fence(&f.engagement).unwrap(), Some(fence));
+        f.db.resolve_stopped_dispatch(&f.engagement, &command, 1011)
+            .unwrap();
+        assert_eq!(f.db.open_agent_fence(&f.engagement).unwrap(), None);
+        let fences = f.db.agent_fences(&f.engagement).unwrap();
+        assert_eq!(fences.len(), 1);
+        assert_eq!(fences[0].cleared_at, Some(1011));
+        assert_eq!(
+            fences[0].cleared_by.as_deref(),
+            Some("resolve_stopped_dispatch")
+        );
+    }
+    let (mut f, digest, next) = stopped_fixture();
+    f.db.write_agent_fence(
+        &f.engagement,
+        "dispatch",
+        f.cap.fence,
+        FenceReason::CleanupUnproven,
+        1009,
+    )
+    .unwrap();
+    f.db.continue_stopped_dispatch(
+        &f.engagement,
+        "dispatch",
+        (f.cap.fence, &digest),
+        &next,
+        "reviewed effects",
+        1010,
+    )
+    .unwrap();
+    assert_eq!(f.db.open_agent_fence(&f.engagement).unwrap(), None);
+    let fences = f.db.agent_fences(&f.engagement).unwrap();
+    assert_eq!(fences.len(), 1);
+    assert_eq!(fences[0].cleared_at, Some(1010));
+    assert_eq!(
+        fences[0].cleared_by.as_deref(),
+        Some("continue_stopped_dispatch")
+    );
+}
+
 #[test]
 fn native_outcome_resolution_actions() {
     for action in [
@@ -430,7 +492,7 @@ fn native_outcome_resolution_schema35_upgrade() {
     drop(f.db);
     let sql = rusqlite::Connection::open(path.join("domain.sqlite3")).unwrap();
     sql.execute_batch(
-        "DROP TABLE outcome_resolutions; DROP TABLE outcome_inspections; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; PRAGMA user_version=34;",
+        "DROP TABLE outcome_resolutions; DROP TABLE outcome_inspections; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; DROP TABLE IF EXISTS agent_fences; PRAGMA user_version=34;",
     )
     .unwrap();
     drop(sql);
@@ -447,7 +509,7 @@ fn native_outcome_resolution_schema35_upgrade() {
         assert_eq!(
             sql.pragma_query_value(None, "user_version", |r| r.get::<_, u64>(0))
                 .unwrap(),
-            37
+            38
         );
         assert_eq!(
             sql.query_row("SELECT COUNT(*) FROM resource_leases", [], |r| r

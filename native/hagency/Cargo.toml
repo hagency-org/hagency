@@ -41,6 +41,9 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "fmt"] }
 
 [dev-dependencies]
+# The offline pins of ADR-182 need the execution crate's diagnostics fault
+# (an unproven stop no real fixture can force); test builds only.
+hagency-execution = { path = "../hagency-execution", features = ["test-diagnostics"] }
 matrix-sdk-base = { version = "=0.18.0", features = ["e2e-encryption"] }
 matrix-sdk-sqlite = { version = "=0.18.0", default-features = false, features = ["state-store", "bundled"] }
 matrix-sdk-store-encryption = "=0.18.0"

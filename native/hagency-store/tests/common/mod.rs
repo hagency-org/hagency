@@ -132,7 +132,7 @@ pub fn remove_approval_schema(db: &rusqlite::Connection) {
     // ALTER does not replay idempotently. 036 splits the frozen window the
     // same way: `addressed` exists only from schema 36 on. 037 adds the
     // attempt clock columns and the event table the same way.
-    db.execute_batch("ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events;")
+    db.execute_batch("ALTER TABLE runner_attempts DROP COLUMN park_reason; ALTER TABLE dispatch_inputs DROP COLUMN addressed; DROP TABLE IF EXISTS dispatch_conversation_reads; ALTER TABLE runner_attempts DROP COLUMN started_at; ALTER TABLE runner_attempts DROP COLUMN parked_at; ALTER TABLE runner_attempts DROP COLUMN last_renew_at; ALTER TABLE runner_attempts DROP COLUMN settled_at; ALTER TABLE runner_attempts DROP COLUMN terminal_reason; DROP TABLE IF EXISTS runner_attempt_events; DROP TABLE IF EXISTS agent_fences;")
         .unwrap();
     db.execute_batch("DROP TRIGGER approval_room_retire_grants; DROP TRIGGER approval_project_retire; DROP TRIGGER approval_registration_retire; DROP TRIGGER approval_engagement_retire; DROP TRIGGER approval_task_retire; DROP VIEW current_approval_bindings; DROP TABLE approval_verdict_receipts; DROP TABLE approval_grants; DROP TABLE owner_approvals; DROP TABLE approval_contexts; DROP TABLE approval_bindings; DROP TABLE approval_rooms;").unwrap();
 }

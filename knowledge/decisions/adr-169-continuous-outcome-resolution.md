@@ -18,3 +18,11 @@ can wait this way. Cancellation preserves normal retained-owner close. Resolutio
 retires only that workspace binding before ordinary claiming resumes; current
 route/account/resource checks still govern the distinct next dispatch. This is
 not automatic retry, a success verdict for the old attempt, or restart recovery.
+
+### Amended: no blocking wait for a resolution (2026-09-23, ADR-182)
+
+"Only an original report with stopped physical custody and a recorded
+inspection can wait this way" described a worker that parked; the worker now
+continues after any failed attempt and the quarantined session simply yields
+no work until the operator resolves it. An unproven tree additionally fences
+the agent (ADR-182 decision 3). Resolution semantics are unchanged.

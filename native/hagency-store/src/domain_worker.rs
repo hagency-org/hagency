@@ -1641,6 +1641,52 @@ impl DomainStore {
         })
         .await
     }
+    /// ADR-182 decision 3: the driver's durable fence, written before it
+    /// drops the owner; idempotent for the same open (engagement, dispatch,
+    /// fence). No runtime or console route writes it.
+    pub async fn write_agent_fence(
+        &self,
+        engagement_id: String,
+        dispatch_id: String,
+        fence: u64,
+        reason: crate::FenceReason,
+        now: u64,
+    ) -> Result<crate::AgentFence, Error> {
+        self.call(
+            weight(&(&engagement_id, &dispatch_id, fence, reason, now))?,
+            move |db| db.write_agent_fence(&engagement_id, &dispatch_id, fence, reason, now),
+        )
+        .await
+    }
+    /// The fence the fleet status names and re-attach honours, if any.
+    pub async fn open_agent_fence(
+        &self,
+        engagement_id: String,
+    ) -> Result<Option<crate::AgentFence>, Error> {
+        self.call(weight(&engagement_id)?, move |db| {
+            db.open_agent_fence(&engagement_id)
+        })
+        .await
+    }
+    pub async fn agent_fences(
+        &self,
+        engagement_id: String,
+    ) -> Result<Vec<crate::AgentFence>, Error> {
+        self.call(weight(&engagement_id)?, move |db| {
+            db.agent_fences(&engagement_id)
+        })
+        .await
+    }
+    /// The status's `awaiting_operator` count (ADR-182 decision 6).
+    pub async fn unresolved_dispatches_for_engagement(
+        &self,
+        engagement_id: String,
+    ) -> Result<u64, Error> {
+        self.call(weight(&engagement_id)?, move |db| {
+            db.unresolved_dispatches_for_engagement(&engagement_id)
+        })
+        .await
+    }
     /// The caller must hold an actually stopped owner. This host API does not
     /// manufacture that process observation and has no runner HTTP equivalent.
     pub async fn complete_owned_dispatch(

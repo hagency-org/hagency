@@ -91,11 +91,35 @@ fn snapshot(db: &Connection, id: &str, d: &execution::Dispatch) -> Result<Snapsh
     let receipt:Option<(String,String)>=db.query_row(
         "SELECT i.digest,i.config FROM owned_stop_inspections i JOIN dispatch_stops s ON s.dispatch_id=i.dispatch_id AND s.fence=i.fence WHERE i.dispatch_id=?1 AND i.fence=?2 AND s.reason='owned_runner_failure' AND s.settled_at IS NULL",
         params![id,d.fence],|r|Ok((r.get(0)?,r.get(1)?))).optional()?;
-    let (receipt, observation) = receipt.ok_or(Error::State)?;
+    // ADR-182 decision 3 (the console route, chosen 2026-09-23): an unproven
+    // stop has no host receipt by ADR-162's own rule. When an open agent
+    // fence names this attempt, the attempt's recorded stop evidence
+    // (ADR-181, `stop_reported`) is the inspection material — what the
+    // guardian reported and why it could not prove the tree gone — and its
+    // digest is the receipt the resolution is bound to. Such an inspection
+    // settles only: `continue` still needs the host receipt (the proof that
+    // the workspace is free), which the fenced attempt lacks.
+    let (receipt, observation, fenced) = match receipt {
+        Some((receipt, observation)) => (receipt, observation, false),
+        None => {
+            let evidence: Option<String> = db
+                .query_row(
+                    "SELECT e.detail FROM runner_attempt_events e WHERE e.dispatch_id=?1 AND e.fence=?2 AND e.phase='stop_reported' AND EXISTS(SELECT 1 FROM agent_fences af WHERE af.dispatch_id=?1 AND af.fence=?2 AND af.cleared_at IS NULL) ORDER BY e.seq DESC LIMIT 1",
+                    params![id, d.fence],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            let evidence = evidence.ok_or(Error::State)?;
+            let receipt = canonical::digest(&json!(["agent_fence", &evidence]))?;
+            (receipt, evidence, true)
+        }
+    };
     let observation: Value = serde_json::from_str(&observation)?;
-    let scope = super::owned_dispatch::inspection_projection(db, id, d)?;
-    if observation.get("scope").and_then(Value::as_str) != Some(scope.fingerprint()) {
-        return Err(Error::Conflict);
+    if !fenced {
+        let scope = super::owned_dispatch::inspection_projection(db, id, d)?;
+        if observation.get("scope").and_then(Value::as_str) != Some(scope.fingerprint()) {
+            return Err(Error::Conflict);
+        }
     }
     let task = execution::task(db, d.task_id.as_deref().ok_or(Error::State)?)?;
     if task.status == TaskState::Done {
@@ -127,7 +151,7 @@ fn snapshot(db: &Connection, id: &str, d: &execution::Dispatch) -> Result<Snapsh
             |r| r.get(0),
         )
         .optional()?;
-    let value = json!({"dispatchId":id,"fence":d.fence,"receiptDigest":receipt,"observation":observation,"task":task,"route":route});
+    let value = json!({"dispatchId":id,"fence":d.fence,"receiptDigest":receipt,"observation":observation,"fenced":fenced,"task":task,"route":route});
     let digest = canonical::payload_digest(&value)?;
     Ok(Snapshot {
         fence: d.fence,
@@ -268,6 +292,7 @@ impl DomainRepository {
                 &evidence,
                 now,
                 Some((fence, &receipt)),
+                "resolve_stopped_dispatch",
             )?;
             let mut task = execution::task(&tx, d.task_id.as_deref().ok_or(Error::State)?)?;
             task.status = TaskState::InProgress;
@@ -312,6 +337,15 @@ impl DomainRepository {
                 OutcomeAction::Continue => return Err(Error::State),
             };
             execution::save_task(&tx, &task, kind)?;
+            // ADR-182 decision 3: the settlement is the operator's resolution
+            // of this dispatch; the continuation branch clears through the
+            // recovery kernel above.
+            super::agent_fences::clear_fences_for_dispatch(
+                &tx,
+                &input.original,
+                "resolve_stopped_dispatch",
+                now,
+            )?;
         }
         let response = json!({"requestId":input.request_id,"original":input.original,"action":action,
             "replacement":input.replacement.as_ref().map(|r|r.id.as_str()),"resolvedAt":now,

@@ -814,37 +814,47 @@ async fn native_continuous_driver_runs_two_sequential_dispatches() {
     child.exited().await;
 }
 
+/// The probe's receipt in a workspace, once it is a complete JSON document.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn receipt(work: &std::path::Path) -> Option<serde_json::Value> {
+    std::fs::read(work.join("owned-mcp.receipt"))
+        .ok()
+        .and_then(|bytes| serde_json::from_slice(&bytes).ok())
+}
+/// The operator's orphan recovery of the original dispatch (ADR-148/164): a
+/// reviewed replacement on the same session and workspace, no receipt.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn reviewed_recovery() -> serde_json::Value {
+    json!({
+        "original":"dispatch","evidence":"Reviewed the unproven stop; the workspace holds nothing live",
+        "replacement":{"id":"reviewed_recovery","session_id":"session","task_id":"task",
+            "resources":[{"id":"work","exclusive":true}],"payload":{"instruction":"Inspect prior state and heartbeat the recovered task"}},
+    })
+}
+/// The operator's settlement of the original dispatch after reviewing an
+/// unproven stop: the task stays blocked; nothing is re-run in place.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn reviewed_settlement(inspection: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "original":"dispatch","requestId":"reviewed_settlement","inspectionId":inspection["inspectionId"],"inspectionToken":inspection["inspectionToken"],
+        "action":"keep_blocked","operatorNote":"Reviewed the unproven stop; the task stays blocked",
+    })
+}
+/// The operator's console resolution of the original dispatch: `continue`
+/// with a reviewed replacement on the same session and workspace.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn reviewed_continuation(inspection: &serde_json::Value) -> serde_json::Value {
+    json!({
+        "original":"dispatch","requestId":"reviewed_resolution","inspectionId":inspection["inspectionId"],"inspectionToken":inspection["inspectionToken"],
+        "action":"continue","operatorNote":"Reviewed original failed subprocess inventory",
+        "replacement":{"id":"reviewed_continuation","session_id":"session","task_id":"task",
+            "resources":[{"id":"work","exclusive":true}],"payload":{"instruction":"Inspect prior state and heartbeat the recovered task"}},
+    })
+}
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 #[tokio::test]
 async fn native_continuous_driver_operator_resolution() {
-    use hagency_store::private;
-    use sha2::{Digest, Sha256};
-    async fn post(
-        client: &reqwest::Client,
-        origin: &str,
-        path: &str,
-        body: serde_json::Value,
-        cookie: Option<&str>,
-    ) -> (serde_json::Value, Option<String>) {
-        let mut request = client
-            .post(format!("{origin}{path}"))
-            .header("Content-Type", "application/json")
-            .header("Origin", origin)
-            .header("Sec-Fetch-Site", "same-origin")
-            .body(serde_json::to_vec(&body).unwrap());
-        if let Some(cookie) = cookie {
-            request = request.header("Cookie", cookie);
-        }
-        let response = request.send().await.unwrap();
-        let cookie = response
-            .headers()
-            .get("set-cookie")
-            .map(|v| v.to_str().unwrap().split(';').next().unwrap().to_owned());
-        let status = response.status();
-        let bytes = response.bytes().await.unwrap();
-        assert_eq!(status, reqwest::StatusCode::OK, "console request refused");
-        (serde_json::from_slice(&bytes).unwrap(), cookie)
-    }
     let mut f = Fixture::new(false).await;
     std::fs::write(
         f.work.join("owned-mcp.fail-notification"),
@@ -852,88 +862,32 @@ async fn native_continuous_driver_operator_resolution() {
     )
     .unwrap();
     f.configure_continuous();
-    let assets = f.root.path().join("console");
-    private::directory(&assets).unwrap();
-    let bytes = b"<!doctype html><html><body>offline console fixture</body></html>";
-    let mut manifest = Vec::new();
-    for page in ["usage", "engagements"] {
-        std::fs::create_dir(assets.join(page)).unwrap();
-        private::write_new(&assets.join(page).join("index.html"), bytes).unwrap();
-        manifest.push(json!({"path":format!("{page}/index.html"),"size":bytes.len(),"sha256":format!("{:x}",Sha256::digest(bytes)),"mime":"text/html; charset=utf-8"}));
-    }
-    private::write_new(
-        &assets.join("manifest.json"),
-        json!({"version":1,"assets":manifest})
-            .to_string()
-            .as_bytes(),
-    )
-    .unwrap();
-    let file = private::open(&f.root.path().join("native.stderr"), true).unwrap();
-    let mut child = Running::from_child(
-        f.command(false)
-            .arg("--agent-driver")
-            .arg("--console-assets")
-            .arg(assets.canonicalize().unwrap())
-            .stderr(std::process::Stdio::from(file))
-            .spawn()
-            .unwrap(),
+    let assets = f.console_assets();
+    let mut child = f.launch_agent_driver(Some(&assets));
+    // ADR-182: the failed attempt ends its dispatch, not the worker, which
+    // keeps polling; the status keeps the failure beside the live state.
+    f.serve_until("original attempt failed", |f, status| {
+        status["development_execution"]["last_failure"]["dispatch_id"] == "dispatch"
+            && f.state() == "outcome_unknown"
+    })
+    .await;
+    assert!(
+        child.still_owned(),
+        "the worker outlives its failed attempt"
     );
-    f.capabilities().await;
-    common::success(&mut f.fake, "operator-resolution-1").await;
-    f.fake.next().await.json(200, common::state());
-    let until = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
-    loop {
-        let status = f.capabilities().await;
-        if status["development_execution"]["state"] == "outcome_unknown" {
-            assert_eq!(
-                status["development_execution"]["cleanup"],
-                "whole_tree_stopped"
-            );
-            assert_eq!(
-                status["development_execution"]["runtime"]["refused_notification"],
-                "unknown"
-            );
-            break;
-        }
-        assert!(
-            tokio::time::Instant::now() < until,
-            "original process did not fail"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
-    let config: serde_json::Value =
-        serde_json::from_slice(&std::fs::read(f.state_dir.join("agent-driver.json")).unwrap())
-            .unwrap();
-    let engagement = config["matrix"]["engagement_id"].as_str().unwrap();
-    let link = hagency::console::client::lifecycle_access(&f.state_dir, f.address)
-        .await
-        .unwrap();
-    let ticket = link.split_once("#access=").unwrap().1;
-    let origin = format!("http://{}", f.address);
-    let client = reqwest::Client::builder()
-        .no_proxy()
-        .redirect(reqwest::redirect::Policy::none())
-        .timeout(std::time::Duration::from_secs(5))
-        .build()
-        .unwrap();
-    let (_, cookie) = post(
-        &client,
-        &origin,
-        "/console/session",
-        json!({"ticket":ticket}),
-        None,
-    )
-    .await;
-    let cookie = cookie.unwrap();
-    let (inspection, _) = post(
-        &client,
-        &origin,
-        &format!("/console/api/agents/{engagement}/stopped-dispatches/dispatch/inspect"),
-        json!({}),
-        Some(&cookie),
-    )
-    .await;
-    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    // The words the status carried at the time are the failed event's.
+    assert_eq!(
+        f.count(
+            "SELECT COUNT(*) FROM runner_attempt_events WHERE dispatch_id='dispatch' AND fence=1 AND phase='failed' \
+             AND json_extract(detail,'$.status.cleanup')='whole_tree_stopped' \
+             AND json_extract(detail,'$.status.runtime.refused_notification')='unknown'"
+        ),
+        1
+    );
+    let engagement = f.engagement();
+    let operator = f.operator().await;
+    let inspection = operator.inspect(&engagement, "dispatch").await;
+    f.serve_for(std::time::Duration::from_millis(1100)).await;
     assert_eq!(f.attempts(), 1, "stopped proof alone cannot rerun work");
     // ADR-181: the failed attempt left its record — the uncollapsed status as
     // the `failed` event, and the retained product's terminal_reason shape,
@@ -986,54 +940,229 @@ async fn native_continuous_driver_operator_resolution() {
         );
     }
     std::fs::remove_file(f.work.join("owned-mcp.fail-notification")).unwrap();
-    post(&client,&origin,&format!("/console/api/agents/{engagement}/resolve-stopped-dispatch"),json!({
-        "original":"dispatch","requestId":"reviewed_resolution","inspectionId":inspection["inspectionId"],"inspectionToken":inspection["inspectionToken"],
-        "action":"continue","operatorNote":"Reviewed original failed subprocess inventory",
-        "replacement":{"id":"reviewed_continuation","session_id":"session","task_id":"task",
-            "resources":[{"id":"work","exclusive":true}],"payload":{"instruction":"Inspect prior state and heartbeat the recovered task"}},
-    }),Some(&cookie)).await;
-    common::success(&mut f.fake, "operator-resolution-2").await;
-    f.fake.next().await.json(200, common::state());
-    f.wait_attempts(2).await;
-    let until = tokio::time::Instant::now() + std::time::Duration::from_secs(20);
-    loop {
-        if let Ok(bytes) = std::fs::read(f.work.join("owned-mcp.receipt"))
-            && let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes)
-            && value["task"]["id"] == "task"
-        {
-            break;
-        }
-        assert!(
-            tokio::time::Instant::now() < until,
-            "continuation helper did not run"
-        );
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-    }
+    operator
+        .resolve(&engagement, reviewed_continuation(&inspection))
+        .await;
+    f.serve_until("continuation helper ran", |f, _| {
+        f.attempts() == 2 && receipt(&f.work).is_some_and(|value| value["task"]["id"] == "task")
+    })
+    .await;
     assert_eq!(
         f.state(),
         "outcome_unknown",
         "original attempt is preserved"
     );
-    let sql = rusqlite::Connection::open(f.state_dir.join("domain.sqlite3")).unwrap();
     assert_eq!(
-        sql.query_row(
-            "SELECT COUNT(*) FROM runner_attempts WHERE dispatch_id='dispatch'",
-            [],
-            |r| r.get::<_, u64>(0)
-        )
-        .unwrap(),
+        f.count("SELECT COUNT(*) FROM runner_attempts WHERE dispatch_id='dispatch'"),
         1
     );
     assert_eq!(
-        sql.query_row(
-            "SELECT COUNT(*) FROM runner_attempts WHERE dispatch_id='reviewed_continuation'",
-            [],
-            |r| r.get::<_, u64>(0)
-        )
-        .unwrap(),
+        f.count("SELECT COUNT(*) FROM runner_attempts WHERE dispatch_id='reviewed_continuation'"),
         1
     );
-    drop(sql);
+    child.request_shutdown();
+    child.exited().await;
+}
+
+/// ADR-182 decision 1: a failed turn takes its session out, not the agent.
+/// The same worker, without a restart and without any resolution of the
+/// failed dispatch, claims and completes another session's dispatch once
+/// the operator's stop inspection has freed the runner slot (ADR-163).
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[tokio::test]
+async fn native_worker_outlives_a_failed_attempt() {
+    let mut f = Fixture::new(false).await;
+    std::fs::write(
+        f.work.join("owned-mcp.fail-notification"),
+        b"offline fixture",
+    )
+    .unwrap();
+    f.seed_second_session();
+    f.configure_continuous();
+    let assets = f.console_assets();
+    let mut child = f.launch_agent_driver(Some(&assets));
+    f.serve_until("original attempt failed", |f, status| {
+        status["development_execution"]["last_failure"]["dispatch_id"] == "dispatch"
+            && f.state() == "outcome_unknown"
+    })
+    .await;
+    // The store's side, unchanged: the failed session is quarantined and its
+    // thread notice queued; the other session is untouched.
+    assert_eq!(
+        f.count("SELECT quarantined FROM runner_sessions WHERE id='session'"),
+        1
+    );
+    assert_eq!(
+        f.count("SELECT quarantined FROM runner_sessions WHERE id='session-2'"),
+        0
+    );
+    // The thread notice needs an addressed input to hang from; a dispatch the
+    // fixture enqueued directly has none, so the store queues nothing here.
+    // The notice path itself is the store's, pinned by its own tests.
+    // The worker's side: alive, polling, not failed, one unresolved dispatch.
+    assert!(
+        child.still_owned(),
+        "the worker outlives its failed attempt"
+    );
+    f.serve_until("worker polling after the failure", |_, status| {
+        let status = &status["development_execution"];
+        status["unresolved_dispatches"] == 1
+            && status["error"].is_null()
+            && status["last_failure"]["owned_failure"] == "protocol"
+    })
+    .await;
+    // ADR-162/163: the proven stop left the host's own inventory receipt,
+    // which is what frees the one runner slot — no operator act stands
+    // between this failure and the agent's other sessions.
+    assert_eq!(
+        f.count(
+            "SELECT COUNT(*) FROM owned_stop_inspections WHERE dispatch_id='dispatch' AND fence=1"
+        ),
+        1,
+        "the host recorded its stopped-owner receipt"
+    );
+    f.serve_until("the other session's dispatch completed", |f, _| {
+        f.text("SELECT state FROM runner_dispatches WHERE id='dispatch-3'") == "completed"
+    })
+    .await;
+    assert_eq!(
+        receipt(&f.second_work()).expect("the second workspace received the probe's receipt")["task"]
+            ["id"],
+        "task-3"
+    );
+    assert_eq!(
+        f.state(),
+        "outcome_unknown",
+        "the failed dispatch stays the operator's"
+    );
+    assert_eq!(f.count("SELECT COUNT(*) FROM runner_attempts"), 2);
+    let status = f.capabilities().await;
+    let status = &status["development_execution"];
+    assert_eq!(
+        status["last_failure"]["dispatch_id"], "dispatch",
+        "the failure stays in the status beside the live state: {status}"
+    );
+    assert_eq!(status["unresolved_dispatches"], 1);
+    assert!(status["error"].is_null(), "{status}");
+    child.request_shutdown();
+    child.exited().await;
+}
+
+/// ADR-182 decisions 3 and 4: a stop the guardian could not prove fences the
+/// agent in the store and drops the in-memory owner. The worker stays up and
+/// claims nothing while the fence stands; the operator's settlement through
+/// the console clears it; one SIGTERM ends the process.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[tokio::test]
+async fn native_unproven_cleanup_fences_the_agent() {
+    let mut f = Fixture::new(false).await;
+    std::fs::write(f.work.join("owned-mcp.unproven-stop"), b"offline fixture").unwrap();
+    f.seed_second_session();
+    f.configure_continuous();
+    let assets = f.console_assets();
+    let mut child = f.launch_agent_driver(Some(&assets));
+    f.serve_until("agent fenced", |_, status| {
+        status["development_execution"]["state"] == "fenced"
+    })
+    .await;
+    let engagement = f.engagement();
+    let status = f.capabilities().await;
+    let status = &status["development_execution"];
+    assert_eq!(status["fenced"], "dispatch", "{status}");
+    assert_eq!(status["last_failure"]["owned_failure"], "cleanup_unknown");
+    assert_eq!(status["cleanup"], "unknown");
+    assert_eq!(
+        status["protocol"], "completed",
+        "the turn itself ended: {status}"
+    );
+    assert_eq!(status["unresolved_dispatches"], 1);
+    assert!(
+        status["error"].is_null(),
+        "a fenced agent is not a failed one: {status}"
+    );
+    assert_eq!(
+        f.count(&format!(
+            "SELECT COUNT(*) FROM agent_fences WHERE engagement_id='{engagement}' AND dispatch_id='dispatch' \
+             AND fence=1 AND reason='cleanup_unknown' AND cleared_at IS NULL"
+        )),
+        1,
+        "the fence is a row"
+    );
+    assert_eq!(f.state(), "outcome_unknown");
+    // An unproven stop leaves no host receipt (ADR-162): that absence is why
+    // the slot stays charged and why the operator's route is the orphan
+    // recovery, not the stopped-dispatch resolution that needs the receipt.
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM owned_stop_inspections WHERE dispatch_id='dispatch'"),
+        0
+    );
+    // Nothing is claimed while the fence stands, however long the other
+    // session's work waits, and the worker is still there.
+    f.serve_for(std::time::Duration::from_millis(2500)).await;
+    assert_eq!(f.attempts(), 1);
+    assert_eq!(
+        f.text("SELECT state FROM runner_dispatches WHERE id='dispatch-3'"),
+        "queued"
+    );
+    assert!(child.still_owned());
+    // The console route (ADR-182 decision 3, chosen 2026-09-23): with no host
+    // receipt the inspection stands on the attempt's own recorded stop
+    // evidence; `continue` is refused (no proof the workspace is free) and the
+    // orphan recovery is refused (an open stop row); the operator's settlement
+    // is what clears the fence.
+    std::fs::remove_file(f.work.join("owned-mcp.unproven-stop")).unwrap();
+    let operator = f.operator().await;
+    let inspection = operator.inspect(&engagement, "dispatch").await;
+    assert_eq!(inspection["snapshot"]["fenced"], true, "{inspection}");
+    assert_eq!(
+        inspection["snapshot"]["observation"]["cleanup"], "unknown",
+        "the guardian's own words are the inspection material: {inspection}"
+    );
+    let (status, body) = operator
+        .try_post(
+            &format!("/console/api/agents/{engagement}/resolve-stopped-dispatch"),
+            reviewed_continuation(&inspection),
+        )
+        .await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (409, Some("dispatch_not_resolvable")),
+        "continue needs the receipt an unproven stop cannot have"
+    );
+    let (status, body) = operator
+        .try_post(
+            &format!("/console/api/agents/{engagement}/recover-dispatch"),
+            reviewed_recovery(),
+        )
+        .await;
+    assert_eq!(
+        (status, body["code"].as_str()),
+        (409, Some("dispatch_not_recoverable"))
+    );
+    operator
+        .resolve(&engagement, reviewed_settlement(&inspection))
+        .await;
+    assert_eq!(
+        f.text("SELECT cleared_by FROM agent_fences WHERE dispatch_id='dispatch'"),
+        "resolve_stopped_dispatch"
+    );
+    assert_eq!(
+        f.text("SELECT json_extract(config,'$.status') FROM canonical_tasks WHERE id='task'"),
+        "blocked"
+    );
+    // The other session's work runs once the fence is gone.
+    f.serve_until("the waiting work ran after the clearing", |f, status| {
+        f.text("SELECT state FROM runner_dispatches WHERE id='dispatch-3'") == "completed"
+            && status["development_execution"]["fenced"].is_null()
+    })
+    .await;
+    assert!(receipt(&f.second_work()).is_some_and(|value| value["task"]["id"] == "task-3"));
+    assert_eq!(f.attempts(), 2);
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM agent_fences WHERE cleared_at IS NULL"),
+        0
+    );
+    // One SIGTERM ends the process: no owner was retained (ADR-182 decision 5).
     child.request_shutdown();
     child.exited().await;
 }

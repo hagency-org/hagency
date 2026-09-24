@@ -23,6 +23,11 @@ pub struct OwnedSession {
     session: Session,
     owner: SupervisedProcess,
     cleanup: Cleanup,
+    /// Diagnostics build only (ADR-182 pin): every stop verdict of this
+    /// session reads `Unknown`, as a tree the guardian could not prove gone
+    /// would, however many times the host asks. No production build has it.
+    #[cfg(feature = "test-diagnostics")]
+    unproven: bool,
 }
 impl OwnedSession {
     pub fn spawn(
@@ -77,6 +82,8 @@ impl OwnedSession {
                     session,
                     owner,
                     cleanup: Cleanup::Pending,
+                    #[cfg(feature = "test-diagnostics")]
+                    unproven: false,
                 })
             }
             Err(error) => {
@@ -203,7 +210,21 @@ impl OwnedSession {
         if !matches!(self.cleanup, Cleanup::Observed(report) if report.scope.whole_tree_stopped) {
             self.cleanup = observe_stop(&mut self.owner);
         }
+        #[cfg(feature = "test-diagnostics")]
+        if self.unproven {
+            self.cleanup = Cleanup::Unknown {
+                kind: io::ErrorKind::TimedOut,
+            };
+        }
         self.cleanup
+    }
+    /// Diagnostics build only: from now on this session's stop verdict is
+    /// `Unknown`, the one shape an offline fixture cannot produce soundly
+    /// (a tree that outlives SIGKILL for the guardian's whole budget). The
+    /// real stop still runs; only the verdict the host reads is pinned.
+    #[cfg(feature = "test-diagnostics")]
+    pub fn unprove_stop(&mut self) {
+        self.unproven = true;
     }
 
     /// Runtime opt-in only; durable owner grants and finite launch admission

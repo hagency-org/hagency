@@ -1248,6 +1248,8 @@ async fn execute(
     } else {
         None
     };
+    #[cfg(feature = "test-diagnostics")]
+    let workspace_path = root.path().to_owned();
     let workspace = Binding::start(root, domain.clone(), cap, &started, cancel.clone())?;
     let _retire_workspace = workspace.retirement(); // all returns and unwinds
     report.workspace = Some(workspace.clone()); // before any child can exist
@@ -1539,6 +1541,15 @@ async fn execute(
         serde_json::json!({}),
     )
     .await;
+    // Offline pin for ADR-182 only: a stop the guardian could not prove. The
+    // one way to make the real guardian unsure is a tree that outlives
+    // SIGKILL for its whole budget, which no offline fixture can do soundly;
+    // the marker stands in for it, on a diagnostics build only, and it pins
+    // the session's verdict so the host's own stop retry reads the same.
+    #[cfg(feature = "test-diagnostics")]
+    if workspace_path.join("owned-mcp.unproven-stop").is_file() {
+        runner.unprove_stop();
+    }
     report.cleanup = runner.stop();
     // The guardian's verdict, the leader's exit and both stderr tails are
     // kept with the attempt before any verdict is drawn from them (ADR-181).

@@ -17,6 +17,12 @@ hagency-platform = { path = "../hagency-platform" }
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61.2", features = ["Win32_System_Threading"] }
 
+[features]
+# An offline pin for a stop the guardian could not prove (ADR-182). Enabled
+# only through hagency-execution's own test-diagnostics feature; never in a
+# production build.
+test-diagnostics = []
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile.workspace = true

@@ -71,6 +71,10 @@ pub struct WarmRuntime {
     ready: Arc<Ready>,
     domain: DomainStore,
     host: SharedHost,
+    /// The same binding the worker qualifies, kept here so a refused handoff
+    /// leaves the factory a root for a follow-up launch (ADR-182 decision 2)
+    /// instead of a spent runtime nothing can dispatch to again.
+    binding: Binding,
 }
 enum Command {
     Dispatch {
@@ -235,6 +239,14 @@ impl WarmRuntime {
         let notice = ready.clone();
         let source = domain.clone();
         let fixed = host.clone();
+        let binding = Binding {
+            scope: scope.clone(),
+            home: home.clone(),
+            root: prepared.root.clone(),
+            workspace_id: workspace_id.clone(),
+            failure: None,
+            local_codex: host.0.local_codex.clone(),
+        };
         // Keep the original deadline including preparation and worker/queue delay.
         let worker = std::thread::Builder::new()
             .name("hagency-warm-owned-runtime".into())
@@ -313,7 +325,13 @@ impl WarmRuntime {
             ready,
             domain,
             host,
+            binding,
         })
+    }
+    /// The follow-up root this warm child was started from: what a refused
+    /// handoff leaves the factory with. It carries no process and no failure.
+    pub(crate) fn binding(&self) -> Binding {
+        self.binding.clone()
     }
     /// Only the concrete factory bridge requests activation after checking its
     /// original enrolled SDK. The original worker qualifies its physical owner

@@ -59,6 +59,19 @@ impl OwnedClaimProfile {
     pub(super) fn from_account_binding(encoded: String) -> Self {
         Self(encoded)
     }
+    /// The engagement this profile's frozen transport belongs to: the key
+    /// the host reads its own fence and unresolved count under (ADR-182).
+    /// A read of the profile's own metadata, never claim authority.
+    pub fn engagement_id(&self) -> String {
+        serde_json::from_str::<serde_json::Value>(&self.0)
+            .ok()
+            .and_then(|value| {
+                value["transport"]["engagement_id"]
+                    .as_str()
+                    .map(str::to_owned)
+            })
+            .unwrap_or_default()
+    }
     /// Refresh only the original host's room selections. Preserve its frozen
     /// transport, workspaces and provider/account restrictions. This metadata
     /// never substitutes for claim authority or the executor's handoff checks.

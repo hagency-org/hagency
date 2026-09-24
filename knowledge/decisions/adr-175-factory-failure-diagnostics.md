@@ -46,3 +46,10 @@ the second worker was registered and correctly caused startup refusal instead.
 The corrected test waits for actual registered owners before injecting the fault.
 Native library45/configured fleet2 pass, with two legacy selectors ignored;
 strict Clippy, locked build and production caller audit pass.
+
+### Amended: a handoff refusal is the attempt's failure (2026-09-23, ADR-182)
+
+"Worker retention and all admission behavior remain unchanged" is superseded
+for the handoff: a refusal before an Operation exists is recorded as that
+attempt's failure with its category and site (ADR-181) and the worker
+continues after the retained product's flat launch backoff.

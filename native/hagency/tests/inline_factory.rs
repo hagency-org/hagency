@@ -517,6 +517,111 @@ async fn native_configured_fleet_reattaches_after_restart() {
     }
 }
 
+/// ADR-182 decision 3: the fence is a row, so it survives a restart. An
+/// agent whose stop the guardian could not prove is fenced by the product
+/// itself; the restarted service re-attaches it, shows it `fenced`, and
+/// claims nothing for it; the operator's settlement clears the fence and the
+/// next restart re-attaches a working agent.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+#[tokio::test]
+async fn native_reattach_honours_the_fence() {
+    let mut f = Fixture::new_service(false).await;
+    f.provision().await;
+    f.original_owner().await;
+    let engagement = f.engagement();
+    fs::write(f.work().join("owned-mcp.sequential"), b"offline probe only").unwrap();
+    fs::write(
+        f.work().join("owned-mcp.fleet-files"),
+        b"offline probe only",
+    )
+    .unwrap();
+    // The diagnostics pin: this turn's stop verdict is `Unknown`.
+    fs::write(f.work().join("owned-mcp.unproven-stop"), b"offline fixture").unwrap();
+    queue_service_task(&f, 1).await;
+    let snapshot = run_fleet_until(&mut f, "fenced before restart", &engagement, |_, agent| {
+        agent["status"]["state"] == "fenced"
+    })
+    .await;
+    assert_eq!(
+        snapshot["failed"], false,
+        "a fenced agent does not fail the fleet"
+    );
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM agent_fences WHERE dispatch_id='service_dispatch_1' AND reason='cleanup_unknown' AND cleared_at IS NULL"),
+        1
+    );
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM runner_dispatches WHERE id='service_dispatch_1' AND state='outcome_unknown'"),
+        1
+    );
+    fs::remove_file(f.work().join("owned-mcp.unproven-stop")).unwrap();
+    let account_posts = f.peer.account_posts;
+    // Across the restart the fence stands: the re-attached agent reads it
+    // from the store and says so. (Its session is quarantined by the same
+    // settlement, so no new task can even be queued into it; the claim gate
+    // itself is pinned at the store and in the bootstrap scenario.)
+    let mut f = f.restart().await;
+    let snapshot = run_fleet_until(&mut f, "fenced after restart", &engagement, |_, agent| {
+        agent["status"]["state"] == "fenced"
+    })
+    .await;
+    assert_eq!(snapshot["failed"], false);
+    let agent = agent_row(&snapshot, &engagement);
+    assert_eq!(agent["status"]["fenced"], "service_dispatch_1");
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM runner_attempts"),
+        1,
+        "nothing was claimed across the restart"
+    );
+    assert_eq!(
+        f.peer.account_posts, account_posts,
+        "a restart registers no account"
+    );
+    // The operator's settlement (the console route's store operation) is
+    // what clears the fence: the inspection stands on the attempt's own stop
+    // evidence, since an unproven stop left no host receipt.
+    let inspection = f
+        .base
+        .store
+        .begin_outcome_inspection(engagement.clone(), "service_dispatch_1".into(), 60_000)
+        .await
+        .unwrap();
+    assert_eq!(inspection["snapshot"]["fenced"], true, "{inspection}");
+    f.base
+        .store
+        .resolve_stopped_dispatch(
+            engagement.clone(),
+            hagency_store::OutcomeResolution {
+                original: "service_dispatch_1".into(),
+                request_id: "reviewed_settlement".into(),
+                inspection_id: inspection["inspectionId"].as_str().unwrap().into(),
+                inspection_token: inspection["inspectionToken"].as_str().unwrap().into(),
+                action: hagency_store::OutcomeAction::KeepBlocked,
+                operator_note: "Reviewed the unproven stop; the task stays blocked".into(),
+                replacement: None,
+            },
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        f.count("SELECT COUNT(*) FROM agent_fences WHERE cleared_at IS NULL"),
+        0
+    );
+    // The next restart re-attaches a working agent: its next task runs.
+    let mut f = f.restart().await;
+    queue_service_task(&f, 2).await;
+    let snapshot = run_fleet_until(
+        &mut f,
+        "working after the clearing",
+        &engagement,
+        |completed, agent| completed == 1 && agent["status"]["fenced"].is_null(),
+    )
+    .await;
+    assert_eq!(snapshot["failed"], false);
+    assert_eq!(f.receipt("readback")["task"]["id"], "service_task_2");
+    f.close().await;
+}
+
 #[tokio::test]
 async fn native_provisioning_effect_completed() {
     for application_service in [false, true] {
